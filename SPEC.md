@@ -2369,6 +2369,17 @@ module definitions; it does not validate that field as an unconstrained JSON
 value. Verification elaborates the generated module, replays it with
 `leanchecker`, and audits every theorem's observed axioms.
 
+The language-1.1 semantic Lean backend uses the same fixed finite resource
+budgets as the native-core backend: `maxRecDepth` is `100000` and
+`maxHeartbeats` is `1000000000`. Lean measures the latter per command, in
+thousands of small allocations. Its interactive defaults are not adequate
+for complete nested byte-data declarations. These are fixed generated
+backend options, not source-supplied commands or request overrides; neither
+may be zero (unlimited). Configured child timeout and output-size limits,
+source/IR limits, kernel replay, and exact axiom policies remain unchanged.
+Exhausting a finite Lean budget still fails verification; the budgets do not
+assert that every resource-bounded source can be verified on every host.
+
 ## 18. Lean backend
 
 ### 18.1 Output contract
@@ -2389,6 +2400,11 @@ end <full generated module>
 ```
 
 There are no comments or blank documentation blocks. The file ends in one LF.
+
+For a language-1.1 `semanticmodule`, the fixed `set_option maxRecDepth 100000`
+and `set_option maxHeartbeats 1000000000` lines from §17.11 follow
+`set_option autoImplicit false`, before the namespace. This does not change
+the language-1.0 prose-module layout.
 
 ### 18.2 Prose-free rule
 

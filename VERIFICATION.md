@@ -39,6 +39,31 @@ Outside `vv`:
 
 Each gate below was made to fail by planting a defect, running the gate's command, recording the failure, and removing the defect. The observed lines are verbatim gate output (paths abbreviated to the repository root). `cargo xtask release-check` requires a `### <gate> can fail` record for every gate and audit named in `repo_model::release::GATES`.
 
+### semantic elaboration budgets can fail
+
+The `SM-19` regression generates one nested record/list declaration containing
+twenty byte literals, including 4,096-, 4,097-, and 8,192-byte values. It keeps
+the complete consumer corpus shape, checks every ordered literal against both
+the owned snapshot and the actual generated array arguments, and verifies
+repeated-byte and varied non-UTF-8 data through normal Lean elaboration,
+kernel replay, and exact axiom audit. No Lean test implementation replaces the
+modeled declaration. `LN-01` separately requires the exact finite option set
+and preserves the historical language-1.0 preamble.
+
+Before the correction, repeated data failed `LLV7002` with the pinned Lean
+diagnostic `(deterministic) timeout at transform, maximum number of heartbeats
+(200000) has been reached`; varied data failed the separate default recursion
+limit. After correction, the two complete large-data fixtures verified.
+Removing both generated resource-option lines again made
+`cargo test --offline -p repo-conformance --test conformance conformance_sm_19
+-- --exact --nocapture` fail on the actual `transform` heartbeat diagnostic,
+with the current language lock intact. Restoring the fixed finite settings
+does not change any declaration, byte, source limit, child timeout/output
+bound, proof, or axiom policy. Raw runs are retained in ignored
+`target/semantic-large-repeated-bytes-red.log`,
+`target/semantic-large-varied-bytes-recursion-red.log`, and
+`target/semantic-budget-removed-red.log`.
+
 ### semantic string context can fail
 
 Observed: the initial payload detector searched for the literal adjacent bytes

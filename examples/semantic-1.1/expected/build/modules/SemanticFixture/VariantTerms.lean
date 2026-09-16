@@ -2,6 +2,8 @@ module
 public import Init
 public import SemanticFixture.VariantTypes
 set_option autoImplicit false
+set_option maxRecDepth 100000
+set_option maxHeartbeats 1000000000
 namespace SemanticFixture.VariantTerms
 
 @[expose] public def boxedZero : SemanticFixture.VariantTypes.Box (Nat) := ({ value := 0 } : SemanticFixture.VariantTypes.Box (Nat))

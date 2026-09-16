@@ -1,6 +1,8 @@
 module
 public import Init
 set_option autoImplicit false
+set_option maxRecDepth 100000
+set_option maxHeartbeats 1000000000
 namespace SemanticFixture.KernelReductionDefinitions
 
 namespace LexLeanRuntime

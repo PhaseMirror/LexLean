@@ -10,6 +10,8 @@ public import SemanticFixture.VariantProofs
 public import SemanticFixture.VariantTerms
 public import SemanticFixture.VariantTypes
 set_option autoImplicit false
+set_option maxRecDepth 100000
+set_option maxHeartbeats 1000000000
 namespace SemanticFixture.Main
 
 public inductive ComponentKind where

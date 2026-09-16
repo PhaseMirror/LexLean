@@ -33,6 +33,147 @@ fn linked_json(project: &P) -> serde_json::Value {
         .expect("linked IR is canonical JSON")
 }
 
+/// An application-shaped constant keeps all byte vectors inside one nested
+/// declaration. Small scalar fixtures do not exercise the compiler work that
+/// caused a real consumer's complete acceptance corpus to exhaust Lean's
+/// default per-command heartbeat budget.
+fn large_byte_declaration_project(varied: bool) -> (P, Vec<String>) {
+    use serde_json::json;
+
+    let project = P::example();
+    project.edit("lexlean.toml", "language = \"1.0\"", "language = \"1.1\"");
+    let member = |name: &str| json!({"name": name});
+    let named = |name: &str| json!({"kind":"named", "member":member(name), "arguments":[]});
+    let bytes = |length: usize| {
+        let hex = (0..length)
+            .map(|index| format!("{:02x}", if varied { index % 256 } else { 120 }))
+            .collect::<String>();
+        json!({"kind":"bytes", "hex":hex})
+    };
+    let lengths = [
+        (15, 67),
+        (30, 82),
+        (31, 83),
+        (4096, 4148),
+        (0, 46),
+        (1, 46),
+        (2, 46),
+        (2, 46),
+        (4097, 46),
+        (8192, 46),
+    ];
+    let mut vectors = json!({"kind":"nil", "element":named("ByteVector")});
+    for (request, response) in lengths.into_iter().rev() {
+        let row = json!({
+            "kind":"record", "type":member("ByteVector"), "type_arguments":[],
+            "fields":[
+                {"field":"request", "value":bytes(request)},
+                {"field":"response", "value":bytes(response)},
+            ],
+        });
+        vectors = json!({"kind":"cons", "head":row, "tail":vectors});
+    }
+    let module = json!({
+        "spec":"lexlean/semantic-module/1",
+        "declarations":[
+            {"kind":"structure", "name":"ByteVector", "type_parameters":[], "parameters":[],
+             "fields":[{"name":"request", "type":{"kind":"bytes"}},
+                       {"name":"response", "type":{"kind":"bytes"}}]},
+            {"kind":"structure", "name":"ByteCorpus", "type_parameters":[], "parameters":[],
+             "fields":[{"name":"vectors", "type":{"kind":"list", "element":named("ByteVector")}}]},
+            {"kind":"definition", "name":"byteCorpus", "parameters":[], "result":named("ByteCorpus"),
+             "body":{"kind":"record", "type":member("ByteCorpus"), "type_arguments":[],
+                     "fields":[{"field":"vectors", "value":vectors}]}},
+        ],
+    });
+    project.write("src/Main.lex.tex", &format!(
+        "\\begin{{lexlean}}{{Main}}\n\\useglossary{{lexlean.std.nat@1.1.0}}\n\\title{{Natural number addition}}\n\n\\begin{{semanticmodule}}\n\\semanticdata{{{module}}}\n\\end{{semanticmodule}}\n\\end{{lexlean}}\n"
+    ));
+    project.relock();
+    let expected = lengths
+        .into_iter()
+        .flat_map(|(request, response)| {
+            [request, response].map(|length| bytes(length)["hex"].as_str().expect("hex").to_owned())
+        })
+        .collect();
+    (project, expected)
+}
+
+fn collect_byte_literals(value: &serde_json::Value, actual: &mut Vec<String>) {
+    if let (Some("bytes"), Some(hex)) = (value["kind"].as_str(), value["hex"].as_str()) {
+        actual.push(hex.to_owned());
+    }
+    match value {
+        serde_json::Value::Array(items) => {
+            for item in items {
+                collect_byte_literals(item, actual);
+            }
+        }
+        serde_json::Value::Object(fields) => {
+            for value in fields.values() {
+                collect_byte_literals(value, actual);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn verify_large_byte_declaration(varied: bool) {
+    let (project, expected) = large_byte_declaration_project(varied);
+    let first = project
+        .engine()
+        .snapshot(lexlean::CheckRequest {
+            selection: lexlean::Selection::Entrypoints,
+        })
+        .expect("large byte corpus snapshot");
+    let decoded: serde_json::Value =
+        serde_json::from_slice(&first.canonical_bytes()).expect("snapshot JSON");
+    let mut actual = Vec::new();
+    assert_eq!(decoded["modules"].as_array().expect("modules").len(), 1);
+    collect_byte_literals(&decoded["modules"][0]["semantic"], &mut actual);
+    assert_eq!(
+        actual, expected,
+        "snapshot retains every literal byte, vector, and occurrence in order"
+    );
+    let rendered = support::rendered(&project);
+    let generated = support::lean_text(&rendered, "Main");
+    let emitted: Vec<_> = generated
+        .split("ByteArray.mk #[")
+        .skip(1)
+        .map(|tail| {
+            let literal = tail.split_once(']').expect("closed generated array").0;
+            if literal.is_empty() {
+                return String::new();
+            }
+            literal
+                .split(", ")
+                .map(|value| {
+                    format!(
+                        "{:02x}",
+                        value.parse::<u8>().expect("exact generated UInt8 literal")
+                    )
+                })
+                .collect::<String>()
+        })
+        .collect();
+    assert_eq!(
+        emitted, expected,
+        "the actual generated declaration retains every byte in order"
+    );
+    let _ = support::verify_ok_backed("SM-19", &project);
+    let second = project
+        .engine()
+        .snapshot(lexlean::CheckRequest {
+            selection: lexlean::Selection::Entrypoints,
+        })
+        .expect("verified byte corpus snapshot");
+    assert_eq!(
+        first.canonical_bytes(),
+        second.canonical_bytes(),
+        "verification never substitutes the byte corpus"
+    );
+}
+
 pub(crate) fn run(id: &str) {
     match id {
         // §17.1: phases run in order; nothing reaches a backend unlinked.
@@ -917,6 +1058,8 @@ pub(crate) fn run(id: &str) {
             );
         }
         "SM-19" => {
+            verify_large_byte_declaration(false);
+            verify_large_byte_declaration(true);
             let project = support::semantic_project();
             let built = project.build_ok();
             let root = project.build_dir(&built.build_id.expect("build id"));

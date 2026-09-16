@@ -40,6 +40,23 @@ pub(crate) fn run(id: &str) {
         // literal example and for a sectioned module.
         "LN-01" => {
             assert_eq!(example_lean(), EXAMPLE_LEAN, "§29.3 bytes");
+            let semantic = support::semantic_project();
+            let generated = support::lean_text(&support::rendered(&semantic), "Main");
+            assert_eq!(
+                generated
+                    .lines()
+                    .filter(|line| line.starts_with("set_option "))
+                    .collect::<Vec<_>>(),
+                [
+                    "set_option autoImplicit false",
+                    "set_option maxRecDepth 100000",
+                    "set_option maxHeartbeats 1000000000"
+                ],
+                "no additional or unlimited semantic resource option is emitted"
+            );
+            assert!(generated.contains(
+                "set_option autoImplicit false\nset_option maxRecDepth 100000\nset_option maxHeartbeats 1000000000\nnamespace SemanticFixture.Main\n"
+            ), "semantic modules use only the fixed finite backend budgets");
             let project = P::example();
             project.write("src/Main.lex.tex", support::SECTIONS_MODULE);
             project.check_ok();

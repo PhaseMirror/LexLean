@@ -994,7 +994,13 @@ pub fn render_lean(
     for import in &document.imports {
         text.push_str(&format!("public import {module_prefix}.{import}\n"));
     }
-    text.push_str("set_option autoImplicit false\nnamespace ");
+    // Large closed byte constants incur Lean compiler work beyond its small
+    // interactive defaults. Match the fixed finite closed-core budgets; the
+    // project still bounds child elapsed time and captured output, and every
+    // declaration is elaborated, replayed, and axiom-audited normally.
+    text.push_str(
+        "set_option autoImplicit false\nset_option maxRecDepth 100000\nset_option maxHeartbeats 1000000000\nnamespace ",
+    );
     text.push_str(&document.lean_module);
     text.push('\n');
     if serde_json::to_string(module)

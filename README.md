@@ -98,6 +98,12 @@ one generated Lean module per native source module, public imports confined to
 `Init` and the generated graph, only the generic `Lean` backend-support import,
 and no second Atlas implementation.
 
+Language-1.1 semantic modules use the closed-core backend's fixed finite Lean
+budgets (`maxRecDepth = 100000`, `maxHeartbeats = 1000000000`) so complete
+nested byte-data declarations are not restricted by interactive defaults.
+Project child timeout/output limits and full kernel/axiom verification remain
+mandatory. These are generated backend settings, not caller-provided options.
+
 ## Examples that verify under the pinned toolchain
 
 Every directory under [examples/](examples/) is discovered by the example gate (`EX-08`) and must format, lock, check, build, and verify with real Lean 4.32.1 (`cargo xtask verify-examples`). Its platform-independent build outputs and its normalized verification records are committed under `expected/` and compared byte for byte by the golden gate (§28.3) and the example gate (§29.5); that those bytes are also independent of where the build ran is the separate claim of `AR-13` and `EX-06`.
