@@ -622,7 +622,7 @@ pub(crate) fn run(id: &str) {
 
 /// A second type-noun with the text surface `natural number` and the math
 /// surface `ℕ`, so bare surfaces resolve to two visible entries.
-const DUP_NAT_ENTRY: &str = r#"spec = "lexlean/entry/1"
+pub(super) const DUP_NAT_ENTRY: &str = r#"spec = "lexlean/entry/1"
 id = "nat2"
 category = "type-noun"
 signature = "(sort (type 0))"

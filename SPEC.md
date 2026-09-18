@@ -3467,6 +3467,34 @@ pub enum ErrorClass {
 
 It maps exactly to CLI exit codes 1, 2, 3, 4, and 70.
 
+The native API exposes optional, producer-set `DiagnosticDetail` through
+`Diagnostic::detail()`. `PackageImportCycle { packages, importers }` records the actual
+closed import walk, including its repeated final package, only for package
+self-import or package-import graph cycles. Module and defined-denotation
+cycles do not carry that detail. `importers` contains sorted distinct exact
+`package@version` references whose validated import edges reach the cycle,
+including its members. Package-local self-import rejection keeps its existing
+timing; importers are extended only through successfully resolved, uniquely
+identified packages and exact-version edges. Invalid identities, mismatched
+versions, and unvalidated edges cannot establish reachability.
+`UnqualifiedCrossPackageTermAmbiguity { candidates, packages, span }` records
+sorted distinct qualified entry IDs from at least
+two packages competing at the same unqualified lexical-term source range
+among distinct surviving linked interpretations. Operator notation, binder
+structure, and lexical-segmentation ambiguities alone do not carry that detail.
+When multiple ranges qualify, the earliest range is reported. Explicitly
+qualified selection is not an unqualified candidate. Its `packages` records
+the sorted exact package references owning those candidates.
+
+This metadata is native-only: canonical diagnostic JSON, human rendering,
+diagnostic sorting, registered codes, and accepted-program artifact identities
+are unchanged. The detail accessor is read-only; compiler producers alone set
+the detail. `Diagnostic::new` creates a diagnostic without detail. Adding its
+private storage in the unreleased 0.3.0 API is a Rust struct-literal source
+compatibility change: downstream callers construct diagnostics with
+`Diagnostic::new`, not struct literals. It is not a diagnostic wire-version
+change or a claim of unchanged struct-literal source compatibility.
+
 No public function panics for malformed user input, filesystem races, child failure, invalid UTF-8 input, invalid TOML/JSON, or unexpected external output.
 
 ---
@@ -4322,6 +4350,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `CL-18` | `cli-api` | Version output reports compiler, language, semantics ID, and Lean toolchain exactly. | §30.3 |
 | `CL-19` | `cli-api` | Snapshot returns a stable owned canonical semantic envelope without writing artifacts or invoking a backend. | §24.1 |
 | `CL-20` | `cli-api` | Language-1.1 init creates and verifies a declarative Lake workspace containing no source Lean module. | §23.4 |
+| `CL-21` | `cli-api` | Native diagnostics distinguish package-import cycles and unqualified cross-package term ambiguities without changing diagnostic wire bytes. | §24.5 |
 | `SE-01` | `security` | Source, package, workspace, resource, and output paths are confined and symlinks are rejected. | §25.1 |
 | `SE-02` | `security` | Special files, duplicate filesystem identities, and case-fold collisions are rejected before processing. | §25.1 |
 | `SE-03` | `security` | All child processes use direct executable and argv invocation with no shell. | §25.2 |
@@ -4343,7 +4372,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `EX-07` | `examples` | The negative fixture suite covers every required rejection class and prescribed diagnostic family. | §28.5 |
 | `EX-08` | `examples` | Every example directory is discovered automatically and must satisfy the full example gate. | §28.6 |
 
-**Total required capability IDs:** 222.
+**Total required capability IDs:** 223.
 
 No row may be downgraded to `some-true` or `open`. Upstream Lean facts are ledger/authority rows, not substitutions for these build behaviors.
 

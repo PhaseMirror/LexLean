@@ -230,10 +230,13 @@ pub fn elab_term_phrase(
                     )
                     .with_span(a.span(shared.path))
                 })),
-                _ => Err(
-                    ambiguity_diagnostic(survivors.iter().map(|(_, result)| &result.term))
-                        .with_span(a.span(shared.path)),
-                ),
+                _ => Err(ambiguity_with_rows(
+                    shared,
+                    survivors
+                        .iter()
+                        .map(|(_, result)| (&result.term, result.rows.as_slice())),
+                )
+                .with_span(a.span(shared.path))),
             }
         }
     }
@@ -314,6 +317,118 @@ pub(crate) fn ambiguity_diagnostic<'t>(survivors: impl Iterator<Item = &'t Term>
     )
 }
 
+/// Add native detail only for actual competing lexical term forms, not
+/// operator notation or differently segmented coverage. The wire diagnostic
+/// still comes from the unchanged linked-term diagnostic above.
+pub(crate) fn ambiguity_with_rows<'a>(
+    shared: &Shared<'_>,
+    survivors: impl Iterator<Item = (&'a Term, &'a [SourceRow])>,
+) -> Diagnostic {
+    let survivors: Vec<_> = survivors.collect();
+    let diagnostic = ambiguity_diagnostic(survivors.iter().map(|(term, _)| *term));
+    match lexical_ambiguity_detail(shared, &survivors) {
+        Some(detail) => diagnostic.with_detail(detail),
+        None => diagnostic,
+    }
+}
+
+fn lexical_ambiguity_detail(
+    shared: &Shared<'_>,
+    survivors: &[(&Term, &[SourceRow])],
+) -> Option<crate::diagnostic::DiagnosticDetail> {
+    use crate::diagnostic::{DiagnosticDetail, Span};
+    use crate::lexicon::entry::Frame;
+    use crate::lexicon::resolve::FormRef;
+    use std::collections::BTreeMap;
+
+    let (_, first) = survivors.first()?;
+    let layout = |rows: &[SourceRow]| -> BTreeSet<_> {
+        rows.iter()
+            .map(|row| (row.path.clone(), row.byte_start, row.byte_end, row.class))
+            .collect()
+    };
+    let expected = layout(first);
+    if survivors.len() < 2 || survivors.iter().any(|(_, rows)| layout(rows) != expected) {
+        return None;
+    }
+    let mut ranges = BTreeMap::<_, BTreeSet<(String, String)>>::new();
+    for (_, rows) in survivors {
+        for row in *rows {
+            let Origin::Form {
+                package,
+                entry,
+                form,
+            } = &row.binding
+            else {
+                continue;
+            };
+            let reference = FormRef {
+                package: package.clone(),
+                entry: entry.clone(),
+                form: form.clone(),
+            };
+            let (definition, _) = shared.closure.form(&reference)?;
+            if matches!(
+                definition.frame,
+                Frame::Atom | Frame::Call | Frame::NounOf | Frame::BinaryNounOf
+            ) {
+                ranges
+                    .entry((row.path.clone(), row.byte_start, row.byte_end))
+                    .or_default()
+                    .insert((package.clone(), entry.clone()));
+            }
+        }
+    }
+    for ((path, start, end), entries) in ranges {
+        if entries
+            .iter()
+            .map(|(package, _)| package)
+            .collect::<BTreeSet<_>>()
+            .len()
+            < 2
+        {
+            continue;
+        }
+        let first = shared.atoms.iter().find(|atom| atom.byte_start == start)?;
+        let last = shared
+            .atoms
+            .iter()
+            .rev()
+            .find(|atom| atom.byte_end == end)?;
+        return Some(DiagnosticDetail::UnqualifiedCrossPackageTermAmbiguity {
+            packages: entries
+                .iter()
+                .map(|(id, _)| {
+                    let package = shared
+                        .closure
+                        .packages
+                        .iter()
+                        .find(|package| &package.id == id)?;
+                    Some(format!("{}@{}", package.id, package.version))
+                })
+                .collect::<Option<BTreeSet<_>>>()?
+                .into_iter()
+                .collect(),
+            candidates: entries
+                .into_iter()
+                .map(|(package, entry)| format!("{package}::{entry}"))
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect(),
+            span: Span {
+                path,
+                byte_start: start,
+                byte_end: end,
+                line_start: first.line_start,
+                column_start: first.column_start,
+                line_end: last.line_end,
+                column_end: last.column_end,
+            },
+        });
+    }
+    None
+}
+
 /// Elaborate one text binder (§15.4): the type phrase and the fresh local.
 /// Declares the local in the innermost scope frame.
 pub fn elab_binder(
@@ -358,10 +473,13 @@ pub fn elab_binder(
                 }
                 _ => {
                     let a = &shared.atoms[atoms.0];
-                    return Err(
-                        ambiguity_diagnostic(survivors.iter().map(|(_, term, _)| term))
-                            .with_span(a.span(shared.path)),
-                    );
+                    return Err(ambiguity_with_rows(
+                        shared,
+                        survivors
+                            .iter()
+                            .map(|(_, term, row)| (term, std::slice::from_ref(row))),
+                    )
+                    .with_span(a.span(shared.path)));
                 }
             }
         }
@@ -494,10 +612,13 @@ pub fn elab_proposition(
                 }
                 _ => {
                     let a = &shared.atoms[surface_atoms.0];
-                    Err(
-                        ambiguity_diagnostic(survivors.iter().map(|(_, term, _)| term))
-                            .with_span(a.span(shared.path)),
+                    Err(ambiguity_with_rows(
+                        shared,
+                        survivors
+                            .iter()
+                            .map(|(_, term, rows)| (term, rows.as_slice())),
                     )
+                    .with_span(a.span(shared.path)))
                 }
             }
         }
@@ -676,7 +797,12 @@ pub fn elab_proposition_sentence(
         _ => {
             // §14.4: present the minimal differentiating spans and the
             // differentiating qualified candidate IDs.
-            let mut diagnostic = ambiguity_diagnostic(survivors.iter().map(|(_, term, _)| term));
+            let mut diagnostic = ambiguity_with_rows(
+                shared,
+                survivors
+                    .iter()
+                    .map(|(_, term, rows)| (term, rows.as_slice())),
+            );
             if let Some(span) = differentiating_span(shared, &survivors) {
                 diagnostic = diagnostic.with_span(span);
             }

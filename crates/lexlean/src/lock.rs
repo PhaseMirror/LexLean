@@ -692,6 +692,7 @@ pub fn resolve_packages(
     if diagnostics.is_empty() {
         Ok(ResolvedPackages { packages, rows })
     } else {
+        crate::lexicon::import_reachability::enrich(&packages, &mut diagnostics);
         Err(diagnostics)
     }
 }

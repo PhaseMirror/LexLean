@@ -1,4 +1,4 @@
-//! The `cli-api` suite: CL-01..CL-20.
+//! The `cli-api` suite: CL-01..CL-21.
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
@@ -977,6 +977,7 @@ pub(crate) fn run(id: &str) {
                 assert_eq!(exit, 0, "source-free generated module verifies: {stderr}");
             }
         }
+        "CL-21" => super::typed_diagnostics::run(),
         other => panic!("no cli-api case is wired for {other}"),
     }
 }

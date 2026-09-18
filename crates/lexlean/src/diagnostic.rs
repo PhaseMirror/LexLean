@@ -159,6 +159,29 @@ pub struct Note {
     pub span: Option<Span>,
 }
 
+/// Producer-set native diagnostic distinctions (SPEC.md §24.5).
+/// These details are deliberately absent from diagnostic JSON and rendering.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum DiagnosticDetail {
+    /// An actual closed package-import walk, with its first package repeated last.
+    PackageImportCycle {
+        /// Package IDs in import-edge order.
+        packages: Vec<String>,
+        /// Sorted exact package references with validated import paths to the cycle.
+        importers: Vec<String>,
+    },
+    /// Distinct surviving unqualified lexical terms at one source range.
+    UnqualifiedCrossPackageTermAmbiguity {
+        /// Sorted distinct qualified entry IDs from at least two packages.
+        candidates: Vec<String>,
+        /// Sorted exact package references owning the candidate entries.
+        packages: Vec<String>,
+        /// The competing lexical term's exact source range.
+        span: Span,
+    },
+}
+
 /// One canonical diagnostic (SPEC.md §20.1). Severity is always `error`;
 /// language 1.0 has no recoverable compiler warning category (§20.2).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -177,6 +200,7 @@ pub struct Diagnostic {
     pub help: Vec<String>,
     /// Underlying causes, innermost last.
     pub causes: Vec<String>,
+    detail: Option<DiagnosticDetail>,
 }
 
 impl Diagnostic {
@@ -191,7 +215,19 @@ impl Diagnostic {
             notes: Vec::new(),
             help: Vec::new(),
             causes: Vec::new(),
+            detail: None,
         }
+    }
+
+    /// Read the compiler-produced native detail, when this failure has one.
+    #[must_use]
+    pub const fn detail(&self) -> Option<&DiagnosticDetail> {
+        self.detail.as_ref()
+    }
+
+    pub(crate) fn with_detail(mut self, detail: DiagnosticDetail) -> Self {
+        self.detail = Some(detail);
+        self
     }
 
     /// Attach the primary span.

@@ -6,7 +6,7 @@ use serde::Deserialize;
 
 use crate::artifact::content_id::{tree_digest, Sha256Digest};
 use crate::code;
-use crate::diagnostic::{Diagnostic, Span};
+use crate::diagnostic::{Diagnostic, DiagnosticDetail, Span};
 use crate::lexicon::entry::{parse_entry, Denotation, Entry, EntryContext};
 use crate::lexicon::lse::{self, is_entry_id, is_package_id, ConstInfo, QualifiedId};
 
@@ -300,10 +300,21 @@ pub fn load_package(
         .iter()
         .any(|reference| reference.package == manifest.package)
     {
-        diagnostics.push(Diagnostic::new(
+        let mut diagnostic = Diagnostic::new(
             code!("LLR3003"),
             format!("{}: a package cannot import itself", manifest.package),
-        ));
+        );
+        if diagnostics.is_empty()
+            && imports.iter().any(|reference| {
+                reference.package == manifest.package && reference.version == manifest.version
+            })
+        {
+            diagnostic = diagnostic.with_detail(DiagnosticDetail::PackageImportCycle {
+                packages: vec![manifest.package.clone(), manifest.package.clone()],
+                importers: vec![format!("{}@{}", manifest.package, manifest.version)],
+            });
+        }
+        diagnostics.push(diagnostic);
     }
 
     let is_core = manifest.package == "lexlean.core";

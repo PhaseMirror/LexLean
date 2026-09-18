@@ -63,7 +63,7 @@ pub use artifact::snapshot::{
 // snapshot contract. Re-exporting them under snapshot-specific names lets a
 // downstream consumer exhaustively inspect every variant without depending
 // on the hidden compiler-module path.
-pub use diagnostic::{Diagnostic, DiagnosticCode, Label, Note, Span};
+pub use diagnostic::{Diagnostic, DiagnosticCode, DiagnosticDetail, Label, Note, Span};
 pub use error::{ErrorClass, LexLeanError};
 pub use ir::semantic::{
     MemberRef as SnapshotMemberRef, SemanticAssignment as SnapshotAssignment,

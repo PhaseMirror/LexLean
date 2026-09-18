@@ -18,6 +18,7 @@ mod proofs;
 mod repository;
 mod security;
 mod semantic_ir;
+mod typed_diagnostics;
 mod verification;
 
 /// Run the case for one conformance ID.

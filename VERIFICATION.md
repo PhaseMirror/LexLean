@@ -12,7 +12,7 @@ How this repository's claims are checked, which recipe enforces which rule, and 
 | `model` | `cargo xtask validate-model` | R1 (model is the single source; every model file parsed with unknown-field rejection), R2 (honesty levels and vocabulary, via the meta-gate), R3 (register/scenario/test bijection, Gherkin subset), R4 (`audit-deferral`), R5 (`audit-errors`), R6 (`audit-shipped`, including the shipped crate's normative links), R8 (`audit-generated`, `audit-language-closure`), RP-09 (`audit-no-unsafe`), §27.5 (CONFORMANCE.md and ERRORS.md equal regeneration) |
 | `spec-links` | `cargo xtask validate-spec-links` | RP-07, §27.6: the §31 table and `model/ids.toml` are bijective and byte-consistent |
 | `lint` | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | no tolerated warnings |
-| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 222 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
+| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 223 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
 | `features` | `cargo check --workspace --all-features --all-targets` | every target compiles |
 | `bdd` | `cargo test -p repo-conformance` | R3, §27.7, §27.8: register ↔ scenario ↔ test bijection, the meta-gate, and its own falsifiability test |
 | `examples` | `cargo xtask verify-examples` | §28.6, EX-01: every example directory formats, locks, checks, builds, and verifies with real Lean 4.32.1; when an example commits `expected/verify/`, its normalized verification records must equal it (§29.5) |
@@ -38,6 +38,34 @@ Outside `vv`:
 ## Falsifiability records
 
 Each gate below was made to fail by planting a defect, running the gate's command, recording the failure, and removing the defect. The observed lines are verbatim gate output (paths abbreviated to the repository root). `cargo xtask release-check` requires a `### <gate> can fail` record for every gate and audit named in `repo_model::release::GATES`.
+
+### native diagnostic detail can fail
+
+`CL-21` was registered before its named test failed on the unwired case.
+Its actual `Engine::check` and `snapshot` cases cover package graph/self-import
+cycles, cross-package lexical terms, qualified repairs, import-order and
+prefix-package ordering, and nonmatching module/denotation cycles, same-package
+terms, binder, segmentation, and both parsed and linked operator ambiguities.
+Exact package versions and reverse import reachability additionally cover
+connected/disconnected packages, every rotation of the actual loaded graph,
+early self-import failures, and mismatched-version exclusions. Suppressing
+reverse-edge traversal failed on the missing real parent package, recorded in
+`target/typed-diagnostics-importers-mutant.log`. The earlier full-gate run was
+interrupted for this addition and is retained as incomplete evidence in
+`target/typed-diagnostics-full-vv-interrupted-importers.log`.
+Existing committed diagnostic JSON and actual CLI JSON remain byte-equivalent;
+these are native API checks, not Lean proof verification of the negative fixtures.
+
+In the devcontainer, independently suppressing each native detail in its producer
+setter made `cargo test -p repo-conformance --test conformance conformance_cl_21
+-- --exact --nocapture` fail: the cycle mutation returned `None` instead of
+`PackageImportCycle`, and the lexical mutation failed `actual term collision must
+carry native detail`. Exact source restoration reproduced the passing case.
+A real prefix-package regression first failed qualified-ID sorting, then passed
+after sorting the joined IDs. Raw evidence remains in ignored
+`target/typed-diagnostics-{red,cycle-mutant,term-mutant,prefix-red,focused}.log`.
+The private detail field is an explicitly documented unreleased native
+struct-literal source change; it does not alter the diagnostic wire schema.
 
 ### semantic elaboration budgets can fail
 

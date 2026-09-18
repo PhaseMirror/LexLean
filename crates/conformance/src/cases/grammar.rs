@@ -755,7 +755,7 @@ math = "(operator-name z)"
 "#;
 
 /// A precedence-255 left-associative infix operator denoting `Nat.add`.
-const BUMP_ENTRY: &str = r#"spec = "lexlean/entry/1"
+pub(super) const BUMP_ENTRY: &str = r#"spec = "lexlean/entry/1"
 id = "bump"
 category = "infix-function"
 signature = "(pi ((explicit a (const lexlean.std.nat::nat)) (explicit b (const lexlean.std.nat::nat))) (const lexlean.std.nat::nat))"

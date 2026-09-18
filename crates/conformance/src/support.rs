@@ -165,6 +165,23 @@ fn copy_tree(from: &Path, to: &Path, skip: &[&str]) {
 }
 
 impl P {
+    /// A mutable copy of a checked-in negative project's actual source.
+    #[must_use]
+    pub fn negative(name: &str) -> Self {
+        let temp = tempfile::Builder::new()
+            .prefix("lexlean-diagnostic-")
+            .tempdir()
+            .expect("tempdir");
+        let source = repo_root()
+            .join("tests/negative")
+            .join(name)
+            .join("project");
+        assert!(source.is_dir(), "negative fixture exists");
+        copy_tree(source.as_std_path(), temp.path(), &[".lexlean"]);
+        let root = Utf8PathBuf::from_path_buf(temp.path().to_path_buf()).expect("utf8 tempdir");
+        Self { temp, root }
+    }
+
     /// A fresh copy of `examples/nat-add-zero`.
     #[must_use]
     pub fn example() -> Self {

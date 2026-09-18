@@ -1065,8 +1065,11 @@ pub fn elab_definition(
             return Err(with_default_span(failure, &sentence_span));
         }
         _ => {
-            return Err(crate::elaborate::ambiguity_diagnostic(
-                survivors.iter().map(|(_, body)| &body.value),
+            return Err(crate::elaborate::ambiguity_with_rows(
+                shared,
+                survivors
+                    .iter()
+                    .map(|(_, body)| (&body.value, body.rows.as_slice())),
             )
             .with_span(sentence_span));
         }

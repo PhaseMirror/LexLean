@@ -62,6 +62,7 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `CL-18` | `build` | Version output reports compiler, language, semantics ID, and Lean toolchain exactly. |
 | `CL-19` | `build` | Snapshot returns a stable owned canonical semantic envelope without writing artifacts or invoking a backend. |
 | `CL-20` | `build` | Language-1.1 init creates and verifies a declarative Lake workspace containing no source Lean module. |
+| `CL-21` | `build` | Native diagnostics distinguish package-import cycles and unqualified cross-package term ambiguities without changing diagnostic wire bytes. |
 
 ## configuration-lock
 

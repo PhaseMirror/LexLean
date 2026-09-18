@@ -2036,8 +2036,11 @@ impl<'a, 'b> ExprElab<'a, 'b> {
                     .first()
                     .map(|cover| self.span_of(cover.atoms()))
                     .unwrap_or_else(|| crate::diagnostic::Span::whole_file(self.shared.path));
-                Err(crate::elaborate::ambiguity_diagnostic(
-                    survivors.iter().map(|(_, elaborated)| &elaborated.term),
+                Err(crate::elaborate::ambiguity_with_rows(
+                    self.shared,
+                    survivors
+                        .iter()
+                        .map(|(_, elaborated)| (&elaborated.term, elaborated.rows.as_slice())),
                 )
                 .with_span(span))
             }
@@ -2134,8 +2137,8 @@ impl<'a, 'b> ExprElab<'a, 'b> {
                 )
                 .with_span(self.span_of(ast.atoms())),
             )),
-            _ => Err(crate::elaborate::ambiguity_diagnostic(
-                survivors.iter().map(|(_, elaborated)| &elaborated.term),
+            _ => Err(crate::elaborate::ambiguity_with_rows(
+                self.shared, survivors.iter().map(|(_, elaborated)| (&elaborated.term, elaborated.rows.as_slice())),
             )
             .with_span(self.span_of(ast.atoms()))),
         }

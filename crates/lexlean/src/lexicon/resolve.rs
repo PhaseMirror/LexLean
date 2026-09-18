@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::artifact::canonical_json::Json;
 use crate::code;
-use crate::diagnostic::Diagnostic;
+use crate::diagnostic::{Diagnostic, DiagnosticDetail};
 use crate::lexicon::entry::{surface_safety, Category, Channel, Denotation, Eliminator, Entry};
 use crate::lexicon::lse::{self, ConstInfo, Lse, QualifiedId};
 use crate::lexicon::package::LexiconPackage;
@@ -133,10 +133,37 @@ impl Closure {
                     let target = by_id[&import.package];
                     match state[target] {
                         1 => {
-                            diagnostics.push(Diagnostic::new(
-                                code!("LLR3003"),
-                                format!("package import cycle through `{}`", packages[target].id),
-                            ));
+                            let mut cycle: Vec<String> = stack
+                                .iter()
+                                .skip_while(|(index, _)| *index != target)
+                                .map(|(index, _)| packages[*index].id.clone())
+                                .collect();
+                            cycle.push(packages[target].id.clone());
+                            let members: Vec<_> = stack
+                                .iter()
+                                .skip_while(|(index, _)| *index != target)
+                                .map(|(index, _)| super::package::PackageRef {
+                                    package: packages[*index].id.clone(),
+                                    version: packages[*index].version.clone(),
+                                })
+                                .collect();
+                            let importers =
+                                super::import_reachability::importers(&packages, &members);
+                            diagnostics.push(
+                                Diagnostic::new(
+                                    code!("LLR3003"),
+                                    format!(
+                                        "package import cycle through `{}`",
+                                        packages[target].id
+                                    ),
+                                )
+                                .with_detail(
+                                    DiagnosticDetail::PackageImportCycle {
+                                        packages: cycle,
+                                        importers,
+                                    },
+                                ),
+                            );
                             return Err(diagnostics);
                         }
                         2 => {}

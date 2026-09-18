@@ -1221,6 +1221,12 @@ suite = "cli-api"
 statement = "Language-1.1 init creates and verifies a declarative Lake workspace containing no source Lean module."
 
 [[id]]
+id = "CL-21"
+level = "build"
+suite = "cli-api"
+statement = "Native diagnostics distinguish package-import cycles and unqualified cross-package term ambiguities without changing diagnostic wire bytes."
+
+[[id]]
 id = "SE-01"
 level = "build"
 suite = "security"

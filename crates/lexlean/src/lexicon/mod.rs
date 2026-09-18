@@ -2,6 +2,7 @@
 //! packages, entries, LSE, LRE, and resolution (SPEC.md §12.3, §13).
 
 pub mod entry;
+pub(crate) mod import_reachability;
 pub mod lre;
 pub mod lse;
 pub mod package;

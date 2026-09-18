@@ -149,3 +149,12 @@ Feature: cli-api
     When `lexlean init . --language 1.1` creates a project and its entrypoint is checked
     Then the project contains `.lex.tex`, canonical TOML, and an exact lock but no `.lean` or `lakefile.lean`
     And its generated module verifies in the confined content-addressed workspace when the pinned Lean tools are available
+
+  @CL-21 @build
+  Scenario: Native diagnostics distinguish package-import cycles and unqualified cross-package term ambiguities without changing diagnostic wire bytes.
+    Given genuine package-import cycle and unqualified cross-package term ambiguity projects
+    When the public Engine checks their source and returns native diagnostics
+    Then typed details identify the actual import walk or sorted candidates and source range
+    And exact package identities and validated reverse import reachability distinguish connected and disconnected packages independent of source order
+    And module, denotation, binder, notation, and segmentation failures are not misclassified
+    And repaired and explicitly qualified projects pass while existing diagnostic JSON bytes remain unchanged
