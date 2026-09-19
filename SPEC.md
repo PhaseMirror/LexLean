@@ -2257,7 +2257,11 @@ UTF-8 `String`, immutable `Bytes`, three-way `Ordering`, `Option`, `Result`,
 `List`, and document-named types. `Option` and `Result` carry their complete
 closed value/error types. They are not aliases for a sentinel, exception, or
 host-width integer. JSON decoding guarantees that a `String` literal is valid
-UTF-8. Digit runs within `semanticdata` JSON string values are preserved as
+UTF-8. Generated Lean strings escape quotes, backslashes, newline, carriage
+return and tab; other control scalars use Lean's four-digit Unicode escapes.
+Other Unicode scalars remain literal UTF-8, without normalization or changes
+to literal escape-shaped data. Source-document restrictions remain unchanged.
+Digit runs within `semanticdata` JSON string values are preserved as
 string bytes and are never reclassified as source numerals; this permits exact
 content identities whose first hexadecimal digit is zero. JSON number tokens
 remain subject to the JSON decoder's grammar. A byte literal is an even-length

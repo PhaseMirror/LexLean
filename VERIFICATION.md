@@ -39,6 +39,22 @@ Outside `vv`:
 
 Each gate below was made to fail by planting a defect, running the gate's command, recording the failure, and removing the defect. The observed lines are verbatim gate output (paths abbreviated to the repository root). `cargo xtask release-check` requires a `### <gate> can fail` record for every gate and audit named in `repo_model::release::GATES`.
 
+### semantic string lowering can fail
+
+Accepted NUL and C1-control literals produced Rust debug escapes rejected by
+the pinned Lean parser (`LLV7002`). SM-19 now verifies eight modeled literal
+probes, then executes those generated definitions against independently
+encoded UTF-8 bytes. Coverage includes admitted controls, literal escape-shaped
+text, quotes, backslashes, combining and supplementary scalars, empty text and
+comment-shaped data. Source-document restrictions are unchanged; UTF-8
+execution is not claimed as a reflexivity proof. The complete SM-19 run passed
+with log SHA-256
+`a6978a3aaffa815b5cc26e2f457169a04a2a6e8cd971186adf0a7c8d1aa9ee63`.
+Restoring Rust debug spelling in the actual lowerer again produced Lean's
+`invalid escape sequence` and `invalid hexadecimal numeral`; the same test
+does not accept a Rust compilation failure. Logs are retained under ignored
+`target/semantic-string-literals-{verified-evaluations,mutant}.log`.
+
 ### semantic identifier lowering can fail
 
 Accepted field `namespace` and parameter `prefix` initially generated Lean

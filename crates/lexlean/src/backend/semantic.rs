@@ -32,6 +32,30 @@ fn identifier(name: &str) -> String {
         .join(".")
 }
 
+// Lean's pinned parser accepts four-digit Unicode escapes, not Rust's
+// zero escape or braced Unicode debug spelling. Escape characters, never
+// substrings, so a literal backslash followed by `0` remains literal data.
+fn string_literal(value: &str) -> String {
+    use std::fmt::Write as _;
+
+    let mut output = String::from("\"");
+    for character in value.chars() {
+        match character {
+            '\\' => output.push_str("\\\\"),
+            '"' => output.push_str("\\\""),
+            '\n' => output.push_str("\\n"),
+            '\r' => output.push_str("\\r"),
+            '\t' => output.push_str("\\t"),
+            character if character.is_control() => {
+                write!(output, "\\u{:04x}", u32::from(character)).expect("writing to a string");
+            }
+            character => output.push(character),
+        }
+    }
+    output.push('"');
+    output
+}
+
 fn term_uses(term: &SemanticTerm, local: &str) -> bool {
     let pair = |left: &SemanticTerm, right: &SemanticTerm| {
         term_uses(left, local) || term_uses(right, local)
@@ -426,7 +450,7 @@ impl Render<'_> {
                 representation,
                 value,
             } => format!("({value} : {representation:?})"),
-            SemanticTerm::String { value } => format!("{value:?}"),
+            SemanticTerm::String { value } => string_literal(value),
             SemanticTerm::Bytes { hex } => {
                 let values = hex
                     .as_bytes()
@@ -1280,6 +1304,26 @@ pub fn render_latex(
 
 #[cfg(test)]
 mod comment_tests {
+    #[test]
+    fn string_literals_use_the_pinned_lean_escape_grammar() {
+        for code in (0..=0x1f).chain(0x7f..=0x9f) {
+            let character = char::from_u32(code).expect("control scalar");
+            let expected = match character {
+                '\n' => "\"\\n\"".to_owned(),
+                '\r' => "\"\\r\"".to_owned(),
+                '\t' => "\"\\t\"".to_owned(),
+                _ => format!("\"\\u{code:04x}\""),
+            };
+            assert_eq!(super::string_literal(&character.to_string()), expected);
+        }
+        for value in ["", "ordinary ASCII", "literal \\0 \\u{80}", "\"quote\""] {
+            assert_eq!(super::string_literal(value), format!("{value:?}"));
+        }
+        for value in ["\u{301}", "\u{200b}", "\u{10000}", "\u{10ffff}"] {
+            assert_eq!(super::string_literal(value), format!("\"{value}\""));
+        }
+    }
+
     #[test]
     fn imported_list_construction_remains_kernel_reducible() {
         let runtime = super::portable_runtime();
