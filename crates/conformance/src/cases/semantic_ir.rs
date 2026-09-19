@@ -7,6 +7,8 @@ use sha2::Digest;
 
 use crate::support::{self, P};
 
+mod names;
+
 /// Every `"k"` and `"kind"` tag value in a canonical JSON document.
 fn collect_tags(value: &serde_json::Value, key: &str, out: &mut BTreeSet<String>) {
     match value {
@@ -1058,6 +1060,7 @@ pub(crate) fn run(id: &str) {
             );
         }
         "SM-19" => {
+            names::verify();
             verify_large_byte_declaration(false);
             verify_large_byte_declaration(true);
             let project = support::semantic_project();

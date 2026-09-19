@@ -16,6 +16,22 @@ struct Render<'a> {
     prefix: &'a str,
 }
 
+// Semantic names are validated data, not Lean tokens. Quoting a reserved
+// segment preserves its exact Name identity instead of narrowing the source
+// language to whatever the pinned parser happens to leave unreserved.
+fn identifier(name: &str) -> String {
+    name.split('.')
+        .map(|segment| {
+            if super::lean_tokens::is_reserved(segment) {
+                format!("«{segment}»")
+            } else {
+                segment.to_owned()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(".")
+}
+
 fn term_uses(term: &SemanticTerm, local: &str) -> bool {
     let pair = |left: &SemanticTerm, right: &SemanticTerm| {
         term_uses(left, local) || term_uses(right, local)
@@ -111,7 +127,7 @@ fn term_uses(term: &SemanticTerm, local: &str) -> bool {
 }
 
 fn reflected_projection(record: &str, field: &SemanticReflectionField) -> String {
-    format!("({record}).{}", field.field)
+    format!("({}).{}", identifier(record), identifier(&field.field))
 }
 
 fn reflected_bool(record: &str, fields: &[SemanticReflectionField]) -> String {
@@ -166,15 +182,15 @@ impl Render<'_> {
             }
         }
         member.module.as_ref().map_or_else(
-            || member.name.clone(),
-            |module| format!("{}.{}.{}", self.prefix, module, member.name),
+            || identifier(&member.name),
+            |module| identifier(&format!("{}.{}.{}", self.prefix, module, member.name)),
         )
     }
 
     fn ty(&self, ty: &SemanticType) -> String {
         match ty {
             SemanticType::Type => "Type".to_owned(),
-            SemanticType::Parameter { name } => name.clone(),
+            SemanticType::Parameter { name } => identifier(name),
             SemanticType::Nat => "Nat".to_owned(),
             SemanticType::Bool => "Bool".to_owned(),
             SemanticType::Prop => "Prop".to_owned(),
@@ -211,7 +227,13 @@ impl Render<'_> {
     fn parameters(&self, parameters: &[SemanticParameter]) -> String {
         parameters
             .iter()
-            .map(|parameter| format!(" ({} : {})", parameter.name, self.ty(&parameter.r#type)))
+            .map(|parameter| {
+                format!(
+                    " ({} : {})",
+                    identifier(&parameter.name),
+                    self.ty(&parameter.r#type)
+                )
+            })
             .collect()
     }
 
@@ -233,11 +255,11 @@ impl Render<'_> {
         if !matches!(scrutinee.as_ref(), SemanticTerm::Var { name } if name == recursive_argument) {
             return None;
         }
-        let mut text = format!("@[expose] public def {name} :");
+        let mut text = format!("@[expose] public def {} :", identifier(name));
         for parameter in parameters {
             text.push_str(&format!(
                 " ({} : {}) ->",
-                parameter.name,
+                identifier(&parameter.name),
                 self.ty(&parameter.r#type)
             ));
         }
@@ -257,9 +279,9 @@ impl Render<'_> {
                                     .iter()
                                     .map(|binder| {
                                         if term_uses(&branch.body, binder) {
-                                            binder.as_str()
+                                            identifier(binder)
                                         } else {
-                                            "_"
+                                            "_".to_owned()
                                         }
                                     })
                                     .collect::<Vec<_>>()
@@ -268,7 +290,7 @@ impl Render<'_> {
                         };
                         format!("{}{}", self.member(&branch.constructor), binders)
                     } else if term_uses(&branch.body, &parameter.name) {
-                        parameter.name.clone()
+                        identifier(&parameter.name)
                     } else {
                         format!("_{}", parameter.name)
                     }
@@ -283,14 +305,14 @@ impl Render<'_> {
     fn type_parameters(&self, parameters: &[String]) -> String {
         parameters
             .iter()
-            .map(|parameter| format!(" ({parameter} : Type)"))
+            .map(|parameter| format!(" ({} : Type)", identifier(parameter)))
             .collect()
     }
 
     fn assignments(&self, assignments: &[SemanticAssignment]) -> String {
         assignments
             .iter()
-            .map(|row| format!("{} := {}", row.field, self.term(&row.value)))
+            .map(|row| format!("{} := {}", identifier(&row.field), self.term(&row.value)))
             .collect::<Vec<_>>()
             .join(", ")
     }
@@ -306,9 +328,9 @@ impl Render<'_> {
                     .iter()
                     .map(|binder| {
                         if term_uses(&branch.body, binder) {
-                            binder.as_str()
+                            identifier(binder)
                         } else {
-                            "_"
+                            "_".to_owned()
                         }
                     })
                     .collect::<Vec<_>>()
@@ -398,7 +420,7 @@ impl Render<'_> {
             format!("({} {operator} {})", self.term(left), self.term(right))
         };
         match term {
-            SemanticTerm::Var { name } => name.clone(),
+            SemanticTerm::Var { name } => identifier(name),
             SemanticTerm::Nat { value } => value.clone(),
             SemanticTerm::Integer {
                 representation,
@@ -459,7 +481,7 @@ impl Render<'_> {
             }
             SemanticTerm::InstanceValue { resolved, .. } => self.member(resolved),
             SemanticTerm::Project { value, field } => {
-                format!("({}).{field}", self.term(value))
+                format!("({}).{}", self.term(value), identifier(field))
             }
             SemanticTerm::Call {
                 function,
@@ -519,7 +541,7 @@ impl Render<'_> {
             SemanticTerm::Iff { left, right } => binary("<->", left, right),
             SemanticTerm::Forall { binder, body } => format!(
                 "(forall ({} : {}), {})",
-                binder.name,
+                identifier(&binder.name),
                 self.ty(&binder.r#type),
                 self.term(body)
             ),
@@ -530,12 +552,20 @@ impl Render<'_> {
         let binders = if branch.binders.is_empty() {
             String::new()
         } else {
-            format!(" {}", branch.binders.join(" "))
+            format!(
+                " {}",
+                branch
+                    .binders
+                    .iter()
+                    .map(|name| identifier(name))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            )
         };
         format!(
             "{}| {}{} =>\n{}",
             "  ".repeat(indent),
-            branch.constructor,
+            identifier(&branch.constructor),
             binders,
             self.proof(&branch.proof, indent + 1)
         )
@@ -566,7 +596,7 @@ impl Render<'_> {
                 scrutinee,
                 branches,
             } => {
-                let mut out = format!("{pad}cases {scrutinee} with\n");
+                let mut out = format!("{pad}cases {} with\n", identifier(scrutinee));
                 for branch in branches {
                     out.push_str(&self.proof_branch(branch, indent));
                 }
@@ -580,9 +610,19 @@ impl Render<'_> {
                 let generalizing = if generalizing.is_empty() {
                     String::new()
                 } else {
-                    format!(" generalizing {}", generalizing.join(" "))
+                    format!(
+                        " generalizing {}",
+                        generalizing
+                            .iter()
+                            .map(|name| identifier(name))
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    )
                 };
-                let mut out = format!("{pad}induction {scrutinee}{generalizing} with\n");
+                let mut out = format!(
+                    "{pad}induction {}{generalizing} with\n",
+                    identifier(scrutinee)
+                );
                 for branch in branches {
                     out.push_str(&self.proof_branch(branch, indent));
                 }
@@ -597,6 +637,8 @@ impl Render<'_> {
                     proposition_definition,
                     comparison,
                 } => {
+                    let parameter = identifier(parameter);
+                    let values = identifier(values);
                     let boolean = self.member(boolean_definition);
                     let proposition = self.member(proposition_definition);
                     let mut out = format!(
@@ -992,7 +1034,10 @@ pub fn render_lean(
     let document = &checked.document;
     let mut text = String::from("module\npublic import Init\n");
     for import in &document.imports {
-        text.push_str(&format!("public import {module_prefix}.{import}\n"));
+        text.push_str(&format!(
+            "public import {}\n",
+            identifier(&format!("{module_prefix}.{import}"))
+        ));
     }
     // Large closed byte constants incur Lean compiler work beyond its small
     // interactive defaults. Match the fixed finite closed-core budgets; the
@@ -1001,7 +1046,7 @@ pub fn render_lean(
     text.push_str(
         "set_option autoImplicit false\nset_option maxRecDepth 100000\nset_option maxHeartbeats 1000000000\nnamespace ",
     );
-    text.push_str(&document.lean_module);
+    text.push_str(&identifier(&document.lean_module));
     text.push('\n');
     if serde_json::to_string(module)
         .expect("semantic module serialization")
@@ -1018,6 +1063,7 @@ pub fn render_lean(
                 parameters,
                 fields,
             } => {
+                let name = identifier(name);
                 text.push_str(&format!(
                     "public structure {name}{}{} where\n",
                     render.type_parameters(type_parameters),
@@ -1026,7 +1072,7 @@ pub fn render_lean(
                 for field in fields {
                     text.push_str(&format!(
                         "  {} : {}\n",
-                        field.name,
+                        identifier(&field.name),
                         render.ty(&field.r#type)
                     ));
                 }
@@ -1037,6 +1083,7 @@ pub fn render_lean(
                 parameters,
                 fields,
             } => {
+                let name = identifier(name);
                 text.push_str(&format!(
                     "public class {name}{}{} where\n",
                     render.type_parameters(type_parameters),
@@ -1045,7 +1092,7 @@ pub fn render_lean(
                 for field in fields {
                     text.push_str(&format!(
                         "  {} : {}\n",
-                        field.name,
+                        identifier(&field.name),
                         render.ty(&field.r#type)
                     ));
                 }
@@ -1057,6 +1104,7 @@ pub fn render_lean(
                 priority,
                 fields,
             } => {
+                let name = identifier(name);
                 let arguments = arguments
                     .iter()
                     .map(|argument| format!(" ({})", render.ty(argument)))
@@ -1068,7 +1116,7 @@ pub fn render_lean(
                 for field in fields {
                     text.push_str(&format!(
                         "  {} := {}\n",
-                        field.field,
+                        identifier(&field.field),
                         render.term(&field.value)
                     ));
                 }
@@ -1079,6 +1127,7 @@ pub fn render_lean(
                 parameters,
                 constructors,
             } => {
+                let name = identifier(name);
                 text.push_str(&format!(
                     "public inductive {name}{}{} where\n",
                     render.type_parameters(type_parameters),
@@ -1090,7 +1139,7 @@ pub fn render_lean(
                         .iter()
                         .map(|field| format!(" (_ : {})", render.ty(field)))
                         .collect::<String>();
-                    text.push_str(&format!("  | {}{fields}\n", constructor.name));
+                    text.push_str(&format!("  | {}{fields}\n", identifier(&constructor.name)));
                 }
             }
             SemanticDeclaration::Definition {
@@ -1112,6 +1161,7 @@ pub fn render_lean(
                         })?;
                     text.push_str(&equations);
                 } else {
+                    let name = identifier(name);
                     text.push_str(&format!(
                         "@[expose] public def {name}{} : {} := {}\n",
                         render.parameters(parameters),
@@ -1127,6 +1177,7 @@ pub fn render_lean(
                 proof,
                 ..
             } => {
+                let name = identifier(name);
                 text.push_str(&format!(
                     "public theorem {name}{} : {} := by\n{}",
                     render.parameters(parameters),
@@ -1137,7 +1188,7 @@ pub fn render_lean(
         }
     }
     text.push_str("\nend ");
-    text.push_str(&document.lean_module);
+    text.push_str(&identifier(&document.lean_module));
     text.push('\n');
     if contains_lean_comment_outside_string(&text) {
         return Err(Diagnostic::new(

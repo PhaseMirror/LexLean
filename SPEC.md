@@ -2225,6 +2225,12 @@ and `coremodule`, and contains exactly one `\semanticdata{...}` canonical JSON
 value with schema `lexlean/semantic-module/1`. It is semantic declaration
 data, never Lean or LaTeX source. Language 1.0 rejects the environment.
 
+Accepted semantic identifiers retain their exact names in generated Lean.
+Each segment matching the pinned toolchain's reserved-token table is quoted
+as an identifier in every declaration, reference, field, binder and proof
+position. This does not admit names otherwise rejected by semantic validation
+or weaken generated-source auditing; ordinary names keep their existing bytes.
+
 The closed declaration variants are structure, class, explicit instance,
 finite nonrecursive inductive, definition, and theorem. Structures, classes,
 and inductives carry ordered explicit type parameters, fields, and positional

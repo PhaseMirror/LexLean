@@ -39,6 +39,22 @@ Outside `vv`:
 
 Each gate below was made to fail by planting a defect, running the gate's command, recording the failure, and removing the defect. The observed lines are verbatim gate output (paths abbreviated to the repository root). `cargo xtask release-check` requires a `### <gate> can fail` record for every gate and audit named in `repo_model::release::GATES`.
 
+### semantic identifier lowering can fail
+
+Accepted field `namespace` and parameter `prefix` initially generated Lean
+parser failures (`LLV7002`). `SM-19` now also renames only typed identifier
+positions in the complete multi-module semantic example, exercising reserved
+declaration, type-parameter, field, pattern, recursion, instance and proof/
+reflection names through elaboration, kernel replay and exact axiom audit.
+All eight expected identifier-bearing modules are changed; literals, term
+kinds and semantic policies are preserved. The complete case passed with
+log SHA-256 `7f1ab43c4e6685367494382c77ad9d485a58beb387b4251920a911aa2d03ad59`.
+Removing reserved-segment quotation reproduced the actual `namespace`/
+`prefix` parser failures, not a compile or fixture failure. Source restoration
+retains the original accepted identifier language and all source-audit
+prohibitions. Raw logs are retained under ignored
+`target/semantic-reserved-identifiers-{lean-red,complete-variants,mutant}.log`.
+
 ### native diagnostic detail can fail
 
 `CL-21` was registered before its named test failed on the unwired case.
