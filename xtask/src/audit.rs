@@ -9,6 +9,9 @@ use crate::Fail;
 
 const SKIP_DIRS: [&str; 5] = ["target", ".git", ".lexlean", "expected", "node_modules"];
 
+#[cfg(test)]
+mod tests;
+
 fn gather(root: &Path, dirs: &[&str], extensions: &[&str], out: &mut Vec<PathBuf>) {
     for dir in dirs {
         let base = root.join(dir);
@@ -24,9 +27,14 @@ fn gather(root: &Path, dirs: &[&str], extensions: &[&str], out: &mut Vec<PathBuf
                 continue;
             }
             let path = entry.path();
-            if path.components().any(|component| {
-                SKIP_DIRS.contains(&component.as_os_str().to_string_lossy().as_ref())
-            }) {
+            if path
+                .strip_prefix(root)
+                .expect("entry under audit root")
+                .components()
+                .any(|component| {
+                    SKIP_DIRS.contains(&component.as_os_str().to_string_lossy().as_ref())
+                })
+            {
                 continue;
             }
             let name = path.file_name().unwrap_or_default().to_string_lossy();
