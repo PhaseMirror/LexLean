@@ -54,16 +54,36 @@ fn gather(root: &Path, dirs: &[&str], extensions: &[&str], out: &mut Vec<PathBuf
 }
 
 /// A decoded member of the committed native Atlas source graph.
-struct AtlasSourceModule {
-    path: PathBuf,
-    name: String,
-    source: String,
-    core: lexlean::ir::core::CoreModule,
+pub(crate) struct AtlasSourceModule {
+    pub(crate) path: PathBuf,
+    pub(crate) name: String,
+    pub(crate) source: String,
+    pub(crate) core: lexlean::ir::core::CoreModule,
+}
+
+/// Decode one `\coredata{...}` payload out of a LexLean source file. The
+/// checkpoint blobs of `atlas-prov run` carry the same closed structure as
+/// the live corpus, so one parser serves both.
+pub(crate) fn parse_coredata(text: &str) -> Result<lexlean::ir::core::CoreModule, Fail> {
+    let marker = "\\coredata{";
+    if text.matches(marker).count() != 1 {
+        return Err(Fail::from(format!(
+            "R4: a native core module contains {} core payload(s); exactly one is required",
+            text.matches(marker).count()
+        )));
+    }
+    let start = text.find(marker).expect("counted one marker") + marker.len();
+    let tail = &text[start..];
+    let end = tail.find("}\n\\end{coremodule}").ok_or_else(|| {
+        Fail::from("R4: a native core module has no closed coremodule")
+    })?;
+    lexlean::ir::core::CoreModule::parse(&tail[..end])
+        .map_err(|reason| Fail::from(format!("R4: {reason}")))
 }
 
 /// Decode the committed Atlas source graph itself. Every coverage gate enters
 /// through this function because this source defines the released corpus.
-fn atlas_source_cores(root: &Path) -> Result<Vec<AtlasSourceModule>, Fail> {
+pub(crate) fn atlas_source_cores(root: &Path) -> Result<Vec<AtlasSourceModule>, Fail> {
     let source_root = root.join("examples/uor-atlas/src");
     let mut paths: Vec<PathBuf> = walkdir::WalkDir::new(&source_root)
         .follow_links(false)
@@ -84,23 +104,8 @@ fn atlas_source_cores(root: &Path) -> Result<Vec<AtlasSourceModule>, Fail> {
     for path in paths {
         let source = std::fs::read_to_string(&path)
             .map_err(|error| format!("{}: {error}", path.display()))?;
-        let marker = "\\coredata{";
-        if source.matches(marker).count() != 1 {
-            return Err(Fail::from(format!(
-                "R4: {} must contain exactly one native core payload",
-                path.display()
-            )));
-        }
-        let start = source.find(marker).expect("counted one marker") + marker.len();
-        let tail = &source[start..];
-        let end = tail.find("}\n\\end{coremodule}").ok_or_else(|| {
-            Fail::from(format!(
-                "R4: {} has no closed native core module",
-                path.display()
-            ))
-        })?;
-        let core = lexlean::ir::core::CoreModule::parse(&tail[..end])
-            .map_err(|reason| Fail::from(format!("R4: {}: {reason}", path.display())))?;
+        let core = parse_coredata(&source)
+            .map_err(|fail| Fail::from(format!("R4: {}: {fail}", path.display())))?;
         let relative = path.strip_prefix(&source_root).map_err(|error| {
             Fail::from(format!(
                 "R4: {} is outside the Atlas source root: {error}",
@@ -423,7 +428,7 @@ pub fn audit_atlas_registers(root: &Path) -> Result<(), Fail> {
 
 /// Is this identifier shaped like a document label --- one or two capitals then
 /// digits, optionally with a lower-case suffix (`T57a`, `V65c`, `T59p0`)?
-fn is_label_shaped(name: &str) -> bool {
+pub(crate) fn is_label_shaped(name: &str) -> bool {
     let letters = name.chars().take_while(char::is_ascii_uppercase).count();
     if letters == 0 || letters > 2 || name.len() == letters {
         return false;

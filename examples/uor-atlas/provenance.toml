@@ -1,0 +1,61 @@
+# examples/uor-atlas/provenance.toml --- the Atlas label plane provenance ledger.
+#
+# A machine-readable transcription of the checkpoint facts `MIGRATION.md`
+# records at commit `f972285f...`, in the exact spelling `cargo xtask
+# atlas-prov` re-derives. The ledger lives here because it must not
+# participate in the compiler-semantics digest: the embedded normative data
+# (`language/`, `schemas/`, `tests/golden/*`) cannot be extended without a
+# semantics bump, and a provenance record that moved the digest would defeat
+# itself. Changing this file changes no digest (`project_config_sha256`
+# covers only the serialized project configuration).
+#
+# ADR-PML-058 binds the Atlas label plane to this checkpoint: the live
+# corpus must be byte-equal to the recorded native source tree, the sample
+# labels below must be declared exactly once by the live corpus, every
+# label-shaped citation in repository documentation must resolve to a live,
+# withdrawn, or non-denotable register label, and the identities recorded
+# here must be re-derivable from the local git object database (no network).
+#
+# The sample is the deterministic subset of the S-number plane the shared
+# label cross-check compares first: the four labels the in-repo ADR
+# documentation cites today (`S4`, `S37`, `S38`, `S43`). Extend `sample`
+# when the Foundry side grows a formal module a new label covers.
+
+spec = "lexlean/atlas-providence/1"
+
+# The deterministic shared-label sample of the S-number plane. The gate
+# re-derives liveness for exactly these labels on every `vv` run and prints
+# their native declarations.
+sample = ["S4", "S37", "S38", "S43"]
+
+# The frozen checkpoint: the migration commit, the two trees it compared, and
+# the counts and run facts `MIGRATION.md` reports. The native source tree is
+# the byte-equality anchor; the input Lean tree is the independently authored
+# corpus the migration converted.
+[checkpoint]
+commit = "f972285fab4564c1a4231fe3d6efdb776b5becc7"
+native_source_tree = "79c321296059eaa4142fcbf3e98965f7f5866e61"
+input_lean_tree = "71fc050796816009ea665ceb87d6687967947906"
+native_modules = 66
+input_lean_files = 71
+input_lean_modules = 68
+records_total = 5577
+records_native = 5519
+records_private = 58
+elapsed_seconds = 1019.88
+ga_run = 32799526580
+ga_job = 97657516155
+attestation = "17b300947fd43f09ac29336dff8bd61ba984e737f3bfa74c0b22dd3a2296259c"
+artifact = 9549590620
+artifact_sha256 = "db98c5d6f6ad2ecdb6f92da9f8d65fb306bcf14ddcb24356882ce94ac083f5d1"
+normalized_records = 267
+declaration_records = 5519
+declaration_lines = 5521
+
+# The native checkpoint identities (MIGRATION.md): build, source, semantic,
+# and compiler-semantics IDs at the migration commit.
+[checkpoint.identities]
+build = "b613e6e5ce11924d546d51701419c55d69e66fb71ae8c7379d3dea390b4d4bdd"
+source = "1e378f46301f062082f2cdd0c22bcea7fdf43bd88a364b4cdc251499f638241c"
+semantic = "81ff612be4fa60f29943cb909f939621a264c89b495b4df9f1ba7d2de6bfb79f"
+compiler_semantics = "1f42a353eb56ba7b72d8f6850c541940facc35033582a71bd09c2717fdde6601"

@@ -9,6 +9,7 @@ use std::process::ExitCode;
 
 use camino::Utf8PathBuf;
 
+mod atlas_prov;
 mod audit;
 mod codegen;
 mod spec_links;
@@ -27,6 +28,10 @@ fn main() -> ExitCode {
     let result = match task.as_str() {
         "validate-model" => codegen::check_model(&root, write),
         "validate-spec-links" => spec_links::validate(&root),
+        "atlas-prov" => {
+            let args: Vec<String> = std::env::args().skip(2).collect();
+            atlas_prov::atlas_prov(&root, &args)
+        }
         "verify-examples" => verify_examples(&root, write),
         "check-golden" => check_golden(&root, write),
         "check-reproducibility" => check_reproducibility(&root),
@@ -40,6 +45,8 @@ fn main() -> ExitCode {
                  \n\
                  validate-model          R1, R2, R4, R5, R6, R8: model, documents, meta-gate, audits\n\
                  validate-spec-links     RP-07: the §31 table and the register are bijective\n\
+                 atlas-prov              ADR-PML-058 §27.9: re-derive the Atlas provenance ledger\n\
+                                         from local git; [check | run] | cross --foundry <dir>\n\
                  verify-examples         §28.6: every example formats, locks, checks, builds, verifies;\n\
                                          normalized verification records equal expected/verify (§29.5)\n\
                  check-golden            §28.3: build outputs equal the committed oracles\n\
