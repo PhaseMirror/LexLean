@@ -19,6 +19,7 @@ How this repository's claims are checked, which recipe enforces which rule, and 
 | `golden` | `cargo xtask check-golden` | R10, §28.3: the *published* build tree of a real `build` in a fresh directory equals the committed oracles byte for byte |
 | `repro` | `cargo xtask check-reproducibility` | AR-13, §28.4: two clean `build`s in distinct absolute directories publish byte-identical trees with no absolute path inside |
 | `deny` | `cargo deny --all-features check` | advisories, bans, licenses, sources |
+| `atlas-prov` | `cargo xtask atlas-prov` | ADR-PML-058: re-derives the recorded checkpoint identity and the sampled byte equality against the committed trees, and enforces that documentation citations resolve inside the Atlas register plane (§9.2) |
 
 Outside `vv`:
 
@@ -531,6 +532,16 @@ gate failed: <root>/tests/negative/unknown-word/expected/command.json differs fr
 ```
 
 Removed: the project file was restored; `check-fixtures` reports 34 fixtures equal to their expected files. `conformance_ex_07` runs the same comparison and additionally pins exactly one prescribed diagnostic code per §28.5 rejection class.
+
+### atlas-prov can fail
+
+Planted: the sample `S4` in `examples/uor-atlas/provenance.toml` was replaced with the unregistered model `X99`, which no native declaration satisfies. Command: `cargo xtask atlas-prov`. Expected: the sampled label resolves outside the register plane.
+
+```text
+gate failed: atlas-prov: sample label `X99` is not a live Atlas register label; a sample the corpus does not own cannot bind the plane
+```
+
+Removed: the sample `X99` was restored to `S4`; `atlas-prov` re-derives the checkpoint identity and reports the 66 corpus modules byte-identical to their checkpoint blobs. `conformance_rp_05` requires `atlas-prov` to be a listed `vv` gate, so its absence is itself a failure (ADR-PML-058 metrics).
 
 ### verification path determinism can fail
 

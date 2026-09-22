@@ -74,9 +74,9 @@ pub(crate) fn parse_coredata(text: &str) -> Result<lexlean::ir::core::CoreModule
     }
     let start = text.find(marker).expect("counted one marker") + marker.len();
     let tail = &text[start..];
-    let end = tail.find("}\n\\end{coremodule}").ok_or_else(|| {
-        Fail::from("R4: a native core module has no closed coremodule")
-    })?;
+    let end = tail
+        .find("}\n\\end{coremodule}")
+        .ok_or_else(|| Fail::from("R4: a native core module has no closed coremodule"))?;
     lexlean::ir::core::CoreModule::parse(&tail[..end])
         .map_err(|reason| Fail::from(format!("R4: {reason}")))
 }

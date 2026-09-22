@@ -4,7 +4,7 @@
 default: vv
 
 # The whole gate, in the normative order.
-vv: fmt-check model spec-links lint test features bdd examples golden repro deny
+vv: fmt-check model spec-links lint test features bdd examples golden repro deny atlas-prov
     @echo "vv: the acceptance gate passed"
 
 fmt:
@@ -78,6 +78,12 @@ fixtures-write:
 # examples/*/expected/verify. Never part of `vv`.
 verify-write:
     cargo xtask verify-examples --write
+
+# ADR-PML-058 decision (1): re-derive the recorded checkpoint identity and the
+# sampled byte equality against the committed trees, and enforce that no
+# documentation citation floats outside the register plane (§9.2).
+atlas-prov:
+    cargo xtask atlas-prov
 
 # RP-12: a release is refused unless the complete §30 criterion holds. The
 # gate itself must pass first; refusal is expected until 1.0.0.

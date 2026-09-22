@@ -47,10 +47,16 @@ pub fn atlas_prov(root: &Path, args: &[String]) -> Result<(), Fail> {
         .iter()
         .find(|argument| !argument.starts_with("--"))
         .map(String::as_str)
-        .unwrap_or("check");
+        .unwrap_or("run");
     match mode {
+        // `check` then `run` is the ADR-PML-058 gate: identity re-derivation
+        // followed by the sampled byte equality. A single no-argument
+        // invocation is the whole gate.
         "check" => check(root),
-        "run" => run(root),
+        "run" => {
+            check(root)?;
+            run(root)
+        }
         "cross" => cross(root, args),
         other => Err(Fail::from(format!(
             "atlas-prov: unknown mode `{other}`; the modes are `check` | `run` | `cross`"
@@ -79,9 +85,9 @@ const IDENTITY_HEX_FIELDS: &[(&str, usize)] = &[("compiler_semantics", 64)];
 
 impl Ledger {
     fn parse(text: &str) -> Result<Self, Fail> {
-        let data: toml::Value = text.parse().map_err(|error| {
-            Fail::from(format!("atlas-prov: {LEDGER_RELATIVE}: {error}"))
-        })?;
+        let data: toml::Value = text
+            .parse()
+            .map_err(|error| Fail::from(format!("atlas-prov: {LEDGER_RELATIVE}: {error}")))?;
         let spec = data
             .get("spec")
             .and_then(toml::Value::as_str)
@@ -103,9 +109,12 @@ impl Ledger {
 
         let mut checkpoint_out = BTreeMap::new();
         for (field, length) in CHECKPOINT_HEX_FIELDS {
-            let value = checkpoint.get(*field).and_then(toml::Value::as_str).ok_or_else(
-                || Fail::from(format!("atlas-prov: the checkpoint has no `{field}`")),
-            )?;
+            let value = checkpoint
+                .get(*field)
+                .and_then(toml::Value::as_str)
+                .ok_or_else(|| {
+                    Fail::from(format!("atlas-prov: the checkpoint has no `{field}`"))
+                })?;
             if !is_hex(value, *length) {
                 return Err(Fail::from(format!(
                     "atlas-prov: `{field}` must be {length} hex digits, found `{value}`"
@@ -116,7 +125,9 @@ impl Ledger {
 
         let native_modules = int_of(checkpoint, "native_modules")?;
         if native_modules == 0 {
-            return Err(Fail::from("atlas-prov: the checkpoint records zero native modules"));
+            return Err(Fail::from(
+                "atlas-prov: the checkpoint records zero native modules",
+            ));
         }
         let input_lean_files = int_of(checkpoint, "input_lean_files")?;
         let input_lean_modules = int_of(checkpoint, "input_lean_modules")?;
@@ -147,9 +158,12 @@ impl Ledger {
 
         let mut identities_out = BTreeMap::new();
         for (field, length) in IDENTITY_HEX_FIELDS {
-            let value = identities.get(*field).and_then(toml::Value::as_str).ok_or_else(
-                || Fail::from(format!("atlas-prov: the identities have no `{field}`")),
-            )?;
+            let value = identities
+                .get(*field)
+                .and_then(toml::Value::as_str)
+                .ok_or_else(|| {
+                    Fail::from(format!("atlas-prov: the identities have no `{field}`"))
+                })?;
             if !is_hex(value, *length) {
                 return Err(Fail::from(format!(
                     "atlas-prov: identity `{field}` must be {length} hex digits, found `{value}`"
@@ -170,7 +184,9 @@ impl Ledger {
             })
             .unwrap_or_default();
         if sample.is_empty() {
-            return Err(Fail::from("atlas-prov: the ledger records an empty sample; the gate is unarmed"));
+            return Err(Fail::from(
+                "atlas-prov: the ledger records an empty sample; the gate is unarmed",
+            ));
         }
         let mut seen = BTreeSet::new();
         for label in &sample {
@@ -242,9 +258,14 @@ fn git_lines(root: &Path, args: &[&str]) -> Result<Vec<String>, Fail> {
 
 /// The register partitions as disjoint sets, plus the set of label families
 /// the register actually uses (the citation scanner's scope guard).
-fn register_sets(
-    root: &Path,
-) -> Result<(BTreeSet<String>, BTreeSet<String>, BTreeSet<String>, BTreeSet<String>), Fail> {
+type RegisterPartitions = (
+    BTreeSet<String>,
+    BTreeSet<String>,
+    BTreeSet<String>,
+    BTreeSet<String>,
+);
+
+fn register_sets(root: &Path) -> Result<RegisterPartitions, Fail> {
     let path = root.join(REGISTER_RELATIVE);
     if !path.exists() {
         return Err(Fail::from(format!(
@@ -255,7 +276,12 @@ fn register_sets(
     let mut live = BTreeSet::new();
     for key in ["entry", "ambient"] {
         if let Some(items) = data.get(key).and_then(toml::Value::as_array) {
-            live.extend(items.iter().filter_map(toml::Value::as_str).map(str::to_owned));
+            live.extend(
+                items
+                    .iter()
+                    .filter_map(toml::Value::as_str)
+                    .map(str::to_owned),
+            );
         }
     }
     let mut withdrawn = BTreeSet::new();
@@ -271,10 +297,19 @@ fn register_sets(
     }
     let mut non_denotable = BTreeSet::new();
     if let Some(items) = data.get("non_denotable").and_then(toml::Value::as_array) {
-        non_denotable.extend(items.iter().filter_map(toml::Value::as_str).map(str::to_owned));
+        non_denotable.extend(
+            items
+                .iter()
+                .filter_map(toml::Value::as_str)
+                .map(str::to_owned),
+        );
     }
     let mut families = BTreeSet::new();
-    for label in live.iter().chain(withdrawn.iter()).chain(non_denotable.iter()) {
+    for label in live
+        .iter()
+        .chain(withdrawn.iter())
+        .chain(non_denotable.iter())
+    {
         families.insert(family_of(label));
     }
     Ok((live, withdrawn, non_denotable, families))
@@ -293,7 +328,11 @@ fn native_label_map(root: &Path) -> Result<BTreeMap<String, String>, Fail> {
     for module in atlas_source_cores(root)? {
         for declaration in
             lexlean::backend::core::environment_declarations(&module.core).map_err(|error| {
-                Fail::from(format!("atlas-prov: {}: {}", module.path.display(), error.message))
+                Fail::from(format!(
+                    "atlas-prov: {}: {}",
+                    module.path.display(),
+                    error.message
+                ))
             })?
         {
             let name = declaration
@@ -322,9 +361,9 @@ fn native_label_map(root: &Path) -> Result<BTreeMap<String, String>, Fail> {
 /// inside an identifier, never a citation).
 fn label_tokens(line: &str) -> Vec<(String, String, bool)> {
     let mut chars: Vec<char> = line.chars().collect();
-    for index in 0..chars.len() {
-        if chars[index] == '`' {
-            chars[index] = ' ';
+    for ch in &mut chars {
+        if *ch == '`' {
+            *ch = ' ';
         }
     }
     let mut tokens = Vec::new();
@@ -344,8 +383,10 @@ fn label_tokens(line: &str) -> Vec<(String, String, bool)> {
                 .collect();
             let dotted_suffix = previous_run_end.is_some_and(|previous_end| {
                 let between = &chars[previous_end..start];
-                between.iter().any(|ch| *ch == '.')
-                    && between.iter().all(|ch| ch.is_whitespace() || *ch == '.' || *ch == '`')
+                between.contains(&'.')
+                    && between
+                        .iter()
+                        .all(|ch| ch.is_whitespace() || *ch == '.' || *ch == '`')
             });
             if is_label_shaped(&token) {
                 tokens.push((token, gap, dotted_suffix));
@@ -365,10 +406,68 @@ fn label_tokens(line: &str) -> Vec<(String, String, bool)> {
 /// same-family tokens is prose, not a range, and resolves both labels.
 fn is_range_gap(gap: &str) -> bool {
     !gap.is_empty()
-        && gap.chars().any(|ch| ch == '-' || ch == '\u{2013}' || ch == '\u{2014}' || ch == '.')
         && gap
             .chars()
-            .all(|ch| ch.is_whitespace() || ch == '`' || ch == '-' || ch == '\u{2013}' || ch == '\u{2014}' || ch == '.')
+            .any(|ch| ch == '-' || ch == '\u{2013}' || ch == '\u{2014}' || ch == '.')
+        && gap.chars().all(|ch| {
+            ch.is_whitespace()
+                || ch == '`'
+                || ch == '-'
+                || ch == '\u{2013}'
+                || ch == '\u{2014}'
+                || ch == '.'
+        })
+}
+
+/// The indexes of the label pairs a spelled range spans (same family,
+/// dash-or-dot gap): `S1`-`S85`, `T10a..T10c`, `F8`–`F11`. Both bounds of a
+/// range are claims about the plane, never citations to be resolved one by
+/// one.
+fn ranged_indexes(tokens: &[(String, String, bool)]) -> BTreeSet<usize> {
+    let mut ranged = BTreeSet::new();
+    for at in 0..tokens.len() {
+        let (token, gap, _) = &tokens[at];
+        let partner = (at..tokens.len())
+            .skip(1)
+            .find(|next| family_of(&tokens[*next].0) == family_of(token));
+        if let Some(next) = partner {
+            if is_range_gap(gap) {
+                ranged.insert(at);
+                ranged.insert(next);
+            }
+        }
+    }
+    ranged
+}
+
+/// The label tokens a document actually cites, one line at a time: fenced
+/// (quoted gate output) blocks, spelled ranges, and dotted-path suffixes are
+/// exempt, exactly as `scan_citations` and the Foundry ADR-plane scan apply
+/// them. Returns `(line_index, token)` pairs in document order.
+fn scanned_tokens(text: &str) -> Vec<(usize, String)> {
+    let mut scanned = Vec::new();
+    let mut fenced = false;
+    for (line_index, line) in text.lines().enumerate() {
+        if line.trim_start().starts_with("```") {
+            fenced = !fenced;
+            continue;
+        }
+        if fenced {
+            continue;
+        }
+        let tokens = label_tokens(line);
+        if tokens.is_empty() {
+            continue;
+        }
+        let ranged = ranged_indexes(&tokens);
+        for (at, (token, _, dotted_suffix)) in tokens.iter().enumerate() {
+            if ranged.contains(&at) || *dotted_suffix {
+                continue;
+            }
+            scanned.push((line_index, token.clone()));
+        }
+    }
+    scanned
 }
 
 /// Scan one markdown document for label-shaped citations that the register
@@ -383,51 +482,21 @@ fn scan_citations(
     families: &BTreeSet<String>,
 ) -> Result<BTreeSet<String>, Fail> {
     let mut cited = BTreeSet::new();
-    let mut fenced = false;
-    for (line_index, line) in text.lines().enumerate() {
-        if line.trim_start().starts_with("```") {
-            fenced = !fenced;
+    for (line_index, token) in scanned_tokens(text) {
+        if !families.contains(&family_of(&token)) {
             continue;
         }
-        if fenced {
+        if live.contains(&token) {
+            cited.insert(token);
             continue;
         }
-        let tokens = label_tokens(line);
-        if tokens.is_empty() {
+        if withdrawn.contains(&token) || non_denotable.contains(&token) {
             continue;
         }
-        let mut ranged = BTreeSet::new();
-        for at in 0..tokens.len() {
-            let (token, gap, _) = &tokens[at];
-            let partner = (at..tokens.len())
-                .skip(1)
-                .find(|next| family_of(&tokens[*next].0) == family_of(token));
-            if let Some(next) = partner {
-                if is_range_gap(gap) {
-                    ranged.insert(at);
-                    ranged.insert(next);
-                }
-            }
-        }
-        for (at, (token, _, dotted_suffix)) in tokens.iter().enumerate() {
-            if ranged.contains(&at) || *dotted_suffix {
-                continue;
-            }
-            if !families.contains(&family_of(token)) {
-                continue;
-            }
-            if live.contains(token) {
-                cited.insert(token.clone());
-                continue;
-            }
-            if withdrawn.contains(token) || non_denotable.contains(token) {
-                continue;
-            }
-            return Err(Fail::from(format!(
-                "R2: {display}:{}: `{token}` is cited but the Atlas register neither owns nor withholds it; a document citation cannot float outside the register plane",
-                line_index + 1
-            )));
-        }
+        return Err(Fail::from(format!(
+            "R2: {display}:{}: `{token}` is cited but the Atlas register neither owns nor withholds it; a document citation cannot float outside the register plane",
+            line_index + 1
+        )));
     }
     Ok(cited)
 }
@@ -452,7 +521,10 @@ fn documentation_files(root: &Path) -> Result<Vec<PathBuf>, Fail> {
             .flatten()
         {
             if !entry.file_type().is_file()
-                || entry.path().extension().is_none_or(|extension| extension != "md")
+                || entry
+                    .path()
+                    .extension()
+                    .is_none_or(|extension| extension != "md")
             {
                 continue;
             }
@@ -460,7 +532,10 @@ fn documentation_files(root: &Path) -> Result<Vec<PathBuf>, Fail> {
                 .path()
                 .strip_prefix(root)
                 .expect("documentation under the audit root");
-            if relative.components().any(|component| component.as_os_str() == "expected") {
+            if relative
+                .components()
+                .any(|component| component.as_os_str() == "expected")
+            {
                 continue;
             }
             files.push(entry.path().to_path_buf());
@@ -469,7 +544,9 @@ fn documentation_files(root: &Path) -> Result<Vec<PathBuf>, Fail> {
     files.sort();
     files.dedup();
     if files.is_empty() {
-        return Err(Fail::from("atlas-prov: no document to scan; the citation gate is unarmed"));
+        return Err(Fail::from(
+            "atlas-prov: no document to scan; the citation gate is unarmed",
+        ));
     }
     Ok(files)
 }
@@ -572,7 +649,12 @@ fn check(root: &Path) -> Result<(), Fail> {
             .display()
             .to_string();
         total_cited.extend(scan_citations(
-            &display, &text, &live, &withdrawn, &non_denotable, &families,
+            &display,
+            &text,
+            &live,
+            &withdrawn,
+            &non_denotable,
+            &families,
         )?);
     }
 
@@ -582,7 +664,9 @@ fn check(root: &Path) -> Result<(), Fail> {
         .expect("validated above");
     match lock_compiler_semantics(root)? {
         Some(current) if current == *checkpoint => {
-            println!("atlas-prov-check: compiler-semantics pinned at the checkpoint ({checkpoint})");
+            println!(
+                "atlas-prov-check: compiler-semantics pinned at the checkpoint ({checkpoint})"
+            );
         }
         Some(current) => {
             println!(
@@ -590,7 +674,9 @@ fn check(root: &Path) -> Result<(), Fail> {
             );
         }
         None => {
-            println!("atlas-prov-check: no committed lock; the compiler-semantics delta is not computed");
+            println!(
+                "atlas-prov-check: no committed lock; the compiler-semantics delta is not computed"
+            );
         }
     }
 
@@ -618,9 +704,9 @@ fn run(root: &Path) -> Result<(), Fail> {
     // The native-source tree: blob identity per module path.
     let mut tree: BTreeMap<String, String> = BTreeMap::new();
     for line in git_lines(root, &["ls-tree", "-r", native])? {
-        let (meta, path) = line.split_once('\t').ok_or_else(|| {
-            Fail::from(format!("atlas-prov: unparsable tree row `{line}`"))
-        })?;
+        let (meta, path) = line
+            .split_once('\t')
+            .ok_or_else(|| Fail::from(format!("atlas-prov: unparsable tree row `{line}`")))?;
         let blob = meta
             .rsplit(' ')
             .next()
@@ -659,10 +745,18 @@ fn run(root: &Path) -> Result<(), Fail> {
             added.push(relative);
             continue;
         };
-        let current = git_lines(root, &["hash-object", path.to_str().expect("utf-8 corpus path")])?
-            .into_iter()
-            .next()
-            .ok_or_else(|| Fail::from(format!("atlas-prov: `git hash-object` printed nothing for {}", path.display())))?;
+        let current = git_lines(
+            root,
+            &["hash-object", path.to_str().expect("utf-8 corpus path")],
+        )?
+        .into_iter()
+        .next()
+        .ok_or_else(|| {
+            Fail::from(format!(
+                "atlas-prov: `git hash-object` printed nothing for {}",
+                path.display()
+            ))
+        })?;
         if current == *checkpoint_blob {
             preserved += 1;
         } else {
@@ -691,16 +785,13 @@ fn run(root: &Path) -> Result<(), Fail> {
     let declared = native_label_map(root)?;
     let mut dropped: Vec<String> = Vec::new();
     for (relative, blob) in &tree {
-        if corpus
-            .iter()
-            .any(|path| {
-                path.strip_prefix(&source_root)
-                    .expect("corpus entry under the source root")
-                    .to_string_lossy()
-                    .replace('\\', "/")
-                    == *relative
-            })
-        {
+        if corpus.iter().any(|path| {
+            path.strip_prefix(&source_root)
+                .expect("corpus entry under the source root")
+                .to_string_lossy()
+                .replace('\\', "/")
+                == *relative
+        }) {
             continue;
         }
         let output = git(root, &["show", &format!("{native}:{relative}")])?;
@@ -770,9 +861,8 @@ fn cross(root: &Path, args: &[String]) -> Result<(), Fail> {
     let ledger = Ledger::parse(&ledger_text)?;
     let (live, withdrawn, non_denotable, families) = register_sets(root)?;
     let declared = native_label_map(root)?;
-
-    // The shared plane: the ledger sample plus every live label cited in this
-    // repository's documentation.
+    // The shared plane: the ledger sample plus every live label cited in
+    // this repository's documentation.
     let docs = documentation_files(root)?;
     let mut shared: BTreeSet<String> = ledger.sample.iter().cloned().collect();
     for path in &docs {
@@ -783,29 +873,83 @@ fn cross(root: &Path, args: &[String]) -> Result<(), Fail> {
             .display()
             .to_string();
         shared.extend(scan_citations(
-            &display, &text, &live, &withdrawn, &non_denotable, &families,
+            &display,
+            &text,
+            &live,
+            &withdrawn,
+            &non_denotable,
+            &families,
         )?);
     }
 
-    // Index the Foundry side: every Atlas-family label token in every file.
+    // Index the Foundry side: every Atlas-family label token in its ADR plane.
+    // Only the ADR documentation tree — the plane's own record — is scanned: the
+    // Foundry monorepo is a build of many unrelated workspaces deep in
+    // notebooks and third-party trees, and a formally binding label citation
+    // lives in the ADR/document plane, not in a research notebook. The scan
+    // prunes toolchain and notebook subtrees at directory boundaries so it never
+    // descends a hundred gigabytes looking for a document the plane does not own.
+    let adr_plane = foundry_root
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .filter(|name| name == "docs" || name == "adr")
+        .is_some();
     let mut foundry_files = Vec::new();
-    for entry in walkdir::WalkDir::new(foundry_root)
+    let walk = walkdir::WalkDir::new(foundry_root)
         .follow_links(false)
         .into_iter()
-        .flatten()
-    {
+        .filter_entry(|entry| {
+            if entry.depth() == 0 || entry.file_type().is_file() {
+                return true;
+            }
+            // Never descend into a subtree that cannot be a binding label
+            // citation: third-party trees, toolchains, and notebooks.
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let forbidden = [
+                "node_modules",
+                ".git",
+                "vendor",
+                "vendored",
+                "target",
+                "dist",
+                "build",
+                "research",
+                "uor_standards",
+                "attic",
+                "attics",
+                "output",
+                "imports",
+            ];
+            !forbidden.contains(&name.as_str())
+        });
+    for entry in walk {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(_) => continue, // an unreadable subtree is not a citation plane
+        };
         if !entry.file_type().is_file() {
             continue;
         }
-        let extension = entry
+        if !entry
             .path()
-            .extension()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .into_owned();
-        if ["md", "lean", "txt", "toml"].contains(&extension.as_str()) {
-            foundry_files.push(entry.path().to_path_buf());
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().ends_with(".md"))
+        {
+            continue;
         }
+        let relative = entry
+            .path()
+            .strip_prefix(foundry_root)
+            .unwrap_or(entry.path())
+            .to_string_lossy()
+            .replace('\\', "/");
+        // In the plane: `docs/adr/...md` from the repository root, or any
+        // `*.md` when the target itself is the documents or ADR tree.
+        let in_plane = adr_plane || relative.starts_with("docs/adr/");
+        if !in_plane {
+            continue;
+        }
+        foundry_files.push(entry.path().to_path_buf());
     }
     foundry_files.sort();
     let mut hits: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
@@ -814,17 +958,25 @@ fn cross(root: &Path, args: &[String]) -> Result<(), Fail> {
         let Ok(text) = std::fs::read_to_string(path) else {
             continue;
         };
-        let tokens = label_tokens(&text);
-        for (token, _, dotted_suffix) in tokens
-            .iter()
-            .filter(|(token, _, _)| families.contains(&family_of(token)))
-        {
-            if *dotted_suffix || withdrawn.contains(token) || non_denotable.contains(token) {
+        // A conflict needs the file to engage the register plane: naming a
+        // `UorAtlas` declaration, the register itself, or the plane. A theorem
+        // named `A0` in an unrelated module is coincidence, not a citation.
+        let engages_plane = text.contains("UorAtlas")
+            || text.contains("atlas-registers")
+            || text.contains("atlas plane")
+            || text.contains("ATLAS-LABEL");
+        // Mirror the native scan: fenced (quoted) blocks and spelled ranges are
+        // exempt, so both planes share one exemption walk.
+        for (_, token) in scanned_tokens(&text) {
+            if !families.contains(&family_of(&token)) {
                 continue;
             }
-            if live.contains(token) {
+            if withdrawn.contains(&token) || non_denotable.contains(&token) {
+                continue;
+            }
+            if live.contains(&token) {
                 hits.entry(token.clone()).or_default().push(path.clone());
-            } else {
+            } else if engages_plane {
                 foreign.push((token.clone(), path.clone()));
             }
         }
@@ -873,7 +1025,11 @@ fn cross(root: &Path, args: &[String]) -> Result<(), Fail> {
     if let Some(out) = flag_value(args, "--out") {
         std::fs::write(Path::new(&out), format!("{report}\n"))
             .map_err(|error| Fail::from(format!("atlas-prov cross: {}: {error}", out)))?;
-        println!("atlas-prov-cross: {} records written to {}", records.len(), out);
+        println!(
+            "atlas-prov-cross: {} records written to {}",
+            records.len(),
+            out
+        );
     } else {
         println!("{report}");
     }
@@ -907,7 +1063,7 @@ fn flag_value(args: &[String], name: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_hex, is_range_gap, label_tokens, family_of, Ledger};
+    use super::{family_of, is_hex, is_range_gap, label_tokens, scanned_tokens, Ledger};
 
     const VALID: &str = r#"
 spec = "lexlean/atlas-providence/1"
@@ -986,9 +1142,16 @@ compiler_semantics = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 
     #[test]
     fn dotted_path_suffixes_are_not_citations() {
-        let tokens = label_tokens("`UorAtlas.Roots.T5x9`, a declaration the native source does not make.");
-        let t5x9 = tokens.iter().find(|(token, _, _)| token == "T5x9").expect("T5x9 is tokenized");
-        assert!(t5x9.2, "a label-shaped name following a dotted identifier is a path suffix, not a citation");
+        let tokens =
+            label_tokens("`UorAtlas.Roots.T5x9`, a declaration the native source does not make.");
+        let t5x9 = tokens
+            .iter()
+            .find(|(token, _, _)| token == "T5x9")
+            .expect("T5x9 is tokenized");
+        assert!(
+            t5x9.2,
+            "a label-shaped name following a dotted identifier is a path suffix, not a citation"
+        );
     }
 
     #[test]
@@ -1005,5 +1168,37 @@ compiler_semantics = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
         assert_eq!(family_of("T57a"), "T");
         assert_eq!(family_of("S43"), "S");
         assert_eq!(family_of("BC1"), "BC");
+    }
+
+    #[test]
+    fn spelled_ranges_exempt_both_bounds() {
+        let scanned =
+            scanned_tokens("The S-number plane (S1-S85 symbols) and T10a..T10c are live today.");
+        assert!(
+            scanned.is_empty(),
+            "both bounds of a spelled range are plane claims, not citations"
+        );
+        // An unpaired same-family token that is not a range is still a citation.
+        let scanned = scanned_tokens("S1-S85 complete; S37 confirms it.");
+        assert_eq!(
+            scanned.iter().filter(|(_, token)| token == "S37").count(),
+            1,
+            "an isolated label outside the range is cited"
+        );
+    }
+
+    #[test]
+    fn fenced_quotes_and_dotted_paths_are_not_citations_in_any_plane() {
+        // A fenced block quotes gate output; a dotted identifier is a path
+        // suffix. Both exemptions apply identically to the native and Foundry
+        // scans because they share `scanned_tokens`.
+        let text =
+            "The surface named `L2Test` is gone;\n```text\nF1Q\n```\nper g.F0 this keeps working.";
+        let scanned: Vec<String> = scanned_tokens(text).into_iter().map(|(_, t)| t).collect();
+        assert_eq!(
+            scanned,
+            vec![String::from("L2Test")],
+            "fenced `F1Q` and the dotted `g.F0` are exempt, `L2Test` is a live-family citation"
+        );
     }
 }

@@ -292,10 +292,10 @@ pub(crate) fn run(id: &str) {
             let vv = recipes.get("vv").expect("§9.2: the Justfile defines vv");
             assert_eq!(
                 vv.0,
-                "fmt-check model spec-links lint test features bdd examples golden repro deny",
-                "§9.2: `just vv` runs the eleven gates in the normative order"
+                "fmt-check model spec-links lint test features bdd examples golden repro deny atlas-prov",
+                "§9.2: `just vv` runs the twelve gates in the normative order"
             );
-            let specified: [(&str, &str); 11] = [
+            let specified: [(&str, &str); 12] = [
                 ("fmt-check", "cargo fmt --all -- --check"),
                 ("model", "cargo xtask validate-model"),
                 ("spec-links", "cargo xtask validate-spec-links"),
@@ -313,6 +313,7 @@ pub(crate) fn run(id: &str) {
                 ("golden", "cargo xtask check-golden"),
                 ("repro", "cargo xtask check-reproducibility"),
                 ("deny", "cargo deny --all-features check"),
+                ("atlas-prov", "cargo xtask atlas-prov"),
             ];
             for (name, command) in specified {
                 let (dependencies, lines) = recipes

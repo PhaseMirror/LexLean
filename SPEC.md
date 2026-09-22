@@ -529,7 +529,8 @@ The normative acceptance recipe is `just vv`. It MUST run, in this order:
 8. `examples`;
 9. `golden`;
 10. `repro`;
-11. `deny`.
+11. `deny`;
+12. `atlas-prov`.
 
 The recipes have these meanings:
 
@@ -545,6 +546,7 @@ examples    cargo xtask verify-examples
 golden      cargo xtask check-golden
 repro       cargo xtask check-reproducibility
 deny        cargo deny --all-features check
+atlas-prov  cargo xtask atlas-prov
 vv          all recipes above, in order
 ```
 

@@ -92,8 +92,10 @@ definition bodies, proofs, inductive metadata, instances, and explicit axiom
 policies are linked semantic data. The same values generate readable canonical
 LaTeX and reconstruct kernel-checked Lean declarations. The one-time conversion
 and exact comparison are recorded in
-[MIGRATION.md](examples/uor-atlas/MIGRATION.md); the independently authored
-implementation is absent from the release tree. `VR-19` permanently requires
+[MIGRATION.md](examples/uor-atlas/MIGRATION.md); the native graph is recorded
+by tree identity (commit `f972285fab`, tree `79c32129` for the 66 native
+modules) and reproduced as byte-equal generated core, not declared
+self-contained in the repository. `VR-19` permanently requires
 one generated Lean module per native source module, public imports confined to
 `Init` and the generated graph, only the generic `Lean` backend-support import,
 and no second Atlas implementation.
