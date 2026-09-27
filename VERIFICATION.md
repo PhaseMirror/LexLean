@@ -39,6 +39,42 @@ Outside `vv`:
 
 Each gate below was made to fail by planting a defect, running the gate's command, recording the failure, and removing the defect. The observed lines are verbatim gate output (paths abbreviated to the repository root). `cargo xtask release-check` requires a `### <gate> can fail` record for every gate and audit named in `repo_model::release::GATES`.
 
+### release inventory can fail
+
+`release-artifacts` derives the tree manifest directly from the captured crate
+produced in a fresh Cargo target. An existing unpacked verification cache is
+not an input. Archive tests reject wrong package roots, duplicate/aliased
+members, links, special files, truncation, corruption and trailing archives.
+Release-tree traversal propagates errors and refuses aliases before writes.
+Canonical path spelling is normalized after ancestor checks; each derived
+asset replaces its directory entry atomically without changing external hard
+links. This is not whole-release or power-loss atomicity.
+
+In the non-root devcontainer, replacing the traversal error propagation with
+the previous error-discarding behavior made
+`release_manifest::tests::tree_inventory_rejects_symlinks_hardlinks_and_unreadable_directories`
+fail at `assertion failed: result.is_err()` on an actual unreadable directory.
+Restoring propagation passed the same test. The nine complete xtask tests,
+model audits, scoped Clippy and dependency policy checks passed; these checks
+alone are not complete release or publication acceptance.
+
+From clean revision `9426d49`, the non-root devcontainer also ran
+`cargo xtask release-artifacts` with a deliberately stale unpacked Cargo
+manifest and extra cache file. Cargo packaged and verified 712 files in a fresh
+target. Independent GNU tar extraction and Node SHA-256 inventory matched
+every manifest row and all ten release-asset checksums; neither stale cache
+input appeared. Crate SHA-256:
+`b33f02625b7792e214379635b812e7eaa3f9282cad050d2606b412b546f28c7c`;
+manifest SHA-256:
+`5cff3e392b68ab1df90b117d400d7957cdf970fb0d387c5409956275fbb729c8`.
+This checks package assembly, not the separately required build fleet, SBOM,
+complete V&V evidence or publication.
+
+CI run `36343661044` caught a hidden-test registration: an outer Unix `cfg`
+hid the path-refusal test on other hosts. The test now always runs its portable
+inventory assertions; its Unix-specific assertions use the repository's
+explicit host-reporting convention. No test or release-gate exemption was added.
+
 ### release workflow validation can fail
 
 GitHub run `35777451352` rejected the release workflow before starting any job:
