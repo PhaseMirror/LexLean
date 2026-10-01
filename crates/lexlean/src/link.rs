@@ -577,10 +577,10 @@ fn check_project_inline(
             None
         };
         let semantic = if let Some(ast) = &load.ast.semantic {
-            if project.config.language != "1.1" {
+            if project.config.language != "1.1" && project.config.language != "1.2" {
                 return Err(err(vec![Diagnostic::new(
                     code!("LLP2003"),
-                    "semanticmodule requires language 1.1",
+                    "semanticmodule requires language 1.1 or 1.2",
                 )
                 .with_span(span_of_range(&load.path, &load.atoms, ast.data.range))]));
             }

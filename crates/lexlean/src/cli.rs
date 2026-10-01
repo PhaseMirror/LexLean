@@ -75,7 +75,7 @@ enum CommandKind {
         module_prefix: String,
         /// Fixed source-language version. Language 1.1 creates a source-free
         /// Lake workspace; 1.0 retains the historical host-module skeleton.
-        #[arg(long, default_value = "1.0", value_parser = ["1.0", "1.1"])]
+        #[arg(long, default_value = "1.0", value_parser = ["1.0", "1.1", "1.2"])]
         language: String,
     },
     /// Update or check the lock file.
@@ -676,8 +676,12 @@ fn init_project(
         limits: INIT_LIMITS,
         pdf: None,
     };
-    let builtin_version = if language == "1.1" { "1.1.0" } else { "1.0.0" };
-    let lakefile = if language == "1.1" {
+    let builtin_version = match language {
+        "1.2" => "1.2.0",
+        "1.1" => "1.1.0",
+        _ => "1.0.0",
+    };
+    let lakefile = if language == "1.1" || language == "1.2" {
         format!("name = \"{lake_name}\"\nversion = \"0.1.0\"\n")
     } else {
         format!(

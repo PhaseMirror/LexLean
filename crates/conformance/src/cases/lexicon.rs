@@ -1387,6 +1387,122 @@ math = "(seq (operator-name gsucc) (paren (slot 0)))"
                 "§21.4: entry content flows into the semantic ID"
             );
         }
+        "GL-17" => {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let root = camino::Utf8Path::from_path(dir.path()).expect("utf8");
+            let (exit, _, stderr) = support::cli_in(
+                root,
+                &[
+                    "init",
+                    ".",
+                    "--name",
+                    "lang-twelve-lex",
+                    "--module-prefix",
+                    "LangTwelveLex",
+                    "--language",
+                    "1.2",
+                ],
+            );
+            assert_eq!(exit, 0, "init 1.2: {stderr}");
+            let lock_bytes = std::fs::read(root.join("lexlean.lock").as_std_path()).expect("lock");
+            let lock = lexlean::api::parse_lock_bytes("lexlean.lock", &lock_bytes).expect("parses");
+            assert_eq!(lock.language, "1.2");
+            assert_eq!(
+                lock.compiler_semantics,
+                lexlean::compiler_semantics_id_for("1.2")
+            );
+
+            // Check version 1.2.0 for builtin packages
+            assert!(
+                lock.packages.iter().all(|pkg| pkg.version == "1.2.0"),
+                "1.2 lock pins builtin packages at 1.2.0"
+            );
+            for pkg_id in ["lexlean.core", "lexlean.std.bool", "lexlean.std.nat"] {
+                assert!(
+                    lock.packages.iter().any(|pkg| pkg.id == pkg_id),
+                    "1.2 lock closes over {pkg_id}"
+                );
+            }
+
+            // Bootstrap data loads for 1.2
+            let bootstrap =
+                lexlean::lexicon::load_bootstrap_for("1.2").expect("1.2 bootstrap loads");
+            assert_eq!(bootstrap.language, "1.2");
+            assert_eq!(bootstrap.spec, "lexlean/bootstrap/1");
+            assert!(!bootstrap.structural.controls.is_empty());
+            assert!(!bootstrap.structural.environments.is_empty());
+        }
+        "GL-18" => {
+            // 1. Language 1.1 project importing 1.2 lexicon fails with LLC0103
+            let p11 = P::example();
+            p11.edit("lexlean.toml", "language = \"1.0\"", "language = \"1.1\"");
+            p11.add_package(
+                "lexicons/test-twelve",
+                "test.twelve",
+                &["lexlean.core@1.1.0"],
+                &[("entry.toml", &support::nzz_entry("Nat.le_refl"))],
+            );
+            p11.edit(
+                "lexicons/test-twelve/lexicon.toml",
+                "language = \"1.0\"",
+                "language = \"1.2\"",
+            );
+            let error = p11
+                .engine()
+                .lock(LockRequest {
+                    check_only: false,
+                    allow_network: false,
+                })
+                .err()
+                .expect("1.1 project importing 1.2 package fails");
+            support::expect_code(&error, "LLC0103");
+            assert!(
+                error.diagnostics.iter().any(|d| d
+                    .message
+                    .contains("lexicon language `1.2` does not match project language `1.1`")),
+                "diagnostic explains cross-language conflict: {error}"
+            );
+
+            // 2. Language 1.2 project importing unmigrated 1.1 lexicon fails with LLC0103
+            let p12 = P::example();
+            p12.edit("lexlean.toml", "language = \"1.0\"", "language = \"1.2\"");
+            p12.add_package(
+                "lexicons/test-eleven",
+                "test.eleven",
+                &["lexlean.core@1.2.0"],
+                &[("entry.toml", &support::nzz_entry("Nat.le_refl"))],
+            );
+            p12.edit(
+                "lexicons/test-eleven/lexicon.toml",
+                "language = \"1.0\"",
+                "language = \"1.1\"",
+            );
+            let error = p12
+                .engine()
+                .lock(LockRequest {
+                    check_only: false,
+                    allow_network: false,
+                })
+                .err()
+                .expect("1.2 project importing 1.1 package fails");
+            support::expect_code(&error, "LLC0103");
+
+            // 3. Cross-language lock tampering fails with LLC0102
+            let tampered = P::example();
+            let lock_text = tampered.read("lexlean.lock");
+            let tampered_lock = lock_text
+                .replacen("spec = \"lexlean/lock/1\"", "spec = \"lexlean/lock/2\"", 1)
+                .replacen("language = \"1.0\"", "language = \"1.2\"", 1);
+            tampered.write("lexlean.lock", &tampered_lock);
+            let error = tampered
+                .engine()
+                .check(lexlean::CheckRequest {
+                    selection: lexlean::Selection::Entrypoints,
+                })
+                .err()
+                .expect("tampered lock language fails check");
+            support::expect_code(&error, "LLC0102");
+        }
         other => panic!("no lexicon case is wired for {other}"),
     }
 }

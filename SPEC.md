@@ -373,8 +373,10 @@ The completed repository MUST have this layout. Additional files are allowed onl
 ├── language/
 │   ├── bootstrap.toml
 │   ├── bootstrap-1.1.toml
+│   ├── bootstrap-1.2.toml
 │   ├── semantics.toml
 │   ├── semantics-1.1.toml
+│   ├── semantics-1.2.toml
 │   ├── renderer-tokens.toml
 │   ├── core/
 │   │   ├── lexicon.toml
@@ -382,12 +384,18 @@ The completed repository MUST have this layout. Additional files are allowed onl
 │   ├── core-1.1/
 │   │   ├── lexicon.toml
 │   │   └── entries/
+│   ├── core-1.2/
+│   │   ├── lexicon.toml
+│   │   └── entries/
 │   └── std/
 │       ├── bool-1.1/
+│       ├── bool-1.2/
 │       ├── int/
 │       ├── int-1.1/
+│       ├── int-1.2/
 │       ├── nat/
-│       └── nat-1.1/
+│       ├── nat-1.1/
+│       └── nat-1.2/
 ├── model/
 │   ├── authorities.toml
 │   ├── errors.toml
@@ -402,6 +410,7 @@ The completed repository MUST have this layout. Additional files are allowed onl
 │   ├── entry.schema.json
 │   ├── lexicon.schema.json
 │   ├── lock.schema.json
+│   ├── lock-v2.schema.json
 │   ├── project.schema.json
 │   ├── semantic-snapshot.schema.json
 │   ├── semantic-module.schema.json
@@ -640,7 +649,7 @@ Input whitespace does not affect this canonical serialization. A project may be 
 |---|---|
 | `spec` | Exactly `lexlean/project/1`. |
 | `name` | Lower-case ASCII package identifier: `[a-z][a-z0-9-]{0,62}`. |
-| `language` | Exactly `1.0`. |
+| `language` | Language version: `1.0`, `1.1`, or `1.2`. |
 | `module_prefix` | One or more dot-separated ASCII Lean-name segments matching `[A-Z][A-Za-z0-9_]*`. |
 | `source_roots` | Nonempty, unique, sorted project-relative directories. |
 | `entrypoints` | Nonempty, unique, sorted project-relative `.lex.tex` files beneath a source root. |
@@ -732,7 +741,7 @@ If both Lake configuration forms exist, locking fails. Verification requires the
 
 ### 11.1 General
 
-`lexlean.lock` is generated, canonical TOML with no comments and final LF. Users MUST NOT hand-edit it. `lexlean lock --check` regenerates it in memory and compares exact bytes.
+`lexlean.lock` is generated, canonical TOML with no comments and final LF. Users MUST NOT hand-edit it. `lexlean lock --check` regenerates it in memory and compares exact bytes. Language 1.0 and 1.1 use `spec = "lexlean/lock/1"`. Language 1.2 uses `spec = "lexlean/lock/2"`. `lexlean lock` migrates locks to the appropriate schema for the project language.
 
 The top-level schema is:
 
@@ -4187,6 +4196,8 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `CF-14` | `configuration-lock` | Language 1.0 accepts only leanprover/lean4:v4.32.1 for verification. | §8.2, §10.1 |
 | `CF-15` | `configuration-lock` | Duplicate logical modules and case-folded path or module collisions are rejected. | §23.3 |
 | `CF-16` | `configuration-lock` | Language 1.1 has a parallel exact builtin closure and rejects a language-1.0 lock or package without altering language-1.0 identities. | §10.1 |
+| `CF-17` | `configuration-lock` | Language 1.2 declaration support accepts language 1.2 and rejects unsupported or malformed language versions. | §10.1 |
+| `CF-18` | `configuration-lock` | Lockfile v2 schema migration validates 1.2 locks while preserving exact byte-stability for language 1.0 and 1.1 projects. | §11.1, §11.2 |
 | `LX-01` | `lexical-closure` | Source decoding and line normalization enforce valid UTF-8, LF, final LF, and forbidden-scalar rules. | §12.1 |
 | `LX-02` | `lexical-closure` | Non-NFC source is diagnosed and canonical formatting rewrites it without semantic change. | §12.1, §23.5 |
 | `LX-03` | `lexical-closure` | Raw percent, comments, tabs, trailing spaces, and non-ASCII whitespace are rejected. | §12.1 |
@@ -4217,6 +4228,8 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `GL-14` | `lexicon` | Cases and induction are available only through a complete validated eliminator descriptor. | §16.11 |
 | `GL-15` | `lexicon` | Glossary files reject free description, documentation, note, meaning, and unknown prose fields. | §13.6 |
 | `GL-16` | `lexicon` | Package and entry bytes participate in lock and semantic closure hashes exactly as specified. | §11, §21 |
+| `GL-17` | `lexicon` | Language 1.2 resolves the exact 1.2 builtin package closure and enforces 1.2 lexicon semantics. | §13.1, §13.11 |
+| `GL-18` | `lexicon` | Cross-version package, lexicon, and lock combinations fail closed before backend execution. | §10.1, §13.11 |
 | `GR-01` | `grammar` | A source module parses only under the exact structural grammar and environment set. | §15.1, §15.2 |
 | `GR-02` | `grammar` | Glossary imports, module imports, title, and blocks obey exact header order and cardinality. | §15.1 |
 | `GR-03` | `grammar` | Sections nest within the configured scope limit and section parameters introduce explicit inherited context. | §15.1, §15.4 |

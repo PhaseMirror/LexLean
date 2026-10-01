@@ -146,6 +146,16 @@ fn conformance_cf_16() {
 }
 
 #[test]
+fn conformance_cf_17() {
+    repo_conformance::cases::run("CF-17");
+}
+
+#[test]
+fn conformance_cf_18() {
+    repo_conformance::cases::run("CF-18");
+}
+
+#[test]
 fn conformance_lx_01() {
     repo_conformance::cases::run("LX-01");
 }
@@ -293,6 +303,16 @@ fn conformance_gl_15() {
 #[test]
 fn conformance_gl_16() {
     repo_conformance::cases::run("GL-16");
+}
+
+#[test]
+fn conformance_gl_17() {
+    repo_conformance::cases::run("GL-17");
+}
+
+#[test]
+fn conformance_gl_18() {
+    repo_conformance::cases::run("GL-18");
 }
 
 #[test]

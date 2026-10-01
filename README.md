@@ -126,7 +126,7 @@ just vv        # the complete normative acceptance gate (SPEC.md §9.2)
 just release   # vv, then the §30 release criterion; refused until 1.0.0
 ```
 
-All 223 registered conformance IDs are implemented and pass; `just vv` runs clean from a checkout with the pinned toolchain installed.
+All 227 registered conformance IDs are implemented and pass; `just vv` runs clean from a checkout with the pinned toolchain installed.
 
 `just vv` is the Linux x86-64 gate. On the other four supported hosts (§8.3) the crate builds and every test runs. A case whose assertions need something the host does not have runs its platform-independent assertions and prints which ones it skipped: the pinned toolchain, a `#!/bin/sh` program for the external-provider cases, a filesystem that distinguishes two names differing only in case, or one that accepts a name that is not valid UTF-8. Each is detected at run time rather than assumed from the target triple, and on Linux x86-64 the toolchain gate is mandatory, so nothing there passes vacuously.
 
@@ -137,9 +137,9 @@ Every row is validated by `just vv`; the IDs link the claim to its register row,
 | Capability | IDs | Level |
 | --- | --- | --- |
 | Exact repository identity, layout, generated documents, and release gate | `RP-01`..`RP-12` | `build` |
-| Closed project configuration, canonical lock file, and offline dependency policy | `CF-01`..`CF-16` | `build` |
+| Closed project configuration, canonical lock file, and offline dependency policy | `CF-01`..`CF-18` | `build` |
 | Total lexical closure: every accepted atom is covered by exactly one declared origin | `LX-01`..`LX-14` | `build` |
-| Versioned lexicon packages with closed schemas, denotations, and renderer tokens | `GL-01`..`GL-16` | `build` |
+| Versioned lexicon packages with closed schemas, denotations, and renderer tokens | `GL-01`..`GL-18` | `build` |
 | Fixed structural, mathematical, and proposition grammar with closed ambiguity handling | `GR-01`..`GR-16` | `build` |
 | Typed closed IR with canonical serialization, native core modules, portable language-1.1 application data and operations, semantic snapshots, and content identities | `SM-01`..`SM-22` | `build` |
 | Document and generic semantic declarations with exact self-application, type checking, structural recursion, and acyclicity rules | `DF-01`..`DF-11` | `build` |

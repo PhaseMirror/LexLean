@@ -25,3 +25,6 @@ tests/**/.lexlean/
 
 # Claude Code worktrees and session state (never part of the release set).
 .claude/
+
+# Teamwork agent metadata
+.agents/

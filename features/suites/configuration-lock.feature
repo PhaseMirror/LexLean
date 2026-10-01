@@ -116,3 +116,21 @@ Feature: configuration-lock
     When both locks are parsed and a language-1.1 lock is changed to language 1.0
     Then each lock contains only builtin package versions matching its selected language
     And the changed lock is rejected as stale and the committed language-1.0 example still has its recorded source and semantic identities
+
+  @CF-17 @build
+  Scenario: Language 1.2 declaration support accepts language 1.2 and rejects unsupported or malformed language versions.
+    Given an example project with `language = "1.2"` in lexlean.toml and another with `language = "1.3"`
+    When Engine::load is called on each lexlean.toml and `lexlean init . --language 1.2` runs in an empty directory
+    Then the 1.2 project loads cleanly with LanguageVersion 1.2
+    And the init command exits 0 and creates a valid 1.2 project configuration and lockfile
+    And the 1.3 project fails configuration with LLC0103 naming the unsupported version
+
+  @CF-18 @build
+  Scenario: Lockfile v2 schema migration validates 1.2 locks while preserving exact byte-stability for language 1.0 and 1.1 projects.
+    Given committed language 1.0 and 1.1 projects with `spec = "lexlean/lock/1"`, and a fresh language 1.2 project
+    When `lexlean lock --check` runs on the 1.0 and 1.1 projects, relock is executed, and lock is generated for the 1.2 project
+    Then lock --check exits 0 on 1.0 and 1.1 and relock reports written = false leaving bytes unchanged
+    And the 1.2 lock is generated with `spec = "lexlean/lock/2"` and `language = "1.2"`
+    And an unsupported lock schema `lexlean/lock/3` fails lock parsing with LLC0103
+    And a stale unmigrated lock fails lock --check with LLC0102
+

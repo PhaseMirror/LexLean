@@ -113,3 +113,21 @@ Feature: lexicon
     When a trailing newline is appended to probe.toml and the project relocks, then surface `probe` becomes `probed` and it relocks again
     Then the lexlean.lock bytes differ after the byte-only change
     And the semantic_id differs after the surface change
+
+  @GL-17 @build
+  Scenario: Language 1.2 resolves the exact 1.2 builtin package closure and enforces 1.2 lexicon semantics.
+    Given a language 1.2 project configuring builtin lexlean.std.nat
+    When lexlean.lock is generated and the lexicon closure is loaded
+    Then the lock contains builtin packages `lexlean.core`, `lexlean.std.bool`, and `lexlean.std.nat` all at version 1.2.0
+    And bootstrap data loads from `language/bootstrap-1.2.toml` matching language 1.2
+    And entry signatures and denotations resolve without altering language 1.0 or 1.1 package definitions
+
+  @GL-18 @build
+  Scenario: Cross-version package, lexicon, and lock combinations fail closed before backend execution.
+    Given a language 1.1 project importing a language 1.2 lexicon package, a language 1.2 project importing a 1.1 package without migration, and a lock whose language was tampered
+    When lock or check runs on each project
+    Then the 1.1 project importing 1.2 fails with LLC0103 or LLR3001 naming the mismatched version
+    And the 1.2 project importing unmigrated 1.1 fails with LLC0103
+    And the tampered lock fails lock --check and check with LLC0102
+    And no backend compiler runs when a cross-version mismatch is detected
+

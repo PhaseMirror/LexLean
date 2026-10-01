@@ -1209,8 +1209,8 @@ pub fn audit_generated(root: &Path) -> Result<(), Fail> {
             return Err(format!("{}: missing its $id `{identity}`", path.display()).into());
         }
     }
-    if count != 12 {
-        return Err(format!("§7 commits exactly 12 schemas, found {count}").into());
+    if count != 13 {
+        return Err(format!("§7 commits exactly 13 schemas, found {count}").into());
     }
     println!("audit-generated: {count} schemas canonical and identified");
     Ok(())

@@ -926,8 +926,7 @@ pub(crate) fn run(id: &str) {
                         .expect("language-1.1 attestation"),
                 )
                 .expect("attestation JSON");
-                let expected =
-                    lexlean::compiler_semantics_id_for(lexlean::LATEST_LANGUAGE_VERSION).to_hex();
+                let expected = lexlean::compiler_semantics_id_for(lexlean::LANGUAGE_1_1).to_hex();
                 assert_eq!(
                     attestation["lexlean"]["compiler_semantics"].as_str(),
                     Some(expected.as_str()),
