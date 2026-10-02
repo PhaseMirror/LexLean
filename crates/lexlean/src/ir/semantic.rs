@@ -369,6 +369,13 @@ pub enum SemanticTerm {
         binder: SemanticParameter,
         body: Box<Self>,
     },
+    /// Language 1.2: a typed, nonrecursive local definition. The binder is
+    /// in scope only in `body`; it never shadows another local.
+    Let {
+        binder: SemanticParameter,
+        value: Box<Self>,
+        body: Box<Self>,
+    },
 }
 
 /// One proof branch for a fixed cases/induction lowering.
@@ -674,6 +681,11 @@ fn term_node_count(term: &SemanticTerm) -> u64 {
         SemanticTerm::Forall { binder, body } => {
             type_node_count(&binder.r#type) + term_node_count(body)
         }
+        SemanticTerm::Let {
+            binder,
+            value,
+            body,
+        } => type_node_count(&binder.r#type) + term_node_count(value) + term_node_count(body),
     }
 }
 
@@ -752,6 +764,209 @@ fn declaration_node_count(declaration: &SemanticDeclaration) -> u64 {
             proof,
             ..
         } => parameters(values) + term_node_count(statement) + proof_node_count(proof),
+    }
+}
+
+/// The semantic-module schema discriminator a project language requires
+/// (§17.12). Language 1.0 has none.
+#[must_use]
+pub fn semantic_module_spec(language: &str) -> Option<&'static str> {
+    match language {
+        crate::LANGUAGE_1_1 => Some("lexlean/semantic-module/1"),
+        crate::LANGUAGE_1_2 => Some("lexlean/semantic-module/2"),
+        _ => None,
+    }
+}
+
+/// The construct name when `term` itself (not a subterm) exists only in
+/// language 1.2. Exhaustive by design: a new variant must state its
+/// language here before it compiles.
+fn language_1_2_construct(term: &SemanticTerm) -> Option<&'static str> {
+    match term {
+        SemanticTerm::Let { .. } => Some("let"),
+        SemanticTerm::Var { .. }
+        | SemanticTerm::Nat { .. }
+        | SemanticTerm::Integer { .. }
+        | SemanticTerm::String { .. }
+        | SemanticTerm::Bytes { .. }
+        | SemanticTerm::Primitive { .. }
+        | SemanticTerm::Bool { .. }
+        | SemanticTerm::Unit
+        | SemanticTerm::Nil { .. }
+        | SemanticTerm::Cons { .. }
+        | SemanticTerm::Record { .. }
+        | SemanticTerm::Constructor { .. }
+        | SemanticTerm::InstanceValue { .. }
+        | SemanticTerm::Project { .. }
+        | SemanticTerm::Call { .. }
+        | SemanticTerm::If { .. }
+        | SemanticTerm::Match { .. }
+        | SemanticTerm::Eq { .. }
+        | SemanticTerm::Le { .. }
+        | SemanticTerm::Lt { .. }
+        | SemanticTerm::Add { .. }
+        | SemanticTerm::Beq { .. }
+        | SemanticTerm::Ble { .. }
+        | SemanticTerm::Blt { .. }
+        | SemanticTerm::And { .. }
+        | SemanticTerm::PropAnd { .. }
+        | SemanticTerm::Or { .. }
+        | SemanticTerm::Not { .. }
+        | SemanticTerm::Implies { .. }
+        | SemanticTerm::Iff { .. }
+        | SemanticTerm::Forall { .. } => None,
+    }
+}
+
+/// Visit `term` and every subterm, parents first.
+fn visit_terms(term: &SemanticTerm, visit: &mut impl FnMut(&SemanticTerm)) {
+    visit(term);
+    match term {
+        SemanticTerm::Var { .. }
+        | SemanticTerm::Nat { .. }
+        | SemanticTerm::Integer { .. }
+        | SemanticTerm::String { .. }
+        | SemanticTerm::Bytes { .. }
+        | SemanticTerm::Bool { .. }
+        | SemanticTerm::Unit
+        | SemanticTerm::Nil { .. }
+        | SemanticTerm::InstanceValue { .. } => {}
+        SemanticTerm::Primitive { arguments, .. }
+        | SemanticTerm::Constructor { arguments, .. }
+        | SemanticTerm::Call { arguments, .. } => {
+            for argument in arguments {
+                visit_terms(argument, visit);
+            }
+        }
+        SemanticTerm::Record { fields, .. } => {
+            for field in fields {
+                visit_terms(&field.value, visit);
+            }
+        }
+        SemanticTerm::Cons { head, tail }
+        | SemanticTerm::Eq {
+            left: head,
+            right: tail,
+        }
+        | SemanticTerm::Le {
+            left: head,
+            right: tail,
+        }
+        | SemanticTerm::Lt {
+            left: head,
+            right: tail,
+        }
+        | SemanticTerm::Add {
+            left: head,
+            right: tail,
+        }
+        | SemanticTerm::Beq {
+            left: head,
+            right: tail,
+        }
+        | SemanticTerm::Ble {
+            left: head,
+            right: tail,
+        }
+        | SemanticTerm::Blt {
+            left: head,
+            right: tail,
+        }
+        | SemanticTerm::And {
+            left: head,
+            right: tail,
+        }
+        | SemanticTerm::PropAnd {
+            left: head,
+            right: tail,
+        }
+        | SemanticTerm::Or {
+            left: head,
+            right: tail,
+        }
+        | SemanticTerm::Implies {
+            premise: head,
+            conclusion: tail,
+        }
+        | SemanticTerm::Iff {
+            left: head,
+            right: tail,
+        } => {
+            visit_terms(head, visit);
+            visit_terms(tail, visit);
+        }
+        SemanticTerm::Project { value, .. } | SemanticTerm::Not { value } => {
+            visit_terms(value, visit);
+        }
+        SemanticTerm::If {
+            condition,
+            then_value,
+            else_value,
+        } => {
+            visit_terms(condition, visit);
+            visit_terms(then_value, visit);
+            visit_terms(else_value, visit);
+        }
+        SemanticTerm::Match {
+            scrutinee,
+            branches,
+        } => {
+            visit_terms(scrutinee, visit);
+            for branch in branches {
+                visit_terms(&branch.body, visit);
+            }
+        }
+        SemanticTerm::Forall { body, .. } => visit_terms(body, visit),
+        SemanticTerm::Let { value, body, .. } => {
+            visit_terms(value, visit);
+            visit_terms(body, visit);
+        }
+    }
+}
+
+fn proof_terms(proof: &SemanticProof, visit: &mut impl FnMut(&SemanticTerm)) {
+    match proof {
+        SemanticProof::Reflexivity
+        | SemanticProof::Decide
+        | SemanticProof::Simplify { .. }
+        | SemanticProof::Congruence
+        | SemanticProof::BooleanReflection { .. } => {}
+        SemanticProof::Constructor { branches } => {
+            for branch in branches {
+                proof_terms(branch, visit);
+            }
+        }
+        SemanticProof::Cases { branches, .. } | SemanticProof::Induction { branches, .. } => {
+            for branch in branches {
+                proof_terms(&branch.proof, visit);
+            }
+        }
+        SemanticProof::Apply { arguments, .. } => {
+            for argument in arguments {
+                visit_terms(argument, visit);
+            }
+        }
+    }
+}
+
+/// Visit every term a declaration carries, including proof arguments.
+fn declaration_terms(declaration: &SemanticDeclaration, visit: &mut impl FnMut(&SemanticTerm)) {
+    match declaration {
+        SemanticDeclaration::Structure { .. }
+        | SemanticDeclaration::Class { .. }
+        | SemanticDeclaration::Inductive { .. } => {}
+        SemanticDeclaration::Instance { fields, .. } => {
+            for field in fields {
+                visit_terms(&field.value, visit);
+            }
+        }
+        SemanticDeclaration::Definition { body, .. } => visit_terms(body, visit),
+        SemanticDeclaration::Theorem {
+            statement, proof, ..
+        } => {
+            visit_terms(statement, visit);
+            proof_terms(proof, visit);
+        }
     }
 }
 
@@ -1427,6 +1642,24 @@ fn check_term(
             if !nested.insert(binder.name.clone()) {
                 return Err(format!("shadowed binder `{}`", binder.name));
             }
+            check_term(body, &nested, env, recursion, smaller)
+        }
+        SemanticTerm::Let {
+            binder,
+            value,
+            body,
+        } => {
+            check_name(&binder.name, "let binder")?;
+            check_type(&binder.r#type, env)?;
+            // The bound value is checked in the enclosing scope: a let is
+            // never recursive, so its own binder is not visible there.
+            check_term(value, locals, env, recursion, smaller)?;
+            let mut nested = locals.clone();
+            if !nested.insert(binder.name.clone()) {
+                return Err(format!("shadowed let binder `{}`", binder.name));
+            }
+            // A let-bound alias of a structural subvalue is not itself
+            // admitted as smaller: termination evidence stays syntactic.
             check_term(body, &nested, env, recursion, smaller)
         }
     }
@@ -2181,6 +2414,20 @@ fn infer_term(
             )?;
             Ok(Some(SemanticType::Prop))
         }
+        SemanticTerm::Let {
+            binder,
+            value,
+            body,
+        } => {
+            require_type(
+                infer(value)?,
+                &binder.r#type,
+                &format!("let binder `{}`", binder.name),
+            )?;
+            let mut nested = locals.clone();
+            nested.insert(binder.name.clone(), binder.r#type.clone());
+            infer_term(body, &nested, env)
+        }
     }
 }
 
@@ -2509,6 +2756,7 @@ impl SemanticModule {
     /// Decode canonical JSON and enforce all conservative semantic checks.
     pub fn parse(
         text: &str,
+        language: &str,
         imports: &[String],
         imported_modules: &BTreeMap<String, &Self>,
     ) -> Result<Self, String> {
@@ -2519,20 +2767,46 @@ impl SemanticModule {
         if canonical != text {
             return Err("semantic-module JSON is not canonical".to_owned());
         }
-        module.validate(imports, imported_modules)?;
+        module.validate(language, imports, imported_modules)?;
         Ok(module)
+    }
+
+    /// The first language-1.2-only construct in this module, by kind.
+    #[must_use]
+    pub fn first_language_1_2_construct(&self) -> Option<&'static str> {
+        let mut found = None;
+        for declaration in &self.declarations {
+            declaration_terms(declaration, &mut |term| {
+                if found.is_none() {
+                    found = language_1_2_construct(term);
+                }
+            });
+        }
+        found
     }
 
     fn validate(
         &self,
+        language: &str,
         imports: &[String],
         imported_modules: &BTreeMap<String, &Self>,
     ) -> Result<(), String> {
-        if self.spec != "lexlean/semantic-module/1" {
+        // §17.12: the discriminator is routed by the project language, never
+        // inferred from the module, so one module cannot mean two things.
+        let expected = semantic_module_spec(language)
+            .ok_or_else(|| format!("language {language} has no semantic-module schema"))?;
+        if self.spec != expected {
             return Err(format!(
-                "unsupported semantic-module schema `{}`",
+                "unsupported semantic-module schema `{}`; language {language} requires `{expected}`",
                 self.spec
             ));
+        }
+        if language == crate::LANGUAGE_1_1 {
+            if let Some(construct) = self.first_language_1_2_construct() {
+                return Err(format!(
+                    "`{construct}` is a language-1.2 construct; language 1.1 rejects it"
+                ));
+            }
         }
         if self.declarations.is_empty() {
             return Err("a semantic module contains at least one declaration".to_owned());
@@ -2950,22 +3224,24 @@ mod tests {
 
     #[test]
     fn semantic_bool_match_is_typed_and_exhaustive() {
-        SemanticModule::parse(BOOL_MATCH, &[], &BTreeMap::new())
+        SemanticModule::parse(BOOL_MATCH, "1.1", &[], &BTreeMap::new())
             .expect("both Boolean constructors form a typed exhaustive match");
 
         let nonexhaustive = BOOL_MATCH.replace(
             r#",{"binders":[],"body":{"kind":"nat","value":"1"},"constructor":{"name":"Bool.true"}}"#,
             "",
         );
-        assert!(SemanticModule::parse(&nonexhaustive, &[], &BTreeMap::new())
-            .expect_err("one Boolean branch is not exhaustive")
-            .to_string()
-            .contains("nonexhaustive or mixed match branches"));
+        assert!(
+            SemanticModule::parse(&nonexhaustive, "1.1", &[], &BTreeMap::new())
+                .expect_err("one Boolean branch is not exhaustive")
+                .to_string()
+                .contains("nonexhaustive or mixed match branches")
+        );
     }
 
     #[test]
     fn semantic_theorem_policy_defaults_to_exact_empty() {
-        let module = SemanticModule::parse(EMPTY_POLICY, &[], &BTreeMap::new())
+        let module = SemanticModule::parse(EMPTY_POLICY, "1.1", &[], &BTreeMap::new())
             .expect("omitted policy is exact empty");
         let declaration = module.declarations.first().expect("one theorem");
         assert_eq!(declaration.axiom_policy_kind(), "none");
@@ -2975,7 +3251,7 @@ mod tests {
     #[test]
     fn semantic_theorem_policy_round_trips_a_nonempty_exact_set() {
         let source = theorem_with_axioms(r#"["Classical.choice","propext"]"#);
-        let module = SemanticModule::parse(&source, &[], &BTreeMap::new())
+        let module = SemanticModule::parse(&source, "1.1", &[], &BTreeMap::new())
             .expect("sorted exact policy is valid");
         let declaration = module.declarations.first().expect("one theorem");
         assert_eq!(declaration.axiom_policy_kind(), "exact");
@@ -2994,8 +3270,9 @@ mod tests {
             r#"["propext","propext"]"#,
             r#"["bad-name"]"#,
         ] {
-            let error = SemanticModule::parse(&theorem_with_axioms(axioms), &[], &BTreeMap::new())
-                .expect_err("invalid exact policy must fail");
+            let error =
+                SemanticModule::parse(&theorem_with_axioms(axioms), "1.1", &[], &BTreeMap::new())
+                    .expect_err("invalid exact policy must fail");
             assert!(
                 error.contains("not sorted, unique, and qualified"),
                 "{error}"

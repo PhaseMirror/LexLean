@@ -144,6 +144,8 @@ fn is_v1_2_file(path: &str) -> bool {
         || path == "language/bootstrap-1.2.toml"
         || path == "language/semantics-1.2.toml"
         || path == "schemas/lock-v2.schema.json"
+        || path == "schemas/semantic-module-v2.schema.json"
+        || path == "schemas/semantic-snapshot-v2.schema.json"
 }
 
 /// The compiler-semantics ID for one selected language. Language 1.0 excludes
@@ -155,9 +157,6 @@ pub fn compiler_semantics_id_for(language: &str) -> Sha256Digest {
     static V1_0: OnceLock<Sha256Digest> = OnceLock::new();
     static V1_1: OnceLock<Sha256Digest> = OnceLock::new();
     static V1_2: OnceLock<Sha256Digest> = OnceLock::new();
-    if !supports_language(language) {
-        return Sha256Digest::of(format!("unsupported-language\0{language}").as_bytes());
-    }
     match language {
         LANGUAGE_VERSION => *V1_0.get_or_init(|| {
             let files: Vec<(&str, &[u8])> = embedded::FILES
@@ -167,7 +166,7 @@ pub fn compiler_semantics_id_for(language: &str) -> Sha256Digest {
                 .collect();
             tree_digest(&files)
         }),
-        "1.1" => *V1_1.get_or_init(|| {
+        LANGUAGE_1_1 => *V1_1.get_or_init(|| {
             let files: Vec<(&str, &[u8])> = embedded::FILES
                 .iter()
                 .copied()
@@ -175,9 +174,12 @@ pub fn compiler_semantics_id_for(language: &str) -> Sha256Digest {
                 .collect();
             tree_digest(&files)
         }),
-        _ => *V1_2.get_or_init(|| {
+        LANGUAGE_1_2 => *V1_2.get_or_init(|| {
             let files: Vec<(&str, &[u8])> = embedded::FILES.to_vec();
             tree_digest(&files)
         }),
+        // An unsupported language never shares an identity with a supported
+        // one; configuration rejects it before any identity is published.
+        other => Sha256Digest::of(format!("unsupported-language\0{other}").as_bytes()),
     }
 }

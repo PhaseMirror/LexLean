@@ -12,7 +12,7 @@ How this repository's claims are checked, which recipe enforces which rule, and 
 | `model` | `cargo xtask validate-model` | R1 (model is the single source; every model file parsed with unknown-field rejection), R2 (honesty levels and vocabulary, via the meta-gate), R3 (register/scenario/test bijection, Gherkin subset), R4 (`audit-deferral`), R5 (`audit-errors`), R6 (`audit-shipped`, including the shipped crate's normative links), R8 (`audit-generated`, `audit-language-closure`), RP-09 (`audit-no-unsafe`), §27.5 (CONFORMANCE.md and ERRORS.md equal regeneration) |
 | `spec-links` | `cargo xtask validate-spec-links` | RP-07, §27.6: the §31 table and `model/ids.toml` are bijective and byte-consistent |
 | `lint` | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | no tolerated warnings |
-| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 223 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
+| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 228 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
 | `features` | `cargo check --workspace --all-features --all-targets` | every target compiles |
 | `bdd` | `cargo test -p repo-conformance` | R3, §27.7, §27.8: register ↔ scenario ↔ test bijection, the meta-gate, and its own falsifiability test |
 | `examples` | `cargo xtask verify-examples` | §28.6, EX-01: every example directory formats, locks, checks, builds, and verifies with real Lean 4.32.1; when an example commits `expected/verify/`, its normalized verification records must equal it (§29.5) |
@@ -210,6 +210,46 @@ test result: FAILED. 0 passed; 1 failed
 Removed: the lowering was restored to conjunction from immutable implementation
 commit `b52d47148fd30bb667daab244233851ca5029215`; `conformance_sm_16`
 passes and its generated theorems have the exact empty observed axiom set.
+
+### language-1.2 version routing can fail
+
+Planted: the language-1.2 construct gate in `SemanticModule::validate` was
+routed to the wrong language (`language == crate::LANGUAGE_1_2` instead of
+`crate::LANGUAGE_1_1`), so language 1.1 admitted the 1.2-only `let` term and
+language 1.2 refused it. Commands: `cargo test -p repo-conformance --test
+conformance -- conformance_sm_23` and `cargo xtask check-fixtures`.
+Expected: the committed language-1.2 example no longer checks, and the
+negative fixture of a `let` under language 1.1 is accepted.
+
+```text
+thread 'conformance_sm_23' panicked at crates/conformance/src/support.rs:269:14:
+check succeeds: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLT4001"), message: "phase link: `let` is a language-1.2 construct; language 1.1 rejects it", ... }] }
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 227 filtered out
+gate failed: tests/negative/language-1.2-construct-under-1.1: step 1 `check ` exited 0, case.toml expects 1
+```
+
+Planted: `"1.3"` appended to `LANGUAGE_VERSIONS`. Command: `cargo test -p
+repo-conformance --test conformance -- conformance_cf_17`.
+
+```text
+thread 'conformance_cf_17' panicked at crates/conformance/src/cases/configuration_lock.rs:1071:18:
+1.3 is unsupported
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 227 filtered out
+```
+
+Planted: `Lock::canonical_bytes` emitted `lexlean/lock/1` for language 1.2.
+Command: `cargo test -p repo-conformance --test conformance --
+conformance_cf_18`.
+
+```text
+thread 'conformance_cf_18' panicked at crates/conformance/src/cases/configuration_lock.rs:1153:13:
+assertion failed: lock_text.contains("spec = \"lexlean/lock/2\"")
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 227 filtered out
+```
+
+Removed: each mutation was reverted; `conformance_sm_23`,
+`conformance_cf_17`, `conformance_cf_18`, and `cargo xtask check-fixtures`
+pass.
 
 ### fmt-check can fail
 
@@ -687,37 +727,3 @@ LexLean synthesizes complete release artifacts, evidence receipts, and authorita
   - Both positive execution (elaboration, kernel replay, axiom auditing across all examples) and negative execution (non-vacuous mutation rejection in tests/negative/) are validated and bound to upstream commit digests.
 - Downstream integration:
   - PrismPM dependency/identity checks referencing LexLean pass without manual exceptions or source assumptions.
-
-## Language 1.2 and compatibility/migration contract verification (Issue #16)
-
-Language 1.2 defines the v0.4 language and version boundary while preserving the byte-stability and semantic identities of historical Language 1.0 and 1.1 projects:
-- **Language Identifier and Boundary**:
-  - `pub const LANGUAGE_1_2: &str = "1.2"` added to `crates/lexlean/src/lib.rs`.
-  - `supports_language` accepts `1.0`, `1.1`, and `1.2`, rejecting unsupported versions (e.g. `1.3`) fail-closed with diagnostic `LLC0103`.
-  - `compiler_semantics_id_for` scoped filtering preserves exact historical digests for 1.0 (`95deb33a...`) and 1.1 (`c56e1a23...`) while calculating the full normative tree digest for 1.2.
-- **Lockfile v2 Schema and Migration**:
-  - `Lock::canonical_bytes` serializes `spec = "lexlean/lock/2"` for Language 1.2 projects and `spec = "lexlean/lock/1"` for Language 1.0/1.1 projects.
-  - Fail-closed schema parsing (`parse_lock`) validates spec and language matching (`LLC0103`), and detects stale or tampered locks (`LLC0102`).
-  - Schema committed at `schemas/lock-v2.schema.json` with canonical JSON schema auditing (13 schemas verified by `xtask/src/audit.rs`).
-- **Registries and Conformance Coverage**:
-  - Conformance capabilities registered in `model/ids.toml`, `SPEC.md §31` (227 bijective rows), `xtask/src/spec_links.rs`, and `CONFORMANCE.md`:
-    - `CF-17`: Language 1.2 declaration support accepts 1.2 and rejects unsupported/malformed versions.
-    - `CF-18`: Lockfile v2 schema migration validates 1.2 locks while preserving exact byte-stability for 1.0 and 1.1 projects.
-    - `GL-17`: Language 1.2 resolves the exact 1.2 builtin package closure (`1.2.0`) and enforces 1.2 lexicon semantics.
-    - `GL-18`: Cross-version package, lexicon, and lock combinations fail closed before backend execution.
-  - Matching Gherkin BDD scenarios added in `features/suites/configuration-lock.feature` and `features/suites/lexicon.feature`.
-  - All 227 conformance tests pass (`cargo test -p repo-conformance`).
-- **Anti-Vacuity and Planted Defect Verification**:
-  1. *Planted version-routing defect (admitting unsupported version 1.3)*:
-     - Mutation: Appended `"1.3"` to `LANGUAGE_VERSIONS` in `crates/lexlean/src/lib.rs`.
-     - Command: `cargo test -p repo-conformance --test conformance conformance_cf_17`
-     - Expected failure: Gate trips when project with `language = "1.3"` loads successfully rather than failing closed.
-     - Observed failure: `thread 'conformance_cf_17' panicked at crates/conformance/src/cases/configuration_lock.rs:1071:18: 1.3 is unsupported` (exit code 101).
-     - Restored: `LANGUAGE_VERSIONS` reverted to `&[LANGUAGE_VERSION, LANGUAGE_1_1, LANGUAGE_1_2]`; `conformance_cf_17` passes cleanly.
-  2. *Planted lock schema defect (emitting lock v1 for language 1.2)*:
-     - Mutation: Changed `Lock::canonical_bytes` in `crates/lexlean/src/lock.rs` to emit `lexlean/lock/1` for `1.2`.
-     - Command: `cargo test -p repo-conformance --test conformance conformance_cf_18`
-     - Expected failure: Gate trips when lock file text does not match `lexlean/lock/2`.
-     - Observed failure: `thread 'conformance_cf_18' panicked at crates/conformance/src/cases/configuration_lock.rs:1131:13: assertion failed: lock_text.contains("spec = \"lexlean/lock/2\"")` (exit code 101).
-     - Restored: Spec emission restored to `lexlean/lock/2`; `conformance_cf_18` passes cleanly.
-

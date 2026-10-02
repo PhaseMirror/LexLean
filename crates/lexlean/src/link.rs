@@ -594,19 +594,23 @@ fn check_project_inline(
                 })
                 .collect();
             Some(
-                SemanticModule::parse(&ast.data.text, &imports, &imported_semantic).map_err(
-                    |reason| {
-                        err(vec![Diagnostic::new(
-                            code!("LLT4001"),
-                            format!("phase link: {reason}"),
-                        )
-                        .with_span(span_of_range(
-                            &load.path,
-                            &load.atoms,
-                            ast.data.range,
-                        ))])
-                    },
-                )?,
+                SemanticModule::parse(
+                    &ast.data.text,
+                    &project.config.language,
+                    &imports,
+                    &imported_semantic,
+                )
+                .map_err(|reason| {
+                    err(vec![Diagnostic::new(
+                        code!("LLT4001"),
+                        format!("phase link: {reason}"),
+                    )
+                    .with_span(span_of_range(
+                        &load.path,
+                        &load.atoms,
+                        ast.data.range,
+                    ))])
+                })?,
             )
         } else {
             None

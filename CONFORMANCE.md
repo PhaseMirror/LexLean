@@ -296,6 +296,7 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `SM-20` | `build` | Noncanonical, out-of-range, invalid-byte, ill-typed, and unbounded fixed-width values fail before either backend runs. |
 | `SM-21` | `build` | Structural recursion admits byte/list values and closed Option and Result inductives while preserving termination and exhaustiveness checks. |
 | `SM-22` | `build` | The public owned snapshot DTO and schemas cover every portable type, literal, primitive, and explicit definition axiom policy without backend text. |
+| `SM-23` | `build` | Language 1.2 semantic modules use the versioned module and snapshot schemas and accept the typed nonrecursive let term, which language 1.1 rejects before either backend runs. |
 
 ## verification
 

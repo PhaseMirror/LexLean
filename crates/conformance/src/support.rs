@@ -100,6 +100,7 @@ fn term(value: &SnapshotTerm) -> usize {
         | SnapshotTerm::Or { left, right } | SnapshotTerm::Iff { left, right } => term(left) + term(right),
         SnapshotTerm::Implies { premise, conclusion } => term(premise) + term(conclusion),
         SnapshotTerm::Forall { binder, body } => ty(&binder.r#type) + term(body),
+        SnapshotTerm::Let { binder, value, body } => ty(&binder.r#type) + term(value) + term(body),
     }
 }
 
@@ -203,6 +204,19 @@ impl P {
             .tempdir()
             .expect("tempdir");
         let source = repo_root().join("examples/semantic-1.1");
+        copy_tree(source.as_std_path(), temp.path(), &[".lexlean", "expected"]);
+        let root = Utf8PathBuf::from_path_buf(temp.path().to_path_buf()).expect("utf8 tempdir");
+        Self { temp, root }
+    }
+
+    /// A fresh copy of the committed language-1.2 example (§17.12).
+    #[must_use]
+    pub fn language_1_2_example() -> Self {
+        let temp = tempfile::Builder::new()
+            .prefix("lexlean-language-1-2-case-")
+            .tempdir()
+            .expect("tempdir");
+        let source = repo_root().join("examples/language-1.2");
         copy_tree(source.as_std_path(), temp.path(), &[".lexlean", "expected"]);
         let root = Utf8PathBuf::from_path_buf(temp.path().to_path_buf()).expect("utf8 tempdir");
         Self { temp, root }

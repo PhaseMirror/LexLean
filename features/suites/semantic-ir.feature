@@ -154,3 +154,12 @@ Feature: semantic-ir
     When it is snapshotted in two absolute roots
     Then both schemas validate every portable variant and their bytes are identical
     And the snapshot contains no generated Lean, Rust, or absolute path
+
+  @SM-23 @build
+  Scenario: Language 1.2 semantic modules use the versioned module and snapshot schemas and accept the typed nonrecursive let term, which language 1.1 rejects before either backend runs.
+    Given the committed language-1.2 example whose definition and theorem statement use the let term
+    When it is checked, snapshotted, rendered, and verified, and copies are changed to language 1.1 or to the other module discriminator
+    Then the 1.2 snapshot uses lexlean/semantic-snapshot/2 and validates against the v2 module and snapshot schemas
+    And the generated Lean contains the fixed let lowering and verifies with real Lean
+    And the language-1.1 copy, a /1 module under 1.2, and a /2 module under 1.1 fail with LLT4001 before any build root exists
+    And a mistyped, shadowing, or self-referential let binder is rejected and the 1.1 snapshot keeps lexlean/semantic-snapshot/1

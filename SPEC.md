@@ -413,7 +413,9 @@ The completed repository MUST have this layout. Additional files are allowed onl
 │   ├── lock-v2.schema.json
 │   ├── project.schema.json
 │   ├── semantic-snapshot.schema.json
+│   ├── semantic-snapshot-v2.schema.json
 │   ├── semantic-module.schema.json
+│   ├── semantic-module-v2.schema.json
 │   └── source-map.schema.json
 ├── tests/
 │   ├── fixtures/
@@ -2399,6 +2401,66 @@ source/IR limits, kernel replay, and exact axiom policies remain unchanged.
 Exhausting a finite Lean budget still fails verification; the budgets do not
 assert that every resource-bounded source can be verified on every host.
 
+### 17.12 Language 1.2 and the compatibility/migration contract
+
+Language 1.2 is selected by `language = "1.2"` in `lexlean.toml`. It is a
+strict extension of language 1.1: every language-1.1 structural form,
+lexicon form, declaration, type, term, primitive, and proof variant is
+inherited with unchanged meaning, typing, Lean lowering, and LaTeX
+rendering. The constructs that exist only in language 1.2 are listed in the
+closed table below; each is rejected under language 1.1 before either
+backend runs.
+
+| 1.2-only construct | Schema | Meaning |
+|---|---|---|
+| `let` term | `lexlean/semantic-module/2` | A typed, nonrecursive local definition `{"binder":{"name":...,"type":...},"kind":"let","value":...,"body":...}`. The value is checked in the enclosing scope and must have exactly the binder type; the binder is in scope only in `body`, may not shadow any local, and is never treated as a structurally smaller recursive argument. It lowers to the Lean term `(let x : T := v; b)` and contributes its binder type, value, and body to `max_ir_nodes`. |
+
+Routing is fixed by the project language and is never inferred from module
+content, so no byte sequence has two meanings:
+
+| Project language | `semanticdata` schema | Snapshot envelope | Lock schema | Builtin packages |
+|---|---|---|---|---|
+| `1.0` | rejected (`LLP2003`) | `lexlean/semantic-snapshot/1` | `lexlean/lock/1` | `1.0.0` |
+| `1.1` | exactly `lexlean/semantic-module/1` | `lexlean/semantic-snapshot/1` | `lexlean/lock/1` | `1.1.0` |
+| `1.2` | exactly `lexlean/semantic-module/2` | `lexlean/semantic-snapshot/2` | `lexlean/lock/2` | `1.2.0` |
+
+`schemas/semantic-module-v2.schema.json` is the language-1.1 module schema
+with the `/2` discriminator and the 1.2-only constructs added;
+`schemas/semantic-snapshot-v2.schema.json` is the snapshot schema with the
+`/2` envelope, `language` fixed to `1.2`, and the same embedded module
+definitions. `schemas/lock-v2.schema.json` has the language-1.1 lock shape
+with `spec` fixed to `lexlean/lock/2` and `language` fixed to `1.2`.
+
+Compatibility rules:
+
+- A language-1.1 semantic module containing any 1.2-only construct is
+  rejected in linking (`LLT4001`) and names the construct.
+- A semantic module whose discriminator differs from the one its project
+  language selects is rejected in linking (`LLT4001`); a `/1` module in a 1.2
+  project and a `/2` module in a 1.1 project are both rejected.
+- A lock whose `spec` does not match its `language` row is rejected
+  (`LLC0103`); a lock whose language, compiler-semantics ID, or package
+  closure differs from the project is stale (`LLC0102`).
+- A lexicon package whose `language` differs from the project language is
+  rejected at lock time (`LLC0103`); a builtin glossary reference with the
+  version of another language is rejected against the lock (`LLR3001`).
+- An unsupported or malformed project language (for example `1.3`, `1.2.0`,
+  or `01.2`) is rejected at configuration time (`LLC0103`).
+
+All of these failures occur before Lean or LaTeX generation and before any
+child process starts.
+
+Migration is explicit and versioned. A language-1.1 project becomes a
+language-1.2 project only by changing its `language` row, rewriting each
+`semanticdata` discriminator from `/1` to `/2`, changing builtin glossary
+references from `1.1.0` to `1.2.0`, and regenerating the lock with
+`lexlean lock`. Every language-1.1 value is a valid language-1.2 value with
+the same meaning, so the migration changes identities (the compiler-semantics
+ID, the lock, and every source and semantic ID) but not generated Lean
+declarations. No command migrates a project implicitly: building an
+unmigrated project under a newer compiler keeps its declared language and its
+historical identities and artifact bytes.
+
 ## 18. Lean backend
 
 ### 18.1 Output contract
@@ -2869,9 +2931,23 @@ canonical_json = "1"
 `language/semantics-1.1.toml` independently versions the language-1.1
 semantic IR, snapshot, proof forms, and fixed backends. A 1.1-only change
 updates that file and therefore the 1.1 compiler-semantics ID without changing
-the historical 1.0 ID.
+the historical 1.0 ID. `language/semantics-1.2.toml` versions language 1.2 in
+the same way.
 
-The current language-1.1 compiler-semantics ID is the §11.5 tree digest of:
+Each language's compiler-semantics ID is the §11.5 tree digest of a fixed,
+nested partition of the embedded tree. The language-1.2 ID covers the whole
+tree. The language-1.1 ID excludes the files introduced solely for 1.2:
+`language/bootstrap-1.2.toml`, `language/semantics-1.2.toml`,
+`language/core-1.2/`, `language/std/{bool,int,nat}-1.2/`,
+`schemas/lock-v2.schema.json`, `schemas/semantic-module-v2.schema.json`, and
+`schemas/semantic-snapshot-v2.schema.json`. The language-1.0 ID additionally
+excludes the files introduced solely for 1.1: `language/bootstrap-1.1.toml`,
+`language/semantics-1.1.toml`, `language/core-1.1/`,
+`language/std/{bool,int,nat}-1.1/`, `schemas/semantic-module.schema.json`,
+and `schemas/semantic-snapshot.schema.json`. Adding a file for a newer
+language therefore never changes an older language's ID.
+
+The full (language-1.2) tree is the §11.5 tree digest of:
 
 - every regular file under `language/`;
 - every regular file under `schemas/`;
@@ -2880,9 +2956,9 @@ The current language-1.1 compiler-semantics ID is the §11.5 tree digest of:
 
 The specification-link gate ensures these version declarations agree with this document. The digest excludes README prose, CI YAML, host binaries, timestamps, and generated build output.
 
-The released binary embeds both closed language IDs. Repository tests
-recompute the complete current input tree and the compatibility-filtered 1.0
-tree independently and compare both.
+The released binary embeds all three closed language IDs. Repository tests
+recompute the complete current input tree and the compatibility-filtered
+trees independently and compare them.
 
 ### 21.3 Source ID
 
@@ -3375,7 +3451,8 @@ impl Engine {
 elaboration, linking, resource-limit, and diagnostic pipeline as `check`. It
 does not invoke either backend, start a child process, or write a project
 artifact. Its owned, read-only DTO is serialized as
-`lexlean/semantic-snapshot/1`; object keys use canonical ASCII order, arrays
+`lexlean/semantic-snapshot/1`, or `lexlean/semantic-snapshot/2` for a
+language-1.2 project (§17.12); object keys use canonical ASCII order, arrays
 use their specified semantic order, and the file spelling has exactly one
 final LF. The snapshot ID is SHA-256 of those exact canonical bytes.
 
@@ -4268,6 +4345,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `SM-20` | `semantic-ir` | Noncanonical, out-of-range, invalid-byte, ill-typed, and unbounded fixed-width values fail before either backend runs. | §17.11 |
 | `SM-21` | `semantic-ir` | Structural recursion admits byte/list values and closed Option and Result inductives while preserving termination and exhaustiveness checks. | §17.11 |
 | `SM-22` | `semantic-ir` | The public owned snapshot DTO and schemas cover every portable type, literal, primitive, and explicit definition axiom policy without backend text. | §17.11, §21 |
+| `SM-23` | `semantic-ir` | Language 1.2 semantic modules use the versioned module and snapshot schemas and accept the typed nonrecursive let term, which language 1.1 rejects before either backend runs. | §17.12 |
 | `DF-01` | `declarations` | A valid type-definition sentence emits one nonrecursive sort-valued Lean def linked to its document entry. | §15.7, §18.6 |
 | `DF-02` | `declarations` | A valid term-definition sentence emits one nonrecursive explicitly typed Lean def. | §15.7, §18.6 |
 | `DF-03` | `declarations` | A valid predicate-definition sentence emits one nonrecursive Prop-valued Lean def. | §15.7, §18.6 |

@@ -609,6 +609,12 @@ suite = "semantic-ir"
 statement = "The public owned snapshot DTO and schemas cover every portable type, literal, primitive, and explicit definition axiom policy without backend text."
 
 [[id]]
+id = "SM-23"
+level = "build"
+suite = "semantic-ir"
+statement = "Language 1.2 semantic modules use the versioned module and snapshot schemas and accept the typed nonrecursive let term, which language 1.1 rejects before either backend runs."
+
+[[id]]
 id = "DF-01"
 level = "build"
 suite = "declarations"

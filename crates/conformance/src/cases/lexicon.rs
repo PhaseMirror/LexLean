@@ -1502,6 +1502,20 @@ math = "(seq (operator-name gsucc) (paren (slot 0)))"
                 .err()
                 .expect("tampered lock language fails check");
             support::expect_code(&error, "LLC0102");
+
+            // 4. None of these failures reached a backend: no build root was
+            // created, and `build` itself refuses the tampered lock.
+            let (exit, _, stderr) = tampered.cli(&["build"]);
+            assert_eq!(exit, 2, "build refuses a cross-version lock: {stderr}");
+            // `.lexlean/.lock` is the §21.8 mutation lock, not backend output.
+            for project in [&p11, &p12, &tampered] {
+                for output in [".lexlean/build", ".lexlean/verified"] {
+                    assert!(
+                        !project.root.join(output).exists(),
+                        "a cross-version failure occurs before any backend writes {output}"
+                    );
+                }
+            }
         }
         other => panic!("no lexicon case is wired for {other}"),
     }

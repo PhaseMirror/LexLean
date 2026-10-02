@@ -61,8 +61,8 @@ fn parse_table(spec: &str) -> Result<Vec<TableRow>, Fail> {
 pub fn validate(root: &Path) -> Result<(), Fail> {
     let spec = std::fs::read_to_string(root.join("SPEC.md"))?;
     let rows = parse_table(&spec)?;
-    if rows.len() != 227 {
-        return Err(format!("RP-07: the §31 table has {} rows, not 227", rows.len()).into());
+    if rows.len() != 228 {
+        return Err(format!("RP-07: the §31 table has {} rows, not 228", rows.len()).into());
     }
     let mut seen: BTreeSet<&str> = BTreeSet::new();
     for row in &rows {

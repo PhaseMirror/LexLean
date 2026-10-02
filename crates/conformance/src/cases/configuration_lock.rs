@@ -1098,15 +1098,41 @@ pub(crate) fn run(id: &str) {
             let (exit, _, stderr) = ex10.cli(&["lock", "--check"]);
             assert_eq!(exit, 0, "1.0 lock --check passes: {stderr}");
 
-            // 2. Language 1.1 lock remains byte-stable
-            let ex11_path = camino::Utf8PathBuf::from("examples/semantic-1.1/lexlean.lock");
-            if ex11_path.exists() {
-                let bytes11 =
-                    std::fs::read_to_string(ex11_path.as_std_path()).expect("read 1.1 lock");
-                let lock11 = lexlean::api::parse_lock_bytes("lexlean.lock", bytes11.as_bytes())
-                    .expect("1.1 lock parses");
-                assert_eq!(lock11.language, "1.1");
-            }
+            // 2. Language 1.1 lock remains byte-stable. The committed example
+            // is required, not probed: a missing file must fail this case
+            // rather than skip its assertions.
+            let ex11 = P::semantic_example();
+            let bytes11 = ex11.read("lexlean.lock");
+            assert!(bytes11.starts_with("spec = \"lexlean/lock/1\"\nlanguage = \"1.1\"\n"));
+            let lock11 = lexlean::api::parse_lock_bytes("lexlean.lock", bytes11.as_bytes())
+                .expect("1.1 lock parses");
+            assert_eq!(lock11.language, "1.1");
+            assert_eq!(
+                lock11.compiler_semantics,
+                lexlean::compiler_semantics_id_for("1.1")
+            );
+            let relock11 = ex11
+                .engine()
+                .lock(LockRequest {
+                    check_only: false,
+                    allow_network: false,
+                })
+                .expect("relock 1.1");
+            assert!(!relock11.written, "relocking 1.1 writes nothing");
+            assert_eq!(
+                ex11.read("lexlean.lock"),
+                bytes11,
+                "1.1 lock bytes are unchanged"
+            );
+            // Neither historical identity moved when language 1.2 was added.
+            assert_ne!(
+                lexlean::compiler_semantics_id_for("1.1"),
+                lexlean::compiler_semantics_id_for("1.2")
+            );
+            assert_ne!(
+                lexlean::compiler_semantics_id_for("1.0"),
+                lexlean::compiler_semantics_id_for("1.1")
+            );
 
             // 3. Language 1.2 project produces lockfile matching 1.2 schema
             let dir = tempfile::tempdir().expect("tempdir");

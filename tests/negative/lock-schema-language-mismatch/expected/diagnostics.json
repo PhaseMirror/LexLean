@@ -1,0 +1,1 @@
+[{"causes":[],"code":"LLC0103","help":[],"labels":[],"message":"lexlean.lock: unsupported lock schema `lexlean/lock/1` for language `1.2`","notes":[],"primary":{"byte_end":0,"byte_start":0,"column_end":1,"column_start":1,"line_end":1,"line_start":1,"path":"lexlean.toml"},"severity":"error","spec":"lexlean/diagnostic/1"}]
