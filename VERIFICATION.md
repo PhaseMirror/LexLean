@@ -300,12 +300,13 @@ check fails
 Planted: the positivity rule in `classify_occurrence` was bypassed (`if false
 && ...`), so a group member inside another document type's arguments was
 admitted. Command: `cargo test -p repo-conformance --test conformance --
-conformance_df_12`. Expected: the mutation that nests `Rose` inside `Tree`
-is no longer rejected for positivity.
+conformance_df_12`. Expected: the mutation that adds an otherwise unused,
+well-formed `Wrap` with a constructor field `Tree (Wrap)` is no longer
+rejected at all; only the positivity rule refused it.
 
 ```text
-thread 'conformance_df_12' panicked at crates/conformance/src/cases/declarations.rs:644:17:
-expected "positivity violation in `Rose.node`", got LLT4001: phase link: constructor `Rose.node` argument has type List { element: Named { ... name: "Rose" ... } }, expected Named { ... name: "Tree" ... }
+thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:328:14:
+check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 230 filtered out
 ```
 
@@ -322,8 +323,8 @@ exact-capture diagnostic (an undeclared use still fails later as an unbound
 local, and an unused declared capture is accepted).
 
 ```text
-thread 'conformance_sm_25' panicked at crates/conformance/src/cases/semantic_ir.rs:1663:17:
-expected "declared {}, used {\"offset\"}", got LLT4001: phase link: unbound local `offset`
+thread 'conformance_sm_25' panicked at crates/conformance/src/cases/semantic_ir.rs:1696:17:
+expected "declared (), used (offset)", got LLT4001: phase link: unbound local `offset`
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 234 filtered out
 ```
 
@@ -339,41 +340,74 @@ call of the wrong arity. Command: `cargo test -p repo-conformance --test
 conformance -- conformance_sm_25 conformance_df_14`.
 
 ```text
-thread 'conformance_df_14' panicked at crates/conformance/src/cases/declarations.rs:826:13:
+thread 'conformance_df_14' panicked at crates/conformance/src/cases/declarations.rs:926:13:
 assertion failed: combinators.contains("mapList (Input) (Output) (transform) (tail)")
-thread 'conformance_sm_25' panicked at crates/conformance/src/cases/semantic_ir.rs:1651:17:
+thread 'conformance_sm_25' panicked at crates/conformance/src/cases/semantic_ir.rs:1684:17:
 missing "HigherOrder.Combinators.mapList (Nat) (Nat) ((fun (value : Nat) => (value + offset))) (values)" in:
 ```
+
+Removed: the type arguments were restored; `conformance_sm_25` and
+`conformance_df_14` pass.
 
 ### closure escape through data can fail
 
 Planted: `holds_function` stopped looking through a document type's field
-types (`false && info.field_types...`), so a record of closures was data
+types (`false && type_info(member, env)...`), so a record of closures was data
 without functions. Command: `cargo test -p repo-conformance --test
 conformance -- conformance_df_15`. The executable `evaluator` that returns a
 `Visitor` of closures is no longer refused for returning a function.
 
 ```text
-thread 'conformance_df_15' panicked at crates/conformance/src/cases/declarations.rs:900:17:
-expected "escaping closure: executable definition `evaluator` returns a function", got LLT4001: phase link: escaping closure in executable definition `evaluator`: a lambda may only be passed directly to an executable function parameter or applied
+thread 'conformance_df_15' panicked at crates/conformance/src/cases/declarations.rs:1040:17:
+expected "escaping closure: executable definition `evaluator` returns a value of type Combinators.Visitor, which holds a function", got LLT4001: phase link: escaping closure in executable definition `evaluator`: a lambda may only be passed directly to an executable function parameter or applied
 ```
+
+Removed: the field types were restored; `conformance_df_15` passes and the
+`escaping-closure-structure` negative fixture fails with `LLT4001`.
 
 ### unused semantic binder lowering can fail
 
 Planted: `bound_name` kept every binder's own name (`if used || true`), so a
 definition parameter, quantifier, `let`, or lambda binder its scope never
 mentions reached Lean unprefixed, where the unused-variable linter warns and
-verification fails with `LLV7006`. Command: `cargo test -p repo-conformance
---test conformance -- conformance_sm_08`.
+verification fails with `LLV7006`; the same holds for a type parameter its
+declaration never mentions. Command: `cargo test -p repo-conformance --test
+conformance -- conformance_sm_08 conformance_df_14`.
 
 ```text
+thread 'conformance_df_14' panicked at crates/conformance/src/cases/declarations.rs:953:17:
+missing "public def keepNat (_Phantom : Type) (value : Nat) : Nat := value\n" in:
 thread 'conformance_sm_08' panicked at crates/conformance/src/cases/semantic_ir.rs:572:17:
 missing "public def constantTrue (_ignored : Nat) : Bool := true" in:
-test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 234 filtered out
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 233 filtered out
 ```
 
 Removed: the prefix was restored; `conformance_sm_08` passes and pinned Lean
 verifies both the language-1.1 and the language-1.2 projects it builds.
+
+### binder hygiene can fail
+
+Planted: the language-1.2 call to `check_binder_hygiene` in
+`SemanticModule::validate` was disabled (`if false && ...`). Commands: `cargo
+test -p repo-conformance --test conformance -- conformance_df_12`, and
+`lexlean check` then `lexlean verify` on a copy of the `binder-capture`
+negative project, whose inductive `Box` has a type parameter `Prod` and a
+product field. Expected: the renamed type parameter is admitted, and Lean,
+not linking, is the first to refuse the capture.
+
+```text
+thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:328:14:
+check fails
+
+checked 1 module (source 0eec48d541180c1a6dbf34539884c1063f8a6637964a1f7667a5b6c0f73a4d15, semantic 1fe3fc4d4fa60d781de6ea42be16516d7b6b860a2918f6ed351b40ad6e1e0d2c)
+error[LLV7002]: Lean rejected `LanguageTwelve.Main` (error): Function expected at
+  Prod
+but this term has type
+  Type
+```
+
+Removed: the check was restored; `conformance_df_12` passes and
+`binder-capture` fails in linking with `LLT4001`, before any backend runs.
 
 ### fmt-check can fail
 

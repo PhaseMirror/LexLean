@@ -2481,12 +2481,36 @@ either backend runs; they do not defer to what Lean would accept.
    `cases` applies to every inductive.
 8. **Lowering.** Each inductive lowers to one `public inductive` with
    positional `(_ : T)` fields; each mutual group lowers to one
-   `mutual ... end` block. The canonical LaTeX of a
-   `lexlean/semantic-module/2` module additionally lists every constructor
-   with its field types, the mutual group label, and every structure or class
-   field; language-1.1 documents keep their bytes.
+   `mutual ... end` block. A constructor's identity is its owner and name,
+   `Owner.ctor`, qualified by its module when imported; constructor names are
+   unique within their owner and lowered in declaration order. The canonical
+   LaTeX of a `lexlean/semantic-module/2` module additionally lists the type
+   parameters of every parameterized inductive, structure, or class, every
+   constructor with its field types, the mutual group label, and every
+   structure or class field; language-1.1 documents keep their bytes.
 9. **Accounting.** Every constructor field type is charged recursively to
-   `max_ir_nodes`.
+   `max_ir_nodes`, and a `lexlean/semantic-module/2` module is also charged
+   one node per type parameter, per constructor, and per mutual group label,
+   so no part of a data declaration is free; language-1.1 modules keep their
+   historical count.
+10. **Binder hygiene.** The backend refers to the module's own declarations,
+    to the built-in names it emits (`And`, `Bool`, `ByteArray`, `Except`,
+    `Iff`, `Int`, `Int8`..`Int64`, `LexLeanCollections`, `LexLeanRuntime`,
+    `List`, `Nat`, `Option`, `Ordering`, `Prod`, `Prop`, `Result`, `String`,
+    `Type`, `UInt8`..`UInt64`, `Unit`, `and_congr`, `congr`, `decide`, `id`,
+    `rfl`), and to every imported declaration through the project's module
+    prefix, all without qualification. In a `lexlean/semantic-module/2`
+    module no binder (a type parameter, a value parameter, or a pattern,
+    `let`, quantifier, lambda, or proof binder) is spelled like a declaration of the
+    module, one of those built-in names, or the first segment of the module
+    prefix, because Lean would resolve the reference to the binder after
+    linking has accepted the module. The language-1.1 contract is frozen
+    and does not carry this rule.
+11. **Source maps.** In a `lexlean/semantic-module/2` module every
+    declaration is its own mapping node in both artifacts, relating its
+    generated Lean and LaTeX to exactly its object in the source; the
+    preamble and closing map to the whole module. Language-1.1 maps keep
+    their module granularity and bytes.
 
 #### Higher-order code (language 1.2)
 
@@ -2498,17 +2522,24 @@ either backend runs; they do not defer to what Lean would accept.
    definition's parameters, result, or body, or in a theorem's statement or
    proof arguments, mentions only declared type parameters; this also holds
    for language-1.1 definitions, whose scope is empty. A language-1.2 type
-   parameter is not spelled like a backend type (`Bool`, `ByteArray`,
-   `Except`, `Int`, `Int8`..`Int64`, `List`, `Nat`, `Option`, `Ordering`,
-   `Prod`, `Prop`, `String`, `Type`, `UInt8`..`UInt64`, `Unit`), a document
-   type in scope, the declaration itself, or any value binder of the same
-   declaration, each of which it would capture in the generated binder. An
+   parameter obeys binder hygiene (rule 10 of the recursive-data rules: no
+   declaration of the module, built-in name, or module prefix root), and is
+   moreover not spelled like any value binder of the same declaration. An
+   imported document type is referred to through the module prefix, so a
+   type parameter of its spelling captures nothing. A type parameter that its declaration
+   mentions nowhere (no parameter, result, body, statement, or proof type)
+   lowers as `(_T : Type)`, so Lean's unused-variable linter stays silent. An
    explicit type argument instantiates a `(T : Type)` binder and so never
    mentions the universe `Type`.
 2. **No polymorphic recursion.** A recursive call passes exactly the
-   definition's own type parameters, in order. Every executable root
-   therefore has finitely many specializations, obtained by substituting its
-   closed type arguments; this is the monomorphization rule.
+   definition's own type parameters, in order (the `polymorphic-recursion`
+   negative fixture). Consequently a closed instantiation of a definition
+   reaches only finitely many instantiations: a recursive call repeats the
+   current one, and every other call is to an earlier definition at type
+   arguments built from the caller's. This is the monomorphization rule.
+   LexLean emits the generic definitions with explicit `(T : Type)` binders
+   and the explicit type arguments of every use; it does not emit
+   specialized copies, and no claim here depends on one.
 3. **Lambdas.** A `lambda` binds at least one typed parameter and lists its
    `captures`: strictly sorted, unique enclosing locals that are exactly the
    free locals of its body. Only the captures and the parameters are visible
@@ -2526,8 +2557,12 @@ either backend runs; they do not defer to what Lean would accept.
    records, for each definition, `alpha_id`: the SHA-256 of the canonical
    JSON of the definition after renaming its type parameters to `T0, T1, ...`
    and its value parameters and every term binder to `_0, _1, ...` in
-   binding order, each binder scoped to its own subterm, with every lambda's
-   renamed captures sorted again. Alpha-equivalent definitions share it; any
+   evaluation order (the parameters, then the body's subterms as they are
+   evaluated: an application's function before its arguments, a
+   conditional's condition, then branch, and else branch, operands left to
+   right), each binder scoped to its own subterm, with every lambda's
+   renamed captures sorted again; the order does not depend on how the
+   definition serializes. Alpha-equivalent definitions share it; any
    other change alters it.
 6. **Production eligibility.** Higher-order values are formal by default. A
    definition marked `"executable":true` is production-eligible only when
@@ -4153,6 +4188,9 @@ Tests MUST establish that LexLean rejects, at minimum:
 - a recursive occurrence with the wrong number of type arguments;
 - a constructor applied to the wrong number of arguments;
 - a forward reference outside a mutual group;
+- an uninhabited cycle through a mutual group;
+- a match on a value of one type with the constructors of another;
+- a binder spelled like a name the generated Lean refers to;
 - a lambda that omits a used capture;
 - a lambda that declares an unused capture;
 - an application with the wrong number of arguments;

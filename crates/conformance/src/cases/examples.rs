@@ -171,7 +171,7 @@ pub(crate) fn run(id: &str) {
         // exactly the one prescribed diagnostic code.
         "EX-07" => {
             let root = support::repo_root();
-            let prescribed: [(&str, &str); 61] = [
+            let prescribed: [(&str, &str); 64] = [
                 ("unknown-word", "LLL1004"),
                 ("unknown-symbol", "LLL1004"),
                 ("unknown-control", "LLL1004"),
@@ -220,6 +220,9 @@ pub(crate) fn run(id: &str) {
                 ("recursive-type-arguments", "LLT4001"),
                 ("recursive-constructor-mismatch", "LLT4001"),
                 ("recursive-type-forward", "LLT4001"),
+                ("recursive-mutual-uninhabited", "LLT4001"),
+                ("recursive-match-foreign-constructor", "LLT4001"),
+                ("binder-capture", "LLT4001"),
                 // §17.12: higher-order code fails closed before any backend.
                 ("lambda-capture-missing", "LLT4001"),
                 ("lambda-capture-extra", "LLT4001"),

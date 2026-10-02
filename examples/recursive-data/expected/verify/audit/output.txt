@@ -14,8 +14,10 @@
 'RecursiveData.Main.swap' does not depend on any axioms
 'RecursiveData.Main.swap_twice_first' does not depend on any axioms
 'RecursiveData.Main.treeSize' does not depend on any axioms
+'RecursiveData.Types.Branches' does not depend on any axioms
 'RecursiveData.Types.Expr' does not depend on any axioms
 'RecursiveData.Types.Located' does not depend on any axioms
+'RecursiveData.Types.Node' does not depend on any axioms
 'RecursiveData.Types.Outcome' does not depend on any axioms
 'RecursiveData.Types.Rose' does not depend on any axioms
 'RecursiveData.Types.Stmt' does not depend on any axioms

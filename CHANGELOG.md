@@ -38,6 +38,22 @@ versions, and the entries below say what each tag does and does not claim.
   A standalone recursive definition decreases only over a self-recursive
   inductive, and no 1.2 declaration may take the name of a built-in
   constructor owner (`Bool`, `List`, `Nat`, `Option`, `Prod`, `Result`).
+- Language-1.2 binder hygiene (§17.12 rule 10). No binder may be spelled like:
+  - a declaration of its module;
+  - a built-in name the backend emits;
+  - the root of the module prefix.
+
+  The rule covers type parameters, value parameters, and pattern, `let`,
+  quantifier, and proof binders. Such a binder would capture the
+  unqualified reference in generated Lean after linking had accepted it;
+  linking now refuses it. Also new in language 1.2:
+  - the canonical LaTeX states the type parameters of parameterized data;
+  - every declaration is its own source-map node in both artifacts;
+  - type parameters, constructors, and mutual labels are charged to
+    `max_ir_nodes`.
+
+  Link-time type diagnostics now spell types as the document does, not as
+  internal structures.
   Eight new negative fixtures cover positivity, non-uniformity, an
   uninhabited cycle, a recursive structure, a non-contiguous group, bad type
   arguments, a constructor mismatch, and a forward reference.
@@ -57,6 +73,15 @@ versions, and the entries below say what each tag does and does not claim.
   `Option`, and passed in or out of a structure), polymorphic ambiguity and
   recursion, recursion under a lambda, formal callees, a captured type name,
   and a universe type argument.
+  Changes after review:
+  - Binder hygiene (§17.12 rule 10) covers generic type parameters and
+    lambda parameters, so neither the declaration's own name, a sibling
+    declaration, nor the module prefix can be captured.
+  - A type parameter its declaration never mentions lowers as `(_T : Type)`.
+  - The alpha identity numbers binders in evaluation order rather than in
+    serialized member order.
+  - The 1.2 LaTeX states every parameter with its type and every closure
+    with what it binds and captures.
 - Language 1.1 definitions now reject a type parameter written inside their
   body: the scope is empty, so such a definition could never elaborate.
 - A semantic-module definition parameter, quantifier, `let`, or lambda binder

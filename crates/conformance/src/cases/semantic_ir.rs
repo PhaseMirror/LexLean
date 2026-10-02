@@ -1636,6 +1636,39 @@ pub(crate) fn run(id: &str) {
                     .contains("`product type` is a language-1.2 construct"),
                 "{error}"
             );
+            // Each 1.2 term is refused on its own, with no product type in
+            // sight to be reported first.
+            for (term, construct) in [
+                (
+                    r#"{"kind":"pair","left":{"kind":"bool","value":true},"right":{"kind":"unit"}}"#,
+                    "pair",
+                ),
+                (
+                    r#"{"kind":"first","value":{"kind":"bool","value":true}}"#,
+                    "first",
+                ),
+                (
+                    r#"{"kind":"second","value":{"kind":"bool","value":true}}"#,
+                    "second",
+                ),
+            ] {
+                let eleven = P::semantic_example();
+                eleven.write(
+                    "src/Support.lex.tex",
+                    &support_source.replacen(
+                        r#""body":{"kind":"bool","value":true},"kind":"definition","name":"remoteEnabled""#,
+                        &format!(r#""body":{term},"kind":"definition","name":"remoteEnabled""#),
+                        1,
+                    ),
+                );
+                let error = eleven.check_fails_with("LLT4001");
+                assert!(
+                    error
+                        .to_string()
+                        .contains(&format!("`{construct}` is a language-1.2 construct")),
+                    "{error}"
+                );
+            }
         }
         "SM-25" => {
             let project = P::copy_example("higher-order");
@@ -1671,7 +1704,7 @@ pub(crate) fn run(id: &str) {
                 "src/Main.lex.tex",
                 r#""captures":["offset"]"#,
                 r#""captures":[]"#,
-                "declared {}, used {\"offset\"}",
+                "declared (), used (offset)",
             );
             mutate(
                 "src/Combinators.lex.tex",
@@ -1799,8 +1832,6 @@ pub(crate) fn run(id: &str) {
             );
             changed.check_ok();
             assert_ne!(alpha(&changed, "addAll"), alpha(&original, "addAll"));
-            // Distinct generic definitions differ; language 1.1 has none.
-            assert_ne!(alpha(&original, "mapList"), alpha(&original, "foldList"));
             // Every binder kind renames positionally: type parameters, value
             // parameters in a different order (so the sorted captures
             // renumber out of source order), `let`, and match binders.

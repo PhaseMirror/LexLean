@@ -23,6 +23,15 @@ public inductive Stmt where
   | sequence (_ : Stmt) (_ : Stmt)
 end
 
+mutual
+public inductive Node (Item : Type) where
+  | node (_ : Item) (_ : Branches (Item))
+
+public inductive Branches (Item : Type) where
+  | none
+  | more (_ : Node (Item)) (_ : Branches (Item))
+end
+
 public inductive Outcome (Problem : Type) (Item : Type) where
   | failure (_ : Problem)
   | success (_ : Item)
