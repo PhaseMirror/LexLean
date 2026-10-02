@@ -621,6 +621,18 @@ suite = "semantic-ir"
 statement = "Language 1.2 product types, pairs, projections, and product matches are typed, snapshotted under the v2 schemas, and give identical semantic IDs from distinct roots."
 
 [[id]]
+id = "SM-25"
+level = "build"
+suite = "semantic-ir"
+statement = "Language 1.2 function types, lambdas with exact explicit captures, full applications, and definition references are typed, lowered to fixed Lean, and verified."
+
+[[id]]
+id = "SM-26"
+level = "build"
+suite = "semantic-ir"
+statement = "Language 1.2 snapshots carry a deterministic alpha identity per definition that alpha-equivalent definitions share and any other change alters."
+
+[[id]]
 id = "DF-01"
 level = "build"
 suite = "declarations"
@@ -697,6 +709,18 @@ id = "DF-13"
 level = "build"
 suite = "declarations"
 statement = "Language 1.2 structural recursion and induction over a recursive inductive use exactly its direct recursive fields, across modules, with one induction hypothesis per recursive field."
+
+[[id]]
+id = "DF-14"
+level = "build"
+suite = "declarations"
+statement = "Language 1.2 generic definitions and theorems take explicit type parameters, every use supplies exactly their type arguments, recursion is never polymorphic, and every written type mentions only declared parameters."
+
+[[id]]
+id = "DF-15"
+level = "build"
+suite = "declarations"
+statement = "An executable language-1.2 definition forms only non-escaping closures and calls only executable definitions; every violation fails before either backend runs."
 
 [[id]]
 id = "PF-01"

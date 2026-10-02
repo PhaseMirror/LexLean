@@ -124,6 +124,17 @@ fn term_uses(term: &SemanticTerm, local: &str) -> bool {
         | SemanticTerm::First { value }
         | SemanticTerm::Second { value } => term_uses(value, local),
         SemanticTerm::Pair { left, right } => term_uses(left, local) || term_uses(right, local),
+        SemanticTerm::Lambda {
+            parameters, body, ..
+        } => !parameters.iter().any(|parameter| parameter.name == local) && term_uses(body, local),
+        SemanticTerm::Apply {
+            function,
+            arguments,
+        } => {
+            term_uses(function, local)
+                || arguments.iter().any(|argument| term_uses(argument, local))
+        }
+        SemanticTerm::FunctionRef { .. } => false,
         SemanticTerm::Record { fields, .. } => fields
             .iter()
             .any(|assignment| term_uses(&assignment.value, local)),
@@ -255,6 +266,14 @@ impl Render<'_> {
             SemanticType::Product { left, right } => {
                 format!("(Prod ({}) ({}))", self.ty(left), self.ty(right))
             }
+            SemanticType::Function { parameters, result } => {
+                let mut out = String::from("(");
+                for parameter in parameters {
+                    out.push_str(&format!("({}) -> ", self.ty(parameter)));
+                }
+                out.push_str(&format!("({}))", self.ty(result)));
+                out
+            }
         }
     }
 
@@ -274,6 +293,7 @@ impl Render<'_> {
     fn recursive_equations(
         &self,
         name: &str,
+        type_parameters: &[String],
         parameters: &[SemanticParameter],
         result: &SemanticType,
         recursive_argument: &str,
@@ -289,7 +309,11 @@ impl Render<'_> {
         if !matches!(scrutinee.as_ref(), SemanticTerm::Var { name } if name == recursive_argument) {
             return None;
         }
-        let mut text = format!("@[expose] public def {} :", identifier(name));
+        let mut text = format!(
+            "@[expose] public def {}{} :",
+            identifier(name),
+            self.type_parameters(type_parameters)
+        );
         for parameter in parameters {
             text.push_str(&format!(
                 " ({} : {}) ->",
@@ -519,9 +543,15 @@ impl Render<'_> {
             }
             SemanticTerm::Call {
                 function,
+                type_arguments,
                 arguments,
             } => {
                 let mut out = self.member(function);
+                for argument in type_arguments {
+                    out.push_str(" (");
+                    out.push_str(&self.ty(argument));
+                    out.push(')');
+                }
                 for argument in arguments {
                     out.push_str(" (");
                     out.push_str(&self.term(argument));
@@ -595,6 +625,35 @@ impl Render<'_> {
             }
             SemanticTerm::First { value } => format!("({}).1", self.term(value)),
             SemanticTerm::Second { value } => format!("({}).2", self.term(value)),
+            SemanticTerm::Lambda {
+                parameters, body, ..
+            } => format!(
+                "(fun{} => {})",
+                self.parameters(parameters),
+                self.term(body)
+            ),
+            SemanticTerm::Apply {
+                function,
+                arguments,
+            } => {
+                let mut out = format!("({}", self.term(function));
+                for argument in arguments {
+                    out.push_str(&format!(" ({})", self.term(argument)));
+                }
+                out.push(')');
+                out
+            }
+            SemanticTerm::FunctionRef {
+                function,
+                type_arguments,
+            } => {
+                let mut out = format!("({}", self.member(function));
+                for argument in type_arguments {
+                    out.push_str(&format!(" ({})", self.ty(argument)));
+                }
+                out.push(')');
+                out
+            }
         }
     }
 
@@ -731,10 +790,19 @@ impl Render<'_> {
                     )
                 }
             },
-            SemanticProof::Apply { theorem, arguments } => {
-                let arguments = arguments
+            SemanticProof::Apply {
+                theorem,
+                type_arguments,
+                arguments,
+            } => {
+                let arguments = type_arguments
                     .iter()
-                    .map(|argument| format!(" ({})", self.term(argument)))
+                    .map(|argument| format!(" ({})", self.ty(argument)))
+                    .chain(
+                        arguments
+                            .iter()
+                            .map(|argument| format!(" ({})", self.term(argument))),
+                    )
                     .collect::<String>();
                 format!("{pad}exact {}{arguments}\n", self.member(theorem))
             }
@@ -1210,6 +1278,7 @@ pub fn render_lean(
             }
             SemanticDeclaration::Definition {
                 name,
+                type_parameters,
                 parameters,
                 result,
                 body,
@@ -1218,7 +1287,14 @@ pub fn render_lean(
             } => {
                 if let Some(recursive_argument) = recursive_argument {
                     let equations = render
-                        .recursive_equations(name, parameters, result, recursive_argument, body)
+                        .recursive_equations(
+                            name,
+                            type_parameters,
+                            parameters,
+                            result,
+                            recursive_argument,
+                            body,
+                        )
                         .ok_or_else(|| {
                             Diagnostic::new(
                                 code!("LLI9001"),
@@ -1229,7 +1305,8 @@ pub fn render_lean(
                 } else {
                     let name = identifier(name);
                     text.push_str(&format!(
-                        "@[expose] public def {name}{} : {} := {}\n",
+                        "@[expose] public def {name}{}{} : {} := {}\n",
+                        render.type_parameters(type_parameters),
                         render.parameters(parameters),
                         render.ty(result),
                         render.term(body)
@@ -1238,6 +1315,7 @@ pub fn render_lean(
             }
             SemanticDeclaration::Theorem {
                 name,
+                type_parameters,
                 parameters,
                 statement,
                 proof,
@@ -1245,7 +1323,8 @@ pub fn render_lean(
             } => {
                 let name = identifier(name);
                 text.push_str(&format!(
-                    "public theorem {name}{} : {} := by\n{}",
+                    "public theorem {name}{}{} : {} := by\n{}",
+                    render.type_parameters(type_parameters),
                     render.parameters(parameters),
                     render.term(statement),
                     render.proof(proof, 1)
@@ -1307,9 +1386,11 @@ pub fn render_latex(
         ));
         match declaration {
             SemanticDeclaration::Definition {
+                type_parameters,
                 result,
                 body,
                 axioms,
+                executable,
                 ..
             } => {
                 let policy = if axioms.is_empty() {
@@ -1317,6 +1398,15 @@ pub fn render_latex(
                 } else {
                     format!("exact [{}]", axioms.join(", "))
                 };
+                if version_2 && !type_parameters.is_empty() {
+                    text.push_str(&format!(
+                        "\\noindent Type parameters: \\texttt{{{}}}.\\par\n",
+                        tex_escape(&type_parameters.join(", "))
+                    ));
+                }
+                if version_2 && *executable {
+                    text.push_str("\\noindent Execution: production-eligible, non-escaping closures only.\\par\n");
+                }
                 text.push_str(&format!(
                     "\\noindent Type: \\texttt{{{}}}.\\par\n\\noindent Definition: \\texttt{{{}}}.\\par\n\\noindent Axiom policy: \\texttt{{{}}}.\\par\n",
                     tex_escape(&render.ty(result)),

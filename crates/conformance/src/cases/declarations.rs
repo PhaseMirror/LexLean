@@ -1,4 +1,4 @@
-//! The `declarations` suite: DF-01..DF-13.
+//! The `declarations` suite: DF-01..DF-15.
 
 use lexlean::ir::declaration::{DeclBody, DeclKind};
 
@@ -809,6 +809,134 @@ pub(crate) fn run(id: &str) {
                 r#"{"kind":"theorem","name":"rose_label","parameters":[],"proof":{"kind":"reflexivity"}"#,
                 r#"{"kind":"theorem","name":"rose_label","parameters":[{"name":"rose","type":{"arguments":[{"kind":"nat"}],"kind":"named","member":{"module":"Types","name":"Rose"}}}],"proof":{"branches":[{"binders":["label","children"],"constructor":"node","proof":{"kind":"reflexivity"}}],"kind":"induction","scrutinee":"rose"}"#,
                 "requires a self-recursive inductive without nested or mutual occurrences",
+            );
+        }
+        // §17.12: generic definitions and theorems are explicitly
+        // instantiated, never polymorphically recursive, and closed over
+        // their declared type parameters.
+        "DF-14" => {
+            let project = P::copy_example("higher-order");
+            project.check_ok();
+            let rendered = support::rendered(&project);
+            let combinators = support::lean_text(&rendered, "Combinators");
+            assert!(
+                combinators.contains("public def mapList (Input : Type) (Output : Type) : (transform : ((Input) -> (Output))) -> (values : List (Input)) -> List (Output)\n"),
+                "{combinators}"
+            );
+            assert!(combinators.contains("mapList (Input) (Output) (transform) (tail)"));
+            let main = support::lean_text(&rendered, "Main");
+            assert!(main.contains("exact map_identity (Nat) ("), "{main}");
+            let _ = support::verify_ok_backed("DF-14", &project);
+
+            let mutate = |file: &str, from: &str, to: &str, message: &str| {
+                let copy = P::copy_example("higher-order");
+                let source = copy.read(file);
+                assert!(source.contains(from), "fixture lacks {from:?}");
+                copy.write(file, &source.replacen(from, to, 1));
+                let error = copy.check_fails_with("LLT4001");
+                assert!(
+                    error.to_string().contains(message),
+                    "expected {message:?}, got {error}"
+                );
+                copy.assert_no_backend_output();
+            };
+            mutate(
+                "src/Main.lex.tex",
+                r#""function":{"module":"Combinators","name":"mapList"},"kind":"call","type_arguments":[{"kind":"nat"},{"kind":"nat"}]"#,
+                r#""function":{"module":"Combinators","name":"mapList"},"kind":"call""#,
+                "function `Combinators::mapList` expects 2 explicit type argument(s), received 0",
+            );
+            mutate(
+                "src/Combinators.lex.tex",
+                r#""function":{"name":"mapList"},"kind":"call","type_arguments":[{"kind":"parameter","name":"Input"},{"kind":"parameter","name":"Output"}]"#,
+                r#""function":{"name":"mapList"},"kind":"call","type_arguments":[{"kind":"parameter","name":"Output"},{"kind":"parameter","name":"Input"}]"#,
+                "polymorphic recursion is not permitted",
+            );
+            mutate(
+                "src/Combinators.lex.tex",
+                r#"{"element":{"kind":"parameter","name":"Output"},"kind":"nil"}"#,
+                r#"{"element":{"kind":"parameter","name":"Other"},"kind":"nil"}"#,
+                "unbound type parameter `Other`",
+            );
+            mutate(
+                "src/Main.lex.tex",
+                r#""theorem":{"name":"map_identity"},"type_arguments":[{"kind":"nat"}]"#,
+                r#""theorem":{"name":"map_identity"}"#,
+                "theorem `map_identity` expects 1 explicit type argument(s), received 0",
+            );
+
+            // Language 1.1 has no generic definitions, and a type it writes
+            // inside a definition body is closed over the empty scope.
+            let eleven = P::semantic_example();
+            let support_source = eleven.read("src/Support.lex.tex");
+            let generic = support_source.replacen(
+                r#""name":"remoteEnabled","parameters":[],"result":{"kind":"bool"}"#,
+                r#""name":"remoteEnabled","parameters":[],"result":{"kind":"bool"},"type_parameters":["Item"]"#,
+                1,
+            );
+            assert_ne!(generic, support_source, "the 1.1 fixture is mutated");
+            eleven.write("src/Support.lex.tex", &generic);
+            let error = eleven.check_fails_with("LLT4001");
+            assert!(
+                error
+                    .to_string()
+                    .contains("`definition type parameters` is a language-1.2 construct"),
+                "{error}"
+            );
+        }
+        // §17.12: an executable definition forms only non-escaping closures
+        // and calls only executable definitions.
+        "DF-15" => {
+            let project = P::copy_example("higher-order");
+            project.check_ok();
+            let tex = support::tex_text(&support::rendered(&project), "Main");
+            assert!(tex.contains("Execution: production-eligible, non-escaping closures only."));
+            let mutate = |file: &str, from: &str, to: &str, message: &str| {
+                let copy = P::copy_example("higher-order");
+                let source = copy.read(file);
+                assert!(source.contains(from), "fixture lacks {from:?}");
+                copy.write(file, &source.replacen(from, to, 1));
+                let error = copy.check_fails_with("LLT4001");
+                assert!(
+                    error.to_string().contains(message),
+                    "expected {message:?}, got {error}"
+                );
+                copy.assert_no_backend_output();
+            };
+            // Returning a closure.
+            mutate(
+                "src/Combinators.lex.tex",
+                r#""kind":"definition","name":"compose""#,
+                r#""executable":true,"kind":"definition","name":"compose""#,
+                "escaping closure: executable definition `compose` returns a function",
+            );
+            // Calling formal-only code.
+            mutate(
+                "src/Main.lex.tex",
+                r#""kind":"definition","name":"evaluator""#,
+                r#""executable":true,"kind":"definition","name":"evaluator""#,
+                "escaping closure in executable definition `evaluator`",
+            );
+            // Applying a function reached through data.
+            mutate(
+                "src/Combinators.lex.tex",
+                r#""kind":"definition","name":"visit""#,
+                r#""executable":true,"kind":"definition","name":"visit""#,
+                "applies a function value that is not a parameter, lambda, or function reference",
+            );
+            // A closure stored in a pair escapes even when never returned.
+            mutate(
+                "src/Main.lex.tex",
+                r#""body":{"arguments":[{"body":{"kind":"add","left":{"kind":"var","name":"sum"},"right":{"kind":"var","name":"value"}},"captures":[],"kind":"lambda","parameters":[{"name":"sum","type":{"kind":"nat"}},{"name":"value","type":{"kind":"nat"}}]},{"kind":"nat","value":"0"},{"kind":"var","name":"values"}]"#,
+                r#""body":{"arguments":[{"body":{"kind":"add","left":{"kind":"var","name":"sum"},"right":{"kind":"var","name":"value"}},"captures":[],"kind":"lambda","parameters":[{"name":"sum","type":{"kind":"nat"}},{"name":"value","type":{"kind":"nat"}}]},{"kind":"first","value":{"kind":"pair","left":{"kind":"nat","value":"0"},"right":{"body":{"kind":"var","name":"probe"},"captures":[],"kind":"lambda","parameters":[{"name":"probe","type":{"kind":"nat"}}]}}},{"kind":"var","name":"values"}]"#,
+                "escaping closure in executable definition `total`",
+            );
+            // A non-executable callee.
+            mutate(
+                "src/Combinators.lex.tex",
+                r#""executable":true,"kind":"definition","name":"mapList""#,
+                r#""kind":"definition","name":"mapList""#,
+                "executable definition `addAll` calls non-executable `Combinators::mapList`",
             );
         }
         other => panic!("no declarations case is wired for {other}"),

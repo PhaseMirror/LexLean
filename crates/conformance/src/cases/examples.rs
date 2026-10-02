@@ -171,7 +171,7 @@ pub(crate) fn run(id: &str) {
         // exactly the one prescribed diagnostic code.
         "EX-07" => {
             let root = support::repo_root();
-            let prescribed: [(&str, &str); 46] = [
+            let prescribed: [(&str, &str); 56] = [
                 ("unknown-word", "LLL1004"),
                 ("unknown-symbol", "LLL1004"),
                 ("unknown-control", "LLL1004"),
@@ -220,6 +220,17 @@ pub(crate) fn run(id: &str) {
                 ("recursive-type-arguments", "LLT4001"),
                 ("recursive-constructor-mismatch", "LLT4001"),
                 ("recursive-type-forward", "LLT4001"),
+                // §17.12: higher-order code fails closed before any backend.
+                ("lambda-capture-missing", "LLT4001"),
+                ("lambda-capture-extra", "LLT4001"),
+                ("application-arity", "LLT4001"),
+                ("application-non-function", "LLT4001"),
+                ("lambda-type-mismatch", "LLT4001"),
+                ("escaping-closure", "LLT4001"),
+                ("polymorphic-ambiguity", "LLT4001"),
+                ("polymorphic-recursion", "LLT4001"),
+                ("recursion-under-lambda", "LLT4001"),
+                ("executable-calls-formal", "LLT4001"),
             ];
             let negative_root = root.join("tests/negative");
             let mut classes: Vec<String> = std::fs::read_dir(negative_root.as_std_path())

@@ -92,3 +92,17 @@ Feature: declarations
     When it is rendered and verified, and copies change a recursive call, a binder list, or an induction scrutinee
     Then the generated Lean uses pattern equations over the direct recursive fields and binds one hypothesis per field
     And a call on the matched value or a non-recursive field, a missing hypothesis, and induction over a nested inductive fail with LLT4001 before any build output
+
+  @DF-14 @build
+  Scenario: Language 1.2 generic definitions and theorems take explicit type parameters, every use supplies exactly their type arguments, recursion is never polymorphic, and every written type mentions only declared parameters.
+    Given the committed higher-order example with generic map, fold, composition, and a generic theorem applied at Nat
+    When it is rendered and verified, and copies drop a call's type arguments, swap a recursive call's, write an undeclared parameter, or omit a theorem's
+    Then the generated Lean binds explicit type parameters and passes explicit type arguments and verifies with real Lean
+    And each mutation fails with LLT4001 before any build output and language 1.1 rejects definition type parameters
+
+  @DF-15 @build
+  Scenario: An executable language-1.2 definition forms only non-escaping closures and calls only executable definitions; every violation fails before either backend runs.
+    Given the committed higher-order example whose executable definitions pass lambdas and function references directly to executable functions
+    When copies mark a closure-returning, closure-storing, or data-applying definition executable, or unmark an executable callee
+    Then the canonical LaTeX records production eligibility of the accepted definitions
+    And every violation fails with LLT4001 naming the escaping closure or the non-executable callee before any build output

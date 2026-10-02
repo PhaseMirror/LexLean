@@ -104,6 +104,8 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `DF-11` | `build` | Language 1.1 checks and lowers generic structures, classes, instances, inductives, definitions, structural recursion, matches, Boolean validators, and closed proofs from semantic source data. |
 | `DF-12` | `build` | Language 1.2 inductives admit uniform, strictly positive self, nested, and mutual recursion with a buildable base case, all checked before either backend runs. |
 | `DF-13` | `build` | Language 1.2 structural recursion and induction over a recursive inductive use exactly its direct recursive fields, across modules, with one induction hypothesis per recursive field. |
+| `DF-14` | `build` | Language 1.2 generic definitions and theorems take explicit type parameters, every use supplies exactly their type arguments, recursion is never polymorphic, and every written type mentions only declared parameters. |
+| `DF-15` | `build` | An executable language-1.2 definition forms only non-escaping closures and calls only executable definitions; every violation fails before either backend runs. |
 
 ## examples
 
@@ -300,6 +302,8 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `SM-22` | `build` | The public owned snapshot DTO and schemas cover every portable type, literal, primitive, and explicit definition axiom policy without backend text. |
 | `SM-23` | `build` | Language 1.2 semantic modules use the versioned module and snapshot schemas and accept the typed nonrecursive let term, which language 1.1 rejects before either backend runs. |
 | `SM-24` | `build` | Language 1.2 product types, pairs, projections, and product matches are typed, snapshotted under the v2 schemas, and give identical semantic IDs from distinct roots. |
+| `SM-25` | `build` | Language 1.2 function types, lambdas with exact explicit captures, full applications, and definition references are typed, lowered to fixed Lean, and verified. |
+| `SM-26` | `build` | Language 1.2 snapshots carry a deterministic alpha identity per definition that alpha-equivalent definitions share and any other change alters. |
 
 ## verification
 

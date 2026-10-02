@@ -41,9 +41,20 @@ versions, and the entries below say what each tag does and does not claim.
   Eight new negative fixtures cover positivity, non-uniformity, an
   uninhabited cycle, a recursive structure, a non-contiguous group, bad type
   arguments, a constructor mismatch, and a forward reference.
+- Language-1.2 higher-order code (§17.12): function types, lambdas with exact
+  explicit captures, full applications, definition references, and generic
+  definitions and theorems with explicit type arguments and no polymorphic
+  recursion. `executable` definitions are production-eligible only with
+  non-escaping closures and executable callees. Snapshots record a
+  per-definition alpha identity (`DF-14`, `DF-15`, `SM-25`, `SM-26`,
+  `examples/higher-order`).
+- Language 1.1 definitions now reject a type parameter written inside their
+  body: the scope is empty, so such a definition could never elaborate.
 - The public snapshot DTO `SnapshotTerm` gains the `Let`, `Pair`, `First`,
-  and `Second` variants, `SnapshotType` gains `Product`, and the inductive
-  declaration gains an optional `mutual` label; downstream exhaustive
+  `Second`, `Lambda`, `Apply`, and `FunctionRef` variants and call type
+  arguments, `SnapshotType` gains `Product` and `Function`, declarations gain
+  optional `mutual`, `type_parameters`, and `executable` fields, and
+  `SnapshotProof::Apply` gains type arguments; downstream exhaustive
   matches must add them.
 - New conformance IDs `CF-17`, `CF-18`, `GL-17`, `GL-18`, and `SM-23`; new
   example `examples/language-1.2`, verified with real Lean; ten new negative

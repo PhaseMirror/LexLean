@@ -171,3 +171,17 @@ Feature: semantic-ir
     Then both snapshots and semantic IDs are identical and validate against the v2 snapshot and module schemas
     And the generated Lean uses Prod, pair syntax, projections, and a Prod.mk match
     And each mistyped form and the language-1.1 product fail with LLT4001
+
+  @SM-25 @build
+  Scenario: Language 1.2 function types, lambdas with exact explicit captures, full applications, and definition references are typed, lowered to fixed Lean, and verified.
+    Given the committed higher-order example across two modules
+    When it is rendered and verified, and copies change a capture list, a lambda parameter, an application, or a function reference
+    Then the generated Lean uses fun, arrow types, and parenthesized applications and verifies with real Lean
+    And a missing, foreign, or unsorted capture, a shadowing parameter, a wrong arity, a non-function application, a constant reference, and a language-1.1 lambda fail with LLT4001
+
+  @SM-26 @build
+  Scenario: Language 1.2 snapshots carry a deterministic alpha identity per definition that alpha-equivalent definitions share and any other change alters.
+    Given two roots of the committed higher-order example and copies that rename binders or swap operands
+    When each is snapshotted
+    Then both roots give identical snapshots that validate against the v2 schema with one alpha identity per definition
+    And renaming binders keeps the alpha identity while changing the semantic identity, swapping operands changes it, and language 1.1 snapshots carry none

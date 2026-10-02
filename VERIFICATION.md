@@ -12,7 +12,7 @@ How this repository's claims are checked, which recipe enforces which rule, and 
 | `model` | `cargo xtask validate-model` | R1 (model is the single source; every model file parsed with unknown-field rejection), R2 (honesty levels and vocabulary, via the meta-gate), R3 (register/scenario/test bijection, Gherkin subset), R4 (`audit-deferral`), R5 (`audit-errors`), R6 (`audit-shipped`, including the shipped crate's normative links), R8 (`audit-generated`, `audit-language-closure`), RP-09 (`audit-no-unsafe`), §27.5 (CONFORMANCE.md and ERRORS.md equal regeneration) |
 | `spec-links` | `cargo xtask validate-spec-links` | RP-07, §27.6: the §31 table and `model/ids.toml` are bijective and byte-consistent |
 | `lint` | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | no tolerated warnings |
-| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 231 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
+| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 235 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
 | `features` | `cargo check --workspace --all-features --all-targets` | every target compiles |
 | `bdd` | `cargo test -p repo-conformance` | R3, §27.7, §27.8: register ↔ scenario ↔ test bijection, the meta-gate, and its own falsifiability test |
 | `examples` | `cargo xtask verify-examples` | §28.6, EX-01: every example directory formats, locks, checks, builds, and verifies with real Lean 4.32.1; when an example commits `expected/verify/`, its normalized verification records must equal it (§29.5) |
@@ -311,6 +311,24 @@ test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 230 filtered out
 
 Removed: the rule was restored; `conformance_df_12` passes and the
 `recursive-type-positivity` negative fixture fails with `LLT4001`.
+
+### lambda capture closure can fail
+
+Planted: the exact-capture rule for `lambda` was bypassed (`if false && used
+!= declared`), so a lambda could declare captures its body does not use.
+Command: `cargo test -p repo-conformance --test conformance --
+conformance_sm_25`. Expected: the capture mutation no longer fails with the
+exact-capture diagnostic (an undeclared use still fails later as an unbound
+local, and an unused declared capture is accepted).
+
+```text
+thread 'conformance_sm_25' panicked at crates/conformance/src/cases/semantic_ir.rs:1613:17:
+expected "declared {}, used {\"offset\"}", got LLT4001: phase link: unbound local `offset`
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 234 filtered out
+```
+
+Removed: the rule was restored; `conformance_sm_25` passes and the
+`lambda-capture-extra` negative fixture fails with `LLT4001`.
 
 ### fmt-check can fail
 

@@ -88,6 +88,9 @@ pub struct SnapshotDeclaration {
     /// references, terms, proofs, recursion, fields, constructors and
     /// instance metadata as applicable to the declaration kind.
     linked_ir: serde_json::Value,
+    /// Language 1.2: the alpha identity of a semantic definition (§17.12).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    alpha_id: Option<Sha256Digest>,
 }
 
 /// Closed declaration axiom policy.
@@ -167,6 +170,7 @@ impl SemanticSnapshot {
                     },
                     origin,
                     linked_ir: json_value(&declaration.to_json(&mut Renumber::default())),
+                    alpha_id: None,
                 });
             }
             if let Some(core) = &module.document.core {
@@ -187,6 +191,7 @@ impl SemanticSnapshot {
                         origin: None,
                         linked_ir: serde_json::to_value(declaration)
                             .expect("core declarations serialize"),
+                        alpha_id: None,
                     });
                 }
             }
@@ -203,6 +208,9 @@ impl SemanticSnapshot {
                         origin: None,
                         linked_ir: serde_json::to_value(declaration)
                             .expect("semantic declaration serializes"),
+                        alpha_id: (language == crate::LANGUAGE_1_2)
+                            .then(|| declaration.alpha_identity())
+                            .flatten(),
                     });
                 }
             }
@@ -239,6 +247,21 @@ impl SemanticSnapshot {
             modules,
             lexicon_closure: json_value(&closure),
         }
+    }
+
+    /// The modules in canonical name order.
+    #[must_use]
+    pub fn alpha_ids(&self) -> Vec<(String, String, Sha256Digest)> {
+        self.modules
+            .iter()
+            .flat_map(|module| {
+                module.declarations.iter().filter_map(|declaration| {
+                    declaration
+                        .alpha_id
+                        .map(|alpha| (module.name.clone(), declaration.logical_id.clone(), alpha))
+                })
+            })
+            .collect()
     }
 
     /// Schema identifier.
