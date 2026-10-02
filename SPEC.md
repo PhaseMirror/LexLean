@@ -4730,7 +4730,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `EX-07` | `examples` | The negative fixture suite covers every required rejection class and prescribed diagnostic family. | §28.5 |
 | `EX-08` | `examples` | Every example directory is discovered automatically and must satisfy the full example gate. | §28.6 |
 
-**Total required capability IDs:** 235.
+**Total required capability IDs:** 239.
 
 No row may be downgraded to `some-true` or `open`. Upstream Lean facts are ledger/authority rows, not substitutions for these build behaviors.
 
