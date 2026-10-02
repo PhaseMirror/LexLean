@@ -232,7 +232,7 @@ Expected: the committed language-1.2 example no longer checks, and the
 negative fixture of a `let` under language 1.1 is accepted.
 
 ```text
-thread 'conformance_sm_23' panicked at crates/conformance/src/support.rs:307:14:
+thread 'conformance_sm_23' panicked at crates/conformance/src/support.rs:318:14:
 check succeeds: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLT4001"), message: "phase link: `let` is a language-1.2 construct; language 1.1 rejects it", ... }] }
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 227 filtered out
 gate failed: tests/negative/language-1.2-construct-under-1.1: step 1 `check ` exited 0, case.toml expects 1
@@ -291,7 +291,7 @@ structural eliminator. Command: `cargo test -p repo-conformance --test
 conformance -- conformance_df_13`.
 
 ```text
-thread 'conformance_df_13' panicked at crates/conformance/src/support.rs:317:14:
+thread 'conformance_df_13' panicked at crates/conformance/src/support.rs:328:14:
 check fails
 ```
 
@@ -322,7 +322,7 @@ exact-capture diagnostic (an undeclared use still fails later as an unbound
 local, and an unused declared capture is accepted).
 
 ```text
-thread 'conformance_sm_25' panicked at crates/conformance/src/cases/semantic_ir.rs:1611:17:
+thread 'conformance_sm_25' panicked at crates/conformance/src/cases/semantic_ir.rs:1663:17:
 expected "declared {}, used {\"offset\"}", got LLT4001: phase link: unbound local `offset`
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 234 filtered out
 ```
@@ -341,7 +341,7 @@ conformance -- conformance_sm_25 conformance_df_14`.
 ```text
 thread 'conformance_df_14' panicked at crates/conformance/src/cases/declarations.rs:826:13:
 assertion failed: combinators.contains("mapList (Input) (Output) (transform) (tail)")
-thread 'conformance_sm_25' panicked at crates/conformance/src/cases/semantic_ir.rs:1599:17:
+thread 'conformance_sm_25' panicked at crates/conformance/src/cases/semantic_ir.rs:1651:17:
 missing "HigherOrder.Combinators.mapList (Nat) (Nat) ((fun (value : Nat) => (value + offset))) (values)" in:
 ```
 
