@@ -23,7 +23,7 @@ How this repository's claims are checked, which recipe enforces which rule, and 
 Outside `vv`:
 
 - `just fixtures` (`cargo xtask check-fixtures`) runs every §28.2 fixture under `tests/fixtures/` and `tests/negative/` through the CLI entry point and compares exit code, canonical command result, diagnostics, artifact list, and platform-independent hashes with `expected/`. `just fixtures-write` is the only rewrite path.
-- `just calculus` (`cargo xtask check-calculus`) compares every committed target fixture under `compiler/fixtures/` and the generated `TargetFixtures` module with what the hand-written fixture set renders (§17.14); `just test` enforces the same comparison through `conformance_tc_03`. `just calculus-write` is the only rewrite path.
+- `just calculus` (`cargo xtask check-calculus`) compares every committed target fixture under `compiler/fixtures/`, the generated `TargetFixtures` module, and the calculus modules `TargetSyntax`, `TargetSemantics`, `TargetOracle`, and `Main`, and the project configuration with what the hand-written fixture set and the calculus's definition in `crates/conformance/src/calculus_source.rs` render (§17.14); `just test` enforces the same comparison through `conformance_tc_03`. `just calculus-write` is the only rewrite path.
 - `just verify-write` (`cargo xtask verify-examples --write`) is the only path that rewrites `examples/*/expected/verify/`.
 - `just release` runs `vv` and then `cargo xtask release-check` (RP-12): every §30.3 artifact by content, the §30.4 completion criteria, and the crate-packaging round trip (`cargo package`, extract, offline build, `--version` equal to the in-repository binary). It is refused until 1.0.0.
 
@@ -586,8 +586,23 @@ renders.
 gate failed: compiler/fixtures/sum-to.json differs from its generator; run `cargo xtask check-calculus --write`
 ```
 
-Removed: the fixture was restored; `cargo xtask check-calculus` reports 71
+Removed: the fixture was restored; `cargo xtask check-calculus` reports 79
 generated files equal to their generator.
+
+### check-calculus covers the calculus modules
+
+Planted: in the committed `compiler/src/TargetSemantics.lex.tex`, the bound
+test of `natResult` was edited from `blt` to `ble`, admitting `2^64` as a
+`nat` result. Command: `cargo xtask check-calculus`. Expected: the committed
+module no longer equals what `crates/conformance/src/calculus_source.rs`
+renders.
+
+```text
+gate failed: compiler/src/TargetSemantics.lex.tex differs from its generator; run `cargo xtask check-calculus --write`
+```
+
+Removed: the committed module was restored; the gate reports 79 generated
+files equal to their generator.
 
 ### calculus kernel oracle can fail
 

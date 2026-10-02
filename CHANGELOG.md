@@ -135,7 +135,10 @@ versions, and the entries below say what each tag does and does not claim.
   The hand-constructed fixtures are confirmed three ways: Lean's kernel (or,
   for the few primitives the kernel cannot reduce, Lean's evaluator),
   LexLean's own collection primitives, and `rustc`
-  (`TC-01`..`TC-07`, `cargo xtask check-calculus`).
+  (`TC-01`..`TC-07`, `cargo xtask check-calculus`). The calculus modules
+  and the project configuration are generated from their definition in
+  `repo-conformance`, and `cargo xtask check-calculus` compares them byte
+  for byte.
 - The language-1.2 portable runtime exposes every definition, so a
   definition imported from another module reduces in the kernel through the
   primitives it applies; the 1.2 `lean_backend` version is now `11`, and the

@@ -15,11 +15,15 @@ pub const SYNTAX: &str = "TargetSyntax";
 /// The module defining the denotation.
 pub const SEMANTICS: &str = "TargetSemantics";
 
-fn member(module: &str, name: &str) -> Json {
+/// A module member reference.
+#[must_use]
+pub fn member(module: &str, name: &str) -> Json {
     json!({"module": module, "name": name})
 }
 
-fn named(module: &str, name: &str) -> Json {
+/// A named type with no arguments.
+#[must_use]
+pub fn named(module: &str, name: &str) -> Json {
     json!({"kind": "named", "member": member(module, name), "arguments": []})
 }
 

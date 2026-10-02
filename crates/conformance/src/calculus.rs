@@ -5,12 +5,13 @@
 //! Every fixture is written here, by hand, against the calculus syntax; its
 //! expected outcome is computed by the reference interpreter. The committed
 //! `compiler/fixtures/<name>.json` files and `compiler/src/TargetFixtures`
-//! module are exactly what [`files`] renders, which `cargo xtask
-//! check-calculus` enforces. In the module, each fixture has a `<id>Run`
-//! definition evaluating the LexLean denotation, a theorem that the kernel
-//! reduces it to the expected outcome wherever every primitive it reaches
-//! reduces in the kernel, and, for a library fixture, a theorem that the
-//! realization computes exactly the value LexLean's own collection
+//! module, together with the calculus modules they are stated against
+//! ([`crate::calculus_source`]), are exactly what [`files`] renders, which
+//! `cargo xtask check-calculus` enforces. In the module, each fixture has a
+//! `<id>Run` definition evaluating the LexLean denotation, a theorem that
+//! the kernel reduces it to the expected outcome wherever every primitive it
+//! reaches reduces in the kernel, and, for a library fixture, a theorem that
+//! the realization computes exactly the value LexLean's own collection
 //! primitive computes.
 
 use std::collections::BTreeMap;
@@ -22,6 +23,8 @@ use lexlean::calculus::{
     Program, Shape, Ty, Value, FIXTURE_SPEC, PROGRAM_SPEC,
 };
 use serde_json::{json, Value as Json};
+
+use crate::lx;
 
 /// The library instance a fixture exercises.
 #[derive(Debug, Clone)]
@@ -309,136 +312,6 @@ fn case(name: &str, program: Program, entry: u64, arguments: Vec<Value>, fuel: u
         },
         library: None,
         oracle: None,
-    }
-}
-
-// --- LexLean oracle terms --------------------------------------------------
-
-mod lx {
-    use serde_json::{json, Value as Json};
-
-    pub fn nat_t() -> Json {
-        json!({"kind": "nat"})
-    }
-    pub fn string_t() -> Json {
-        json!({"kind": "string"})
-    }
-    pub fn int_t() -> Json {
-        json!({"kind": "int"})
-    }
-    pub fn int8_t() -> Json {
-        json!({"kind": "int8"})
-    }
-    pub fn bool_t() -> Json {
-        json!({"kind": "bool"})
-    }
-    pub fn list_t(element: Json) -> Json {
-        json!({"kind": "list", "element": element})
-    }
-    pub fn product_t(left: Json, right: Json) -> Json {
-        json!({"kind": "product", "left": left, "right": right})
-    }
-    pub fn option_t(value: Json) -> Json {
-        json!({"kind": "option", "value": value})
-    }
-    pub fn map_t(key: Json, value: Json) -> Json {
-        json!({"kind": "map", "key": key, "value": value})
-    }
-    pub fn set_t(element: Json) -> Json {
-        json!({"kind": "set", "element": element})
-    }
-    pub fn nat(number: u64) -> Json {
-        json!({"kind": "nat", "value": number.to_string()})
-    }
-    pub fn string(text: &str) -> Json {
-        json!({"kind": "string", "value": text})
-    }
-    pub fn integer(representation: &str, number: i64) -> Json {
-        json!({"kind": "integer", "representation": representation, "value": number.to_string()})
-    }
-    pub fn boolean(value: bool) -> Json {
-        json!({"kind": "bool", "value": value})
-    }
-    pub fn pair(left: Json, right: Json) -> Json {
-        json!({"kind": "pair", "left": left, "right": right})
-    }
-    pub fn var(name: &str) -> Json {
-        json!({"kind": "var", "name": name})
-    }
-    pub fn add(left: Json, right: Json) -> Json {
-        json!({"kind": "add", "left": left, "right": right})
-    }
-    pub fn blt(left: Json, right: Json) -> Json {
-        json!({"kind": "blt", "left": left, "right": right})
-    }
-    pub fn ite(condition: Json, then_value: Json, else_value: Json) -> Json {
-        json!({"kind": "if", "condition": condition, "then_value": then_value, "else_value": else_value})
-    }
-    pub fn first(value: Json) -> Json {
-        json!({"kind": "first", "value": value})
-    }
-    pub fn second(value: Json) -> Json {
-        json!({"kind": "second", "value": value})
-    }
-    pub fn prim(operation: &str, arguments: Vec<Json>, result: Json) -> Json {
-        json!({"kind": "primitive", "operation": operation, "arguments": arguments, "result": result})
-    }
-    pub fn some(ty: Json, value: Json) -> Json {
-        json!({"kind": "constructor", "constructor": {"name": "Option.some"}, "arguments": [value], "type_arguments": [ty]})
-    }
-    pub fn none(ty: Json) -> Json {
-        json!({"kind": "constructor", "constructor": {"name": "Option.none"}, "arguments": [], "type_arguments": [ty]})
-    }
-    pub fn lambda(parameters: &[(&str, Json)], body: Json) -> Json {
-        let parameters: Vec<Json> = parameters
-            .iter()
-            .map(|(name, ty)| json!({"name": name, "type": ty}))
-            .collect();
-        json!({"kind": "lambda", "parameters": parameters, "captures": [], "body": body})
-    }
-    pub fn list(element: Json, items: Vec<Json>) -> Json {
-        items.into_iter().rev().fold(
-            json!({"kind": "nil", "element": element}),
-            |tail, head| json!({"kind": "cons", "head": head, "tail": tail}),
-        )
-    }
-    pub fn map_literal(key: Json, value: Json, entries: Vec<(Json, Json)>) -> Json {
-        let entries: Vec<Json> = entries
-            .into_iter()
-            .map(|(key, value)| json!({"key": key, "value": value}))
-            .collect();
-        json!({"kind": "map_literal", "key": key, "value": value, "entries": entries})
-    }
-    pub fn set_literal(element: Json, elements: Vec<Json>) -> Json {
-        json!({"kind": "set_literal", "element": element, "elements": elements})
-    }
-    pub fn graph_literal(nodes: &[u64], edges: &[(u64, u64)]) -> Json {
-        let nodes: Vec<Json> = nodes.iter().map(|node| nat(*node)).collect();
-        let edges: Vec<Json> = edges
-            .iter()
-            .map(|(source, target)| json!({"source": nat(*source), "target": nat(*target)}))
-            .collect();
-        json!({"kind": "graph_literal", "node": nat_t(), "nodes": nodes, "edges": edges})
-    }
-    /// A `TargetSyntax.Value` constructor.
-    pub fn value(name: &str, arguments: Vec<Json>) -> Json {
-        json!({"kind": "constructor", "constructor": {"module": "TargetSyntax", "name": format!("Value.{name}")}, "arguments": arguments})
-    }
-    /// A `TargetOracle` encoder applied to a list.
-    pub fn encode(encoder: &str, items: Json) -> Json {
-        value(
-            "list",
-            vec![
-                json!({"kind": "call", "function": {"module": "TargetOracle", "name": encoder}, "arguments": [items]}),
-            ],
-        )
-    }
-    /// `match option with none => Value.none | some found => Value.some (wrap found)`.
-    pub fn encode_option(option: Json, wrap: impl FnOnce(Json) -> Json) -> Json {
-        json!({"kind": "match", "scrutinee": option, "branches": [
-            {"constructor": {"name": "Option.none"}, "binders": [], "body": value("none", Vec::new())},
-            {"constructor": {"name": "Option.some"}, "binders": ["found"], "body": value("some", vec![wrap(var("found"))])}
-        ]})
     }
 }
 
@@ -2540,14 +2413,15 @@ pub fn fixtures_module(cases: &[Case]) -> String {
             }));
         }
     }
-    let data = json!({"spec": "lexlean/semantic-module/2", "declarations": declarations});
-    format!(
-        "\\begin{{lexlean}}{{TargetFixtures}}\n\\useglossary{{lexlean.std.nat@1.2.0}}\n\\importmodule{{TargetSyntax}}\n\\importmodule{{TargetSemantics}}\n\\importmodule{{TargetOracle}}\n\\title{{Natural number addition}}\n\\begin{{semanticmodule}}\n\\semanticdata{{{}}}\n\\end{{semanticmodule}}\n\\end{{lexlean}}\n",
-        serde_json::to_string(&data).expect("module data serializes")
+    lx::module_tex(
+        "TargetFixtures",
+        &[term::SYNTAX, term::SEMANTICS, "TargetOracle"],
+        declarations,
     )
 }
 
-/// Every generated file, by path relative to the repository root.
+/// Every generated file of the `compiler` project, by path relative to the
+/// repository root: the fixtures, their module, and the calculus itself.
 #[must_use]
 pub fn files() -> BTreeMap<String, Vec<u8>> {
     let cases = cases();
@@ -2562,6 +2436,7 @@ pub fn files() -> BTreeMap<String, Vec<u8>> {
         "compiler/src/TargetFixtures.lex.tex".to_owned(),
         fixtures_module(&cases).into_bytes(),
     );
+    out.extend(crate::calculus_source::files());
     out
 }
 
