@@ -322,13 +322,41 @@ exact-capture diagnostic (an undeclared use still fails later as an unbound
 local, and an unused declared capture is accepted).
 
 ```text
-thread 'conformance_sm_25' panicked at crates/conformance/src/cases/semantic_ir.rs:1613:17:
+thread 'conformance_sm_25' panicked at crates/conformance/src/cases/semantic_ir.rs:1611:17:
 expected "declared {}, used {\"offset\"}", got LLT4001: phase link: unbound local `offset`
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 234 filtered out
 ```
 
 Removed: the rule was restored; `conformance_sm_25` passes and the
 `lambda-capture-extra` negative fixture fails with `LLT4001`.
+
+### higher-order lowering can fail
+
+Planted: the Lean lowering of `call` dropped its explicit type arguments
+(`for argument in type_arguments.iter().take(0)` in
+`crates/lexlean/src/backend/semantic.rs`), so a generic call lowered to a
+call of the wrong arity. Command: `cargo test -p repo-conformance --test
+conformance -- conformance_sm_25 conformance_df_14`.
+
+```text
+thread 'conformance_df_14' panicked at crates/conformance/src/cases/declarations.rs:826:13:
+assertion failed: combinators.contains("mapList (Input) (Output) (transform) (tail)")
+thread 'conformance_sm_25' panicked at crates/conformance/src/cases/semantic_ir.rs:1599:17:
+missing "HigherOrder.Combinators.mapList (Nat) (Nat) ((fun (value : Nat) => (value + offset))) (values)" in:
+```
+
+### closure escape through data can fail
+
+Planted: `holds_function` stopped looking through a document type's field
+types (`false && info.field_types...`), so a record of closures was data
+without functions. Command: `cargo test -p repo-conformance --test
+conformance -- conformance_df_15`. The executable `evaluator` that returns a
+`Visitor` of closures is no longer refused for returning a function.
+
+```text
+thread 'conformance_df_15' panicked at crates/conformance/src/cases/declarations.rs:900:17:
+expected "escaping closure: executable definition `evaluator` returns a function", got LLT4001: phase link: escaping closure in executable definition `evaluator`: a lambda may only be passed directly to an executable function parameter or applied
+```
 
 ### fmt-check can fail
 
