@@ -201,14 +201,14 @@ Feature: semantic-ir
     And each mistyped use and a language-1.1 set fail with LLT4001 before any build output
 
   @SM-29 @build
-  Scenario: Reordered equivalent map, set, and graph literals link to byte-identical semantic data and generated artifacts, while duplicate keys, non-literal literal keys, and key types without a canonical order are rejected.
+  Scenario: Reordered equivalent map, set, and graph literals link to byte-identical semantic data and generated Lean, LaTeX, and lexicon-closure artifacts, while duplicate keys, non-literal literal keys, and key types without a canonical order are rejected.
     Given two copies of the committed collections example, one with graph nodes and edges reordered
     When both are checked and rendered, and copies duplicate a key, use a computed literal key, or key a map by Unit
     Then the source identities differ while the semantic identities, generated Lean, and canonical LaTeX are identical
     And each rejected literal fails with LLT4001 before any build output
 
   @SM-30 @build
-  Scenario: Language 1.2 graph literals reference only declared nodes, and successor, reachability, and topological-order queries are deterministic, bounded by the node count, and report a cycle as none.
+  Scenario: Language 1.2 graph literals reference only declared nodes, a graph's nodes are its keys and every successor, and successor, reachability, and topological-order queries are deterministic, bounded by the node count, and report a cycle as none.
     Given the committed collections example with a call graph and a cyclic graph
     When it is rendered and verified, and copies reference an undeclared node, duplicate an edge or a node, or mistype a query result
     Then the generated graph lists every node in canonical order with sorted successors and the kernel computes the reachable set, the least-first topological order, and none for the cycle

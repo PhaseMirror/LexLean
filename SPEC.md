@@ -426,6 +426,7 @@ The completed repository MUST have this layout. Additional files are allowed onl
 │   └── ledger.toml
 ├── schemas/
 │   ├── attestation.schema.json
+│   ├── attestation-v2.schema.json
 │   ├── build-manifest.schema.json
 │   ├── build-manifest-v2.schema.json
 │   ├── compiler-input.schema.json
@@ -2516,12 +2517,36 @@ either backend runs; they do not defer to what Lean would accept.
    `cases` applies to every inductive.
 8. **Lowering.** Each inductive lowers to one `public inductive` with
    positional `(_ : T)` fields; each mutual group lowers to one
-   `mutual ... end` block. The canonical LaTeX of a
-   `lexlean/semantic-module/2` module additionally lists every constructor
-   with its field types, the mutual group label, and every structure or class
-   field; language-1.1 documents keep their bytes.
+   `mutual ... end` block. A constructor's identity is its owner and name,
+   `Owner.ctor`, qualified by its module when imported; constructor names are
+   unique within their owner and lowered in declaration order. The canonical
+   LaTeX of a `lexlean/semantic-module/2` module additionally lists the type
+   parameters of every parameterized inductive, structure, or class, every
+   constructor with its field types, the mutual group label, and every
+   structure or class field; language-1.1 documents keep their bytes.
 9. **Accounting.** Every constructor field type is charged recursively to
-   `max_ir_nodes`.
+   `max_ir_nodes`, and a `lexlean/semantic-module/2` module is also charged
+   one node per type parameter, per constructor, and per mutual group label,
+   so no part of a data declaration is free; language-1.1 modules keep their
+   historical count.
+10. **Binder hygiene.** The backend refers to the module's own declarations,
+    to the built-in names it emits (`And`, `Bool`, `ByteArray`, `Except`,
+    `Iff`, `Int`, `Int8`..`Int64`, `LexLeanCollections`, `LexLeanRuntime`,
+    `List`, `Nat`, `Option`, `Ordering`, `Prod`, `Prop`, `Result`, `String`,
+    `Type`, `UInt8`..`UInt64`, `Unit`, `and_congr`, `congr`, `decide`, `id`,
+    `rfl`), and to every imported declaration through the project's module
+    prefix, all without qualification. In a `lexlean/semantic-module/2`
+    module no binder (a type parameter, a value parameter, or a pattern,
+    `let`, quantifier, lambda, or proof binder) is spelled like a declaration of the
+    module, one of those built-in names, or the first segment of the module
+    prefix, because Lean would resolve the reference to the binder after
+    linking has accepted the module. The language-1.1 contract is frozen
+    and does not carry this rule.
+11. **Source maps.** In a `lexlean/semantic-module/2` module every
+    declaration is its own mapping node in both artifacts, relating its
+    generated Lean and LaTeX to exactly its object in the source; the
+    preamble and closing map to the whole module. Language-1.1 maps keep
+    their module granularity and bytes.
 
 #### Higher-order code (language 1.2)
 
@@ -2533,17 +2558,24 @@ either backend runs; they do not defer to what Lean would accept.
    definition's parameters, result, or body, or in a theorem's statement or
    proof arguments, mentions only declared type parameters; this also holds
    for language-1.1 definitions, whose scope is empty. A language-1.2 type
-   parameter is not spelled like a backend type (`Bool`, `ByteArray`,
-   `Except`, `Int`, `Int8`..`Int64`, `List`, `Nat`, `Option`, `Ordering`,
-   `Prod`, `Prop`, `String`, `Type`, `UInt8`..`UInt64`, `Unit`), a document
-   type in scope, the declaration itself, or any value binder of the same
-   declaration, each of which it would capture in the generated binder. An
+   parameter obeys binder hygiene (rule 10 of the recursive-data rules: no
+   declaration of the module, built-in name, or module prefix root), and is
+   moreover not spelled like any value binder of the same declaration. An
+   imported document type is referred to through the module prefix, so a
+   type parameter of its spelling captures nothing. A type parameter that its declaration
+   mentions nowhere (no parameter, result, body, statement, or proof type)
+   lowers as `(_T : Type)`, so Lean's unused-variable linter stays silent. An
    explicit type argument instantiates a `(T : Type)` binder and so never
    mentions the universe `Type`.
 2. **No polymorphic recursion.** A recursive call passes exactly the
-   definition's own type parameters, in order. Every executable root
-   therefore has finitely many specializations, obtained by substituting its
-   closed type arguments; this is the monomorphization rule.
+   definition's own type parameters, in order (the `polymorphic-recursion`
+   negative fixture). Consequently a closed instantiation of a definition
+   reaches only finitely many instantiations: a recursive call repeats the
+   current one, and every other call is to an earlier definition at type
+   arguments built from the caller's. This is the monomorphization rule.
+   LexLean emits the generic definitions with explicit `(T : Type)` binders
+   and the explicit type arguments of every use; it does not emit
+   specialized copies, and no claim here depends on one.
 3. **Lambdas.** A `lambda` binds at least one typed parameter and lists its
    `captures`: strictly sorted, unique enclosing locals that are exactly the
    free locals of its body. Only the captures and the parameters are visible
@@ -2561,12 +2593,18 @@ either backend runs; they do not defer to what Lean would accept.
    records, for each definition, `alpha_id`: the SHA-256 of the canonical
    JSON of the definition after renaming its type parameters to `T0, T1, ...`
    and its value parameters and every term binder to `_0, _1, ...` in
-   binding order, each binder scoped to its own subterm, with every lambda's
-   renamed captures sorted again. Alpha-equivalent definitions share it; any
+   evaluation order (the parameters, then the body's subterms as they are
+   evaluated: an application's function before its arguments, a
+   conditional's condition, then branch, and else branch, operands left to
+   right), each binder scoped to its own subterm, with every lambda's
+   renamed captures sorted again; the order does not depend on how the
+   definition serializes. Alpha-equivalent definitions share it; any
    other change alters it.
-6. **Production eligibility.** Higher-order values are formal by default. A
-   definition marked `"executable":true` is production-eligible only when
-   every closure it forms is non-escaping and second-class. A type *holds a
+6. **Executable closures.** Higher-order values are formal by default. A
+   definition marked `"executable":true` is admitted only when every
+   closure it forms is non-escaping and second-class. `executable` is a
+   precondition of production eligibility, never production eligibility
+   itself, which is decided per root and target by §17.13. A type *holds a
    function* when it is a function type, or a container, product, or
    document type that holds one through its type arguments or, transitively,
    through the field types of its declaration. Its result type and every
@@ -2594,9 +2632,14 @@ Termination evidence is semantic data, never tactic or backend text; no
 1. **Structural recursion** of a single definition follows the
    recursive-data rule 6 above.
 2. **Mutual groups.** Definitions carrying the same `mutual` label form one
-   group: contiguous, at least two members, identical type parameters, each
-   structurally recursive (`recursive_argument`, a top-level match on it, no
-   `termination`). Every member's decreasing type belongs to one *recursive
+   group: contiguous, at least two members, identical type parameters, and
+   either every member structurally recursive (`recursive_argument`, a
+   top-level match on it, no `termination`) or every member well-founded
+   (rule 3); a group mixing the two is rejected. The *recursion call graph*
+   of a group has an edge from each member to every member its body calls
+   or references; every member calls into the group and the graph is
+   strongly connected, so no member is outside the mutual recursion. For a
+   structural group: Every member's decreasing type belongs to one *recursive
    family*: the naturals; the lists of one element type; or one inductive
    group at one instantiation of its type parameters, together with `List`
    or `Option` of its members exactly when the group's constructors nest a
@@ -2614,9 +2657,10 @@ Termination evidence is semantic data, never tactic or backend text; no
    group is rejected. No member of the group being checked is called or
    referenced under a lambda, and none is referenced as a value.
 3. **Well-founded recursion.** A definition with `termination` has no
-   `recursive_argument` and no `mutual`. Its `measure` is a binder-free term
-   of type `Nat` over the parameters that does not mention the definition.
-   Its recursive calls pass the definition's own type parameters, do not
+   `recursive_argument`; it is standalone, a group of one, or a member of a
+   well-founded mutual group. Its `measure` is a binder-free term of type
+   `Nat` over its parameters that mentions no member of its group. Its
+   recursive calls (calls to any member of its group) pass the group's own type parameters, do not
    occur in another recursive call's argument or under a `lambda` or
    quantifier, and the definition is never referenced as a value. A call's
    arguments, and every enclosing `if` condition and `match` scrutinee,
@@ -2625,7 +2669,8 @@ Termination evidence is semantic data, never tactic or backend text; no
    `match` of the body is numbered in one fixed pre-order; each call site,
    in that order, has the *decrease obligation*
    `h1 -> ... -> measure[args] < measure` over its enclosing nodes, outermost
-   first, where an `if` contributes `c = b` for its condition `c` and branch
+   first, where the conclusion compares the *callee's* measure at the call's
+   arguments with the caller's own measure, and an `if` contributes `c = b` for its condition `c` and branch
    polarity `b`, and a `match` contributes `s = v` for its scrutinee `s` and
    the value `v` the branch's pattern denotes over its binders (a Boolean
    literal, a pair for `Prod.mk`, and otherwise the constructor applied to
@@ -2633,9 +2678,17 @@ Termination evidence is semantic data, never tactic or backend text; no
    prior theorem of the same module per call site, in order, whose type
    parameters equal the definition's, whose parameters are the definition's
    followed by every enclosing match binder with its type, outermost first,
-   and whose statement equals the obligation exactly. Linking rejects any other evidence; Lean
-   verification checks every evidence proof. A definition whose evidence is
-   not proved is therefore never verified.
+   and whose statement equals the obligation exactly. Linking rejects any
+   other evidence, so no recursive call enters the linked IR without its
+   exact, separately named decrease obligation: unguarded recursion cannot
+   enter it. Whether an obligation is *true* is a proof, and LexLean, as for
+   every proof, leaves it to Lean's kernel at verification (§22): a false
+   evidence theorem with the exact statement links, and verification refuses
+   both the theorem and the definition (Lean independently refuses a
+   nonterminating well-founded definition), so the project is never
+   verified (`recursion-false-evidence`). An `executable` well-founded
+   definition may be reached by a production root (§17.13), and no
+   production claim holds for a project that is not verified.
 4. **Well-founded lowering.** The definition lowers to
    `@[expose, semireducible] public def`, each `if` to
    `match (generalizing := false) __decreaseN : c with | true => ... | false => ...`,
@@ -2648,8 +2701,14 @@ Termination evidence is semantic data, never tactic or backend text; no
    evidence states it; each binder appears in its match's hypothesis, so Lean
    solves the `_` by unification and a binder the branch ignores stays
    `_`; Lean still refines the decreasing goal by each match on a variable,
-   and `subst_vars` applies the same substitutions to the evidence, so the
-   evidence closes the goal it was stated for and no other. A parameter
+   and `subst_vars` applies the same substitutions to the evidence. Each
+   goal is closed by the first evidence theorem whose statement it is, after
+   those substitutions; since every evidence theorem states exactly one call
+   site's obligation, which theorem closes a goal is not observable, and
+   Lean presents a cross-member goal of a mutual group as the callee's
+   measure at the arguments against the caller's measure, the obligation's
+   own conclusion. A well-founded mutual group lowers to one `mutual ... end`
+   block of such definitions. A parameter
    neither the body nor the measure mentions lowers as `_name` and is passed
    as `_name`; generated names begin with two underscores, which no lowered
    source binder does. Semireducibility lets closed instances reduce in
@@ -2678,10 +2737,17 @@ Termination evidence is semantic data, never tactic or backend text; no
 2. **Representation.** A map value is its strictly ascending entry list and
    a set its strictly ascending element list, so equal maps and sets are
    structurally equal and iterate identically. Generated Lean represents
-   `map K V` as `List (Prod K V)` and `set K` as `List K`; the closed
-   operations are the only producers, so the canonical invariant holds by
-   construction. Memory is one entry or element per member; every literal
-   entry, element, node, and edge is charged to `max_ir_nodes`.
+   `map K V` as `List (Prod K V)` and `set K` as `List K`, and the
+   canonical document names them `Map (K) (V)` and `Set (K)`. Literals and
+   the closed operations are the only producers, and each operation maps
+   strictly ascending lists to strictly ascending lists; `SM-28` and `SM-30`
+   check this differentially, under Lean, against an independent ordered-map
+   model on seeded random operation sequences. Memory is one entry or
+   element per member. Every literal entry, element, node, and edge is
+   charged to `max_ir_nodes` in linking, so an oversized literal is
+   `LLS8002` before either backend runs; a computed collection is a runtime
+   value whose size is bounded only by the operations that build it, and
+   the cost of each operation is stated in item 4.
 3. **Literals.** A `map_literal`, `set_literal`, or `graph_literal` is keyed
    only by literal values (natural, integer, string, and Boolean literals
    and pairs of them); other keys are inserted with `map_insert` or
@@ -2691,8 +2757,10 @@ Termination evidence is semantic data, never tactic or backend text; no
    element, node, or edge, and
    a graph edge whose source or target is not a declared node, then sorts
    every literal into canonical order. Reordered equivalent source therefore
-   links to identical semantic data, semantic identities, and generated
-   artifacts; only the source identity records the textual order.
+   links to identical semantic data and semantic identities, and generates
+   byte-identical Lean modules, LaTeX modules, and lexicon closures; only
+   the source identity and the artifacts that record source positions (the
+   build manifest, source maps, and coverage) record the textual order.
 4. **Operations.** Each collection primitive has one explicit result type:
    insertion replaces an existing key, removal of an absent key is the
    identity, lookup returns `Option`, keys/values/entries/elements are
@@ -2700,25 +2768,35 @@ Termination evidence is semantic data, never tactic or backend text; no
    left, intersection and difference keep the left operand's order, and
    `map_fold`, `set_fold`, and `list_fold` visit members in ascending (or
    list) order with the state as the step's first argument. A graph is
-   `map node (set node)`; `graph_successors` of an absent node is empty;
+   `map node (set node)`. Its *nodes* are its keys together with every
+   successor, so a successor inserted without an entry of its own is a node
+   with no successors; `graph_successors` of an absent node is empty;
    `graph_reachable` is the breadth-first closure including the start node,
    computed in at most node-count-plus-one rounds, each of which either adds
    a node or ends the search, so the bound never truncates the closure;
-   `graph_topological` is Kahn's order taking the least ready node first,
-   removing one node per round within the same bound, or none when a cycle
-   remains.
+   `graph_topological` is Kahn's order over every node, taking the least
+   ready node first, removing one node per round within the same bound, or
+   none when a cycle remains. Costs, in key comparisons, for collections of
+   `n` and `m` members, a graph of `V` nodes and `E` edges, and maximum
+   out-degree `d`: insertion, removal, lookup, and membership `O(n)`;
+   size, keys, values, entries, elements, and folds `O(n)` steps; union
+   `O(m(n + m))`; intersection and difference `O(nm)`; successors `O(V)`;
+   reachability `O(V^2(V + E))`; topological order `O(V^3(V + d))`. Every
+   intermediate list holds at most the members of its result or of the
+   graph's node set.
 5. **State threading.** State is explicit and pure: `list_fold`, `map_fold`,
    `set_fold`, `iterate` (exactly `n` steps), and `iterate_until` (until the
-   step returns none or the natural-number bound is exhausted, returning the
+   step returns none or its natural-number fuel is exhausted, returning the
    final state and whether a fixed point was reached) take the step as a
-   function argument. Every iteration has a bound; no ambient mutable state
-   exists. A lambda or function reference passed as a step is in a closure
+   function argument. The count and the fuel are required arguments, so
+   every iteration performs at most that many steps; an iteration without
+   one is rejected in linking. No ambient mutable state exists. A lambda or function reference passed as a step is in a closure
    position, so executable definitions may use these combinators.
 6. **Runtime.** In language 1.2 every definition of the emitted portable
    runtime is exposed (`@[expose, noinline]` where language 1.1 has
    `@[noinline]`), so a definition imported from another module reduces in
-   the kernel through the primitives it applies; compiled code is unchanged,
-   and the language-1.1 runtime text is frozen. A module that writes a
+   the kernel through the primitives it applies; `noinline` is kept, and the
+   language-1.1 runtime text is frozen. A module that writes a
    collection type or literal, or
    applies any collection primitive (including one applied only to a
    collection imported from another module), emits the fixed
@@ -2819,7 +2897,12 @@ and coexist with executable roots in the same module.
   `declaration.definition.recursive`, and `constructor.nat_succ`) with its
   `disposition` (`runtime`, `formal-only`, or `erased`), whether it requires
   `allocation`, the representations (`nat`, `int`) for which its result may
-  `overflow`, and whether it implies `recursion`.
+  `overflow`, and whether it implies `recursion`. A construct requires
+  allocation when its values live on the heap (strings, byte strings, lists,
+  maps, sets, a type that contains itself) or when it builds new heap
+  storage; reading, comparing, measuring, or folding storage that already
+  exists requires none, since the type of that storage already does. Each
+  runtime row's `allocation` equals its realization's (§17.14).
 
 The registry is language data: it is embedded and hashed into the
 language-1.2 compiler-semantics ID, so changing a disposition changes
@@ -2846,7 +2929,12 @@ that reaches it:
    never escape it;
 2. the closure reaches a construct whose disposition is `formal-only` or
    `erased`, a declaration that is not a definition, a definition that is not
-   declared `executable`, or a dependency that does not resolve;
+   declared `executable`, or a dependency that does not resolve. Linking
+   already refuses a call to a theorem, an unresolved reference, and a
+   non-executable callee of an executable definition (§17.12), so from linked
+   source only the root itself can be non-executable; the analysis checks
+   every case regardless, and its unit tests exercise the others on IR that
+   bypasses linking;
 3. a natural-number or mathematical-integer literal in the closure lies
    outside the target width;
 4. the closure requires allocation and the target provides none;
@@ -2878,7 +2966,11 @@ records the declared effects, the runtime closure in discovery order with each
 member's construct, type arguments, and shortest call path, every realized type
 with its construct, the erased dependencies, every construct with the closure
 members using it, and, per target, each realized effect with every
-`(construct, instance)` source. The report is a deterministic function of the
+`(construct, instance)` source and every natural-number or integer
+representation crossing the root boundary (`parameter <name>` or `result`,
+directly or inside a container or a named type's fields) with the width in
+which the target realizes it, so the first realization obligation above is
+stated per root. The report is a deterministic function of the
 linked semantic modules and the registry. Verification checks every root's
 runtime closure and erased dependencies against the closure Lean's own
 compiler front end extracts (§22.10); any difference fails verification.
@@ -2936,10 +3028,11 @@ closure literal is not. `lexlean::calculus::load` reads a program, checks
 every rule, and returns its canonical form; any malformed member or violated
 rule is `LLB6005`, and nothing is repaired or guessed.
 
-**Canonical form and identity.** The canonical form renames every local of a
-function to its first-binding order (parameters, then binders in evaluation
-order), so alpha-equivalent programs have byte-identical canonical JSON
-(§21.7). A program's identity is the SHA-256 of its canonical bytes.
+**Canonical form and identity.** The canonical form of a valid program renames
+every local of a function to its first-binding order (parameters, then
+binders in evaluation order), so alpha-equivalent programs have
+byte-identical canonical JSON (§21.7). A program's identity is the SHA-256 of
+its canonical bytes. An invalid program has neither.
 
 **Denotation.** `TargetSemantics.run fuel program entry arguments` binds the
 entry's parameters and evaluates its body by `eval`, structural recursion on
@@ -2949,15 +3042,33 @@ closure's captures before its operands. Every primitive is defined by
 reference to the language-1.2 primitive of the same meaning, so a value of
 the calculus means what LexLean says it means, and `compare` is LexLean's own
 map key order. The result is an `Outcome`: a value with its exact step count,
-`overflow` with its step count, `stuck`, or `exhausted`. One step is charged
-per evaluated node, call, and primitive, and nothing else runs: no hidden or
-free runtime operation exists outside this accounting. A primitive
-application is one step whatever the size of its operands; the count is the
-calculus's evaluation-step accounting, not a measure of machine work, and a
-claim about machine resources needs a machine contract of its own. A `nat` or `int`
-result outside its realization is `overflow`, never a wrapped or truncated
-value; a valid program is never `stuck`; `exhausted` reports only that the
-fuel bounded the evaluation and is not an observation of the program.
+`overflow` with its step count, `stuck`, or `exhausted`.
+
+**Cost.** The step count charges every operation the evaluator performs, so
+no runtime operation is free:
+
+- each evaluated node is one step, on top of the steps of its operands;
+- reading a local is one step more per binding the lookup examines before
+  it finds the local's;
+- a `match` is one step more per arm it tries, the taken arm included;
+- `apply` is one step more per capture it passes;
+- `field` is one step more per field it skips;
+- a primitive is one step more per unit of *weight* of its operands and of
+  its result. A value's weight is one per node, plus a string's characters
+  and a byte string's bytes, so every primitive whose work grows with its
+  operands (append, length, index, slice, encoding, decoding, comparison,
+  split, join, formatting, parsing) is charged in proportion.
+
+The charge is exact for the denotation: the reference interpreter charges
+the same, and the kernel confirms each kernel-reducible fixture's step count.
+It bounds the work of the Rust renderings below, each of which realizes every
+step with work at most its charge. A `nat` or `int` result outside its
+realization is `overflow`, never a wrapped or truncated value. The static
+rules are designed so that a valid program is never `stuck`; the conformance
+suite checks this on every fixture program at its stated arguments and at
+seeded random well-typed arguments under sampled fuels, which is build
+evidence, not a proof. `exhausted` reports only that the fuel bounded the
+evaluation and is not an observation of the program.
 
 **Realizations.** `lexlean::calculus::realization::TABLE` maps every construct
 whose production disposition (§17.13) is `runtime` to the calculus elements
@@ -2966,9 +3077,17 @@ registry's runtime rows are in bijection and that every reference exists. A
 map is its ascending entry list `List (Pair K V)`, a set its ascending element
 list, and a graph its map from node to successor set, exactly the
 representation of §17.12; every collection, fold, iteration, and graph
-primitive is a library template (`lexlean::calculus::library`) that
-transcribes the `LexLeanCollections` definition clause for clause over
-`compare`, instantiated monomorphically. Lean's `&&` and `||` do not evaluate
+primitive is a library template (`lexlean::calculus::library`) written as a
+transcription of the `LexLeanCollections` definition over `compare`,
+instantiated monomorphically. Agreement with LexLean is checked pointwise:
+each template's fixtures state, and the kernel decides, that its outcome
+equals LexLean's own primitive on that input, which is evidence on those
+inputs, not a proof for all inputs. A construct requires allocation exactly
+when its realization does: its values are strings, byte strings, lists, or a
+type that holds itself behind a heap handle (`indirection`), or it builds
+such a value; reading, comparing, measuring, or folding existing storage
+allocates nothing. The conformance suite checks every runtime row's
+`allocation` against its realization. Lean's `&&` and `||` do not evaluate
 a decided right operand, so they are realized by `cond`. A type parameter is
 realized by its closed type argument (§17.13).
 
@@ -2976,48 +3095,75 @@ realized by its closed type argument (§17.13).
 (`lexlean/target-fixture/1`, `schemas/target-fixture.schema.json`) each name a
 program, an entry, arguments, fuel, and the expected outcome computed by the
 reference interpreter, a step-for-step transcription of `eval`. Together they
-use every type, literal, expression, shape, primitive, fixed width, and
-template. The generated module `TargetFixtures` (`cargo xtask check-calculus`
+use every type, literal, expression, shape, primitive, and template, and
+every fixed-width primitive at every width it admits. The generated module `TargetFixtures` (`cargo xtask check-calculus`
 compares it and every fixture with its generator byte for byte) defines each
 fixture's evaluation and states:
 
-1. for every fixture whose primitives the kernel reduces, that the
-   evaluation reduces to the expected outcome, steps included; Lean's kernel
-   decides it by `rfl`. The kernel cannot reduce, from a module file under
-   pinned Lean, `split_exact` and `parse_decimal` (`String.splitOn` and
-   `String.toInt?` recurse well-foundedly), `compare_bytes` and byte
-   equality (`ByteArray.toList` and `ByteArray` equality likewise),
-   `utf8_encode`, `join`, and `format_decimal`; fixtures applying them are
-   decided by Lean's evaluator instead;
+1. for every fixture whose primitives a `reflexivity` proof can reduce, that
+   the evaluation reduces to the expected outcome, steps included, which
+   Lean checks by `rfl`. Lean's elaborator checks such a proof by
+   definitional unfolding before the kernel sees it, and from a module file
+   under pinned Lean it does not unfold what `split_exact`, `parse_decimal`
+   (`String.splitOn`, `String.toInt?`), `compare_bytes`
+   (`ByteArray.toList`), `utf8_encode`, `join`, and `format_decimal` reach,
+   which recurse well-foundedly or are not exposed. LexLean's proof
+   language has no kernel-only decision, so fixtures applying them are
+   decided by Lean's evaluator instead; byte equality is decided by the
+   kernel;
 2. for every library fixture, that the realization's outcome equals the
    value LexLean's own collection primitive computes on the same input,
    decided by the kernel.
 
-Lean's evaluator, running the verified modules, reproduces every fixture's
-outcome, steps included. A wrong expected outcome or a mutated template is
-rejected by Lean.
+Lean's evaluator, running the published generated sources compiled again by
+the same pinned Lean (the published oleans carry no compiled code),
+reproduces every fixture's outcome, steps included. A wrong expected outcome
+or a mutated template is rejected by Lean, and an evaluator-only fixture
+stated one step off is refused.
 
-**Rust profile.** The reference rendering (`lexlean::calculus::rust`) realizes
-the `rust-std` target of §17.13 as one safe Rust 2021 source file under
-`#![forbid(unsafe_code)]` using only the standard library: `nat` is `u64` and `int` is `i64`, each operation checked
-and every out-of-range result the explicit `Err(Overflow)` propagated by `?`;
-the fixed widths are the native integer types with `checked_*` operations;
-lists are `Vec`, strings `String`, bytes `Vec<u8>`, orderings
-`std::cmp::Ordering`; ADTs are enums with boxed fields; function values are
-defunctionalized into one enum per function type, and values are cloned on
-use, so ownership never changes an observable value. Calls are Rust calls
-with no tail-call or stack-depth guarantee, evaluation is single-threaded
-and sequential, the functions form no stable ABI, and heap exhaustion aborts
-the process. Observable behavior is the printed value or `overflow`; steps
-and fuel are not observable. The claim covers exactly programs of this
-calculus rendered this way: no other Rust construct (unsafe code, foreign
-functions, threads, asynchronous code, floating point, interior
-mutability, input and output beyond the harness) is within it. Every fixture
-with an observable outcome is rendered, compiled by `rustc` with warnings
-denied, and run; its output must equal the denotation's, and a planted
-renderer discrepancy must be detected. This is `build` evidence for the
-rendering, not a proof of it; preservation of meaning from LexLean through
-the calculus to Rust is a separate obligation.
+**Rust profiles.** The reference renderings (`lexlean::calculus::rust`)
+realize the two machine profiles of §17.13, each as one safe Rust 2021
+library crate under `#![forbid(unsafe_code)]` that declares no lint
+exception:
+
+- `rust-core` is `#![no_std]` and declares no `extern crate`, so neither
+  `alloc` nor `std` is linked and nothing is allocated. It renders exactly
+  the programs that need no heap: a program whose realization requires
+  allocation (a string, a byte string, a list, or a type that holds itself)
+  is refused with the reason, never approximated.
+- `rust-std` uses the standard library. A string and a byte string are
+  immutable shared buffers (`Rc<str>`, `Rc<[u8]>`), a list is a persistent
+  list of shared cells, so building and taking apart a cell is constant
+  work, and an ADT field or a closure capture whose type holds its owner is
+  boxed behind `Rc`, and nothing else is.
+
+In both, `nat` is `u64` and `int` is `i64`, each operation checked and every
+out-of-range result the explicit `Err(Overflow)` propagated by `?`; the
+fixed widths are the native integer types with `checked_*` operations;
+orderings are `core::cmp::Ordering`; ADTs are enums; function values are
+defunctionalized into one enum per function type; and using a local clones a
+handle or a value of fixed size, never a structure, so ownership never
+changes an observable value and no step does hidden work. Every loop of the
+runtime counts its iterations and every bulk copy counts its length in a
+work counter, and on every fixture with an observable outcome the count
+never exceeds the denotation's steps; the release of a list, whose cells were each counted when built, is
+not counted again. Calls are Rust calls with no tail-call or stack-depth
+guarantee, evaluation is single-threaded and sequential, the functions form
+no stable ABI, and heap exhaustion aborts the process. Observable behavior is
+the printed value or `overflow`; steps, fuel, and the work count are not
+observable. The claim covers exactly programs of this calculus rendered this
+way: no other Rust construct (unsafe code, foreign functions, threads,
+asynchronous code, floating point, interior mutability, input and output
+beyond the harness) is within it. Every fixture's rendering in each profile
+that admits it is committed under `compiler/rust/<target>/` and compared with
+the renderer by `cargo xtask check-calculus`. Every fixture with an
+observable outcome is rendered, compiled by the pinned `rustc` 1.97.1
+(`RUSTC-1-97-1`, an authority this repository cites) with warnings denied,
+linked with a harness, and run; its output must equal the denotation's, its
+work count must not exceed the steps, and planted value and work
+discrepancies must be detected. This is `build` evidence for the renderings,
+not a proof of them; preservation of meaning from LexLean through the
+calculus to Rust is a separate obligation.
 
 ### 17.15 GNAF requests over the calculus
 
@@ -3623,7 +3769,8 @@ nested partition of the embedded tree. The language-1.2 ID covers the whole
 tree. The language-1.1 ID excludes the files introduced solely for 1.2:
 `language/bootstrap-1.2.toml`, `language/semantics-1.2.toml`,
 `language/production-1.2.toml`, `language/lcnf-1.2/`, `language/core-1.2/`,
-`language/std/{bool,int,nat}-1.2/`, `schemas/build-manifest-v2.schema.json`,
+`language/std/{bool,int,nat}-1.2/`, `schemas/attestation-v2.schema.json`,
+`schemas/build-manifest-v2.schema.json`,
 `schemas/compiler-input.schema.json`, `schemas/gnaf-fixture.schema.json`,
 `schemas/gnaf-request.schema.json`,
 `schemas/lexicon-v2.schema.json`, `schemas/lock-1.1.schema.json`,
@@ -3925,6 +4072,7 @@ audit/output.txt
 audit/<audit-module-member>.process.json
 process/lean/*.json
 process/leanchecker/*.json
+production/*.eligibility.json              # when a production root exists
 extract/<extraction-module>.lean           # when a production root exists
 extract/process.json                       # when a production root exists
 production/compiler-input.json             # when a production root exists
@@ -3959,6 +4107,12 @@ The body records:
 - optional PDF process and bytes;
 - overall status exactly `verified`.
 
+A language-1.0 or 1.1 project's attestation is `lexlean/attestation/1`
+(`schemas/attestation.schema.json`). A language-1.2 project's is
+`lexlean/attestation/2` (`schemas/attestation-v2.schema.json`, in the 1.2-only
+partition): the same body plus `compiler_input`, present exactly when a
+production root exists. Routing is fixed by the project language.
+
 There is no timestamp in the hashed attestation. Digital signing is outside language 1.0; release automation may sign the completed file without changing its contents.
 
 ### 22.10 Named-root extraction
@@ -3968,68 +4122,117 @@ Lean's own compiler front end, at one explicit authority boundary. Lean's
 behavior there is an external authority (`LEAN-LCNF-4-32-1`), cited and pinned,
 never a LexLean-proved fact.
 
-**Authority interface.** `language/lcnf-1.2/authority.toml` is the closed
-registry of every Lean operation and LCNF data type the extraction uses. Each
-call row names the constant, its exact signature at Lean 4.32.1
-(`f054605aea4b840552cca2e725580bffd1e1b704`), the defining source file at that
-revision with its SHA-256, and its role; each type row names the matched
-constructors. The registry and the adapter are in the language-1.2 partition
-(§21.2), so both are part of the compiler-semantics ID. No user source can
-supply LCNF, a Lean expression, or a root name: roots are the linked
-production roots (§17.13).
+**Authority interface.** `language/lcnf-1.2/authority.toml`
+(`lexlean/lcnf-authority/2`) is the closed registry of every constant the
+adapter's own definitions use, each in exactly one class:
+
+- a *call* (a definition of Lean's `Lean` namespace other than a projection,
+  recursor, instance, or matcher) names its exact signature at Lean 4.32.1
+  (`f054605aea4b840552cca2e725580bffd1e1b704`), the defining source file at
+  that revision with its SHA-256, and its role;
+- a *type* of the `Lean` namespace names its complete constructor list in
+  Lean's order;
+- *plumbing* lists every other used constant by name: constructors,
+  projections, recursors, instances, matchers, and core-library data, whose
+  meaning the calls and types fix.
+
+The registry and the adapter are in the language-1.2 partition (§21.2), so
+both are part of the compiler-semantics ID. No user source can supply LCNF, a
+Lean expression, or a root name: roots are the linked production roots
+(§17.13).
 
 **Adapter.** `language/lcnf-1.2/extract.lean` is the only Lean the extraction
-runs. Its code contains no comment and no optimization or application policy:
-for each root it walks the definitions Lean's compiler reaches, translates
-each with `Lean.Compiler.LCNF.toDecl` in the base phase and runs no LCNF pass
-afterwards, records the project's inductives and every other constant the
-code names with its kind, defining module, computability, and whether code is
-generated for it, and records as erased every project theorem its kernel
-values reach, through compiler-generated helpers. A constant of the project's
-modules outside the fixed runtime namespaces (`<module>.LexLeanRuntime`,
-`<module>.LexLeanCollections`) is a closure member; anything else is an
-external. It prints one `lexlean/lcnf-extraction/1` record.
+runs, and it reports facts, not decisions. Its code contains no comment and
+no optimization or application policy. From the roots it follows the code of
+every translated definition: a constant of the project's generated modules
+(the fixed runtime namespaces `<module>.LexLeanRuntime` and
+`<module>.LexLeanCollections` included) that is a computable definition Lean
+generates code for is translated with `Lean.Compiler.LCNF.toDecl` in the base
+phase, and no LCNF pass runs afterwards. It records, for every project
+constant reached through code or named by a reached kernel value, its kind,
+defining module, computability, whether code is generated for it, whether it
+is a compiler-generated helper, and the constants its kernel value names; for
+a translated definition, its safety, universe parameters, LCNF type,
+parameters, code, and the constants that code names; for a project inductive,
+its constructors with their LCNF types; and, for every other constant
+translated code names, the same facts. Universe levels are recorded wherever
+a constant is instantiated. It prints one `lexlean/lcnf-extraction/2` record.
 
 **Driver.** Verification generates the module `LexLeanExtract.X<hex32>` (the
 first 32 hex digits of the semantic ID; a reserved module name) with exactly:
-`module`, `public meta import Lean`, one `import all` per generated module, one
-`meta example : <signature> := @<name>` per registry call in registry order,
-the adapter, and one `#eval` naming the roots, the modules, and the runtime
-namespaces. It is elaborated with `lake env lean` against the staged module
-outputs, after policy enforcement (stage 12, §22.1). An elaboration failure on
-a probe line or inside the adapter is authority drift (`LLV7012`); an error the
-adapter raises (an unknown root or an unresolved constant) is a rejection
-(`LLV7011`).
+`module`, `public meta import Lean`, one `import all` per generated module, the
+fixed option `set_option linter.unusedVariables false`, the adapter, a
+`universe` declaration of the universe variables the registered signatures
+name, one `lexlean_signature <name> : <signature>` per registry call in
+registry order, one `#eval` of the registry check, and one `#eval` naming the
+roots and the modules. It is elaborated with `lake env lean` against the
+staged module outputs, after policy enforcement (stage 12, §22.1).
+
+- `lexlean_signature` fails unless the constant's type equals the registered
+  signature structurally up to binder names: a changed result, argument,
+  binder kind, universe, or default value is drift, even where definitional
+  equality would hide it.
+- The registry check fails unless the adapter's own definitions use exactly
+  the registered constants, each in its registered class, and every registered
+  type has exactly its registered constructors.
+- Any Lean message on a probe line, on the registry check, or inside the
+  adapter, and any message the adapter raises as drift, is authority drift
+  (`LLV7012`), whether or not Lean exits successfully; Lean reports messages
+  on standard output, so a warning is never mistaken for part of the record.
+- An error the adapter raises by name (an unknown root, an unresolved
+  constant) is a rejection (`LLV7011`).
+
+**Decisions.** The host decides everything the facts admit:
+
+- each root's *closure* is the translated project definitions reached from
+  it through translated code; a reached project constant that Lean does not
+  translate is refused by its facts;
+- the closure's *runtime members* are those of the runtime namespaces; its
+  *source members* must equal the root's production-eligibility closure;
+- its *erased proofs* are the project theorems its members' kernel values
+  name, directly or through compiler-generated helpers, and the non-helper
+  ones must equal the eligibility analysis's erased dependencies;
+- a definition is *recursive* exactly when it lies on a cycle of the
+  translations' use graph;
+- each closure carries the eligibility analysis's monomorphization plan: every
+  instance with its declaration and type arguments.
 
 **Fail-closed rejection (`LLV7011`).** The host reads the record with a closed
 schema and rejects:
 
-- a record that is malformed, carries extra output, or answers other roots;
+- a record that is malformed, reports a constant twice, carries extra output,
+  or answers other roots;
 - a Lean version or source commit other than the pin (`LLV7012`);
+- a translation reported for a constant Lean does not compile, or whose
+  listed uses differ from what its code names;
 - a closure member that is a theorem (a proof-as-runtime dependency), an
-  axiom, an opaque, unsafe, or partial definition, noncomputable, without
-  generated code, or implemented externally;
+  axiom, an opaque (Lean's form of a partial definition), unsafe,
+  noncomputable, without generated code, or implemented externally;
 - an unsupported compiler form: an LCNF type with no closed representation, or
-  a variable used before it is bound;
-- an external that is neither a constant of Lean's `Init` library nor a member
-  of a generated module's runtime namespaces, or that is an axiom, opaque, or
-  noncomputable (an unresolved dependency);
-- a constant the extracted code names that is neither a closure member, a
-  project inductive or constructor, nor a recorded external (a dropped
+  a variable used outside the lexical scope that binds it;
+- an external that is not a constant of Lean's `Init` library, or that is an
+  axiom, opaque, or noncomputable (an unresolved dependency);
+- a constant translated code names that is neither reported as a project
+  constant nor recorded as an external (a dropped dependency), and a project
+  constant a kernel value names that is not reported (an unresolved
   dependency);
-- a root whose Lean closure differs from its production-eligibility closure:
+- a root whose source members differ from its production-eligibility closure:
   a member only Lean reaches is a dependency the eligibility analysis dropped,
-  a member only the analysis reaches is one Lean does not compile, and the two
-  must name the same erased proofs;
-- a proof that is both erased and realized.
+  and a member only the analysis reaches is one Lean does not compile;
+- a root whose erased proofs differ from the eligibility analysis's.
+
+Base-phase translation names fixed-width literals through their `OfNat`
+instances, so the record's fixed-width literal forms, which the schema admits,
+are exercised only by the host's record tests, not by pinned Lean.
 
 **Compiler input.** On success verification publishes
-`production/compiler-input.json` (`lexlean/compiler-input/1`,
+`production/compiler-input.json` (`lexlean/compiler-input/2`,
 `schemas/compiler-input.schema.json`): the Lean identity, the roots, each
-root's closure and erased proofs, every closure definition with its type,
-parameters, and LCNF code, the project inductives, the externals, and the
-erased proofs. Every LCNF variable is renamed `v<n>` in first-occurrence
-order within its declaration and every list is sorted, so the bytes and their
+root's closure with its source members, runtime members, instances, and erased
+proofs, every closure definition with its recursion, universe parameters,
+type, parameters, and LCNF code, the project inductives, the externals, and
+the erased proofs. Every LCNF variable is renamed `v<n>` in binding order
+within its declaration and every list is sorted, so the bytes and their
 SHA-256 (the compiler-input ID) depend on neither Lean's unique-name counter,
 the source path, nor the host. The attestation records the byte length and
 SHA-256, and the normalized verification records include the input, the
@@ -4461,7 +4664,7 @@ Rows sort by code. Unknown fields, duplicate codes, invalid class/exit combinati
 | `LLR3001`–`LLR3999` | lexicon packages, references, imports, and resolution |
 | `LLT4001`–`LLT4999` | conservative elaboration, signatures, and linking |
 | `LLF5001`–`LLF5999` | definitions and structured proofs |
-| `LLB6001`–`LLB6999` | Lean/LaTeX/PDF lowering and artifact construction |
+| `LLB6001`–`LLB6999` | Lean/LaTeX/PDF lowering, target realization, and artifact construction |
 | `LLV7001`–`LLV7999` | toolchain, Lean, replay, audit, and verification |
 | `LLS8001`–`LLS8999` | filesystem security, networking, child policy, and limits |
 | `LLI9001`–`LLI9999` | internal invariants |
@@ -4787,6 +4990,9 @@ Tests MUST establish that LexLean rejects, at minimum:
 - a recursive occurrence with the wrong number of type arguments;
 - a constructor applied to the wrong number of arguments;
 - a forward reference outside a mutual group;
+- an uninhabited cycle through a mutual group;
+- a match on a value of one type with the constructors of another;
+- a binder spelled like a name the generated Lean refers to;
 - a lambda that omits a used capture;
 - a lambda that declares an unused capture;
 - an application with the wrong number of arguments;
@@ -4814,6 +5020,12 @@ Tests MUST establish that LexLean rejects, at minimum:
 - a mutual label shared by an inductive group and a definition group;
 - a call to another member of a mutual group under a lambda;
 - a well-founded definition referring to itself as a value;
+- a mutual member that calls no member of its group;
+- a mutual group whose call graph is not strongly connected;
+- a mutual group mixing structural and well-founded members;
+- a well-founded measure that mentions a member of its group;
+- false well-founded evidence stating the exact obligation, refused by
+  verification (`LLV7002`).
 - a duplicate key in a map literal;
 - a map keyed by a type without a canonical order;
 - a map literal keyed by a non-literal value;
@@ -4822,17 +5034,21 @@ Tests MUST establish that LexLean rejects, at minimum:
 - a graph edge to an undeclared node;
 - a duplicate graph edge;
 - a fold step whose type does not thread the state;
-- an iteration without its bound;
-- a collection under language 1.1;
+- an iteration without its fuel;
+- a collection literal beyond `max_ir_nodes` (`LLS8002`);
+- a collection under language 1.1.
 - a production root on a target without allocation whose closure reaches allocation through two imported modules;
 - a production root on a target without allocation that takes an unbounded list;
 - a production root whose result is a proposition;
+- a production root that takes a type universe;
+- a production root that takes a named type holding a proposition in a field;
 - a production root whose closure has an effect the root does not admit;
 - a production root that takes a function;
 - a production root whose closure binds a proposition-valued dependency;
 - a production root with a literal outside the target width;
 - a production root that is not declared executable;
-- a production root with type parameters;
+- a production root with type parameters, whether or not its signature
+  mentions them;
 - a production root naming an unregistered target.
 
 ### 28.6 Example verification
@@ -5200,8 +5416,8 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `SM-26` | `semantic-ir` | Language 1.2 snapshots carry a deterministic alpha identity per definition that alpha-equivalent definitions share and any other change alters. | §17.12, §21 |
 | `SM-27` | `semantic-ir` | Language 1.2 snapshots carry complete recursion evidence (mutual labels, decreasing arguments, measures, and evidence bindings), and changing an evidence binding changes the semantic and alpha identities. | §17.12, §21 |
 | `SM-28` | `semantic-ir` | Language 1.2 finite maps and sets over closed ordered key types, their literals, and their primitive operations are typed, lowered to the fixed ordered-collection runtime, and verified. | §17.12 |
-| `SM-29` | `semantic-ir` | Reordered equivalent map, set, and graph literals link to byte-identical semantic data and generated artifacts, while duplicate keys, non-literal literal keys, and key types without a canonical order are rejected. | §17.12, §21 |
-| `SM-30` | `semantic-ir` | Language 1.2 graph literals reference only declared nodes, and successor, reachability, and topological-order queries are deterministic, bounded by the node count, and report a cycle as none. | §17.12 |
+| `SM-29` | `semantic-ir` | Reordered equivalent map, set, and graph literals link to byte-identical semantic data and generated Lean, LaTeX, and lexicon-closure artifacts, while duplicate keys, non-literal literal keys, and key types without a canonical order are rejected. | §17.12, §21 |
+| `SM-30` | `semantic-ir` | Language 1.2 graph literals reference only declared nodes, a graph's nodes are its keys and every successor, and successor, reachability, and topological-order queries are deterministic, bounded by the node count, and report a cycle as none. | §17.12 |
 | `DF-01` | `declarations` | A valid type-definition sentence emits one nonrecursive sort-valued Lean def linked to its document entry. | §15.7, §18.6 |
 | `DF-02` | `declarations` | A valid term-definition sentence emits one nonrecursive explicitly typed Lean def. | §15.7, §18.6 |
 | `DF-03` | `declarations` | A valid predicate-definition sentence emits one nonrecursive Prop-valued Lean def. | §15.7, §18.6 |
@@ -5289,7 +5505,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `VR-10` | `verification` | The axiom parser accepts only the pinned exact output forms and rejects missing, duplicate, extra, or malformed records. | §22.5 |
 | `VR-11` | `verification` | None, allow-subset, and exact axiom policies are enforced exactly and recorded per declaration. | §22.6 |
 | `VR-12` | `verification` | Child process output is normalized with the exact path and line rules before hashing. | §22.7 |
-| `VR-13` | `verification` | A verified directory contains the complete fixed source, map, coverage, olean, probe, audit, and process artifact set. | §22.8 |
+| `VR-13` | `verification` | A verified directory contains the complete fixed source, map, coverage, olean, probe, audit, and process artifact set, and, exactly when a production root exists, the eligibility reports, the extraction module, its process record, and the compiler input. | §22.8 |
 | `VR-14` | `verification` | The attestation ID is computed over the canonical body with its ID field removed. | §22.9 |
 | `VR-15` | `verification` | Any failed verification stage removes staging and produces no verified artifact or verified status. | §6 I11, §22 |
 | `VR-16` | `verification` | Axioms flowing from imported theorems remain subject to the generated declaration's policy. | §22.6 |
@@ -5341,22 +5557,22 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `PD-02` | `production` | Formal-only theorems, propositions, and non-executable definitions coexist with eligible executable production roots, and a module that declares no production root is never analysed for production. | §17.13 |
 | `PD-03` | `production` | A production root's runtime closure contains exactly its transitive computational dependencies across modules at their type instantiations, and its termination evidence is recorded as erased and never realized. | §17.13 |
 | `PD-04` | `production` | Production eligibility depends on the declared target: a construct that requires heap allocation is an admitted effect on a target with allocation and makes the root ineligible on a target without it. | §17.13 |
-| `PD-05` | `production` | A production root fails with LLT4005 before any backend runs when its boundary holds a universe, proposition, type parameter, or function, or its closure reaches a formal-only, erased, non-executable, or unresolved dependency, a literal outside the target width, unavailable allocation, or an effect the root does not admit. | §17.13, §26.3 |
+| `PD-05` | `production` | A production root fails with LLT4005 before any backend runs when it declares type parameters or is not declared executable, when its boundary holds a universe, proposition, type parameter, or function, directly or in a named type's fields, or when its closure reaches a formal-only construct, a literal outside the target width, unavailable allocation, or an effect the root does not admit. | §17.13, §26.3 |
 | `PD-06` | `production` | Every production root's eligibility report is a deterministic, schema-valid build artifact recording its runtime closure, realized types, erased dependencies, constructs, and per-target effects with their sources. | §17.13, §21.5 |
 | `PD-07` | `production` | The eligibility analysis classifies every semantic construct by an explicit exhaustive match, and the exhaustiveness audit rejects a planted wildcard arm, rest pattern, implicit-default binding form, or unnamed IR variant. | §17.13, §27.10 |
-| `NE-01` | `extraction` | Verifying a project with production roots extracts every root through Lean's compiler front end into one canonical compiler input whose bytes and ID are schema-valid, recorded in the attestation, and identical from distinct roots, and a project without a production root publishes none. | §22.10, §26.3 |
-| `NE-02` | `extraction` | Each root's extracted closure is exactly its computational dependencies, equals its production-eligibility closure, names every constant its code uses, and records proof-only dependencies as erased and never as runtime members. | §22.10, §26.3 |
+| `NE-01` | `extraction` | Verifying a project with production roots extracts every root through Lean's compiler front end into one canonical compiler input whose bytes and ID are schema-valid, recorded in the attestation, and identical from distinct project directories, and a project without a production root publishes none. | §22.10, §26.3 |
+| `NE-02` | `extraction` | Each root's extracted closure is exactly its computational dependencies, equals its production-eligibility closure, carries its runtime members and monomorphization instances, names every constant its code uses, marks recursion from the use graph, and records proof-only dependencies as erased and never as runtime members. | §22.10, §26.3 |
 | `NE-03` | `extraction` | An unknown root, an opaque, axiomatic, unsafe, partial, or noncomputable dependency, an external implementation, an unresolved external, an unsupported compiler form, and a malformed, noisy, or foreign extraction record fail closed with LLV7011. | §22.10, §26.3 |
-| `NE-04` | `extraction` | Every Lean operation the extraction uses has a registry row with its exact signature and pinned source identity, every row is probed under pinned Lean on each extraction, the adapter runs no LCNF pass, and a drifted signature or Lean identity fails with LLV7012. | §22.10, §26.3 |
-| `NE-05` | `extraction` | A dependency dropped from Lean's extracted closure, from its declarations, or from the production-eligibility closure fails extraction with LLV7011 before any compiler input is published. | §22.10, §26.3 |
+| `NE-04` | `extraction` | Every constant the extraction adapter uses is registered exactly once, as a call with its exact signature and pinned source identity, a type with its exact constructors, or plumbing; each extraction compares every signature structurally and the adapter's constants with the registry under pinned Lean, the adapter runs no LCNF pass, and drift of a signature, a constructor list, the adapter's constants, its output, or the Lean identity fails with LLV7012. | §22.10, §26.3 |
+| `NE-05` | `extraction` | A dependency dropped from Lean's extracted facts or from the production-eligibility closure fails extraction with LLV7011 before any compiler input is published. | §22.10, §26.3 |
 | `NE-06` | `extraction` | A proof-only dependency presented as a runtime closure member fails extraction with LLV7011 before any compiler input is published. | §22.10, §26.3 |
-| `TC-01` | `calculus` | Hand-constructed target programs have canonical bytes and a SHA-256 content identity, alpha-equivalent programs canonicalize to identical bytes and identity, and every committed fixture validates against the target schemas. | §17.14, §21.7 |
+| `TC-01` | `calculus` | Hand-constructed target programs have canonical bytes and a SHA-256 content identity, alpha-equivalent programs canonicalize to identical bytes and identity, an ill-typed program has neither, and every committed fixture validates against the target schemas. | §17.14, §21.7 |
 | `TC-02` | `calculus` | Every malformed target program or violated static rule fails closed with LLB6005, and an invalid program has neither a canonical form nor a rendering. | §17.14, §26.3 |
-| `TC-03` | `calculus` | The calculus denotation is a kernel-checked LexLean definition, Lean's kernel reduces every kernel-reducible fixture to its expected outcome with its exact step count, no valid fixture is stuck, and a wrong expected outcome is rejected by Lean. | §17.14 |
-| `TC-04` | `calculus` | Lean's evaluator, running the verified calculus modules, reproduces every fixture's expected outcome and step count, including fixtures whose primitives the kernel cannot reduce. | §17.14 |
+| `TC-03` | `calculus` | The calculus denotation is a kernel-checked LexLean definition that charges every evaluator operation, Lean's kernel reduces every kernel-reducible fixture to its expected outcome with its exact step count, no fixture program is stuck on its stated arguments or on seeded random well-typed arguments at any sampled fuel, and a wrong expected outcome is rejected by Lean. | §17.14 |
+| `TC-04` | `calculus` | Lean's evaluator, running the published calculus sources compiled again by pinned Lean, reproduces every fixture's expected outcome and step count, including fixtures a reflexivity proof cannot decide, and the comparison refuses a fixture stated one step off. | §17.14 |
 | `TC-05` | `calculus` | Every realization library template has a fixture whose outcome the kernel proves equal to the value LexLean's own collection primitive computes, committed instances equal their templates, and a mutated template is rejected by Lean. | §17.12, §17.14 |
-| `TC-06` | `calculus` | Every runtime construct of the production registry has exactly one realization row naming existing calculus elements, and the fixtures exercise every calculus type, literal, expression, shape, primitive, fixed width, and template. | §17.13, §17.14 |
-| `TC-07` | `calculus` | Every fixture with an observable outcome renders to safe Rust that rustc compiles with warnings denied and that prints exactly the denotation's value or overflow, and a planted renderer discrepancy is detected. | §17.14 |
+| `TC-06` | `calculus` | Every runtime construct of the production registry has exactly one realization row naming existing calculus elements and requires allocation exactly when its realization does, and the fixtures exercise every calculus type, literal, expression, shape, primitive, and template, and every fixed-width primitive at every width it admits. | §17.13, §17.14 |
+| `TC-07` | `calculus` | Every fixture with an observable outcome renders to a safe Rust library crate in rust-std, and in rust-core exactly when it needs no heap, that the pinned rustc compiles with warnings denied, that prints exactly the denotation's value or overflow, and whose counted work never exceeds the denotation's steps; planted value and work discrepancies are detected. | §17.14 |
 | `GN-01` | `gnaf` | Every committed GNAF request and fixture is canonical and validates against the GNAF schemas, every malformed request or invalid reference or realized program fails closed with LLB6006, and fuel or a universe beyond the host's capacity fails closed with LLS8002. | §17.15, §26.3 |
 | `GN-02` | `gnaf` | The GNAF model is a kernel-checked LexLean definition, Lean's kernel reduces the answer of every committed request to the answer the host transcription computes, and a wrong answer or an answer computed from a universe with a system omitted is rejected by Lean. | §17.15 |
 | `GN-03` | `gnaf` | Candidate membership is the grammar's expansion fixed before any optimizer, and optimizer-defined, discovered, cached, and internal-plan universes and missing, self-referential, or optimizer-citing completeness evidence are rejected. | §17.15 |

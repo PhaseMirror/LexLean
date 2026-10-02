@@ -31,6 +31,18 @@ statement = "The leanchecker executable distributed with Lean 4.32.1 replays a c
 authority = "LEANCHECKER-4-32-1"
 
 [[claim]]
+id = "AUTH-LEAN-LCNF-4-32-1"
+level = "some-true"
+statement = "Lean 4.32.1 translates a code-generating definition to base-phase LCNF with Lean.Compiler.LCNF.toDecl, the compiler's own input to its later passes, so every constant the compiled definition can depend on at run time is named by that translation or by a definition it names."
+authority = "LEAN-LCNF-4-32-1"
+
+[[claim]]
+id = "AUTH-RUSTC-1-97-1"
+level = "some-true"
+statement = "rustc 1.97.1 compiles a safe Rust 2021 crate with the semantics The Rust Reference states for that release: the checked integer methods return None exactly on overflow, the wrapping shifts mask their amount, integer division truncates toward zero, and a #![no_std] crate that declares no extern crate links neither alloc nor std."
+authority = "RUSTC-1-97-1"
+
+[[claim]]
 id = "AUTH-PRINT-AXIOMS-4-32-1"
 level = "some-true"
 statement = "Lean 4.32.1 reports the transitive axiom dependencies of a declaration through #print axioms in exactly the output forms recorded by the committed axiom-parser fixtures."

@@ -48,8 +48,8 @@ fn main() -> ExitCode {
                  check-golden            §28.3: build outputs equal the committed oracles\n\
                  check-reproducibility   §28.4: two clean builds in distinct paths are byte-identical\n\
                  check-fixtures          §28.2: every fixture's CLI run equals its expected/ files\n\
-                 check-calculus          §17.14, §17.15: the target and GNAF fixtures, their Lean modules,\n\
-                                         and the Gnaf model equal their generator\n\
+                 check-calculus          §17.14, §17.15: the compiler project's modules, the target and\n\
+                                         GNAF fixtures, and configuration equal their generator\n\
                  check-package           §30.3, RP-12: package lexlean crate, verify offline build & identity\n\
                  release-artifacts       §30.3: derive the release/ artifact set from the repository\n\
                  release-check           RP-12: refuse release until §30.3/§30.4 are fully satisfied\n\
@@ -71,9 +71,10 @@ fn main() -> ExitCode {
     }
 }
 
-/// §17.14, §17.15: the committed target and GNAF fixtures, the
-/// `TargetFixtures` and `GnafFixtures` modules, and the `Gnaf` model are
-/// exactly what the hand-written fixture sets and model definition render.
+/// §17.14, §17.15: the committed `compiler` project (the calculus modules,
+/// the target and GNAF fixtures, their `TargetFixtures` and `GnafFixtures`
+/// modules, the `Gnaf` model, and the project configuration) is exactly what
+/// its generator renders.
 fn check_calculus(root: &Path, write: bool) -> Result<(), Fail> {
     let count = repo_conformance::calculus::check(root, write)?;
     if write {

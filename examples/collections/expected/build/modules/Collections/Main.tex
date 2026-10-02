@@ -5,13 +5,17 @@
 \section*{Semantic declarations}
 \subsection*{\texttt{ancestors}}
 \noindent Kind: \texttt{definition}.\par
-\noindent Execution: production-eligible, non-escaping closures only.\par
-\noindent Type: \texttt{(Prod (List ((Prod (Nat) (Nat)))) (Bool))}.\par
-\noindent Definition: \texttt{(LexLeanCollections.iterateUntil ((fun (state : List ((Prod (Nat) (Nat)))) => (let derived : List ((Prod (Nat) (Nat))) := (LexLeanCollections.setFold ((fun (outer : List ((Prod (Nat) (Nat)))) (left : (Prod (Nat) (Nat))) => (LexLeanCollections.setFold ((fun (inner : List ((Prod (Nat) (Nat)))) (right : (Prod (Nat) (Nat))) => (if (Nat.beq ((left).2) ((right).1)) then (LexLeanCollections.setInsert (inner) (((left).1, (right).2)) : List ((Prod (Nat) (Nat)))) else inner))) (outer) (state) : List ((Prod (Nat) (Nat)))))) (state) (state) : List ((Prod (Nat) (Nat)))); (if (Nat.beq ((LexLeanCollections.setSize (derived) : Nat)) ((LexLeanCollections.setSize (state) : Nat))) then Option.none else Option.some (derived))))) (8) (parents) : (Prod (List ((Prod (Nat) (Nat)))) (Bool)))}.\par
+\noindent Parameters: \texttt{(parents : Set ((Prod (Nat) (Nat))))}.\par
+\noindent Closure 1: binds \texttt{(state)}, captures \texttt{()}.\par
+\noindent Closure 2: binds \texttt{(outer, left)}, captures \texttt{(state)}.\par
+\noindent Closure 3: binds \texttt{(inner, right)}, captures \texttt{(left)}.\par
+\noindent Execution: executable, non-escaping closures only.\par
+\noindent Type: \texttt{(Prod (Set ((Prod (Nat) (Nat)))) (Bool))}.\par
+\noindent Definition: \texttt{(LexLeanCollections.iterateUntil ((fun (state : Set ((Prod (Nat) (Nat)))) => (let derived : Set ((Prod (Nat) (Nat))) := (LexLeanCollections.setFold ((fun (outer : Set ((Prod (Nat) (Nat)))) (left : (Prod (Nat) (Nat))) => (LexLeanCollections.setFold ((fun (inner : Set ((Prod (Nat) (Nat)))) (right : (Prod (Nat) (Nat))) => (if (Nat.beq ((left).2) ((right).1)) then (LexLeanCollections.setInsert (inner) (((left).1, (right).2)) : Set ((Prod (Nat) (Nat)))) else inner))) (outer) (state) : Set ((Prod (Nat) (Nat)))))) (state) (state) : Set ((Prod (Nat) (Nat)))); (if (Nat.beq ((LexLeanCollections.setSize (derived) : Nat)) ((LexLeanCollections.setSize (state) : Nat))) then Option.none else Option.some (derived))))) (8) (parents) : (Prod (Set ((Prod (Nat) (Nat)))) (Bool)))}.\par
 \noindent Axiom policy: \texttt{exact [propext]}.\par
 \subsection*{\texttt{family}}
 \noindent Kind: \texttt{definition}.\par
-\noindent Type: \texttt{List ((Prod (Nat) (Nat)))}.\par
+\noindent Type: \texttt{Set ((Prod (Nat) (Nat)))}.\par
 \noindent Definition: \texttt{([(1, 2), (2, 3), (3, 4)] : List ((Prod (Nat) (Nat))))}.\par
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{table\_slots}}
@@ -48,19 +52,19 @@
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{op\_map\_insert}}
 \noindent Kind: \texttt{theorem}.\par
-\noindent Statement: \texttt{((LexLeanCollections.mapInsert (([("a", 1), ("b", 2)] : List (Prod (String) (Nat)))) ("c") (3) : List (Prod (String) (Nat))) = ([("a", 1), ("b", 2), ("c", 3)] : List (Prod (String) (Nat))))}.\par
+\noindent Statement: \texttt{((LexLeanCollections.mapInsert (([("a", 1), ("b", 2)] : List (Prod (String) (Nat)))) ("c") (3) : Map (String) (Nat)) = ([("a", 1), ("b", 2), ("c", 3)] : List (Prod (String) (Nat))))}.\par
 \noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
 \subsection*{\texttt{op\_map\_insert\_replaces}}
 \noindent Kind: \texttt{theorem}.\par
-\noindent Statement: \texttt{((LexLeanCollections.mapInsert (([("a", 1), ("b", 2)] : List (Prod (String) (Nat)))) ("a") (9) : List (Prod (String) (Nat))) = ([("a", 9), ("b", 2)] : List (Prod (String) (Nat))))}.\par
+\noindent Statement: \texttt{((LexLeanCollections.mapInsert (([("a", 1), ("b", 2)] : List (Prod (String) (Nat)))) ("a") (9) : Map (String) (Nat)) = ([("a", 9), ("b", 2)] : List (Prod (String) (Nat))))}.\par
 \noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
 \subsection*{\texttt{op\_map\_remove}}
 \noindent Kind: \texttt{theorem}.\par
-\noindent Statement: \texttt{((LexLeanCollections.mapRemove (([("a", 1), ("b", 2)] : List (Prod (String) (Nat)))) ("a") : List (Prod (String) (Nat))) = ([("b", 2)] : List (Prod (String) (Nat))))}.\par
+\noindent Statement: \texttt{((LexLeanCollections.mapRemove (([("a", 1), ("b", 2)] : List (Prod (String) (Nat)))) ("a") : Map (String) (Nat)) = ([("b", 2)] : List (Prod (String) (Nat))))}.\par
 \noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
 \subsection*{\texttt{op\_map\_remove\_absent}}
 \noindent Kind: \texttt{theorem}.\par
-\noindent Statement: \texttt{((LexLeanCollections.mapRemove (([("a", 1), ("b", 2)] : List (Prod (String) (Nat)))) ("z") : List (Prod (String) (Nat))) = ([("a", 1), ("b", 2)] : List (Prod (String) (Nat))))}.\par
+\noindent Statement: \texttt{((LexLeanCollections.mapRemove (([("a", 1), ("b", 2)] : List (Prod (String) (Nat)))) ("z") : Map (String) (Nat)) = ([("a", 1), ("b", 2)] : List (Prod (String) (Nat))))}.\par
 \noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
 \subsection*{\texttt{op\_map\_lookup}}
 \noindent Kind: \texttt{theorem}.\par
@@ -96,11 +100,11 @@
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{op\_set\_insert}}
 \noindent Kind: \texttt{theorem}.\par
-\noindent Statement: \texttt{((LexLeanCollections.setInsert (([1, 2, 3] : List (Nat))) (0) : List (Nat)) = ([0, 1, 2, 3] : List (Nat)))}.\par
+\noindent Statement: \texttt{((LexLeanCollections.setInsert (([1, 2, 3] : List (Nat))) (0) : Set (Nat)) = ([0, 1, 2, 3] : List (Nat)))}.\par
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{op\_set\_remove}}
 \noindent Kind: \texttt{theorem}.\par
-\noindent Statement: \texttt{((LexLeanCollections.setRemove (([1, 2, 3] : List (Nat))) (2) : List (Nat)) = ([1, 3] : List (Nat)))}.\par
+\noindent Statement: \texttt{((LexLeanCollections.setRemove (([1, 2, 3] : List (Nat))) (2) : Set (Nat)) = ([1, 3] : List (Nat)))}.\par
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{op\_set\_contains}}
 \noindent Kind: \texttt{theorem}.\par
@@ -116,15 +120,15 @@
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{op\_set\_union}}
 \noindent Kind: \texttt{theorem}.\par
-\noindent Statement: \texttt{((LexLeanCollections.setUnion (([1, 2, 3] : List (Nat))) (([0, 5] : List (Nat))) : List (Nat)) = ([0, 1, 2, 3, 5] : List (Nat)))}.\par
+\noindent Statement: \texttt{((LexLeanCollections.setUnion (([1, 2, 3] : List (Nat))) (([0, 5] : List (Nat))) : Set (Nat)) = ([0, 1, 2, 3, 5] : List (Nat)))}.\par
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{op\_set\_intersection}}
 \noindent Kind: \texttt{theorem}.\par
-\noindent Statement: \texttt{((LexLeanCollections.setIntersection (([1, 2, 3] : List (Nat))) (([2, 3, 9] : List (Nat))) : List (Nat)) = ([2, 3] : List (Nat)))}.\par
+\noindent Statement: \texttt{((LexLeanCollections.setIntersection (([1, 2, 3] : List (Nat))) (([2, 3, 9] : List (Nat))) : Set (Nat)) = ([2, 3] : List (Nat)))}.\par
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{op\_set\_difference}}
 \noindent Kind: \texttt{theorem}.\par
-\noindent Statement: \texttt{((LexLeanCollections.setDifference (([1, 2, 3] : List (Nat))) (([2] : List (Nat))) : List (Nat)) = ([1, 3] : List (Nat)))}.\par
+\noindent Statement: \texttt{((LexLeanCollections.setDifference (([1, 2, 3] : List (Nat))) (([2] : List (Nat))) : Set (Nat)) = ([1, 3] : List (Nat)))}.\par
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{op\_set\_fold}}
 \noindent Kind: \texttt{theorem}.\par
@@ -148,15 +152,15 @@
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{op\_graph\_successors}}
 \noindent Kind: \texttt{theorem}.\par
-\noindent Statement: \texttt{((LexLeanCollections.graphSuccessors (([(1, [2, 3]), (2, [4]), (3, [4]), (4, [])] : List (Prod (Nat) (List (Nat))))) (1) : List (Nat)) = ([2, 3] : List (Nat)))}.\par
+\noindent Statement: \texttt{((LexLeanCollections.graphSuccessors (([(1, [2, 3]), (2, [4]), (3, [4]), (4, [])] : List (Prod (Nat) (List (Nat))))) (1) : Set (Nat)) = ([2, 3] : List (Nat)))}.\par
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{op\_graph\_successors\_absent}}
 \noindent Kind: \texttt{theorem}.\par
-\noindent Statement: \texttt{((LexLeanCollections.graphSuccessors (([(1, [2, 3]), (2, [4]), (3, [4]), (4, [])] : List (Prod (Nat) (List (Nat))))) (9) : List (Nat)) = ([] : List (Nat)))}.\par
+\noindent Statement: \texttt{((LexLeanCollections.graphSuccessors (([(1, [2, 3]), (2, [4]), (3, [4]), (4, [])] : List (Prod (Nat) (List (Nat))))) (9) : Set (Nat)) = ([] : List (Nat)))}.\par
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{op\_graph\_reachable}}
 \noindent Kind: \texttt{theorem}.\par
-\noindent Statement: \texttt{((LexLeanCollections.graphReachable (([(1, [2, 3]), (2, [4]), (3, [4]), (4, [])] : List (Prod (Nat) (List (Nat))))) (2) : List (Nat)) = ([2, 4] : List (Nat)))}.\par
+\noindent Statement: \texttt{((LexLeanCollections.graphReachable (([(1, [2, 3]), (2, [4]), (3, [4]), (4, [])] : List (Prod (Nat) (List (Nat))))) (2) : Set (Nat)) = ([2, 4] : List (Nat)))}.\par
 \noindent Axiom policy: \texttt{exact [propext]}.\par
 \subsection*{\texttt{op\_graph\_topological}}
 \noindent Kind: \texttt{theorem}.\par
@@ -164,54 +168,54 @@
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{key\_order\_nat}}
 \noindent Kind: \texttt{theorem}.\par
-\noindent Statement: \texttt{(([0, 9, 10, 11, 100] : List (Nat)) = (LexLeanCollections.listFold ((fun (built : List (Nat)) (element : Nat) => (LexLeanCollections.setInsert (built) (element) : List (Nat)))) (([] : List (Nat))) ((10 :: (9 :: (100 :: (0 :: (11 :: ([] : List (Nat)))))))) : List (Nat)))}.\par
+\noindent Statement: \texttt{(([0, 9, 10, 11, 100] : List (Nat)) = (LexLeanCollections.listFold ((fun (built : Set (Nat)) (element : Nat) => (LexLeanCollections.setInsert (built) (element) : Set (Nat)))) (([] : List (Nat))) ((10 :: (9 :: (100 :: (0 :: (11 :: ([] : List (Nat)))))))) : Set (Nat)))}.\par
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{key\_order\_int}}
 \noindent Kind: \texttt{theorem}.\par
-\noindent Statement: \texttt{(([(-100 : Int), (-10 : Int), (-2 : Int), (0 : Int), (3 : Int), (9 : Int), (100 : Int)] : List (Int)) = (LexLeanCollections.listFold ((fun (built : List (Int)) (element : Int) => (LexLeanCollections.setInsert (built) (element) : List (Int)))) (([] : List (Int))) (((3 : Int) :: ((-2 : Int) :: ((0 : Int) :: ((-10 : Int) :: ((100 : Int) :: ((-100 : Int) :: ((9 : Int) :: ([] : List (Int)))))))))) : List (Int)))}.\par
+\noindent Statement: \texttt{(([(-100 : Int), (-10 : Int), (-2 : Int), (0 : Int), (3 : Int), (9 : Int), (100 : Int)] : List (Int)) = (LexLeanCollections.listFold ((fun (built : Set (Int)) (element : Int) => (LexLeanCollections.setInsert (built) (element) : Set (Int)))) (([] : List (Int))) (((3 : Int) :: ((-2 : Int) :: ((0 : Int) :: ((-10 : Int) :: ((100 : Int) :: ((-100 : Int) :: ((9 : Int) :: ([] : List (Int)))))))))) : Set (Int)))}.\par
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{key\_order\_int8}}
 \noindent Kind: \texttt{theorem}.\par
-\noindent Statement: \texttt{(([(-128 : Int8), (-9 : Int8), (-1 : Int8), (0 : Int8), (9 : Int8), (127 : Int8)] : List (Int8)) = (LexLeanCollections.listFold ((fun (built : List (Int8)) (element : Int8) => (LexLeanCollections.setInsert (built) (element) : List (Int8)))) (([] : List (Int8))) (((127 : Int8) :: ((-1 : Int8) :: ((0 : Int8) :: ((-128 : Int8) :: ((9 : Int8) :: ((-9 : Int8) :: ([] : List (Int8))))))))) : List (Int8)))}.\par
+\noindent Statement: \texttt{(([(-128 : Int8), (-9 : Int8), (-1 : Int8), (0 : Int8), (9 : Int8), (127 : Int8)] : List (Int8)) = (LexLeanCollections.listFold ((fun (built : Set (Int8)) (element : Int8) => (LexLeanCollections.setInsert (built) (element) : Set (Int8)))) (([] : List (Int8))) (((127 : Int8) :: ((-1 : Int8) :: ((0 : Int8) :: ((-128 : Int8) :: ((9 : Int8) :: ((-9 : Int8) :: ([] : List (Int8))))))))) : Set (Int8)))}.\par
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{key\_order\_int16}}
 \noindent Kind: \texttt{theorem}.\par
-\noindent Statement: \texttt{(([(-32768 : Int16), (-10 : Int16), (-1 : Int16), (0 : Int16), (10 : Int16), (32767 : Int16)] : List (Int16)) = (LexLeanCollections.listFold ((fun (built : List (Int16)) (element : Int16) => (LexLeanCollections.setInsert (built) (element) : List (Int16)))) (([] : List (Int16))) (((32767 : Int16) :: ((-1 : Int16) :: ((0 : Int16) :: ((-32768 : Int16) :: ((10 : Int16) :: ((-10 : Int16) :: ([] : List (Int16))))))))) : List (Int16)))}.\par
+\noindent Statement: \texttt{(([(-32768 : Int16), (-10 : Int16), (-1 : Int16), (0 : Int16), (10 : Int16), (32767 : Int16)] : List (Int16)) = (LexLeanCollections.listFold ((fun (built : Set (Int16)) (element : Int16) => (LexLeanCollections.setInsert (built) (element) : Set (Int16)))) (([] : List (Int16))) (((32767 : Int16) :: ((-1 : Int16) :: ((0 : Int16) :: ((-32768 : Int16) :: ((10 : Int16) :: ((-10 : Int16) :: ([] : List (Int16))))))))) : Set (Int16)))}.\par
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{key\_order\_int32}}
 \noindent Kind: \texttt{theorem}.\par
-\noindent Statement: \texttt{(([(-2147483648 : Int32), (-100 : Int32), (-1 : Int32), (0 : Int32), (100 : Int32), (2147483647 : Int32)] : List (Int32)) = (LexLeanCollections.listFold ((fun (built : List (Int32)) (element : Int32) => (LexLeanCollections.setInsert (built) (element) : List (Int32)))) (([] : List (Int32))) (((2147483647 : Int32) :: ((-1 : Int32) :: ((0 : Int32) :: ((-2147483648 : Int32) :: ((100 : Int32) :: ((-100 : Int32) :: ([] : List (Int32))))))))) : List (Int32)))}.\par
+\noindent Statement: \texttt{(([(-2147483648 : Int32), (-100 : Int32), (-1 : Int32), (0 : Int32), (100 : Int32), (2147483647 : Int32)] : List (Int32)) = (LexLeanCollections.listFold ((fun (built : Set (Int32)) (element : Int32) => (LexLeanCollections.setInsert (built) (element) : Set (Int32)))) (([] : List (Int32))) (((2147483647 : Int32) :: ((-1 : Int32) :: ((0 : Int32) :: ((-2147483648 : Int32) :: ((100 : Int32) :: ((-100 : Int32) :: ([] : List (Int32))))))))) : Set (Int32)))}.\par
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{key\_order\_int64}}
 \noindent Kind: \texttt{theorem}.\par
-\noindent Statement: \texttt{(([(-9223372036854775808 : Int64), (-99 : Int64), (-1 : Int64), (0 : Int64), (99 : Int64), (9223372036854775807 : Int64)] : List (Int64)) = (LexLeanCollections.listFold ((fun (built : List (Int64)) (element : Int64) => (LexLeanCollections.setInsert (built) (element) : List (Int64)))) (([] : List (Int64))) (((9223372036854775807 : Int64) :: ((-1 : Int64) :: ((0 : Int64) :: ((-9223372036854775808 : Int64) :: ((99 : Int64) :: ((-99 : Int64) :: ([] : List (Int64))))))))) : List (Int64)))}.\par
+\noindent Statement: \texttt{(([(-9223372036854775808 : Int64), (-99 : Int64), (-1 : Int64), (0 : Int64), (99 : Int64), (9223372036854775807 : Int64)] : List (Int64)) = (LexLeanCollections.listFold ((fun (built : Set (Int64)) (element : Int64) => (LexLeanCollections.setInsert (built) (element) : Set (Int64)))) (([] : List (Int64))) (((9223372036854775807 : Int64) :: ((-1 : Int64) :: ((0 : Int64) :: ((-9223372036854775808 : Int64) :: ((99 : Int64) :: ((-99 : Int64) :: ([] : List (Int64))))))))) : Set (Int64)))}.\par
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{key\_order\_uint8}}
 \noindent Kind: \texttt{theorem}.\par
-\noindent Statement: \texttt{(([(0 : UInt8), (7 : UInt8), (70 : UInt8), (255 : UInt8)] : List (UInt8)) = (LexLeanCollections.listFold ((fun (built : List (UInt8)) (element : UInt8) => (LexLeanCollections.setInsert (built) (element) : List (UInt8)))) (([] : List (UInt8))) (((255 : UInt8) :: ((0 : UInt8) :: ((7 : UInt8) :: ((70 : UInt8) :: ([] : List (UInt8))))))) : List (UInt8)))}.\par
+\noindent Statement: \texttt{(([(0 : UInt8), (7 : UInt8), (70 : UInt8), (255 : UInt8)] : List (UInt8)) = (LexLeanCollections.listFold ((fun (built : Set (UInt8)) (element : UInt8) => (LexLeanCollections.setInsert (built) (element) : Set (UInt8)))) (([] : List (UInt8))) (((255 : UInt8) :: ((0 : UInt8) :: ((7 : UInt8) :: ((70 : UInt8) :: ([] : List (UInt8))))))) : Set (UInt8)))}.\par
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{key\_order\_uint16}}
 \noindent Kind: \texttt{theorem}.\par
-\noindent Statement: \texttt{(([(0 : UInt16), (9 : UInt16), (10 : UInt16), (65535 : UInt16)] : List (UInt16)) = (LexLeanCollections.listFold ((fun (built : List (UInt16)) (element : UInt16) => (LexLeanCollections.setInsert (built) (element) : List (UInt16)))) (([] : List (UInt16))) (((65535 : UInt16) :: ((0 : UInt16) :: ((9 : UInt16) :: ((10 : UInt16) :: ([] : List (UInt16))))))) : List (UInt16)))}.\par
+\noindent Statement: \texttt{(([(0 : UInt16), (9 : UInt16), (10 : UInt16), (65535 : UInt16)] : List (UInt16)) = (LexLeanCollections.listFold ((fun (built : Set (UInt16)) (element : UInt16) => (LexLeanCollections.setInsert (built) (element) : Set (UInt16)))) (([] : List (UInt16))) (((65535 : UInt16) :: ((0 : UInt16) :: ((9 : UInt16) :: ((10 : UInt16) :: ([] : List (UInt16))))))) : Set (UInt16)))}.\par
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{key\_order\_uint32}}
 \noindent Kind: \texttt{theorem}.\par
-\noindent Statement: \texttt{(([(0 : UInt32), (99 : UInt32), (100 : UInt32), (4294967295 : UInt32)] : List (UInt32)) = (LexLeanCollections.listFold ((fun (built : List (UInt32)) (element : UInt32) => (LexLeanCollections.setInsert (built) (element) : List (UInt32)))) (([] : List (UInt32))) (((4294967295 : UInt32) :: ((0 : UInt32) :: ((99 : UInt32) :: ((100 : UInt32) :: ([] : List (UInt32))))))) : List (UInt32)))}.\par
+\noindent Statement: \texttt{(([(0 : UInt32), (99 : UInt32), (100 : UInt32), (4294967295 : UInt32)] : List (UInt32)) = (LexLeanCollections.listFold ((fun (built : Set (UInt32)) (element : UInt32) => (LexLeanCollections.setInsert (built) (element) : Set (UInt32)))) (([] : List (UInt32))) (((4294967295 : UInt32) :: ((0 : UInt32) :: ((99 : UInt32) :: ((100 : UInt32) :: ([] : List (UInt32))))))) : Set (UInt32)))}.\par
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{key\_order\_uint64}}
 \noindent Kind: \texttt{theorem}.\par
-\noindent Statement: \texttt{(([(0 : UInt64), (9 : UInt64), (10 : UInt64), (18446744073709551615 : UInt64)] : List (UInt64)) = (LexLeanCollections.listFold ((fun (built : List (UInt64)) (element : UInt64) => (LexLeanCollections.setInsert (built) (element) : List (UInt64)))) (([] : List (UInt64))) (((18446744073709551615 : UInt64) :: ((0 : UInt64) :: ((9 : UInt64) :: ((10 : UInt64) :: ([] : List (UInt64))))))) : List (UInt64)))}.\par
+\noindent Statement: \texttt{(([(0 : UInt64), (9 : UInt64), (10 : UInt64), (18446744073709551615 : UInt64)] : List (UInt64)) = (LexLeanCollections.listFold ((fun (built : Set (UInt64)) (element : UInt64) => (LexLeanCollections.setInsert (built) (element) : Set (UInt64)))) (([] : List (UInt64))) (((18446744073709551615 : UInt64) :: ((0 : UInt64) :: ((9 : UInt64) :: ((10 : UInt64) :: ([] : List (UInt64))))))) : Set (UInt64)))}.\par
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{key\_order\_bool}}
 \noindent Kind: \texttt{theorem}.\par
-\noindent Statement: \texttt{(([false, true] : List (Bool)) = (LexLeanCollections.listFold ((fun (built : List (Bool)) (element : Bool) => (LexLeanCollections.setInsert (built) (element) : List (Bool)))) (([] : List (Bool))) ((true :: (false :: ([] : List (Bool))))) : List (Bool)))}.\par
+\noindent Statement: \texttt{(([false, true] : List (Bool)) = (LexLeanCollections.listFold ((fun (built : Set (Bool)) (element : Bool) => (LexLeanCollections.setInsert (built) (element) : Set (Bool)))) (([] : List (Bool))) ((true :: (false :: ([] : List (Bool))))) : Set (Bool)))}.\par
 \noindent Axiom policy: \texttt{exact [propext]}.\par
 \subsection*{\texttt{key\_order\_string}}
 \noindent Kind: \texttt{theorem}.\par
-\noindent Statement: \texttt{((["", "Z", "a", "a b", "ab", "z", "<U+00DF>", "<U+00E9>", "<U+65E5><U+672C>", "<U+1F600>"] : List (String)) = (LexLeanCollections.listFold ((fun (built : List (String)) (element : String) => (LexLeanCollections.setInsert (built) (element) : List (String)))) (([] : List (String))) (("z" :: ("<U+00E9>" :: ("a" :: ("Z" :: ("<U+00DF>" :: ("<U+65E5><U+672C>" :: ("<U+1F600>" :: ("ab" :: ("" :: ("a b" :: ([] : List (String))))))))))))) : List (String)))}.\par
+\noindent Statement: \texttt{((["", "Z", "a", "a b", "ab", "z", "<U+00DF>", "<U+00E9>", "<U+65E5><U+672C>", "<U+1F600>"] : List (String)) = (LexLeanCollections.listFold ((fun (built : Set (String)) (element : String) => (LexLeanCollections.setInsert (built) (element) : Set (String)))) (([] : List (String))) (("z" :: ("<U+00E9>" :: ("a" :: ("Z" :: ("<U+00DF>" :: ("<U+65E5><U+672C>" :: ("<U+1F600>" :: ("ab" :: ("" :: ("a b" :: ([] : List (String))))))))))))) : Set (String)))}.\par
 \noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
 \subsection*{\texttt{key\_order\_product}}
 \noindent Kind: \texttt{theorem}.\par
-\noindent Statement: \texttt{(([(1, "a"), (1, "z"), (2, "B"), (2, "a")] : List ((Prod (Nat) (String)))) = (LexLeanCollections.listFold ((fun (built : List ((Prod (Nat) (String)))) (element : (Prod (Nat) (String))) => (LexLeanCollections.setInsert (built) (element) : List ((Prod (Nat) (String)))))) (([] : List ((Prod (Nat) (String))))) (((2, "a") :: ((1, "z") :: ((2, "B") :: ((1, "a") :: ([] : List ((Prod (Nat) (String))))))))) : List ((Prod (Nat) (String)))))}.\par
+\noindent Statement: \texttt{(([(1, "a"), (1, "z"), (2, "B"), (2, "a")] : List ((Prod (Nat) (String)))) = (LexLeanCollections.listFold ((fun (built : Set ((Prod (Nat) (String)))) (element : (Prod (Nat) (String))) => (LexLeanCollections.setInsert (built) (element) : Set ((Prod (Nat) (String)))))) (([] : List ((Prod (Nat) (String))))) (((2, "a") :: ((1, "z") :: ((2, "B") :: ((1, "a") :: ([] : List ((Prod (Nat) (String))))))))) : Set ((Prod (Nat) (String)))))}.\par
 \noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
 \end{document}

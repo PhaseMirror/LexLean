@@ -38,13 +38,29 @@ versions, and the entries below say what each tag does and does not claim.
   A standalone recursive definition decreases only over a self-recursive
   inductive, and no 1.2 declaration may take the name of a built-in
   constructor owner (`Bool`, `List`, `Nat`, `Option`, `Prod`, `Result`).
+- Language-1.2 binder hygiene (§17.12 rule 10). No binder may be spelled like:
+  - a declaration of its module;
+  - a built-in name the backend emits;
+  - the root of the module prefix.
+
+  The rule covers type parameters, value parameters, and pattern, `let`,
+  quantifier, and proof binders. Such a binder would capture the
+  unqualified reference in generated Lean after linking had accepted it;
+  linking now refuses it. Also new in language 1.2:
+  - the canonical LaTeX states the type parameters of parameterized data;
+  - every declaration is its own source-map node in both artifacts;
+  - type parameters, constructors, and mutual labels are charged to
+    `max_ir_nodes`.
+
+  Link-time type diagnostics now spell types as the document does, not as
+  internal structures.
   Eight new negative fixtures cover positivity, non-uniformity, an
   uninhabited cycle, a recursive structure, a non-contiguous group, bad type
   arguments, a constructor mismatch, and a forward reference.
 - Language-1.2 higher-order code (§17.12): function types, lambdas with exact
   explicit captures, full applications, definition references, and generic
   definitions and theorems with explicit type arguments and no polymorphic
-  recursion. `executable` definitions are production-eligible only with
+  recursion. `executable` definitions are admitted only with
   non-escaping closures and executable callees: no type they state or write
   may hold a function, directly or through a document type's fields, and a
   function parameter is used only where a closure may be. Type parameters
@@ -57,6 +73,15 @@ versions, and the entries below say what each tag does and does not claim.
   `Option`, and passed in or out of a structure), polymorphic ambiguity and
   recursion, recursion under a lambda, formal callees, a captured type name,
   and a universe type argument.
+  Changes after review:
+  - Binder hygiene (§17.12 rule 10) covers generic type parameters and
+    lambda parameters, so neither the declaration's own name, a sibling
+    declaration, nor the module prefix can be captured.
+  - A type parameter its declaration never mentions lowers as `(_T : Type)`.
+  - The alpha identity numbers binders in evaluation order rather than in
+    serialized member order.
+  - The 1.2 LaTeX states every parameter with its type and every closure
+    with what it binds and captures.
 - Language-1.2 recursion (§17.12): mutual definition groups recurse
   structurally over one recursive family (naturals, lists, or an inductive
   group with its containers) and lower with `termination_by structural`;
@@ -73,6 +98,21 @@ versions, and the entries below say what each tag does and does not claim.
   referenced as a value, a mutual label shared by an inductive and a
   definition group) is rejected; eleven new negative fixtures cover these
   and the decrease and evidence rules (`DF-16`, `DF-17`, `PF-19`, `SM-27`).
+  Changes after review:
+  - Mutual groups may be well-founded: every member has a measure, and each
+    call's obligation compares the callee's measure at the arguments with
+    the caller's. `ping` and `pong` in `examples/recursion` call each other
+    on the same argument and terminate by their two measures.
+  - Every mutual group's call graph must be strongly connected, with every
+    member calling into the group.
+  - The example adds a structural mutual constant-folding rewriter over
+    `Expr` and `Stmt` that returns the rewritten tree.
+  - A false evidence theorem stating the exact obligation is refused by
+    verification (`recursion-false-evidence`), and SPEC states what linking
+    and verification each establish.
+  - The negative fixture suite requires every diagnostic of a class to
+    carry its prescribed code, and the absolute-path guard no longer
+    mistakes an escaped newline after a colon for a Windows drive.
 - Language-1.2 ordered collections (§17.12): `map` and `set` types over
   closed ordered key types, canonical map/set/graph literals (reordered
   source links to identical semantic data), insertion/lookup/set-algebra
@@ -87,6 +127,20 @@ versions, and the entries below say what each tag does and does not claim.
   fixtures cover duplicate, unordered, non-literal, noncanonical, and
   out-of-range keys, graph references and duplicate edges, fold typing,
   unbounded iteration, and collections under language 1.1.
+  Changes after review:
+  - A graph's nodes are its keys and every successor, so a successor
+    inserted without an entry of its own is a node with no successors;
+    reachability and topological order now agree on it.
+  - `SM-28` and `SM-30` check every operation, under Lean, against an
+    independent `BTreeMap`/`BTreeSet` model on seeded operation sequences,
+    including a chain as deep as its node count allows.
+  - `SM-29` compares the snapshot and every published artifact that does
+    not record source positions.
+  - Operation costs are stated, `iterate_until`'s bound is named as fuel,
+    and an oversized collection literal is `LLS8002`
+    (`collection-literal-limit`).
+  - Literal normalization walks the typed module instead of a JSON round
+    trip, and the canonical document names map and set types.
 - Language-1.2 production eligibility (§17.13): executable status is a
   declared, checked property. A definition becomes a production root only by
   declaring `production` with registered targets (`rust-core`, `rust-std`)
@@ -99,6 +153,22 @@ versions, and the entries below say what each tag does and does not claim.
   `LLT4005` before any backend runs. Each module's report is published as
   `production/<module>.eligibility.json`, and audit-production rejects any
   default branch in the analysis (`PD-01`..`PD-07`, `examples/production`).
+  Changes after review:
+  - A root that declares type parameters is refused even when its signature
+    never mentions them, and a type parameter that survives instantiation in
+    the closure is refused (`production-phantom-type-parameter`).
+  - audit-production also refuses binding catch-alls, tuple defaults, and
+    equality tests on the IR, counts a variant only where a match arm names
+    it, and reads character literals; clippy's wildcard lints back it up.
+  - Each report records, per target, every natural-number and integer
+    representation crossing the root boundary with its width.
+  - `executable` is renamed in the document and §17.12 as the closure rule
+    it is, distinct from production eligibility.
+  - New fixtures for a universe and a proposition inside a named type at the
+    boundary; PD-05 states only what linked source can reach, and the
+    analysis's other refusals have unit tests on unlinked IR.
+  - PD-01 pins every column of every registry row, and a registry failure is
+    an internal error (`LLI9001`), not `LLT4005`.
 - Named-root extraction (§22.10): verifying a project with production roots
   now runs a new stage 12. Lean's compiler front end translates every
   definition each root reaches to base-phase LCNF through the pinned adapter
@@ -118,6 +188,29 @@ versions, and the entries below say what each tag does and does not claim.
   Verification publishes the canonical, root-independent
   `production/compiler-input.json` (`lexlean/compiler-input/1`, schema
   `compiler-input`) and records it in the attestation (`NE-01`..`NE-06`).
+  Changes after review:
+  - The adapter reports facts only. For everything reachable from the roots
+    it reports each constant's kind, module, computability, and kernel uses,
+    and the base-phase LCNF of every code-generating project definition,
+    runtime members included. The host decides each closure, its runtime
+    members, its erased proofs, recursion (cycles of the use graph), and
+    admissibility, and carries the eligibility analysis's monomorphization
+    plan into the compiler input (`lexlean/compiler-input/2`).
+  - The authority registry (`lexlean/lcnf-authority/2`) is closed. Every
+    constant the adapter uses is one call, type, or plumbing row. Every
+    extraction checks the adapter's constants against it, compares each
+    signature structurally (default values and binder kinds included), and
+    compares each type's constructors with Lean's.
+  - A warning beside the record is drift. Universe levels are recorded.
+    Variable scope is lexical.
+  - Language-1.2 attestations are `lexlean/attestation/2`
+    (`attestation-v2` schema), which records the compiler input. The
+    verified layout lists the eligibility reports, and VR-13 checks it on a
+    project with production roots.
+  - New fixtures `extraction-rejected` (`LLV7011`) and
+    `extraction-authority-drift` (`LLV7012`) run end to end. The adapter's
+    classification is checked on real Lean over a hand-written module, and
+    the authority statement is a `some-true` ledger claim.
 - The production realization calculus (§17.14), the closed target of
   production compilation. It is defined as LexLean in the new `compiler/`
   project: syntax, a kernel-checked denotation with exact step accounting
@@ -135,7 +228,39 @@ versions, and the entries below say what each tag does and does not claim.
   The hand-constructed fixtures are confirmed three ways: Lean's kernel (or,
   for the few primitives the kernel cannot reduce, Lean's evaluator),
   LexLean's own collection primitives, and `rustc`
-  (`TC-01`..`TC-07`, `cargo xtask check-calculus`).
+  (`TC-01`..`TC-07`, `cargo xtask check-calculus`). The calculus modules
+  and the project configuration are generated from their definition in
+  `repo-conformance`, and `cargo xtask check-calculus` compares them byte
+  for byte.
+
+  Changes after review:
+  - The step count charges every operation the evaluator performs: the
+    bindings a lookup examines, each arm a match tries, the captures an
+    application passes, the fields a projection skips, and a primitive's
+    operand and result weights (one per node, plus characters and bytes).
+    The kernel confirms every kernel-reducible fixture's count.
+  - Two Rust profiles. `rust-core` is `#![no_std]`, allocates nothing, and
+    renders exactly the programs that need no heap. `rust-std` shares strings,
+    byte strings, and persistent list cells behind `Rc`, so `cons` and its
+    match are constant work and a use clones a handle. Both are library
+    crates without lint exceptions, committed under `compiler/rust/`. A work
+    counter in the runtime never exceeds the denotation's steps on any
+    fixture, and a quadratic append is detected.
+  - Every runtime row's `allocation` in `language/production-1.2.toml` now
+    equals its realization's. Eleven rows that only read, measure, or fold
+    existing storage (`term.nil`, the map and set lookups, sizes, folds, and
+    representations, and `graph_successors`) no longer require allocation;
+    their operand types still do.
+  - Every fixed-width primitive is exercised at every width it admits
+    (sixteen new fixtures). Byte equality is decided by the kernel; the new
+    `byte-compare` fixture shows `compare_bytes` is not.
+  - `rustc` 1.97.1 is a cited authority (`RUSTC-1-97-1`), and `TC-07`
+    refuses any other.
+  - `TC-04`'s plant is a real one-step mischarge. `TC-03` samples the
+    progress property on random well-typed arguments, which found that the
+    interpreter's checked fixed-width multiplication overflowed `i128` and
+    panicked on two large 64-bit operands; it is now checked.
+  - An ill-typed program has no canonical form and no identity.
 - GNAF requests over the calculus (§17.15), after UOR-GNAF
   `uor-gnaf/1-draft.2`, cited by revision and SHA-256 as the authority
   `UOR-GNAF-1-DRAFT-2`. The module `Gnaf` of `compiler/` fixes, before any
@@ -162,7 +287,7 @@ versions, and the entries below say what each tag does and does not claim.
   `cargo xtask check-calculus` compares it byte for byte.
 - The language-1.2 portable runtime exposes every definition, so a
   definition imported from another module reduces in the kernel through the
-  primitives it applies; the 1.2 `lean_backend` version is now `11`, and the
+  primitives it applies. The 1.2 `lean_backend` version is bumped, and the
   frozen language-1.1 runtime is unchanged.
 - Every semantic-module member must survive into the typed value: an extra
   member of a unit variant (for example `{"kind":"reflexivity","tactic":...}`)

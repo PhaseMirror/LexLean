@@ -45,17 +45,17 @@ fn rejected(reason: &str) -> LexLeanError {
 /// `LLB6005` naming the first malformed member or violated rule.
 pub fn load(bytes: &[u8]) -> Result<Program, LexLeanError> {
     let program = Program::parse(bytes).map_err(|reason| rejected(&reason))?;
-    check::check(&program).map_err(|reason| rejected(&reason))?;
     program.canonical().map_err(|reason| rejected(&reason))
 }
 
-/// Render a valid program to the Rust profile.
+/// Render a valid program to a Rust library crate of `profile`.
 ///
 /// # Errors
 ///
-/// `LLB6005` when the program is invalid or has no faithful rendering.
-pub fn render(program: &Program) -> Result<String, LexLeanError> {
-    rust::render(program).map_err(|reason| rejected(&reason))
+/// `LLB6005` when the program is invalid or has no faithful rendering in
+/// `profile`.
+pub fn render(program: &Program, profile: rust::Profile) -> Result<String, LexLeanError> {
+    rust::render(program, profile).map_err(|reason| rejected(&reason))
 }
 
 /// The schema tag of a target program.
@@ -444,14 +444,16 @@ impl Program {
         Ok(program)
     }
 
-    /// The canonical form: every function's locals renamed to their
-    /// first-binding order (parameters first, then binders in evaluation
-    /// order), so alpha-equivalent programs are byte-identical.
+    /// The canonical form of a valid program: every function's locals
+    /// renamed to their first-binding order (parameters first, then binders
+    /// in evaluation order), so alpha-equivalent programs are byte-identical.
+    /// An invalid program has no canonical form.
     ///
     /// # Errors
     ///
-    /// Returns the first unbound local.
+    /// Returns the first violated static rule.
     pub fn canonical(&self) -> Result<Self, String> {
+        check::check(self)?;
         let mut out = self.clone();
         for (index, function) in out.functions.iter_mut().enumerate() {
             let mut renamer = Renamer::default();
@@ -480,11 +482,12 @@ impl Program {
             .to_file_bytes()
     }
 
-    /// The content identity of the canonical form.
+    /// The content identity of the canonical form; an invalid program has
+    /// none.
     ///
     /// # Errors
     ///
-    /// Returns the first unbound local.
+    /// Returns the first violated static rule.
     pub fn id(&self) -> Result<Sha256Digest, String> {
         Ok(Sha256Digest::of(&self.canonical()?.to_file_bytes()))
     }

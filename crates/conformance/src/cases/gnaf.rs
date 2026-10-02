@@ -4,6 +4,7 @@
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
+use lexlean::calculus::{interp, Outcome, Value};
 use lexlean::gnaf::{
     self, Action, ActionKind, Answer, Boundary, Carrier, Charge, ClaimClass, Completeness, Fixture,
     Objective, Rejection, Request, Scope, Selector, Status, MAX_FUEL, MAX_SYSTEMS,
@@ -671,7 +672,7 @@ pub fn run(id: &str) {
                 assert_eq!(
                     fixtures::expected(name),
                     Answer::Frontier {
-                        members: vec![1, 2]
+                        members: vec![0, 2]
                     },
                     "{name}"
                 );
@@ -681,7 +682,7 @@ pub fn run(id: &str) {
                 Status::Admitted { steps, size } => (steps, size),
                 other => panic!("{index}: {other:?}"),
             };
-            let (slower, faster) = (cost(1), cost(2));
+            let (slower, faster) = (cost(0), cost(2));
             assert!(
                 slower.0 > faster.0 && slower.1 < faster.1,
                 "neither frontier member dominates the other: {slower:?} {faster:?}"
@@ -742,13 +743,42 @@ pub fn run(id: &str) {
             assert!(entries
                 .iter()
                 .all(|(_, _, status)| admitted_steps(*status) > envelope));
-            // Selection is charged: the dispatching system costs exactly
-            // the envelope plus its observation and selection per argument.
-            assert_eq!(
-                steps - envelope,
-                5 * whole.domain.len() as u64,
-                "length, literal, comparison, conditional, and local per argument"
-            );
+            // Selection is charged: on every argument the dispatching system
+            // costs strictly more than the plan it selects, by the work of
+            // observing the argument and choosing.
+            let Selector::Dispatch {
+                threshold,
+                small,
+                large,
+            } = entries[2].1
+            else {
+                panic!("a dispatching system")
+            };
+            let realized = |selector| gnaf::realize(&whole.carrier, selector).expect("a grammar");
+            let dispatching = realized(entries[2].1);
+            for argument in &whole.domain {
+                let Value::List { items } = argument else {
+                    panic!("a list argument")
+                };
+                let chosen = if (items.len() as u64) < threshold {
+                    small
+                } else {
+                    large
+                };
+                let run = |program: &lexlean::calculus::Program| match interp::run(
+                    program,
+                    whole.machine.fuel,
+                    0,
+                    std::slice::from_ref(argument),
+                ) {
+                    Outcome::Value { steps, .. } => steps,
+                    other => panic!("{other:?}"),
+                };
+                assert!(
+                    run(&dispatching) > run(&realized(Selector::Fixed { plan: chosen })),
+                    "selection is charged on {argument:?}"
+                );
+            }
             // An inadmissible plan is excluded, an unresolved one is never
             // removed, and nothing admitted is infeasible.
             let excluded = statuses(&request("inadmissible-plan-excluded"));

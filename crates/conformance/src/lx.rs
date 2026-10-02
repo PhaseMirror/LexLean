@@ -41,6 +41,11 @@ pub fn map_t(key: Json, value: Json) -> Json {
 pub fn set_t(element: Json) -> Json {
     json!({"kind": "set", "element": element})
 }
+/// A type with no arguments, named by its kind alone: `bytes`, `ordering`,
+/// and the fixed widths `uint8`..`int64`.
+pub fn scalar_t(kind: &str) -> Json {
+    json!({"kind": kind})
+}
 /// A type declared in the module being generated. A type of another module
 /// is `lexlean::calculus::term::named`, which always names its module.
 pub fn local_t(name: &str) -> Json {
@@ -61,8 +66,16 @@ pub fn member(name: &str) -> Json {
 pub fn nat(number: u64) -> Json {
     json!({"kind": "nat", "value": number.to_string()})
 }
+/// A natural literal beyond `u64`, such as `2^64`, the bound of the
+/// calculus's `nat` realization.
+pub fn nat_wide(number: u128) -> Json {
+    json!({"kind": "nat", "value": number.to_string()})
+}
 pub fn string(text: &str) -> Json {
     json!({"kind": "string", "value": text})
+}
+pub fn bytes(hex: &str) -> Json {
+    json!({"kind": "bytes", "hex": hex})
 }
 pub fn integer(representation: &str, number: i64) -> Json {
     json!({"kind": "integer", "representation": representation, "value": number.to_string()})

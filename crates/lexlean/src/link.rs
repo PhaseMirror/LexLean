@@ -600,6 +600,7 @@ fn check_project_inline(
                 SemanticModule::parse(
                     &ast.data.text,
                     &project.config.language,
+                    &project.config.module_prefix,
                     &imports,
                     &imported_semantic,
                 )
@@ -645,14 +646,22 @@ fn check_project_inline(
                     },
                 );
                 crate::production::eligibility::analyse_module(module_name, &linked).map_err(
-                    |reason| {
+                    |failure| {
                         let range = load
                             .ast
                             .semantic
                             .as_ref()
                             .map_or((0, load.atoms.len()), |ast| ast.data.range);
+                        let (code, reason) = match failure {
+                            crate::production::eligibility::AnalysisError::Ineligible(reason) => {
+                                (code!("LLT4005"), reason)
+                            }
+                            crate::production::eligibility::AnalysisError::Internal(reason) => {
+                                (code!("LLI9001"), reason)
+                            }
+                        };
                         err(vec![Diagnostic::new(
-                            code!("LLT4005"),
+                            code,
                             format!("phase production: {reason}"),
                         )
                         .with_span(span_of_range(

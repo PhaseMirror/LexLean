@@ -2,7 +2,8 @@
 //!
 //! Every semantic construct is mapped to its registry key by an exhaustive
 //! match that names every variant and destructures every field. This file
-//! admits no wildcard arm, no rest pattern, no `if let`, and no `matches!`:
+//! admits no wildcard or binding catch-all arm, no tuple default, no rest
+//! pattern, no equality test on the IR, no `if let`, and no `matches!`:
 //! a new construct or a new field cannot be admitted to production by a
 //! default branch, and `cargo xtask validate-model` (audit-production)
 //! rejects any such pattern planted here.
@@ -14,11 +15,18 @@
     clippy::single_match_else,
     clippy::while_let_loop
 )]
+// The compiler is the second line of defence behind the audit: a binding
+// catch-all over an enum (`other =>`) is a default too.
+#![deny(
+    clippy::wildcard_enum_match_arm,
+    clippy::match_wildcard_for_single_variants
+)]
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use super::{
-    registry, ClosureMember, Disposition, EffectRow, ModuleReport, Registry, RootReport, TargetRow,
+    registry, BoundaryRow, ClosureMember, Disposition, EffectRow, ModuleReport, Registry,
+    RootReport, TargetRow,
 };
 use crate::ir::semantic::{
     MemberRef, SemanticAssignment, SemanticBranch, SemanticConstructor, SemanticDeclaration,
@@ -27,6 +35,35 @@ use crate::ir::semantic::{
     SemanticType,
 };
 
+/// The owners of the built-in constructors linking admits without a module.
+#[derive(Clone, Copy)]
+enum BuiltinOwner {
+    Bool,
+    Nat,
+    List,
+    Option,
+    Result,
+}
+
+impl BuiltinOwner {
+    /// The number of type arguments a constructor of this type carries.
+    const fn arity(self) -> usize {
+        match self {
+            Self::Bool | Self::Nat => 0,
+            Self::List | Self::Option => 1,
+            Self::Result => 2,
+        }
+    }
+}
+
+const BUILTIN_OWNERS: [(&str, BuiltinOwner); 5] = [
+    ("Bool", BuiltinOwner::Bool),
+    ("Nat", BuiltinOwner::Nat),
+    ("List", BuiltinOwner::List),
+    ("Option", BuiltinOwner::Option),
+    ("Result", BuiltinOwner::Result),
+];
+
 /// One linked semantic module as the analysis sees it.
 #[derive(Clone, Copy)]
 pub struct LinkedModule<'a> {
@@ -34,6 +71,16 @@ pub struct LinkedModule<'a> {
     pub lean_module: &'a str,
     /// The validated semantic module.
     pub semantic: &'a SemanticModule,
+}
+
+/// Why the analysis of a module stopped.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AnalysisError {
+    /// A root is not eligible for one of its targets (`LLT4005`).
+    Ineligible(String),
+    /// The embedded registry or a linking guarantee failed: a compiler
+    /// defect, never a property of the source (`LLI9001`).
+    Internal(String),
 }
 
 /// A reason a root is not eligible.
@@ -872,7 +919,12 @@ impl<'a> Walk<'a> {
     /// boundary, if any: a root takes and returns first-order data only, so
     /// no universe, proposition, type parameter, or function may occur in
     /// it, including inside the fields of a document type it names.
-    fn boundary(&self, ty: &SemanticType, visiting: &mut BTreeSet<String>) -> Option<String> {
+    fn boundary(
+        &self,
+        ty: &SemanticType,
+        visiting: &mut BTreeSet<String>,
+        crossing: &mut BTreeSet<Representation>,
+    ) -> Option<String> {
         match ty {
             SemanticType::Type => Some("a type universe".to_owned()),
             SemanticType::Prop => Some("a proposition".to_owned()),
@@ -885,7 +937,7 @@ impl<'a> Walk<'a> {
             } => Some("a function, so a closure would escape the root".to_owned()),
             SemanticType::Option { value: inner }
             | SemanticType::List { element: inner }
-            | SemanticType::Set { element: inner } => self.boundary(inner, visiting),
+            | SemanticType::Set { element: inner } => self.boundary(inner, visiting, crossing),
             SemanticType::Result {
                 ok: left,
                 error: right,
@@ -895,15 +947,15 @@ impl<'a> Walk<'a> {
                 key: left,
                 value: right,
             } => self
-                .boundary(left, visiting)
-                .or_else(|| self.boundary(right, visiting)),
+                .boundary(left, visiting, crossing)
+                .or_else(|| self.boundary(right, visiting, crossing)),
             SemanticType::Named { member, arguments } => {
                 let module = member.module.clone().unwrap_or_default();
                 let key = format!("{module}::{}", member.name);
                 if !visiting.insert(key) {
                     return arguments
                         .iter()
-                        .find_map(|argument| self.boundary(argument, visiting));
+                        .find_map(|argument| self.boundary(argument, visiting, crossing));
                 }
                 let (type_parameters, fields) = match self.declaration(&module, &member.name) {
                     Some(
@@ -984,13 +1036,21 @@ impl<'a> Walk<'a> {
                     .collect();
                 fields.iter().find_map(|field| {
                     let field = substitute(&anchor(field, &module), &substitution);
-                    self.boundary(&field, visiting)
+                    self.boundary(&field, visiting, crossing)
                 })
             }
-            SemanticType::Nat
-            | SemanticType::Bool
+            // A natural number or integer crosses the boundary in the
+            // target's width; the report records each one (§17.13).
+            SemanticType::Nat => {
+                crossing.insert(Representation::Nat);
+                None
+            }
+            SemanticType::Int => {
+                crossing.insert(Representation::Int);
+                None
+            }
+            SemanticType::Bool
             | SemanticType::Unit
-            | SemanticType::Int
             | SemanticType::Int8
             | SemanticType::Int16
             | SemanticType::Int32
@@ -1043,6 +1103,14 @@ impl<'a> Walk<'a> {
             SemanticType::Named { member, arguments } => {
                 self.named(member, arguments, &text, site);
             }
+            // The walk instantiates every type parameter from the
+            // monomorphic root down, so one that survives substitution has
+            // no type to be realized at.
+            SemanticType::Parameter { name } => self.violation(
+                site,
+                key,
+                format!("the type parameter `{name}` is never instantiated in the closure"),
+            ),
             SemanticType::Option { value: inner }
             | SemanticType::List { element: inner }
             | SemanticType::Set { element: inner } => self.ty(inner, site),
@@ -1065,7 +1133,6 @@ impl<'a> Walk<'a> {
                 self.ty(result, site);
             }
             SemanticType::Type
-            | SemanticType::Parameter { name: _ }
             | SemanticType::Nat
             | SemanticType::Bool
             | SemanticType::Prop
@@ -1490,46 +1557,53 @@ impl<'a> Walk<'a> {
                 return;
             }
         };
-        let builtin = constructor.module.is_none();
-        if builtin && constructor.name == "Nat.succ" {
-            // The successor is an addition and overflows like one.
-            self.construct(site, "constructor.nat_succ", Some(&SemanticType::Nat));
-        }
-        let ty = if builtin && owner == "Bool" && type_arguments.is_empty() {
-            SemanticType::Bool
-        } else if builtin && owner == "Nat" && type_arguments.is_empty() {
-            SemanticType::Nat
-        } else if builtin && owner == "List" && type_arguments.len() == 1 {
-            SemanticType::List {
-                element: Box::new(type_arguments[0].clone()),
-            }
-        } else if builtin && owner == "Option" && type_arguments.len() == 1 {
-            SemanticType::Option {
-                value: Box::new(type_arguments[0].clone()),
-            }
-        } else if builtin && owner == "Result" && type_arguments.len() == 2 {
-            SemanticType::Result {
-                ok: Box::new(type_arguments[0].clone()),
-                error: Box::new(type_arguments[1].clone()),
-            }
-        } else if builtin && ["Bool", "Nat", "List", "Option", "Result"].contains(&owner) {
-            self.violation(
-                site,
-                "term.constructor",
-                format!(
-                    "built-in constructor `{}` has {} type arguments",
-                    constructor.name,
-                    type_arguments.len()
-                ),
-            );
-            return;
-        } else {
-            SemanticType::Named {
+        // A module-less constructor names this module's type or, for the
+        // owners below, a built-in type; linking admits no other.
+        let builtin = match &constructor.module {
+            Some(_) => None,
+            None => BUILTIN_OWNERS
+                .iter()
+                .find(|(name, _)| *name == owner)
+                .map(|(_, builtin)| *builtin),
+        };
+        let ty = match builtin {
+            None => SemanticType::Named {
                 member: MemberRef {
                     module: constructor.module.clone(),
                     name: owner.to_owned(),
                 },
                 arguments: type_arguments.to_vec(),
+            },
+            Some(builtin) => {
+                if type_arguments.len() != builtin.arity() {
+                    self.violation(
+                        site,
+                        "term.constructor",
+                        format!(
+                            "built-in constructor `{}` has {} type arguments",
+                            constructor.name,
+                            type_arguments.len()
+                        ),
+                    );
+                    return;
+                }
+                if constructor.name == "Nat.succ" {
+                    // The successor is an addition and overflows like one.
+                    self.construct(site, "constructor.nat_succ", Some(&SemanticType::Nat));
+                }
+                let argument = |index: usize| Box::new(type_arguments[index].clone());
+                match builtin {
+                    BuiltinOwner::Bool => SemanticType::Bool,
+                    BuiltinOwner::Nat => SemanticType::Nat,
+                    BuiltinOwner::List => SemanticType::List {
+                        element: argument(0),
+                    },
+                    BuiltinOwner::Option => SemanticType::Option { value: argument(0) },
+                    BuiltinOwner::Result => SemanticType::Result {
+                        ok: argument(0),
+                        error: argument(1),
+                    },
+                }
             }
         };
         self.ty(&ty, site);
@@ -1920,12 +1994,13 @@ fn exceeds(value: &str, representation: Representation, bits: u32) -> bool {
 fn analyse_root(
     module: &str,
     name: &str,
+    type_parameters: &[String],
     parameters: &[SemanticParameter],
     result: &SemanticType,
     production: &SemanticProduction,
     modules: &BTreeMap<String, LinkedModule<'_>>,
-) -> Result<RootReport, String> {
-    let registry = registry()?;
+) -> Result<RootReport, AnalysisError> {
+    let registry = registry().map_err(AnalysisError::Internal)?;
     let mut walk = Walk {
         registry,
         modules,
@@ -1956,13 +2031,32 @@ fn analyse_root(
         depth: 0,
         substitution: &empty,
     };
+    // A root is realized once, so it is monomorphic: a type parameter it
+    // declares has no instantiation, whether or not its signature mentions
+    // the parameter.
+    if !type_parameters.is_empty() {
+        walk.violation(
+            &root_site,
+            "type.parameter",
+            format!(
+                "production root declares the type parameters ({}); a root is realized at one type",
+                type_parameters.join(", ")
+            ),
+        );
+    }
+    // Every natural-number or integer representation crossing the
+    // boundary, by position, for the report's per-target widths.
+    let mut crossings: Vec<(String, BTreeSet<Representation>)> = Vec::new();
     for SemanticParameter {
         name: parameter,
         r#type,
     } in parameters
     {
         let anchored = anchor(r#type, module);
-        match walk.boundary(&anchored, &mut BTreeSet::new()) {
+        let mut crossing = BTreeSet::new();
+        let reason = walk.boundary(&anchored, &mut BTreeSet::new(), &mut crossing);
+        crossings.push((format!("parameter {parameter}"), crossing));
+        match reason {
             Some(reason) => walk.violation(
                 &root_site,
                 type_key(r#type),
@@ -1971,7 +2065,10 @@ fn analyse_root(
             None => {}
         }
     }
-    match walk.boundary(&anchor(result, module), &mut BTreeSet::new()) {
+    let mut crossing = BTreeSet::new();
+    let reason = walk.boundary(&anchor(result, module), &mut BTreeSet::new(), &mut crossing);
+    crossings.push(("result".to_owned(), crossing));
+    match reason {
         Some(reason) => walk.violation(
             &root_site,
             type_key(result),
@@ -1995,8 +2092,11 @@ fn analyse_root(
     }
     let mut targets = Vec::new();
     for target_id in &production.targets {
+        // `check_declaration` admitted only registered targets in linking.
         let target = registry.targets.get(target_id).ok_or_else(|| {
-            format!("production root `{root}` names unregistered target `{target_id}`")
+            AnalysisError::Internal(format!(
+                "production root `{root}` names unregistered target `{target_id}`"
+            ))
         })?;
         let mut violations = walk.violations.clone();
         let depth_of = |instance: &str| {
@@ -2059,12 +2159,12 @@ fn analyse_root(
                     .members
                     .get(&first.instance)
                     .map_or_else(|| first.instance.clone(), |member| member.path.join(" -> "));
-                return Err(format!(
+                return Err(AnalysisError::Ineligible(format!(
                     "production root `{root}` is not eligible for target `{target_id}`: {} (in `{}`, reached by {path}; {} violation(s) in total)",
                     first.reason,
                     first.instance,
                     violations.len()
-                ));
+                )));
             }
             None => {}
         }
@@ -2073,6 +2173,16 @@ fn analyse_root(
             effects: effects
                 .into_iter()
                 .map(|(effect, sources)| EffectRow { effect, sources })
+                .collect(),
+            boundary: crossings
+                .iter()
+                .flat_map(|(position, crossing)| {
+                    crossing.iter().map(|representation| BoundaryRow {
+                        position: position.clone(),
+                        representation: representation.as_str().to_owned(),
+                        bits: representation.bits(target),
+                    })
+                })
                 .collect(),
         });
     }
@@ -2102,7 +2212,7 @@ fn analyse_root(
 pub fn analyse_module(
     module: &str,
     modules: &BTreeMap<String, LinkedModule<'_>>,
-) -> Result<Option<ModuleReport>, String> {
+) -> Result<Option<ModuleReport>, AnalysisError> {
     let linked = match modules.get(module) {
         Some(linked) => linked,
         None => return Ok(None),
@@ -2112,7 +2222,7 @@ pub fn analyse_module(
         match declaration {
             SemanticDeclaration::Definition {
                 name,
-                type_parameters: _,
+                type_parameters,
                 parameters,
                 result,
                 recursive_argument: _,
@@ -2123,7 +2233,13 @@ pub fn analyse_module(
                 termination: _,
                 production: Some(production),
             } => roots.push(analyse_root(
-                module, name, parameters, result, production, modules,
+                module,
+                name,
+                type_parameters,
+                parameters,
+                result,
+                production,
+                modules,
             )?),
             SemanticDeclaration::Definition {
                 name: _,
@@ -2181,4 +2297,61 @@ pub fn analyse_module(
         module: module.to_owned(),
         roots,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{analyse_module, AnalysisError, LinkedModule};
+    use crate::ir::semantic::SemanticModule;
+    use std::collections::BTreeMap;
+
+    /// Analyse one module of unlinked IR. Linking refuses these modules, so
+    /// only the analysis can show that it refuses them too.
+    fn ineligibility(declarations: &str) -> String {
+        let text =
+            format!(r#"{{"declarations":{declarations},"spec":"lexlean/semantic-module/2"}}"#);
+        let semantic: SemanticModule = serde_json::from_str(&text).expect("module JSON");
+        let modules = BTreeMap::from([(
+            "Main".to_owned(),
+            LinkedModule {
+                lean_module: "Probe.Main",
+                semantic: &semantic,
+            },
+        )]);
+        match analyse_module("Main", &modules) {
+            Ok(report) => panic!("the root is reported eligible: {report:?}"),
+            Err(AnalysisError::Ineligible(reason)) => reason,
+            Err(AnalysisError::Internal(reason)) => panic!("internal failure: {reason}"),
+        }
+    }
+
+    const ROOT: &str = r#""executable":true,"kind":"definition","name":"entry","parameters":[],"production":{"effects":[],"targets":["rust-std"]},"result":{"kind":"nat"}"#;
+
+    #[test]
+    fn a_reached_theorem_is_proof_only() {
+        let reason = ineligibility(&format!(
+            r#"[{{"kind":"theorem","name":"fact","parameters":[],"proof":{{"kind":"decide"}},"statement":{{"kind":"le","left":{{"kind":"nat","value":"0"}},"right":{{"kind":"nat","value":"1"}}}}}},{{"body":{{"arguments":[],"function":{{"name":"fact"}},"kind":"call"}},{ROOT}}}]"#
+        ));
+        assert!(
+            reason.contains("`Probe.Main.fact` is not a computational definition")
+                || reason.contains("construct `declaration.theorem` is proof-only"),
+            "{reason}"
+        );
+    }
+
+    #[test]
+    fn a_missing_dependency_is_unresolved() {
+        let reason = ineligibility(&format!(
+            r#"[{{"body":{{"arguments":[],"function":{{"name":"absent"}},"kind":"call"}},{ROOT}}}]"#
+        ));
+        assert!(reason.contains("is an unresolved dependency"), "{reason}");
+    }
+
+    #[test]
+    fn a_non_executable_callee_is_refused() {
+        let reason = ineligibility(&format!(
+            r#"[{{"body":{{"kind":"nat","value":"1"}},"kind":"definition","name":"helper","parameters":[],"result":{{"kind":"nat"}}}},{{"body":{{"arguments":[],"function":{{"name":"helper"}},"kind":"call"}},{ROOT}}}]"#
+        ));
+        assert!(reason.contains("is not declared executable"), "{reason}");
+    }
 }

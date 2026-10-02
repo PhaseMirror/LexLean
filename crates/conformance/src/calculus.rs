@@ -5,12 +5,13 @@
 //! Every fixture is written here, by hand, against the calculus syntax; its
 //! expected outcome is computed by the reference interpreter. The committed
 //! `compiler/fixtures/<name>.json` files and `compiler/src/TargetFixtures`
-//! module are exactly what [`files`] renders, which `cargo xtask
-//! check-calculus` enforces. In the module, each fixture has a `<id>Run`
-//! definition evaluating the LexLean denotation, a theorem that the kernel
-//! reduces it to the expected outcome wherever every primitive it reaches
-//! reduces in the kernel, and, for a library fixture, a theorem that the
-//! realization computes exactly the value LexLean's own collection
+//! module, together with the calculus modules they are stated against
+//! ([`crate::calculus_source`]), are exactly what [`files`] renders, which
+//! `cargo xtask check-calculus` enforces. In the module, each fixture has a
+//! `<id>Run` definition evaluating the LexLean denotation, a theorem that
+//! the kernel reduces it to the expected outcome wherever every primitive it
+//! reaches reduces in the kernel, and, for a library fixture, a theorem that
+//! the realization computes exactly the value LexLean's own collection
 //! primitive computes.
 
 use std::collections::BTreeMap;
@@ -18,7 +19,7 @@ use std::path::Path;
 
 use lexlean::calculus::library::Template;
 use lexlean::calculus::{
-    interp, term, Adt, Arm, Expr, Fixture, Function, IntKind, OrderingValue, Outcome, Prim,
+    interp, rust, term, Adt, Arm, Expr, Fixture, Function, IntKind, OrderingValue, Outcome, Prim,
     Program, Shape, Ty, Value, FIXTURE_SPEC, PROGRAM_SPEC,
 };
 use serde_json::{json, Value as Json};
@@ -912,6 +913,131 @@ fn core_cases() -> Vec<Case> {
         0,
         vec![listv(vec![natv(4), natv(5), natv(6)])],
         300,
+    ));
+
+    // Every fixed-width primitive at every width it admits (§17.14): one
+    // fixture of arithmetic, bits, shifts, conversion, equality, and order
+    // per width, in nested pairs so `rust-core` renders it too, and one of
+    // decimal formatting and parsing.
+    for width in IntKind::ALL {
+        let (low, high) = width.range();
+        let ty = fixed_t(width);
+        let (a, b, c) = (v(0), v(1), v(2));
+        let opt = || opt_t(fixed_t(width));
+        let mut items: Vec<(Ty, Expr)> = vec![
+            (opt(), p(Prim::CheckedAdd, vec![a.clone(), b.clone()])),
+            (opt(), p(Prim::CheckedSub, vec![b.clone(), a.clone()])),
+            (opt(), p(Prim::CheckedMul, vec![a.clone(), b.clone()])),
+            (opt(), p(Prim::CheckedQuot, vec![a.clone(), b.clone()])),
+        ];
+        if width.signed() {
+            items.push((opt(), p(Prim::CheckedNeg, vec![b.clone()])));
+        }
+        items.extend([
+            (ty.clone(), p(Prim::BitAnd, vec![a.clone(), b.clone()])),
+            (ty.clone(), p(Prim::BitOr, vec![a.clone(), b.clone()])),
+            (ty.clone(), p(Prim::BitXor, vec![a.clone(), b.clone()])),
+            (ty.clone(), p(Prim::BitNot, vec![b.clone()])),
+            (opt(), p(Prim::ShiftLeft, vec![b.clone(), c.clone()])),
+            (opt(), p(Prim::ShiftRight, vec![a.clone(), c.clone()])),
+            (
+                opt(),
+                p(
+                    Prim::ShiftLeft,
+                    vec![b.clone(), fx(IntKind::U32, i128::from(width.bits()))],
+                ),
+            ),
+            (opt(), p(Prim::Convert { target: width }, vec![int(300)])),
+            (Ty::Bool, p(Prim::Equal, vec![a.clone(), b.clone()])),
+            (Ty::Ordering, p(Prim::Compare, vec![a.clone(), b.clone()])),
+        ]);
+        let (result, body) = items
+            .into_iter()
+            .rev()
+            .reduce(|(right_ty, right), (left_ty, left)| {
+                let ty = pair_t(left_ty, right_ty);
+                (ty.clone(), build(Shape::Pair, ty, vec![left, right]))
+            })
+            .expect("items");
+        out.push(case(
+            &format!("fixed-width-{}", width.name()),
+            program(
+                Vec::new(),
+                vec![function(
+                    vec![ty.clone(), ty.clone(), fixed_t(IntKind::U32)],
+                    result,
+                    body,
+                )],
+            ),
+            0,
+            vec![
+                fxv(width, high - 1),
+                fxv(width, if width.signed() { low + 1 } else { 3 }),
+                fxv(IntKind::U32, 3),
+            ],
+            400,
+        ));
+        out.push(case(
+            &format!("fixed-decimal-{}", width.name()),
+            program(
+                Vec::new(),
+                vec![function(
+                    vec![ty.clone(), Ty::String],
+                    pair_t(Ty::String, opt_t(ty.clone())),
+                    build(
+                        Shape::Pair,
+                        pair_t(Ty::String, opt_t(ty.clone())),
+                        vec![
+                            p(Prim::FormatDecimal, vec![v(0)]),
+                            p(Prim::ParseDecimal { target: ty.clone() }, vec![v(1)]),
+                        ],
+                    ),
+                )],
+            ),
+            0,
+            vec![fxv(width, low), strv(&high.to_string())],
+            100,
+        ));
+    }
+
+    // Appending two long lists: the charge grows with the operands, and the
+    // Rust rendering's work stays within it (the work bound of TC-07).
+    out.push(case(
+        "list-append-long",
+        program(
+            Vec::new(),
+            vec![function(
+                vec![list_t(nat_t()), list_t(nat_t())],
+                list_t(nat_t()),
+                p(Prim::Append, vec![v(0), v(1)]),
+            )],
+        ),
+        0,
+        vec![
+            listv((0..20).map(natv).collect()),
+            listv((20..40).map(natv).collect()),
+        ],
+        100,
+    ));
+
+    // Byte order alone, over literals: the kernel decides it.
+    out.push(case(
+        "byte-compare",
+        constant(
+            list_t(Ty::Ordering),
+            list_of(
+                &Ty::Ordering,
+                vec![
+                    p(Prim::CompareBytes, vec![bytes("0102"), bytes("0103")]),
+                    p(Prim::CompareBytes, vec![bytes("ff"), bytes("00ff")]),
+                    p(Prim::CompareBytes, vec![bytes("0a0b"), bytes("0a0b")]),
+                    p(Prim::CompareBytes, vec![bytes(""), bytes("00")]),
+                ],
+            ),
+        ),
+        0,
+        Vec::new(),
+        100,
     ));
 
     // Byte equality and byte order: Lean's evaluator decides these.
@@ -2419,7 +2545,8 @@ pub fn fixtures_module(cases: &[Case]) -> String {
     )
 }
 
-/// Every generated file, by path relative to the repository root.
+/// Every generated file of the `compiler` project, by path relative to the
+/// repository root: the fixtures, their module, and the calculus itself.
 #[must_use]
 pub fn files() -> BTreeMap<String, Vec<u8>> {
     let cases = cases();
@@ -2434,8 +2561,33 @@ pub fn files() -> BTreeMap<String, Vec<u8>> {
         "compiler/src/TargetFixtures.lex.tex".to_owned(),
         fixtures_module(&cases).into_bytes(),
     );
+    // Each fixture's program as each Rust profile renders it, so a change to
+    // either rendering is a reviewed change to committed bytes.
+    for case in &cases {
+        for profile in rust::Profile::ALL {
+            if let Ok(source) = rust::render(&case.fixture.program, profile) {
+                out.insert(
+                    format!(
+                        "compiler/rust/{}/{}.rs",
+                        profile.target(),
+                        case.fixture.name
+                    ),
+                    source.into_bytes(),
+                );
+            }
+        }
+    }
+    out.extend(crate::calculus_source::files());
     out
 }
+
+/// The directories whose every file is generated.
+const GENERATED_DIRECTORIES: [&str; 4] = [
+    "compiler/fixtures",
+    "compiler/gnaf",
+    "compiler/rust/rust-core",
+    "compiler/rust/rust-std",
+];
 
 /// Compare (or, with `write`, rewrite) the generated files of the calculus
 /// (§17.14) and of the GNAF model and requests over it (§17.15).
@@ -2447,7 +2599,7 @@ pub fn files() -> BTreeMap<String, Vec<u8>> {
 pub fn check(root: &Path, write: bool) -> Result<usize, String> {
     let mut files = files();
     files.extend(crate::gnaf::files());
-    for directory in ["compiler/fixtures", "compiler/gnaf"] {
+    for directory in GENERATED_DIRECTORIES {
         let Ok(entries) = std::fs::read_dir(root.join(directory)) else {
             continue;
         };
@@ -2458,7 +2610,7 @@ pub fn check(root: &Path, write: bool) -> Result<usize, String> {
                     std::fs::remove_file(entry.path())
                         .map_err(|error| format!("{relative}: {error}"))?;
                 } else {
-                    return Err(format!("{relative} is not a generated fixture"));
+                    return Err(format!("{relative} is not a generated file"));
                 }
             }
         }

@@ -582,6 +582,9 @@ pub fn fixtures() -> Vec<Fixture> {
     out
 }
 
+/// The module stating every fixture's answer.
+pub const FIXTURES_MODULE: &str = "GnafFixtures";
+
 /// The axioms Lean reports for a theorem that reduces the denotation.
 const RUN_AXIOMS: [&str; 3] = ["Classical.choice", "Quot.sound", "propext"];
 
@@ -612,7 +615,7 @@ pub fn fixture_declarations(fixture: &Fixture) -> Vec<Json> {
 pub fn fixtures_module(fixtures: &[Fixture]) -> String {
     let declarations: Vec<Json> = fixtures.iter().flat_map(fixture_declarations).collect();
     crate::lx::module_tex(
-        "GnafFixtures",
+        FIXTURES_MODULE,
         &[term::SYNTAX, term::SEMANTICS, MODEL],
         declarations,
     )
@@ -630,7 +633,7 @@ pub fn files() -> BTreeMap<String, Vec<u8>> {
         );
     }
     out.insert(
-        "compiler/src/GnafFixtures.lex.tex".to_owned(),
+        format!("compiler/src/{FIXTURES_MODULE}.lex.tex"),
         fixtures_module(&fixtures).into_bytes(),
     );
     out.insert(

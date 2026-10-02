@@ -90,7 +90,7 @@ Feature: verification
     And no carriage return survives, `trailing   ` becomes `trailing`, and the blank tail collapses to a single newline
 
   @VR-13 @build
-  Scenario: A verified directory contains the complete fixed source, map, coverage, olean, probe, audit, and process artifact set.
+  Scenario: A verified directory contains the complete fixed source, map, coverage, olean, probe, audit, and process artifact set, and, exactly when a production root exists, the eligibility reports, the extraction module, its process record, and the compiler input.
     Given the verified nat-add-zero example
     When every file under the verified directory is matched against the fixed artifact slots
     Then each file falls into attestation.json, build-manifest.json, modules/*.lean, modules/*.tex, maps/*.map.json, coverage/*.coverage.json, lexicons/*.closure.json, oleans/*, probe/*.lean, probe/process.json, audit/*.lean, audit/output.txt, audit/*.process.json, process/lean/*.json or process/leanchecker/*.json

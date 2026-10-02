@@ -5,23 +5,32 @@
 //! A reference names a type (`type:<kind>`), a literal (`value:<kind>`), an
 //! expression (`expr:<kind>`), a constructor shape (`shape:<kind>`), a
 //! primitive (`prim:<kind>`), a library template (`template:<name>`), or one
-//! of three structural realizations: a program `function`,
+//! of four structural realizations: a program `function`,
 //! `monomorphization` (a type parameter is substituted by its closed type
-//! argument before realization, §17.13), and `representation` (the operation
-//! is the identity on the realized representation). The conformance suite
-//! checks that the table and the runtime rows of the production registry are
-//! in bijection, that every reference names an element that exists, and
-//! that fixtures exercise every element.
+//! argument before realization, §17.13), `representation` (the operation is
+//! the identity on the realized representation), and `indirection` (a type
+//! that contains itself holds that occurrence behind a shared heap handle).
+//! The conformance suite checks that the table and the runtime rows of the
+//! production registry are in bijection, that every reference names an
+//! element that exists, that fixtures exercise every element, and that a
+//! construct requires heap allocation exactly when its realization does
+//! (`allocates`).
 
 use std::collections::BTreeSet;
 
 use serde::Serialize;
 
+use super::check::Checker;
 use super::library::Template;
 use super::{Adt, Arm, Expr, Function, IntKind, OrderingValue, Prim, Program, Shape, Ty, Value};
 
 /// The structural realizations that are not calculus syntax.
-pub const STRUCTURAL: [&str; 3] = ["function", "monomorphization", "representation"];
+pub const STRUCTURAL: [&str; 4] = [
+    "function",
+    "monomorphization",
+    "representation",
+    "indirection",
+];
 
 /// Every runtime construct and its realization.
 pub const TABLE: &[(&str, &[&str])] = &[
@@ -183,7 +192,7 @@ pub const TABLE: &[(&str, &[&str])] = &[
     ("declaration.inductive", &["type:adt", "shape:adt"]),
     (
         "declaration.inductive.recursive",
-        &["type:adt", "shape:adt"],
+        &["type:adt", "shape:adt", "indirection"],
     ),
     ("declaration.definition", &["function"]),
     (
@@ -586,6 +595,224 @@ pub fn program_elements(program: &Program) -> BTreeSet<String> {
     out
 }
 
+/// Every element a program builds: the shapes it constructs, its literals,
+/// and its primitives, but not the shapes it matches or the types it names.
+#[must_use]
+pub fn built_elements(program: &Program) -> BTreeSet<String> {
+    fn walk(expr: &Expr, out: &mut BTreeSet<String>) {
+        let mut children: Vec<&Expr> = Vec::new();
+        match expr {
+            Expr::Value { value, .. } => {
+                for element in value_elements(value) {
+                    out.insert(element);
+                }
+            }
+            Expr::Var { .. } => {}
+            Expr::Let { bound, body, .. } => children.extend([bound.as_ref(), body.as_ref()]),
+            Expr::Cond {
+                condition,
+                then_branch,
+                else_branch,
+            } => children.extend([
+                condition.as_ref(),
+                then_branch.as_ref(),
+                else_branch.as_ref(),
+            ]),
+            Expr::Match {
+                scrutinee, arms, ..
+            } => {
+                children.push(scrutinee);
+                children.extend(arms.iter().map(|arm| &arm.body));
+            }
+            Expr::Build {
+                shape, operands, ..
+            } => {
+                out.insert(format!("shape:{}", kind(shape)));
+                children.extend(operands);
+            }
+            Expr::Prim {
+                operation,
+                operands,
+            } => {
+                out.insert(format!("prim:{}", kind(operation)));
+                children.extend(operands);
+            }
+            Expr::Call { operands, .. }
+            | Expr::Closure {
+                captures: operands, ..
+            } => children.extend(operands),
+            Expr::Apply { target, operands } => {
+                children.push(target);
+                children.extend(operands);
+            }
+            Expr::First { value } | Expr::Second { value } | Expr::Field { value, .. } => {
+                children.push(value);
+            }
+        }
+        for child in children {
+            walk(child, out);
+        }
+    }
+    let mut out = BTreeSet::new();
+    for function in &program.functions {
+        walk(&function.body, &mut out);
+    }
+    out
+}
+
+/// Every (primitive, width) pair a program applies: the width of a
+/// fixed-width first operand, or the target of a conversion or a parse, and
+/// `int` for decimal formatting and parsing of `int`.
+///
+/// # Errors
+///
+/// Returns the reason the program is ill-typed.
+pub fn fixed_uses(program: &Program) -> Result<BTreeSet<(String, String)>, String> {
+    fn width(ty: &Ty) -> Option<&'static str> {
+        match ty {
+            Ty::Fixed { width } => Some(width.name()),
+            Ty::Int => Some("int"),
+            _ => None,
+        }
+    }
+    fn walk(
+        checker: &Checker<'_>,
+        expr: &Expr,
+        scope: &mut Vec<(u64, Ty)>,
+        out: &mut BTreeSet<(String, String)>,
+    ) -> Result<(), String> {
+        let mut children: Vec<&Expr> = Vec::new();
+        match expr {
+            Expr::Value { .. } | Expr::Var { .. } => {}
+            Expr::Let {
+                name,
+                ty,
+                bound,
+                body,
+            } => {
+                walk(checker, bound, scope, out)?;
+                scope.push((*name, ty.clone()));
+                let walked = walk(checker, body, scope, out);
+                scope.pop();
+                return walked;
+            }
+            Expr::Cond {
+                condition,
+                then_branch,
+                else_branch,
+            } => children.extend([
+                condition.as_ref(),
+                then_branch.as_ref(),
+                else_branch.as_ref(),
+            ]),
+            Expr::Match {
+                scrutinee, arms, ..
+            } => {
+                walk(checker, scrutinee, scope, out)?;
+                let scrutinee_ty = checker.expr(scrutinee, scope)?;
+                for arm in arms {
+                    let fields = checker.shape_fields(arm.shape, &scrutinee_ty)?;
+                    let depth = scope.len();
+                    scope.extend(arm.binders.iter().copied().zip(fields));
+                    let walked = walk(checker, &arm.body, scope, out);
+                    scope.truncate(depth);
+                    walked?;
+                }
+                return Ok(());
+            }
+            Expr::Prim {
+                operation,
+                operands,
+            } => {
+                let used = match operation {
+                    Prim::Convert { target } => Some(target.name()),
+                    Prim::ParseDecimal { target } => width(target),
+                    _ => match operands.first() {
+                        Some(operand) => width(&checker.expr(operand, scope)?),
+                        None => None,
+                    },
+                };
+                // `int` is a width only of decimal formatting and parsing;
+                // its arithmetic and order are their own primitives.
+                let decimal = matches!(operation, Prim::FormatDecimal | Prim::ParseDecimal { .. });
+                if let Some(used) = used.filter(|used| *used != "int" || decimal) {
+                    out.insert((kind(operation), used.to_owned()));
+                }
+                children.extend(operands);
+            }
+            Expr::Build { operands, .. }
+            | Expr::Call { operands, .. }
+            | Expr::Closure {
+                captures: operands, ..
+            } => children.extend(operands),
+            Expr::Apply { target, operands } => {
+                children.push(target);
+                children.extend(operands);
+            }
+            Expr::First { value } | Expr::Second { value } | Expr::Field { value, .. } => {
+                children.push(value);
+            }
+        }
+        for child in children {
+            walk(checker, child, scope, out)?;
+        }
+        Ok(())
+    }
+    let checker = Checker { program };
+    let mut out = BTreeSet::new();
+    for function in &program.functions {
+        let mut scope: Vec<(u64, Ty)> = function
+            .parameters
+            .iter()
+            .copied()
+            .zip(function.types.iter().cloned())
+            .collect();
+        walk(&checker, &function.body, &mut scope, &mut out)?;
+    }
+    Ok(out)
+}
+
+/// The (primitive, width) pairs the calculus admits: every fixed-width
+/// primitive at every width, negation at the signed widths, and decimal
+/// formatting and parsing at `int` too.
+#[must_use]
+pub fn fixed_pairs() -> BTreeSet<(String, String)> {
+    let mut out = BTreeSet::new();
+    for width in IntKind::ALL {
+        let mut operations = vec![
+            Prim::CheckedAdd,
+            Prim::CheckedSub,
+            Prim::CheckedMul,
+            Prim::CheckedQuot,
+            Prim::BitAnd,
+            Prim::BitOr,
+            Prim::BitXor,
+            Prim::BitNot,
+            Prim::ShiftLeft,
+            Prim::ShiftRight,
+            Prim::Equal,
+            Prim::Compare,
+            Prim::FormatDecimal,
+            Prim::Convert { target: width },
+            Prim::ParseDecimal {
+                target: Ty::Fixed { width },
+            },
+        ];
+        if width.signed() {
+            operations.push(Prim::CheckedNeg);
+        }
+        for operation in operations {
+            out.insert((kind(&operation), width.name().to_owned()));
+        }
+    }
+    out.insert((kind(&Prim::FormatDecimal), "int".to_owned()));
+    out.insert((
+        kind(&Prim::ParseDecimal { target: Ty::Int }),
+        "int".to_owned(),
+    ));
+    out
+}
+
 /// Every element a value uses.
 #[must_use]
 pub fn value_elements(value: &Value) -> BTreeSet<String> {
@@ -762,6 +989,129 @@ impl Visit<'_> {
             }
         }
     }
+}
+
+/// Whether a realization element requires heap allocation (§17.13): a
+/// type whose values live on the heap, a literal or constructor that builds
+/// heap storage, a primitive that produces new heap storage, a template
+/// whose instance builds any, or `indirection`. Reading, comparing, or
+/// measuring heap storage that already exists allocates nothing.
+///
+/// # Errors
+///
+/// Returns the reference that names no element, or a template that does
+/// not instantiate.
+pub fn allocates(reference: &str) -> Result<bool, String> {
+    const HEAP: [&str; 15] = [
+        "type:string",
+        "type:bytes",
+        "type:list",
+        "value:string",
+        "value:bytes",
+        "value:list",
+        "shape:cons",
+        "prim:append",
+        "prim:slice",
+        "prim:utf8_encode",
+        "prim:utf8_decode",
+        "prim:split_exact",
+        "prim:join",
+        "prim:format_decimal",
+        "indirection",
+    ];
+    if HEAP.contains(&reference) {
+        return Ok(true);
+    }
+    if let Some(name) = reference.strip_prefix("template:") {
+        let template =
+            Template::named(name).ok_or_else(|| format!("`{reference}` names no template"))?;
+        let instance = Program {
+            spec: super::PROGRAM_SPEC.to_owned(),
+            adts: Vec::new(),
+            functions: template.instantiate(&vec![Ty::Nat; template.arity()], 0)?,
+        };
+        // Only what the instance builds counts: its types are its operands'
+        // and results', which exist before it runs, and taking a cell apart
+        // allocates nothing.
+        return Ok(built_elements(&instance)
+            .iter()
+            .any(|element| HEAP.contains(&element.as_str())));
+    }
+    if all_elements()?.contains(reference) || STRUCTURAL.contains(&reference) {
+        return Ok(false);
+    }
+    Err(format!("`{reference}` names no calculus element"))
+}
+
+/// Whether the realization of `construct` requires heap allocation.
+///
+/// # Errors
+///
+/// Returns the construct without a row or a reference to no element.
+pub fn construct_allocates(construct: &str) -> Result<bool, String> {
+    let (_, references) = TABLE
+        .iter()
+        .find(|(key, _)| *key == construct)
+        .ok_or_else(|| format!("construct `{construct}` has no realization row"))?;
+    for reference in *references {
+        if allocates(reference)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Whether a program requires heap allocation: it uses an allocating
+/// element, or a type that contains itself in place.
+#[must_use]
+pub fn program_allocates(program: &Program) -> bool {
+    let types = program_elements(program)
+        .into_iter()
+        .filter(|element| element.starts_with("type:"));
+    if built_elements(program)
+        .into_iter()
+        .chain(types)
+        .any(|element| allocates(&element).unwrap_or(true))
+    {
+        return true;
+    }
+    fn in_place(ty: &Ty, out: &mut BTreeSet<u64>) {
+        match ty {
+            Ty::Option { value } => in_place(value, out),
+            Ty::Result { ok, error } => {
+                in_place(ok, out);
+                in_place(error, out);
+            }
+            Ty::Pair { left, right } => {
+                in_place(left, out);
+                in_place(right, out);
+            }
+            Ty::Adt { index } => {
+                out.insert(*index);
+            }
+            _ => {}
+        }
+    }
+    (0..program.adts.len() as u64).any(|start| {
+        let mut seen = BTreeSet::new();
+        let mut pending = vec![start];
+        while let Some(adt) = pending.pop() {
+            let mut reached = BTreeSet::new();
+            if let Some(declared) = usize::try_from(adt)
+                .ok()
+                .and_then(|adt| program.adts.get(adt))
+            {
+                for ty in declared.constructors.iter().flatten() {
+                    in_place(ty, &mut reached);
+                }
+            }
+            if reached.contains(&start) {
+                return true;
+            }
+            pending.extend(reached.into_iter().filter(|next| seen.insert(*next)));
+        }
+        false
+    })
 }
 
 /// Check the table against the runtime rows of the production registry.
