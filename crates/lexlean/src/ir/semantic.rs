@@ -732,6 +732,33 @@ fn proof_node_count(proof: &SemanticProof) -> u64 {
     }
 }
 
+/// Language 1.2 also charges a data declaration's shape, which 1.1's count
+/// leaves free: one node per type parameter, per constructor (so a nullary
+/// constructor is not free), and for a mutual group label. Language 1.1 keeps
+/// its historical count.
+fn data_shape_node_count(declaration: &SemanticDeclaration) -> u64 {
+    let count = |values: usize| u64::try_from(values).unwrap_or(u64::MAX);
+    match declaration {
+        SemanticDeclaration::Inductive {
+            type_parameters,
+            constructors,
+            mutual,
+            ..
+        } => count(type_parameters.len())
+            .saturating_add(count(constructors.len()))
+            .saturating_add(u64::from(mutual.is_some())),
+        SemanticDeclaration::Structure {
+            type_parameters, ..
+        }
+        | SemanticDeclaration::Class {
+            type_parameters, ..
+        } => count(type_parameters.len()),
+        SemanticDeclaration::Instance { .. }
+        | SemanticDeclaration::Definition { .. }
+        | SemanticDeclaration::Theorem { .. } => 0,
+    }
+}
+
 fn declaration_node_count(declaration: &SemanticDeclaration) -> u64 {
     let parameters = |values: &[SemanticParameter]| {
         values
@@ -959,6 +986,48 @@ fn visit_terms(term: &SemanticTerm, visit: &mut impl FnMut(&SemanticTerm)) {
     }
 }
 
+/// The source spelling of a type in diagnostics: the document's own names,
+/// never the compiler's internal representation.
+impl std::fmt::Display for SemanticType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let simple = match self {
+            Self::Type => "Type",
+            Self::Nat => "Nat",
+            Self::Bool => "Bool",
+            Self::Prop => "Prop",
+            Self::Unit => "Unit",
+            Self::Int => "Int",
+            Self::Int8 => "Int8",
+            Self::Int16 => "Int16",
+            Self::Int32 => "Int32",
+            Self::Int64 => "Int64",
+            Self::UInt8 => "UInt8",
+            Self::UInt16 => "UInt16",
+            Self::UInt32 => "UInt32",
+            Self::UInt64 => "UInt64",
+            Self::String => "String",
+            Self::Bytes => "Bytes",
+            Self::Ordering => "Ordering",
+            Self::Parameter { name } => return f.write_str(name),
+            Self::Option { value } => return write!(f, "Option ({value})"),
+            Self::Result { ok, error } => return write!(f, "Result ({ok}) ({error})"),
+            Self::List { element } => return write!(f, "List ({element})"),
+            Self::Product { left, right } => return write!(f, "Prod ({left}) ({right})"),
+            Self::Named { member, arguments } => {
+                if let Some(module) = &member.module {
+                    write!(f, "{module}.")?;
+                }
+                f.write_str(&member.name)?;
+                for argument in arguments {
+                    write!(f, " ({argument})")?;
+                }
+                return Ok(());
+            }
+        };
+        f.write_str(simple)
+    }
+}
+
 /// The construct name when `ty` contains a language-1.2-only type form.
 fn language_1_2_type(ty: &SemanticType) -> Option<&'static str> {
     match ty {
@@ -1109,6 +1178,146 @@ fn proof_terms(proof: &SemanticProof, visit: &mut impl FnMut(&SemanticTerm)) {
     }
 }
 
+/// Lean names the backend emits unqualified: built-in types and their
+/// constructor owners, the propositional connectives its proofs name, and the
+/// runtime namespaces. A binder spelled like one would capture it.
+const BACKEND_BARE_NAMES: [&str; 31] = [
+    "And",
+    "Bool",
+    "ByteArray",
+    "Except",
+    "Iff",
+    "Int",
+    "Int16",
+    "Int32",
+    "Int64",
+    "Int8",
+    "LexLeanCollections",
+    "LexLeanRuntime",
+    "List",
+    "Nat",
+    "Option",
+    "Ordering",
+    "Prod",
+    "Prop",
+    "Result",
+    "String",
+    "Type",
+    "UInt16",
+    "UInt32",
+    "UInt64",
+    "UInt8",
+    "Unit",
+    "and_congr",
+    "congr",
+    "decide",
+    "id",
+    "rfl",
+];
+
+fn proof_binders(proof: &SemanticProof, visit: &mut impl FnMut(&str)) {
+    match proof {
+        SemanticProof::Reflexivity
+        | SemanticProof::Decide
+        | SemanticProof::Simplify { .. }
+        | SemanticProof::Congruence
+        | SemanticProof::BooleanReflection { .. }
+        | SemanticProof::Apply { .. } => {}
+        SemanticProof::Constructor { branches } => {
+            for branch in branches {
+                proof_binders(branch, visit);
+            }
+        }
+        SemanticProof::Cases { branches, .. } | SemanticProof::Induction { branches, .. } => {
+            for branch in branches {
+                branch.binders.iter().for_each(|binder| visit(binder));
+                proof_binders(&branch.proof, visit);
+            }
+        }
+    }
+}
+
+/// Visit every name a declaration binds locally: type parameters, value
+/// parameters, and the binders of its terms and proofs.
+fn declaration_binders(declaration: &SemanticDeclaration, visit: &mut impl FnMut(&str)) {
+    let (type_parameters, parameters): (&[String], &[SemanticParameter]) = match declaration {
+        SemanticDeclaration::Structure {
+            type_parameters,
+            parameters,
+            ..
+        }
+        | SemanticDeclaration::Class {
+            type_parameters,
+            parameters,
+            ..
+        }
+        | SemanticDeclaration::Inductive {
+            type_parameters,
+            parameters,
+            ..
+        } => (type_parameters, parameters),
+        SemanticDeclaration::Definition { parameters, .. }
+        | SemanticDeclaration::Theorem { parameters, .. } => (&[], parameters),
+        SemanticDeclaration::Instance { .. } => (&[], &[]),
+    };
+    type_parameters.iter().for_each(|name| visit(name));
+    parameters
+        .iter()
+        .for_each(|parameter| visit(&parameter.name));
+    declaration_terms(declaration, &mut |term| match term {
+        SemanticTerm::Match { branches, .. } => {
+            for branch in branches {
+                branch.binders.iter().for_each(|binder| visit(binder));
+            }
+        }
+        SemanticTerm::Forall { binder, .. } | SemanticTerm::Let { binder, .. } => {
+            visit(&binder.name);
+        }
+        _ => {}
+    });
+    if let SemanticDeclaration::Theorem { proof, .. } = declaration {
+        proof_binders(proof, visit);
+    }
+}
+
+/// §17.12 binder hygiene (language 1.2): the backend refers to this module's
+/// declarations, to built-in Lean names, and to every imported declaration
+/// through the project's module prefix without qualification, so no local
+/// binder may be spelled like any of them. Lean would otherwise resolve the
+/// reference to the binder after linking has accepted the module.
+fn check_binder_hygiene(module: &SemanticModule, module_prefix: &str) -> Result<(), String> {
+    let declared: BTreeSet<&str> = module
+        .declarations
+        .iter()
+        .map(SemanticDeclaration::name)
+        .collect();
+    let prefix_root = module_prefix.split('.').next().unwrap_or(module_prefix);
+    let mut failure = None;
+    for declaration in &module.declarations {
+        declaration_binders(declaration, &mut |binder| {
+            if failure.is_some() {
+                return;
+            }
+            let captured = if declared.contains(binder) {
+                Some("declaration")
+            } else if BACKEND_BARE_NAMES.contains(&binder) {
+                Some("built-in Lean name")
+            } else if binder == prefix_root {
+                Some("module prefix")
+            } else {
+                None
+            };
+            if let Some(what) = captured {
+                failure = Some(format!(
+                    "binder `{binder}` in `{}` is spelled like the {what} `{binder}` and would capture it in generated Lean",
+                    declaration.name()
+                ));
+            }
+        });
+    }
+    failure.map_or(Ok(()), Err)
+}
+
 /// Visit every term a declaration carries, including proof arguments.
 fn declaration_terms(declaration: &SemanticDeclaration, visit: &mut impl FnMut(&SemanticTerm)) {
     match declaration {
@@ -1133,7 +1342,16 @@ fn declaration_terms(declaration: &SemanticDeclaration, visit: &mut impl FnMut(&
 impl SemanticModule {
     /// Exact recursive semantic-node count charged to `max_ir_nodes`.
     pub(crate) fn node_count(&self) -> u64 {
-        self.declarations.iter().map(declaration_node_count).sum()
+        let base: u64 = self.declarations.iter().map(declaration_node_count).sum();
+        if semantic_module_spec(crate::LANGUAGE_1_2) == Some(self.spec.as_str()) {
+            base + self
+                .declarations
+                .iter()
+                .map(data_shape_node_count)
+                .sum::<u64>()
+        } else {
+            base
+        }
     }
 }
 
@@ -2358,7 +2576,7 @@ fn require_type(
     if let Some(observed) = observed {
         if &observed != expected {
             return Err(format!(
-                "{context} has type {observed:?}, expected {expected:?}"
+                "{context} has type {observed}, expected {expected}"
             ));
         }
     }
@@ -2401,7 +2619,7 @@ fn infer_primitive(
             Ok(expected)
         } else {
             Err(format!(
-                "primitive {operation:?} result is {result:?}, expected {expected:?}"
+                "primitive {operation:?} result is {result}, expected {expected}"
             ))
         }
     };
@@ -2630,7 +2848,7 @@ fn same_type(
 ) -> Result<Option<SemanticType>, String> {
     match (left, right) {
         (Some(left), Some(right)) if left != right => Err(format!(
-            "{context} has incompatible types {left:?} and {right:?}"
+            "{context} has incompatible types {left} and {right}"
         )),
         (Some(left), _) => Ok(Some(left)),
         (_, Some(right)) => Ok(Some(right)),
@@ -2786,7 +3004,7 @@ fn infer_term(
                     require_type(head, &element, "list head")?;
                     Ok(Some(SemanticType::List { element }))
                 }
-                Some(other) => Err(format!("list tail has non-list type {other:?}")),
+                Some(other) => Err(format!("list tail has non-list type {other}")),
                 None => Ok(None),
             }
         }
@@ -2964,7 +3182,7 @@ fn infer_term(
                         fields
                     }
                     Some(other) => {
-                        return Err(format!("cannot pattern match value of type {other:?}"));
+                        return Err(format!("cannot pattern match value of type {other}"));
                     }
                     None => return Ok(None),
                 };
@@ -3101,7 +3319,7 @@ fn infer_term(
                     *right
                 }))
             }
-            Some(other) => Err(format!("pair projection of non-product type {other:?}")),
+            Some(other) => Err(format!("pair projection of non-product type {other}")),
             None => Ok(None),
         },
     }
@@ -3442,9 +3660,12 @@ fn check_elimination_proof(
 
 impl SemanticModule {
     /// Decode canonical JSON and enforce all conservative semantic checks.
+    /// `module_prefix` is the project's Lean module prefix, under which the
+    /// backend names every imported declaration.
     pub fn parse(
         text: &str,
         language: &str,
+        module_prefix: &str,
         imports: &[String],
         imported_modules: &BTreeMap<String, &Self>,
     ) -> Result<Self, String> {
@@ -3455,7 +3676,7 @@ impl SemanticModule {
         if canonical != text {
             return Err("semantic-module JSON is not canonical".to_owned());
         }
-        module.validate(language, imports, imported_modules)?;
+        module.validate(language, module_prefix, imports, imported_modules)?;
         Ok(module)
     }
 
@@ -3499,6 +3720,7 @@ impl SemanticModule {
     fn validate(
         &self,
         language: &str,
+        module_prefix: &str,
         imports: &[String],
         imported_modules: &BTreeMap<String, &Self>,
     ) -> Result<(), String> {
@@ -3521,6 +3743,9 @@ impl SemanticModule {
         }
         if self.declarations.is_empty() {
             return Err("a semantic module contains at least one declaration".to_owned());
+        }
+        if language == crate::LANGUAGE_1_2 {
+            check_binder_hygiene(self, module_prefix)?;
         }
         let mut env = Environment {
             language_1_2: language == crate::LANGUAGE_1_2,
@@ -4084,7 +4309,7 @@ mod tests {
 
     #[test]
     fn semantic_bool_match_is_typed_and_exhaustive() {
-        SemanticModule::parse(BOOL_MATCH, "1.1", &[], &BTreeMap::new())
+        SemanticModule::parse(BOOL_MATCH, "1.1", "Test", &[], &BTreeMap::new())
             .expect("both Boolean constructors form a typed exhaustive match");
 
         let nonexhaustive = BOOL_MATCH.replace(
@@ -4092,7 +4317,7 @@ mod tests {
             "",
         );
         assert!(
-            SemanticModule::parse(&nonexhaustive, "1.1", &[], &BTreeMap::new())
+            SemanticModule::parse(&nonexhaustive, "1.1", "Test", &[], &BTreeMap::new())
                 .expect_err("one Boolean branch is not exhaustive")
                 .to_string()
                 .contains("nonexhaustive or mixed match branches")
@@ -4101,7 +4326,7 @@ mod tests {
 
     #[test]
     fn semantic_theorem_policy_defaults_to_exact_empty() {
-        let module = SemanticModule::parse(EMPTY_POLICY, "1.1", &[], &BTreeMap::new())
+        let module = SemanticModule::parse(EMPTY_POLICY, "1.1", "Test", &[], &BTreeMap::new())
             .expect("omitted policy is exact empty");
         let declaration = module.declarations.first().expect("one theorem");
         assert_eq!(declaration.axiom_policy_kind(), "none");
@@ -4111,7 +4336,7 @@ mod tests {
     #[test]
     fn semantic_theorem_policy_round_trips_a_nonempty_exact_set() {
         let source = theorem_with_axioms(r#"["Classical.choice","propext"]"#);
-        let module = SemanticModule::parse(&source, "1.1", &[], &BTreeMap::new())
+        let module = SemanticModule::parse(&source, "1.1", "Test", &[], &BTreeMap::new())
             .expect("sorted exact policy is valid");
         let declaration = module.declarations.first().expect("one theorem");
         assert_eq!(declaration.axiom_policy_kind(), "exact");
@@ -4130,9 +4355,14 @@ mod tests {
             r#"["propext","propext"]"#,
             r#"["bad-name"]"#,
         ] {
-            let error =
-                SemanticModule::parse(&theorem_with_axioms(axioms), "1.1", &[], &BTreeMap::new())
-                    .expect_err("invalid exact policy must fail");
+            let error = SemanticModule::parse(
+                &theorem_with_axioms(axioms),
+                "1.1",
+                "Test",
+                &[],
+                &BTreeMap::new(),
+            )
+            .expect_err("invalid exact policy must fail");
             assert!(
                 error.contains("not sorted, unique, and qualified"),
                 "{error}"

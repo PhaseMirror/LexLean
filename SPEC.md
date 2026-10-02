@@ -2469,12 +2469,36 @@ either backend runs; they do not defer to what Lean would accept.
    `cases` applies to every inductive.
 8. **Lowering.** Each inductive lowers to one `public inductive` with
    positional `(_ : T)` fields; each mutual group lowers to one
-   `mutual ... end` block. The canonical LaTeX of a
-   `lexlean/semantic-module/2` module additionally lists every constructor
-   with its field types, the mutual group label, and every structure or class
-   field; language-1.1 documents keep their bytes.
+   `mutual ... end` block. A constructor's identity is its owner and name,
+   `Owner.ctor`, qualified by its module when imported; constructor names are
+   unique within their owner and lowered in declaration order. The canonical
+   LaTeX of a `lexlean/semantic-module/2` module additionally lists the type
+   parameters of every parameterized inductive, structure, or class, every
+   constructor with its field types, the mutual group label, and every
+   structure or class field; language-1.1 documents keep their bytes.
 9. **Accounting.** Every constructor field type is charged recursively to
-   `max_ir_nodes`.
+   `max_ir_nodes`, and a `lexlean/semantic-module/2` module is also charged
+   one node per type parameter, per constructor, and per mutual group label,
+   so no part of a data declaration is free; language-1.1 modules keep their
+   historical count.
+10. **Binder hygiene.** The backend refers to the module's own declarations,
+    to the built-in names it emits (`And`, `Bool`, `ByteArray`, `Except`,
+    `Iff`, `Int`, `Int8`..`Int64`, `LexLeanCollections`, `LexLeanRuntime`,
+    `List`, `Nat`, `Option`, `Ordering`, `Prod`, `Prop`, `Result`, `String`,
+    `Type`, `UInt8`..`UInt64`, `Unit`, `and_congr`, `congr`, `decide`, `id`,
+    `rfl`), and to every imported declaration through the project's module
+    prefix, all without qualification. In a `lexlean/semantic-module/2`
+    module no binder (a type parameter, a value parameter, or a pattern,
+    `let`, quantifier, or proof binder) is spelled like a declaration of the
+    module, one of those built-in names, or the first segment of the module
+    prefix, because Lean would resolve the reference to the binder after
+    linking has accepted the module. The language-1.1 contract is frozen
+    and does not carry this rule.
+11. **Source maps.** In a `lexlean/semantic-module/2` module every
+    declaration is its own mapping node in both artifacts, relating its
+    generated Lean and LaTeX to exactly its object in the source; the
+    preamble and closing map to the whole module. Language-1.1 maps keep
+    their module granularity and bytes.
 
 Routing is fixed by the project language and is never inferred from module
 content, so no byte sequence has two meanings:
@@ -4077,7 +4101,10 @@ Tests MUST establish that LexLean rejects, at minimum:
 - a noncontiguous mutual group;
 - a recursive occurrence with the wrong number of type arguments;
 - a constructor applied to the wrong number of arguments;
-- a forward reference outside a mutual group.
+- a forward reference outside a mutual group;
+- an uninhabited cycle through a mutual group;
+- a match on a value of one type with the constructors of another;
+- a binder spelled like a name the generated Lean refers to.
 
 ### 28.6 Example verification
 

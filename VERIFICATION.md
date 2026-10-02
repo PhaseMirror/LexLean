@@ -300,17 +300,42 @@ check fails
 Planted: the positivity rule in `classify_occurrence` was bypassed (`if false
 && ...`), so a group member inside another document type's arguments was
 admitted. Command: `cargo test -p repo-conformance --test conformance --
-conformance_df_12`. Expected: the mutation that nests `Rose` inside `Tree`
-is no longer rejected for positivity.
+conformance_df_12`. Expected: the mutation that adds an otherwise unused,
+well-formed `Wrap` with a constructor field `Tree (Wrap)` is no longer
+rejected at all; only the positivity rule refused it.
 
 ```text
-thread 'conformance_df_12' panicked at crates/conformance/src/cases/declarations.rs:644:17:
-expected "positivity violation in `Rose.node`", got LLT4001: phase link: constructor `Rose.node` argument has type List { element: Named { ... name: "Rose" ... } }, expected Named { ... name: "Tree" ... }
+thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:317:14:
+check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 230 filtered out
 ```
 
 Removed: the rule was restored; `conformance_df_12` passes and the
 `recursive-type-positivity` negative fixture fails with `LLT4001`.
+
+### binder hygiene can fail
+
+Planted: the language-1.2 call to `check_binder_hygiene` in
+`SemanticModule::validate` was disabled (`if false && ...`). Commands: `cargo
+test -p repo-conformance --test conformance -- conformance_df_12`, and
+`lexlean check` then `lexlean verify` on a copy of the `binder-capture`
+negative project, whose inductive `Box` has a type parameter `Prod` and a
+product field. Expected: the renamed type parameter is admitted, and Lean,
+not linking, is the first to refuse the capture.
+
+```text
+thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:317:14:
+check fails
+
+checked 1 module (source 0eec48d541180c1a6dbf34539884c1063f8a6637964a1f7667a5b6c0f73a4d15, semantic 1fe3fc4d4fa60d781de6ea42be16516d7b6b860a2918f6ed351b40ad6e1e0d2c)
+error[LLV7002]: Lean rejected `LanguageTwelve.Main` (error): Function expected at
+  Prod
+but this term has type
+  Type
+```
+
+Removed: the check was restored; `conformance_df_12` passes and
+`binder-capture` fails in linking with `LLT4001`, before any backend runs.
 
 ### fmt-check can fail
 

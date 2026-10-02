@@ -597,6 +597,7 @@ fn check_project_inline(
                 SemanticModule::parse(
                     &ast.data.text,
                     &project.config.language,
+                    &project.config.module_prefix,
                     &imports,
                     &imported_semantic,
                 )
