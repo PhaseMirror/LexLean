@@ -3,8 +3,9 @@
 //!
 //! Every request is written here, by hand; its expected answer is computed
 //! by the host transcription `lexlean::gnaf::answer`. The committed
-//! `compiler/gnaf/<name>.json` files and `compiler/src/GnafFixtures` module
-//! are exactly what [`files`] renders, which `cargo xtask check-calculus`
+//! `compiler/gnaf/<name>.json` files, the `compiler/src/GnafFixtures`
+//! module, and the `Gnaf` model it imports ([`crate::gnaf_model`]) are
+//! exactly what [`files`] renders, which `cargo xtask check-calculus`
 //! enforces. In the module, each request is a `Gnaf.Request` definition and
 //! a theorem that the kernel reduces `Gnaf.answer` of it to the expected
 //! answer, so the model, not the transcription, is the oracle.
@@ -610,10 +611,10 @@ pub fn fixture_declarations(fixture: &Fixture) -> Vec<Json> {
 #[must_use]
 pub fn fixtures_module(fixtures: &[Fixture]) -> String {
     let declarations: Vec<Json> = fixtures.iter().flat_map(fixture_declarations).collect();
-    let data = json!({"spec": "lexlean/semantic-module/2", "declarations": declarations});
-    format!(
-        "\\begin{{lexlean}}{{GnafFixtures}}\n\\useglossary{{lexlean.std.nat@1.2.0}}\n\\importmodule{{TargetSyntax}}\n\\importmodule{{TargetSemantics}}\n\\importmodule{{Gnaf}}\n\\title{{Natural number addition}}\n\\begin{{semanticmodule}}\n\\semanticdata{{{}}}\n\\end{{semanticmodule}}\n\\end{{lexlean}}\n",
-        serde_json::to_string(&data).expect("module data serializes")
+    crate::lx::module_tex(
+        "GnafFixtures",
+        &[term::SYNTAX, term::SEMANTICS, MODEL],
+        declarations,
     )
 }
 
@@ -631,6 +632,10 @@ pub fn files() -> BTreeMap<String, Vec<u8>> {
     out.insert(
         "compiler/src/GnafFixtures.lex.tex".to_owned(),
         fixtures_module(&fixtures).into_bytes(),
+    );
+    out.insert(
+        crate::gnaf_model::PATH.to_owned(),
+        crate::gnaf_model::module().into_bytes(),
     );
     out
 }

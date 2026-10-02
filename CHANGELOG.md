@@ -157,7 +157,9 @@ versions, and the entries below say what each tag does and does not claim.
   and the authority's GNAF-VEC-01/02/04/17 and GNAF-REJ-14/29 vectors are
   theorems of the model. The host side `lexlean::gnaf` loads requests
   (`lexlean/gnaf-request/1`, new `LLB6006`), bounds fuel and universe size
-  (`LLS8002`), and transcribes the answer (`GN-01`..`GN-07`).
+  (`LLS8002`), and transcribes the answer (`GN-01`..`GN-07`). The `Gnaf`
+  module is generated from its definition in `repo-conformance`, and
+  `cargo xtask check-calculus` compares it byte for byte.
 - The language-1.2 portable runtime exposes every definition, so a
   definition imported from another module reduces in the kernel through the
   primitives it applies; the 1.2 `lean_backend` version is now `11`, and the

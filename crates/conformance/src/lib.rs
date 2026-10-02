@@ -12,6 +12,8 @@ pub mod calculus;
 pub mod cases;
 pub mod fixtures;
 pub mod gnaf;
+pub mod gnaf_model;
+mod lx;
 pub mod meta;
 pub mod runner;
 pub mod schema;
