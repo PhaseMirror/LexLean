@@ -146,6 +146,18 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `NE-05` | `build` | A dependency dropped from Lean's extracted closure, from its declarations, or from the production-eligibility closure fails extraction with LLV7011 before any compiler input is published. |
 | `NE-06` | `build` | A proof-only dependency presented as a runtime closure member fails extraction with LLV7011 before any compiler input is published. |
 
+## gnaf
+
+| ID | Level | Statement |
+| --- | --- | --- |
+| `GN-01` | `build` | Every committed GNAF request and fixture is canonical and validates against the GNAF schemas, every malformed request or invalid reference or realized program fails closed with LLB6006, and fuel or a universe beyond the host's capacity fails closed with LLS8002. |
+| `GN-02` | `build` | The GNAF model is a kernel-checked LexLean definition, Lean's kernel reduces the answer of every committed request to the answer the host transcription computes, and a wrong answer or an answer computed from a universe with a system omitted is rejected by Lean. |
+| `GN-03` | `build` | Candidate membership is the grammar's expansion fixed before any optimizer, and optimizer-defined, discovered, cached, and internal-plan universes and missing, self-referential, or optimizer-citing completeness evidence are rejected. |
+| `GN-04` | `build` | Every action a system performs is charged by steps and every admitted preparation action by a positive constant or a common prepared boundary, hidden zero-cost, free, undeclared, duplicated, unaccounted, and unrealizable actions are rejected, and declared preparation charges enter every system's cost. |
+| `GN-05` | `build` | Scalar claims require the total step order and Pareto claims the componentwise steps-and-size order, a scalar claim over the partial order, a vector claim over the total order, an undecided claim class, and a scope beyond the grammar universe are rejected, and a frontier answer has incomparable members. |
+| `GN-06` | `build` | Complete-system cost includes selection, the system argmin differs from the best internal plan and from the per-input plan envelope that no system attains, an inadmissible system is excluded, and an unresolved system makes the answer incomplete rather than being removed. |
+| `GN-07` | `build` | The authority's GNAF-VEC-01, GNAF-VEC-02, GNAF-VEC-04, GNAF-VEC-17, GNAF-REJ-14, and GNAF-REJ-29 vectors are kernel-checked theorems of the model, and the authority is cited by revision and SHA-256 with a some-true ledger claim. |
+
 ## grammar
 
 | ID | Level | Statement |
@@ -383,6 +395,7 @@ Never re-derived, vendored, or gated on.
 | `LEANCHECKER-4-32-1` | https://github.com/leanprover/lean4/tree/v4.32.1 | `VR-08` |
 | `PRINT-AXIOMS-4-32-1` | https://github.com/leanprover/lean4/tree/v4.32.1 (the #print axioms command); observed output fixtures under tests/golden/axiom-parser/ | `VR-09`, `VR-10` |
 | `LEAN-LCNF-4-32-1` | https://github.com/leanprover/lean4/tree/f054605aea4b840552cca2e725580bffd1e1b704/src/Lean/Compiler/LCNF | `NE-01`, `NE-02`, `NE-04` |
+| `UOR-GNAF-1-DRAFT-2` | https://github.com/afflom/wasm-gemm-gnaf/blob/917306fd2b5a397ab02c5d38918fb8620fcc5ae0/authority/UOR-GNAF-v1-draft.2.md | `GN-02`, `GN-03`, `GN-04`, `GN-05`, `GN-06`, `GN-07` |
 
 ## Claims that are not conformance IDs
 
@@ -392,3 +405,4 @@ Never re-derived, vendored, or gated on.
 | `AUTH-LAKE-4-32-1` | `some-true` | Lake as distributed with Lean 4.32.1 resolves a pinned workspace environment through lake env without network access when every locked dependency is locally available. |
 | `AUTH-LEANCHECKER-4-32-1` | `some-true` | The leanchecker executable distributed with Lean 4.32.1 replays a compiled module's environment through the Lean kernel in a separate process and is not an independent proof checker. |
 | `AUTH-PRINT-AXIOMS-4-32-1` | `some-true` | Lean 4.32.1 reports the transitive axiom dependencies of a declaration through #print axioms in exactly the output forms recorded by the committed axiom-parser fixtures. |
+| `AUTH-UOR-GNAF-1-DRAFT-2` | `some-true` | UOR-GNAF normative draft uor-gnaf/1-draft.2 requires an optimality claim's machine contract, accounting model, complete-system universe and its optimizer-independent completeness evidence, objective order, and claim class to be fixed before optimization, and treats UOR-NAF as informative only. |

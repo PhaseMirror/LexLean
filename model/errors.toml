@@ -43,6 +43,13 @@ title = "Target realization program invalid or unrenderable"
 statement = "A production-realization target program is malformed, violates the calculus's static rules, or cannot be rendered faithfully to the Rust profile."
 
 [[error]]
+code = "LLB6006"
+class = "language"
+exit = 1
+title = "GNAF request malformed"
+statement = "A GNAF request is not a closed `lexlean/gnaf-request/1` document, or its reference program or a system its universe realizes is not a valid target program."
+
+[[error]]
 code = "LLC0001"
 class = "cli-configuration"
 exit = 2

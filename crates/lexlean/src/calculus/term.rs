@@ -15,11 +15,15 @@ pub const SYNTAX: &str = "TargetSyntax";
 /// The module defining the denotation.
 pub const SEMANTICS: &str = "TargetSemantics";
 
-fn member(module: &str, name: &str) -> Json {
+/// A module member reference.
+#[must_use]
+pub fn member(module: &str, name: &str) -> Json {
     json!({"module": module, "name": name})
 }
 
-fn named(module: &str, name: &str) -> Json {
+/// A named type with no arguments.
+#[must_use]
+pub fn named(module: &str, name: &str) -> Json {
     json!({"kind": "named", "member": member(module, name), "arguments": []})
 }
 
@@ -31,11 +35,15 @@ fn syntax(name: &str, arguments: Vec<Json>) -> Json {
     ctor(SYNTAX, name, arguments)
 }
 
-fn nat(number: u64) -> Json {
+/// A natural-number literal.
+#[must_use]
+pub fn nat(number: u64) -> Json {
     json!({"kind": "nat", "value": number.to_string()})
 }
 
-fn list(element: &Json, items: Vec<Json>) -> Json {
+/// A list literal built from `cons` cells.
+#[must_use]
+pub fn list(element: &Json, items: Vec<Json>) -> Json {
     items.into_iter().rev().fold(
         json!({"kind": "nil", "element": element}),
         |tail, head| json!({"kind": "cons", "head": head, "tail": tail}),
@@ -53,7 +61,9 @@ fn kind(kind: IntKind) -> Json {
     syntax(&format!("IntKind.{}", kind.name()), Vec::new())
 }
 
-fn ty(ty: &Ty) -> Json {
+/// A type as a `TargetSyntax.Ty` term.
+#[must_use]
+pub fn ty(ty: &Ty) -> Json {
     let ty_type = named(SYNTAX, "Ty");
     match ty {
         Ty::Unit => syntax("Ty.unit", Vec::new()),
@@ -296,7 +306,9 @@ fn adt(adt: &Adt) -> Json {
     ]})
 }
 
-fn function(function: &Function) -> Json {
+/// A function as a `TargetSyntax.Function` record.
+#[must_use]
+pub fn function(function: &Function) -> Json {
     json!({"kind": "record", "type": member(SYNTAX, "Function"), "fields": [
         {"field": "parameters", "value": nat_list(&function.parameters)},
         {"field": "types", "value": list(&named(SYNTAX, "Ty"), function.types.iter().map(ty).collect())},

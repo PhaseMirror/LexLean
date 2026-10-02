@@ -2565,24 +2565,28 @@ pub fn files() -> BTreeMap<String, Vec<u8>> {
     out
 }
 
-/// Compare (or, with `write`, rewrite) the generated files.
+/// Compare (or, with `write`, rewrite) the generated files of the calculus
+/// (§17.14) and of the GNAF requests over it (§17.15).
 ///
 /// # Errors
 ///
 /// Returns the first generated file whose committed bytes differ, or a
 /// committed fixture no generator produces.
 pub fn check(root: &Path, write: bool) -> Result<usize, String> {
-    let files = files();
-    let fixtures = root.join("compiler/fixtures");
-    if let Ok(entries) = std::fs::read_dir(&fixtures) {
+    let mut files = files();
+    files.extend(crate::gnaf::files());
+    for directory in ["compiler/fixtures", "compiler/gnaf"] {
+        let Ok(entries) = std::fs::read_dir(root.join(directory)) else {
+            continue;
+        };
         for entry in entries.flatten() {
-            let relative = format!("compiler/fixtures/{}", entry.file_name().to_string_lossy());
+            let relative = format!("{directory}/{}", entry.file_name().to_string_lossy());
             if !files.contains_key(&relative) {
                 if write {
                     std::fs::remove_file(entry.path())
                         .map_err(|error| format!("{relative}: {error}"))?;
                 } else {
-                    return Err(format!("{relative} is not a generated calculus fixture"));
+                    return Err(format!("{relative} is not a generated fixture"));
                 }
             }
         }

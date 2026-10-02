@@ -11,6 +11,7 @@
 pub mod calculus;
 pub mod cases;
 pub mod fixtures;
+pub mod gnaf;
 pub mod meta;
 pub mod runner;
 pub mod schema;

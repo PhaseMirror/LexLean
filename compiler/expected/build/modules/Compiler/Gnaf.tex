@@ -1,0 +1,456 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\begin{document}
+\section*{Semantic declarations}
+\subsection*{\texttt{ClaimClass}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{exact}: \texttt{()}.\par
+\noindent Constructor \texttt{normalForm}: \texttt{()}.\par
+\noindent Constructor \texttt{canonical}: \texttt{()}.\par
+\noindent Constructor \texttt{representationMinimal}: \texttt{()}.\par
+\noindent Constructor \texttt{comparisonTheorem}: \texttt{()}.\par
+\noindent Constructor \texttt{profileDefinedComparison}: \texttt{()}.\par
+\noindent Constructor \texttt{inputTotal}: \texttt{()}.\par
+\noindent Constructor \texttt{globalOptimal}: \texttt{()}.\par
+\noindent Constructor \texttt{argminComplete}: \texttt{()}.\par
+\noindent Constructor \texttt{paretoOptimal}: \texttt{()}.\par
+\noindent Constructor \texttt{frontierComplete}: \texttt{()}.\par
+\noindent Constructor \texttt{pointwiseEnvelopeComplete}: \texttt{()}.\par
+\noindent Constructor \texttt{queryFamilyAnswerComplete}: \texttt{()}.\par
+\noindent Constructor \texttt{useCaseGlobalOptimal}: \texttt{()}.\par
+\noindent Constructor \texttt{workloadArgminComplete}: \texttt{()}.\par
+\noindent Constructor \texttt{workloadParetoOptimal}: \texttt{()}.\par
+\noindent Constructor \texttt{workloadFrontierComplete}: \texttt{()}.\par
+\noindent Constructor \texttt{familyOptimal}: \texttt{()}.\par
+\noindent Constructor \texttt{competitiveBound}: \texttt{()}.\par
+\noindent Constructor \texttt{competitiveOptimal}: \texttt{()}.\par
+\noindent Constructor \texttt{asymptoticBound}: \texttt{()}.\par
+\noindent Constructor \texttt{asymptoticOptimal}: \texttt{()}.\par
+\noindent Constructor \texttt{useCaseClassComplete}: \texttt{()}.\par
+\noindent Constructor \texttt{useCaseClassAnswerComplete}: \texttt{()}.\par
+\noindent Constructor \texttt{maintainedUseCaseClass}: \texttt{()}.\par
+\noindent Constructor \texttt{restrictedUniverseOptimal}: \texttt{()}.\par
+\noindent Constructor \texttt{revisionPreserved}: \texttt{()}.\par
+\noindent Constructor \texttt{bestKnown}: \texttt{()}.\par
+\noindent Constructor \texttt{measuredBestAmongTested}: \texttt{()}.\par
+\noindent Constructor \texttt{heuristicSelected}: \texttt{()}.\par
+\noindent Constructor \texttt{instanceOptimal}: \texttt{(Nat, Nat)}.\par
+\subsection*{\texttt{ActionKind}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{observation}: \texttt{()}.\par
+\noindent Constructor \texttt{preprocessing}: \texttt{()}.\par
+\noindent Constructor \texttt{advice}: \texttt{()}.\par
+\noindent Constructor \texttt{retainedState}: \texttt{()}.\par
+\noindent Constructor \texttt{dispatch}: \texttt{()}.\par
+\noindent Constructor \texttt{fallback}: \texttt{()}.\par
+\noindent Constructor \texttt{communication}: \texttt{()}.\par
+\noindent Constructor \texttt{randomness}: \texttt{()}.\par
+\noindent Constructor \texttt{scheduling}: \texttt{()}.\par
+\noindent Constructor \texttt{execution}: \texttt{()}.\par
+\subsection*{\texttt{Charge}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{steps}: \texttt{()}.\par
+\noindent Constructor \texttt{constant}: \texttt{(Nat)}.\par
+\noindent Constructor \texttt{free}: \texttt{()}.\par
+\noindent Constructor \texttt{undeclared}: \texttt{()}.\par
+\subsection*{\texttt{Action}}
+\noindent Kind: \texttt{structure}.\par
+\noindent Field \texttt{kind}: \texttt{ActionKind}.\par
+\noindent Field \texttt{charge}: \texttt{Charge}.\par
+\subsection*{\texttt{Boundary}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{complete}: \texttt{()}.\par
+\noindent Constructor \texttt{preparedState}: \texttt{()}.\par
+\noindent Constructor \texttt{preparedPlan}: \texttt{()}.\par
+\subsection*{\texttt{Machine}}
+\noindent Kind: \texttt{structure}.\par
+\noindent Field \texttt{fuel}: \texttt{Nat}.\par
+\noindent Field \texttt{actions}: \texttt{List (Action)}.\par
+\noindent Field \texttt{boundary}: \texttt{Boundary}.\par
+\noindent Field \texttt{preparationCommon}: \texttt{Bool}.\par
+\subsection*{\texttt{Selector}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{fixed}: \texttt{(Nat)}.\par
+\noindent Constructor \texttt{dispatch}: \texttt{(Nat, Nat, Nat)}.\par
+\subsection*{\texttt{Grammar}}
+\noindent Kind: \texttt{structure}.\par
+\noindent Field \texttt{argument}: \texttt{Compiler.TargetSyntax.Ty}.\par
+\noindent Field \texttt{result}: \texttt{Compiler.TargetSyntax.Ty}.\par
+\noindent Field \texttt{plans}: \texttt{List (Compiler.TargetSyntax.Function)}.\par
+\noindent Field \texttt{thresholds}: \texttt{List (Nat)}.\par
+\subsection*{\texttt{Carrier}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{grammar}: \texttt{(Grammar)}.\par
+\noindent Constructor \texttt{internalPlans}: \texttt{()}.\par
+\noindent Constructor \texttt{optimizerOutput}: \texttt{()}.\par
+\noindent Constructor \texttt{discovered}: \texttt{(List (Nat))}.\par
+\noindent Constructor \texttt{cached}: \texttt{()}.\par
+\subsection*{\texttt{Completeness}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{grammarEquality}: \texttt{()}.\par
+\noindent Constructor \texttt{missing}: \texttt{()}.\par
+\noindent Constructor \texttt{citesUniverseId}: \texttt{()}.\par
+\noindent Constructor \texttt{citesOptimizer}: \texttt{()}.\par
+\subsection*{\texttt{Scope}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{grammarUniverse}: \texttt{()}.\par
+\noindent Constructor \texttt{calculusPrograms}: \texttt{()}.\par
+\noindent Constructor \texttt{rustPrograms}: \texttt{()}.\par
+\subsection*{\texttt{Objective}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{scalar}: \texttt{()}.\par
+\noindent Constructor \texttt{vector}: \texttt{()}.\par
+\subsection*{\texttt{Request}}
+\noindent Kind: \texttt{structure}.\par
+\noindent Field \texttt{reference}: \texttt{Compiler.TargetSyntax.Program}.\par
+\noindent Field \texttt{domain}: \texttt{List (Compiler.TargetSyntax.Value)}.\par
+\noindent Field \texttt{machine}: \texttt{Machine}.\par
+\noindent Field \texttt{carrier}: \texttt{Carrier}.\par
+\noindent Field \texttt{completeness}: \texttt{Completeness}.\par
+\noindent Field \texttt{objective}: \texttt{Objective}.\par
+\noindent Field \texttt{claim}: \texttt{ClaimClass}.\par
+\noindent Field \texttt{scope}: \texttt{Scope}.\par
+\subsection*{\texttt{Rejection}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{emptyDomain}: \texttt{()}.\par
+\noindent Constructor \texttt{internalPlanUniverse}: \texttt{()}.\par
+\noindent Constructor \texttt{optimizerDefinedUniverse}: \texttt{()}.\par
+\noindent Constructor \texttt{discoveredUniverse}: \texttt{()}.\par
+\noindent Constructor \texttt{cachedUniverse}: \texttt{()}.\par
+\noindent Constructor \texttt{missingCompleteness}: \texttt{()}.\par
+\noindent Constructor \texttt{selfReferentialCompleteness}: \texttt{()}.\par
+\noindent Constructor \texttt{optimizerCompleteness}: \texttt{()}.\par
+\noindent Constructor \texttt{duplicateAction}: \texttt{(ActionKind)}.\par
+\noindent Constructor \texttt{unaccountedAction}: \texttt{(ActionKind)}.\par
+\noindent Constructor \texttt{hiddenCost}: \texttt{(ActionKind)}.\par
+\noindent Constructor \texttt{unrealizableAction}: \texttt{(ActionKind)}.\par
+\noindent Constructor \texttt{uncommonPreparation}: \texttt{()}.\par
+\noindent Constructor \texttt{scalarClaimOverPartialOrder}: \texttt{()}.\par
+\noindent Constructor \texttt{vectorClaimOverTotalOrder}: \texttt{()}.\par
+\noindent Constructor \texttt{uncoveredScope}: \texttt{()}.\par
+\noindent Constructor \texttt{unsupportedClaim}: \texttt{()}.\par
+\subsection*{\texttt{Status}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{admitted}: \texttt{(Nat, Nat)}.\par
+\noindent Constructor \texttt{inadmissible}: \texttt{()}.\par
+\noindent Constructor \texttt{unresolved}: \texttt{()}.\par
+\subsection*{\texttt{Answer}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{rejected}: \texttt{(Rejection)}.\par
+\noindent Constructor \texttt{argmin}: \texttt{(List (Nat), Nat)}.\par
+\noindent Constructor \texttt{frontier}: \texttt{(List (Nat))}.\par
+\noindent Constructor \texttt{infeasible}: \texttt{()}.\par
+\noindent Constructor \texttt{incomplete}: \texttt{()}.\par
+\subsection*{\texttt{kindIndex}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match kind with | ActionKind.observation => 0 | ActionKind.preprocessing => 1 | ActionKind.advice => 2 | ActionKind.retainedState => 3 | ActionKind.dispatch => 4 | ActionKind.fallback => 5 | ActionKind.communication => 6 | ActionKind.randomness => 7 | ActionKind.scheduling => 8 | ActionKind.execution => 9)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{sameKind}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(Nat.beq (kindIndex (left)) (kindIndex (right)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{performed}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match kind with | ActionKind.observation => true | ActionKind.preprocessing => false | ActionKind.advice => false | ActionKind.retainedState => false | ActionKind.dispatch => true | ActionKind.fallback => true | ActionKind.communication => false | ActionKind.randomness => false | ActionKind.scheduling => false | ActionKind.execution => true)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{preparation}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match kind with | ActionKind.observation => false | ActionKind.preprocessing => true | ActionKind.advice => true | ActionKind.retainedState => true | ActionKind.dispatch => false | ActionKind.fallback => false | ActionKind.communication => false | ActionKind.randomness => false | ActionKind.scheduling => false | ActionKind.execution => false)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{findAction}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Option (Charge)}.\par
+\noindent Definition: \texttt{(match actions with | List.nil => Option.none | List.cons action rest => (if sameKind ((action).kind) (wanted) then Option.some ((action).charge) else findAction (rest) (wanted)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{countKind}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match actions with | List.nil => 0 | List.cons action rest => ((if sameKind ((action).kind) (wanted) then 1 else 0) + countKind (rest) (wanted)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{checkDistinct}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Option (Rejection)}.\par
+\noindent Definition: \texttt{(match actions with | List.nil => Option.none | List.cons action rest => (if (Nat.blt (1) (countKind (all) ((action).kind))) then Option.some (Rejection.duplicateAction ((action).kind)) else checkDistinct (rest) (all)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{checkPerformed}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Option (Rejection)}.\par
+\noindent Definition: \texttt{(match findAction ((machine).actions) (wanted) with | Option.none => Option.some (Rejection.unaccountedAction (wanted)) | Option.some charge => (match charge with | Charge.steps => Option.none | Charge.constant \_ => Option.some (Rejection.hiddenCost (wanted)) | Charge.free => Option.some (Rejection.hiddenCost (wanted)) | Charge.undeclared => Option.some (Rejection.hiddenCost (wanted))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{checkDeclared}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Option (Rejection)}.\par
+\noindent Definition: \texttt{(let kind : ActionKind := (action).kind; (if performed (kind) then Option.none else (if preparation (kind) then (match (action).charge with | Charge.steps => Option.some (Rejection.hiddenCost (kind)) | Charge.constant amount => (if (Nat.beq (amount) (0)) then Option.some (Rejection.hiddenCost (kind)) else Option.none) | Charge.free => (match (machine).boundary with | Boundary.complete => Option.some (Rejection.uncommonPreparation) | Boundary.preparedState => (if (machine).preparationCommon then Option.none else Option.some (Rejection.uncommonPreparation)) | Boundary.preparedPlan => (if (machine).preparationCommon then Option.none else Option.some (Rejection.uncommonPreparation))) | Charge.undeclared => Option.some (Rejection.hiddenCost (kind))) else Option.some (Rejection.unrealizableAction (kind)))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{checkAllDeclared}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Option (Rejection)}.\par
+\noindent Definition: \texttt{(match actions with | List.nil => Option.none | List.cons action rest => (match checkDeclared (machine) (action) with | Option.none => checkAllDeclared (machine) (rest) | Option.some rejection => Option.some (rejection)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{preparationCharge}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match actions with | List.nil => 0 | List.cons action rest => ((if preparation ((action).kind) then (match (action).charge with | Charge.steps => 0 | Charge.constant amount => amount | Charge.free => 0 | Charge.undeclared => 0) else 0) + preparationCharge (rest)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{checkClaim}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Option (Rejection)}.\par
+\noindent Definition: \texttt{(match (request).claim with | ClaimClass.exact => Option.some (Rejection.unsupportedClaim) | ClaimClass.normalForm => Option.some (Rejection.unsupportedClaim) | ClaimClass.canonical => Option.some (Rejection.unsupportedClaim) | ClaimClass.representationMinimal => Option.some (Rejection.unsupportedClaim) | ClaimClass.comparisonTheorem => Option.some (Rejection.unsupportedClaim) | ClaimClass.profileDefinedComparison => Option.some (Rejection.unsupportedClaim) | ClaimClass.inputTotal => Option.some (Rejection.unsupportedClaim) | ClaimClass.globalOptimal => (match (request).objective with | Objective.scalar => Option.none | Objective.vector => Option.some (Rejection.scalarClaimOverPartialOrder)) | ClaimClass.argminComplete => (match (request).objective with | Objective.scalar => Option.none | Objective.vector => Option.some (Rejection.scalarClaimOverPartialOrder)) | ClaimClass.paretoOptimal => (match (request).objective with | Objective.scalar => Option.some (Rejection.vectorClaimOverTotalOrder) | Objective.vector => Option.none) | ClaimClass.frontierComplete => (match (request).objective with | Objective.scalar => Option.some (Rejection.vectorClaimOverTotalOrder) | Objective.vector => Option.none) | ClaimClass.pointwiseEnvelopeComplete => Option.some (Rejection.unsupportedClaim) | ClaimClass.queryFamilyAnswerComplete => Option.some (Rejection.unsupportedClaim) | ClaimClass.useCaseGlobalOptimal => Option.some (Rejection.unsupportedClaim) | ClaimClass.workloadArgminComplete => Option.some (Rejection.unsupportedClaim) | ClaimClass.workloadParetoOptimal => Option.some (Rejection.unsupportedClaim) | ClaimClass.workloadFrontierComplete => Option.some (Rejection.unsupportedClaim) | ClaimClass.familyOptimal => Option.some (Rejection.unsupportedClaim) | ClaimClass.competitiveBound => Option.some (Rejection.unsupportedClaim) | ClaimClass.competitiveOptimal => Option.some (Rejection.unsupportedClaim) | ClaimClass.asymptoticBound => Option.some (Rejection.unsupportedClaim) | ClaimClass.asymptoticOptimal => Option.some (Rejection.unsupportedClaim) | ClaimClass.useCaseClassComplete => Option.some (Rejection.unsupportedClaim) | ClaimClass.useCaseClassAnswerComplete => Option.some (Rejection.unsupportedClaim) | ClaimClass.maintainedUseCaseClass => Option.some (Rejection.unsupportedClaim) | ClaimClass.restrictedUniverseOptimal => (match (request).objective with | Objective.scalar => Option.none | Objective.vector => Option.some (Rejection.scalarClaimOverPartialOrder)) | ClaimClass.revisionPreserved => Option.some (Rejection.unsupportedClaim) | ClaimClass.bestKnown => Option.some (Rejection.unsupportedClaim) | ClaimClass.measuredBestAmongTested => Option.some (Rejection.unsupportedClaim) | ClaimClass.heuristicSelected => Option.some (Rejection.unsupportedClaim) | ClaimClass.instanceOptimal \_ \_ => Option.some (Rejection.unsupportedClaim))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{validate}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Option (Rejection)}.\par
+\noindent Definition: \texttt{(match (match (request).domain with | List.nil => Option.some (Rejection.emptyDomain) | List.cons \_ \_ => Option.none) with | Option.none => (match (match (request).carrier with | Carrier.grammar \_ => Option.none | Carrier.internalPlans => Option.some (Rejection.internalPlanUniverse) | Carrier.optimizerOutput => Option.some (Rejection.optimizerDefinedUniverse) | Carrier.discovered \_ => Option.some (Rejection.discoveredUniverse) | Carrier.cached => Option.some (Rejection.cachedUniverse)) with | Option.none => (match (match (request).completeness with | Completeness.grammarEquality => Option.none | Completeness.missing => Option.some (Rejection.missingCompleteness) | Completeness.citesUniverseId => Option.some (Rejection.selfReferentialCompleteness) | Completeness.citesOptimizer => Option.some (Rejection.optimizerCompleteness)) with | Option.none => (match checkDistinct (((request).machine).actions) (((request).machine).actions) with | Option.none => (match checkPerformed ((request).machine) (ActionKind.observation) with | Option.none => (match checkPerformed ((request).machine) (ActionKind.dispatch) with | Option.none => (match checkPerformed ((request).machine) (ActionKind.fallback) with | Option.none => (match checkPerformed ((request).machine) (ActionKind.execution) with | Option.none => (match checkAllDeclared ((request).machine) (((request).machine).actions) with | Option.none => (match checkClaim (request) with | Option.none => (match (match (request).scope with | Scope.grammarUniverse => Option.none | Scope.calculusPrograms => Option.some (Rejection.uncoveredScope) | Scope.rustPrograms => Option.some (Rejection.uncoveredScope)) with | Option.none => Option.none | Option.some rejection18 => Option.some (rejection18)) | Option.some rejection17 => Option.some (rejection17)) | Option.some rejection16 => Option.some (rejection16)) | Option.some rejection15 => Option.some (rejection15)) | Option.some rejection14 => Option.some (rejection14)) | Option.some rejection13 => Option.some (rejection13)) | Option.some rejection12 => Option.some (rejection12)) | Option.some rejection11 => Option.some (rejection11)) | Option.some rejection10 => Option.some (rejection10)) | Option.some rejection9 => Option.some (rejection9)) | Option.some rejection8 => Option.some (rejection8))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{fixedSelectors}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{List (Selector)}.\par
+\noindent Definition: \texttt{(match count with | Nat.zero => ([] : List (Selector)) | Nat.succ remaining => (Selector.fixed (next) :: fixedSelectors (remaining) ((next + 1))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{pairsFrom}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{List ((Prod (Nat) (Nat)))}.\par
+\noindent Definition: \texttt{(match candidates with | List.nil => ([] : List ((Prod (Nat) (Nat)))) | List.cons large rest => (if (Nat.beq (small) (large)) then pairsFrom (small) (rest) else ((small, large) :: pairsFrom (small) (rest))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{orderedPairs}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{List ((Prod (Nat) (Nat)))}.\par
+\noindent Definition: \texttt{(match smalls with | List.nil => ([] : List ((Prod (Nat) (Nat)))) | List.cons small rest => (LexLeanRuntime.append (pairsFrom (small) (all)) (orderedPairs (rest) (all)) : List ((Prod (Nat) (Nat)))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{indices}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{List (Nat)}.\par
+\noindent Definition: \texttt{(match count with | Nat.zero => ([] : List (Nat)) | Nat.succ remaining => (next :: indices (remaining) ((next + 1))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{dispatchFor}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{List (Selector)}.\par
+\noindent Definition: \texttt{(match pairs with | List.nil => ([] : List (Selector)) | List.cons chosen rest => (Selector.dispatch (threshold) ((chosen).1) ((chosen).2) :: dispatchFor (threshold) (rest)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{dispatchSelectors}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{List (Selector)}.\par
+\noindent Definition: \texttt{(match thresholds with | List.nil => ([] : List (Selector)) | List.cons threshold rest => (LexLeanRuntime.append (dispatchFor (threshold) (pairs)) (dispatchSelectors (rest) (pairs)) : List (Selector)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{expand}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{List (Selector)}.\par
+\noindent Definition: \texttt{(let count : Nat := (LexLeanRuntime.length ((grammar).plans) : Nat); (let all : List (Nat) := indices (count) (0); (LexLeanRuntime.append (fixedSelectors (count) (0)) (dispatchSelectors ((grammar).thresholds) (orderedPairs (all) (all))) : List (Selector))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{entryBody}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Compiler.TargetSyntax.Expr}.\par
+\noindent Definition: \texttt{(match selector with | Selector.fixed plan => Compiler.TargetSyntax.Expr.call ((plan + 1)) ((Compiler.TargetSyntax.Expr.var (0) :: ([] : List (Compiler.TargetSyntax.Expr)))) | Selector.dispatch threshold small large => Compiler.TargetSyntax.Expr.cond (Compiler.TargetSyntax.Expr.prim (Compiler.TargetSyntax.Prim.natLt) ((Compiler.TargetSyntax.Expr.prim (Compiler.TargetSyntax.Prim.length) ((Compiler.TargetSyntax.Expr.var (0) :: ([] : List (Compiler.TargetSyntax.Expr)))) :: (Compiler.TargetSyntax.Expr.value (Compiler.TargetSyntax.Ty.nat) (Compiler.TargetSyntax.Value.nat (threshold)) :: ([] : List (Compiler.TargetSyntax.Expr)))))) (Compiler.TargetSyntax.Expr.call ((small + 1)) ((Compiler.TargetSyntax.Expr.var (0) :: ([] : List (Compiler.TargetSyntax.Expr))))) (Compiler.TargetSyntax.Expr.call ((large + 1)) ((Compiler.TargetSyntax.Expr.var (0) :: ([] : List (Compiler.TargetSyntax.Expr))))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{realize}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Compiler.TargetSyntax.Program}.\par
+\noindent Definition: \texttt{(\{ adts := ([] : List (Compiler.TargetSyntax.Adt)), functions := ((\{ parameters := (0 :: ([] : List (Nat))), types := ((grammar).argument :: ([] : List (Compiler.TargetSyntax.Ty))), result := (grammar).result, body := entryBody (selector) \} : Compiler.TargetSyntax.Function) :: (grammar).plans) \} : Compiler.TargetSyntax.Program)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{valueEq}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Mutual recursion group \texttt{ValueEquality}, decreasing on \texttt{left}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match left with | Compiler.TargetSyntax.Value.unit => (match right with | Compiler.TargetSyntax.Value.unit => true | Compiler.TargetSyntax.Value.bool \_ => false | Compiler.TargetSyntax.Value.nat \_ => false | Compiler.TargetSyntax.Value.int \_ => false | Compiler.TargetSyntax.Value.u8 \_ => false | Compiler.TargetSyntax.Value.u16 \_ => false | Compiler.TargetSyntax.Value.u32 \_ => false | Compiler.TargetSyntax.Value.u64 \_ => false | Compiler.TargetSyntax.Value.i8 \_ => false | Compiler.TargetSyntax.Value.i16 \_ => false | Compiler.TargetSyntax.Value.i32 \_ => false | Compiler.TargetSyntax.Value.i64 \_ => false | Compiler.TargetSyntax.Value.string \_ => false | Compiler.TargetSyntax.Value.bytes \_ => false | Compiler.TargetSyntax.Value.ordering \_ => false | Compiler.TargetSyntax.Value.none => false | Compiler.TargetSyntax.Value.some \_ => false | Compiler.TargetSyntax.Value.ok \_ => false | Compiler.TargetSyntax.Value.error \_ => false | Compiler.TargetSyntax.Value.list \_ => false | Compiler.TargetSyntax.Value.pair \_ \_ => false | Compiler.TargetSyntax.Value.adt \_ \_ => false | Compiler.TargetSyntax.Value.closure \_ \_ => false) | Compiler.TargetSyntax.Value.bool leftItem => (match right with | Compiler.TargetSyntax.Value.unit => false | Compiler.TargetSyntax.Value.bool rightItem => (LexLeanRuntime.equal (leftItem) (rightItem) : Bool) | Compiler.TargetSyntax.Value.nat \_ => false | Compiler.TargetSyntax.Value.int \_ => false | Compiler.TargetSyntax.Value.u8 \_ => false | Compiler.TargetSyntax.Value.u16 \_ => false | Compiler.TargetSyntax.Value.u32 \_ => false | Compiler.TargetSyntax.Value.u64 \_ => false | Compiler.TargetSyntax.Value.i8 \_ => false | Compiler.TargetSyntax.Value.i16 \_ => false | Compiler.TargetSyntax.Value.i32 \_ => false | Compiler.TargetSyntax.Value.i64 \_ => false | Compiler.TargetSyntax.Value.string \_ => false | Compiler.TargetSyntax.Value.bytes \_ => false | Compiler.TargetSyntax.Value.ordering \_ => false | Compiler.TargetSyntax.Value.none => false | Compiler.TargetSyntax.Value.some \_ => false | Compiler.TargetSyntax.Value.ok \_ => false | Compiler.TargetSyntax.Value.error \_ => false | Compiler.TargetSyntax.Value.list \_ => false | Compiler.TargetSyntax.Value.pair \_ \_ => false | Compiler.TargetSyntax.Value.adt \_ \_ => false | Compiler.TargetSyntax.Value.closure \_ \_ => false) | Compiler.TargetSyntax.Value.nat leftItem => (match right with | Compiler.TargetSyntax.Value.unit => false | Compiler.TargetSyntax.Value.bool \_ => false | Compiler.TargetSyntax.Value.nat rightItem => (Nat.beq (leftItem) (rightItem)) | Compiler.TargetSyntax.Value.int \_ => false | Compiler.TargetSyntax.Value.u8 \_ => false | Compiler.TargetSyntax.Value.u16 \_ => false | Compiler.TargetSyntax.Value.u32 \_ => false | Compiler.TargetSyntax.Value.u64 \_ => false | Compiler.TargetSyntax.Value.i8 \_ => false | Compiler.TargetSyntax.Value.i16 \_ => false | Compiler.TargetSyntax.Value.i32 \_ => false | Compiler.TargetSyntax.Value.i64 \_ => false | Compiler.TargetSyntax.Value.string \_ => false | Compiler.TargetSyntax.Value.bytes \_ => false | Compiler.TargetSyntax.Value.ordering \_ => false | Compiler.TargetSyntax.Value.none => false | Compiler.TargetSyntax.Value.some \_ => false | Compiler.TargetSyntax.Value.ok \_ => false | Compiler.TargetSyntax.Value.error \_ => false | Compiler.TargetSyntax.Value.list \_ => false | Compiler.TargetSyntax.Value.pair \_ \_ => false | Compiler.TargetSyntax.Value.adt \_ \_ => false | Compiler.TargetSyntax.Value.closure \_ \_ => false) | Compiler.TargetSyntax.Value.int leftItem => (match right with | Compiler.TargetSyntax.Value.unit => false | Compiler.TargetSyntax.Value.bool \_ => false | Compiler.TargetSyntax.Value.nat \_ => false | Compiler.TargetSyntax.Value.int rightItem => Compiler.TargetSemantics.sameOrder (Compiler.TargetSemantics.orderInt (leftItem) (rightItem)) (Compiler.TargetSyntax.Order.same) | Compiler.TargetSyntax.Value.u8 \_ => false | Compiler.TargetSyntax.Value.u16 \_ => false | Compiler.TargetSyntax.Value.u32 \_ => false | Compiler.TargetSyntax.Value.u64 \_ => false | Compiler.TargetSyntax.Value.i8 \_ => false | Compiler.TargetSyntax.Value.i16 \_ => false | Compiler.TargetSyntax.Value.i32 \_ => false | Compiler.TargetSyntax.Value.i64 \_ => false | Compiler.TargetSyntax.Value.string \_ => false | Compiler.TargetSyntax.Value.bytes \_ => false | Compiler.TargetSyntax.Value.ordering \_ => false | Compiler.TargetSyntax.Value.none => false | Compiler.TargetSyntax.Value.some \_ => false | Compiler.TargetSyntax.Value.ok \_ => false | Compiler.TargetSyntax.Value.error \_ => false | Compiler.TargetSyntax.Value.list \_ => false | Compiler.TargetSyntax.Value.pair \_ \_ => false | Compiler.TargetSyntax.Value.adt \_ \_ => false | Compiler.TargetSyntax.Value.closure \_ \_ => false) | Compiler.TargetSyntax.Value.u8 leftItem => (match right with | Compiler.TargetSyntax.Value.unit => false | Compiler.TargetSyntax.Value.bool \_ => false | Compiler.TargetSyntax.Value.nat \_ => false | Compiler.TargetSyntax.Value.int \_ => false | Compiler.TargetSyntax.Value.u8 rightItem => (LexLeanRuntime.equal (leftItem) (rightItem) : Bool) | Compiler.TargetSyntax.Value.u16 \_ => false | Compiler.TargetSyntax.Value.u32 \_ => false | Compiler.TargetSyntax.Value.u64 \_ => false | Compiler.TargetSyntax.Value.i8 \_ => false | Compiler.TargetSyntax.Value.i16 \_ => false | Compiler.TargetSyntax.Value.i32 \_ => false | Compiler.TargetSyntax.Value.i64 \_ => false | Compiler.TargetSyntax.Value.string \_ => false | Compiler.TargetSyntax.Value.bytes \_ => false | Compiler.TargetSyntax.Value.ordering \_ => false | Compiler.TargetSyntax.Value.none => false | Compiler.TargetSyntax.Value.some \_ => false | Compiler.TargetSyntax.Value.ok \_ => false | Compiler.TargetSyntax.Value.error \_ => false | Compiler.TargetSyntax.Value.list \_ => false | Compiler.TargetSyntax.Value.pair \_ \_ => false | Compiler.TargetSyntax.Value.adt \_ \_ => false | Compiler.TargetSyntax.Value.closure \_ \_ => false) | Compiler.TargetSyntax.Value.u16 leftItem => (match right with | Compiler.TargetSyntax.Value.unit => false | Compiler.TargetSyntax.Value.bool \_ => false | Compiler.TargetSyntax.Value.nat \_ => false | Compiler.TargetSyntax.Value.int \_ => false | Compiler.TargetSyntax.Value.u8 \_ => false | Compiler.TargetSyntax.Value.u16 rightItem => (LexLeanRuntime.equal (leftItem) (rightItem) : Bool) | Compiler.TargetSyntax.Value.u32 \_ => false | Compiler.TargetSyntax.Value.u64 \_ => false | Compiler.TargetSyntax.Value.i8 \_ => false | Compiler.TargetSyntax.Value.i16 \_ => false | Compiler.TargetSyntax.Value.i32 \_ => false | Compiler.TargetSyntax.Value.i64 \_ => false | Compiler.TargetSyntax.Value.string \_ => false | Compiler.TargetSyntax.Value.bytes \_ => false | Compiler.TargetSyntax.Value.ordering \_ => false | Compiler.TargetSyntax.Value.none => false | Compiler.TargetSyntax.Value.some \_ => false | Compiler.TargetSyntax.Value.ok \_ => false | Compiler.TargetSyntax.Value.error \_ => false | Compiler.TargetSyntax.Value.list \_ => false | Compiler.TargetSyntax.Value.pair \_ \_ => false | Compiler.TargetSyntax.Value.adt \_ \_ => false | Compiler.TargetSyntax.Value.closure \_ \_ => false) | Compiler.TargetSyntax.Value.u32 leftItem => (match right with | Compiler.TargetSyntax.Value.unit => false | Compiler.TargetSyntax.Value.bool \_ => false | Compiler.TargetSyntax.Value.nat \_ => false | Compiler.TargetSyntax.Value.int \_ => false | Compiler.TargetSyntax.Value.u8 \_ => false | Compiler.TargetSyntax.Value.u16 \_ => false | Compiler.TargetSyntax.Value.u32 rightItem => (LexLeanRuntime.equal (leftItem) (rightItem) : Bool) | Compiler.TargetSyntax.Value.u64 \_ => false | Compiler.TargetSyntax.Value.i8 \_ => false | Compiler.TargetSyntax.Value.i16 \_ => false | Compiler.TargetSyntax.Value.i32 \_ => false | Compiler.TargetSyntax.Value.i64 \_ => false | Compiler.TargetSyntax.Value.string \_ => false | Compiler.TargetSyntax.Value.bytes \_ => false | Compiler.TargetSyntax.Value.ordering \_ => false | Compiler.TargetSyntax.Value.none => false | Compiler.TargetSyntax.Value.some \_ => false | Compiler.TargetSyntax.Value.ok \_ => false | Compiler.TargetSyntax.Value.error \_ => false | Compiler.TargetSyntax.Value.list \_ => false | Compiler.TargetSyntax.Value.pair \_ \_ => false | Compiler.TargetSyntax.Value.adt \_ \_ => false | Compiler.TargetSyntax.Value.closure \_ \_ => false) | Compiler.TargetSyntax.Value.u64 leftItem => (match right with | Compiler.TargetSyntax.Value.unit => false | Compiler.TargetSyntax.Value.bool \_ => false | Compiler.TargetSyntax.Value.nat \_ => false | Compiler.TargetSyntax.Value.int \_ => false | Compiler.TargetSyntax.Value.u8 \_ => false | Compiler.TargetSyntax.Value.u16 \_ => false | Compiler.TargetSyntax.Value.u32 \_ => false | Compiler.TargetSyntax.Value.u64 rightItem => (LexLeanRuntime.equal (leftItem) (rightItem) : Bool) | Compiler.TargetSyntax.Value.i8 \_ => false | Compiler.TargetSyntax.Value.i16 \_ => false | Compiler.TargetSyntax.Value.i32 \_ => false | Compiler.TargetSyntax.Value.i64 \_ => false | Compiler.TargetSyntax.Value.string \_ => false | Compiler.TargetSyntax.Value.bytes \_ => false | Compiler.TargetSyntax.Value.ordering \_ => false | Compiler.TargetSyntax.Value.none => false | Compiler.TargetSyntax.Value.some \_ => false | Compiler.TargetSyntax.Value.ok \_ => false | Compiler.TargetSyntax.Value.error \_ => false | Compiler.TargetSyntax.Value.list \_ => false | Compiler.TargetSyntax.Value.pair \_ \_ => false | Compiler.TargetSyntax.Value.adt \_ \_ => false | Compiler.TargetSyntax.Value.closure \_ \_ => false) | Compiler.TargetSyntax.Value.i8 leftItem => (match right with | Compiler.TargetSyntax.Value.unit => false | Compiler.TargetSyntax.Value.bool \_ => false | Compiler.TargetSyntax.Value.nat \_ => false | Compiler.TargetSyntax.Value.int \_ => false | Compiler.TargetSyntax.Value.u8 \_ => false | Compiler.TargetSyntax.Value.u16 \_ => false | Compiler.TargetSyntax.Value.u32 \_ => false | Compiler.TargetSyntax.Value.u64 \_ => false | Compiler.TargetSyntax.Value.i8 rightItem => (LexLeanRuntime.equal (leftItem) (rightItem) : Bool) | Compiler.TargetSyntax.Value.i16 \_ => false | Compiler.TargetSyntax.Value.i32 \_ => false | Compiler.TargetSyntax.Value.i64 \_ => false | Compiler.TargetSyntax.Value.string \_ => false | Compiler.TargetSyntax.Value.bytes \_ => false | Compiler.TargetSyntax.Value.ordering \_ => false | Compiler.TargetSyntax.Value.none => false | Compiler.TargetSyntax.Value.some \_ => false | Compiler.TargetSyntax.Value.ok \_ => false | Compiler.TargetSyntax.Value.error \_ => false | Compiler.TargetSyntax.Value.list \_ => false | Compiler.TargetSyntax.Value.pair \_ \_ => false | Compiler.TargetSyntax.Value.adt \_ \_ => false | Compiler.TargetSyntax.Value.closure \_ \_ => false) | Compiler.TargetSyntax.Value.i16 leftItem => (match right with | Compiler.TargetSyntax.Value.unit => false | Compiler.TargetSyntax.Value.bool \_ => false | Compiler.TargetSyntax.Value.nat \_ => false | Compiler.TargetSyntax.Value.int \_ => false | Compiler.TargetSyntax.Value.u8 \_ => false | Compiler.TargetSyntax.Value.u16 \_ => false | Compiler.TargetSyntax.Value.u32 \_ => false | Compiler.TargetSyntax.Value.u64 \_ => false | Compiler.TargetSyntax.Value.i8 \_ => false | Compiler.TargetSyntax.Value.i16 rightItem => (LexLeanRuntime.equal (leftItem) (rightItem) : Bool) | Compiler.TargetSyntax.Value.i32 \_ => false | Compiler.TargetSyntax.Value.i64 \_ => false | Compiler.TargetSyntax.Value.string \_ => false | Compiler.TargetSyntax.Value.bytes \_ => false | Compiler.TargetSyntax.Value.ordering \_ => false | Compiler.TargetSyntax.Value.none => false | Compiler.TargetSyntax.Value.some \_ => false | Compiler.TargetSyntax.Value.ok \_ => false | Compiler.TargetSyntax.Value.error \_ => false | Compiler.TargetSyntax.Value.list \_ => false | Compiler.TargetSyntax.Value.pair \_ \_ => false | Compiler.TargetSyntax.Value.adt \_ \_ => false | Compiler.TargetSyntax.Value.closure \_ \_ => false) | Compiler.TargetSyntax.Value.i32 leftItem => (match right with | Compiler.TargetSyntax.Value.unit => false | Compiler.TargetSyntax.Value.bool \_ => false | Compiler.TargetSyntax.Value.nat \_ => false | Compiler.TargetSyntax.Value.int \_ => false | Compiler.TargetSyntax.Value.u8 \_ => false | Compiler.TargetSyntax.Value.u16 \_ => false | Compiler.TargetSyntax.Value.u32 \_ => false | Compiler.TargetSyntax.Value.u64 \_ => false | Compiler.TargetSyntax.Value.i8 \_ => false | Compiler.TargetSyntax.Value.i16 \_ => false | Compiler.TargetSyntax.Value.i32 rightItem => (LexLeanRuntime.equal (leftItem) (rightItem) : Bool) | Compiler.TargetSyntax.Value.i64 \_ => false | Compiler.TargetSyntax.Value.string \_ => false | Compiler.TargetSyntax.Value.bytes \_ => false | Compiler.TargetSyntax.Value.ordering \_ => false | Compiler.TargetSyntax.Value.none => false | Compiler.TargetSyntax.Value.some \_ => false | Compiler.TargetSyntax.Value.ok \_ => false | Compiler.TargetSyntax.Value.error \_ => false | Compiler.TargetSyntax.Value.list \_ => false | Compiler.TargetSyntax.Value.pair \_ \_ => false | Compiler.TargetSyntax.Value.adt \_ \_ => false | Compiler.TargetSyntax.Value.closure \_ \_ => false) | Compiler.TargetSyntax.Value.i64 leftItem => (match right with | Compiler.TargetSyntax.Value.unit => false | Compiler.TargetSyntax.Value.bool \_ => false | Compiler.TargetSyntax.Value.nat \_ => false | Compiler.TargetSyntax.Value.int \_ => false | Compiler.TargetSyntax.Value.u8 \_ => false | Compiler.TargetSyntax.Value.u16 \_ => false | Compiler.TargetSyntax.Value.u32 \_ => false | Compiler.TargetSyntax.Value.u64 \_ => false | Compiler.TargetSyntax.Value.i8 \_ => false | Compiler.TargetSyntax.Value.i16 \_ => false | Compiler.TargetSyntax.Value.i32 \_ => false | Compiler.TargetSyntax.Value.i64 rightItem => (LexLeanRuntime.equal (leftItem) (rightItem) : Bool) | Compiler.TargetSyntax.Value.string \_ => false | Compiler.TargetSyntax.Value.bytes \_ => false | Compiler.TargetSyntax.Value.ordering \_ => false | Compiler.TargetSyntax.Value.none => false | Compiler.TargetSyntax.Value.some \_ => false | Compiler.TargetSyntax.Value.ok \_ => false | Compiler.TargetSyntax.Value.error \_ => false | Compiler.TargetSyntax.Value.list \_ => false | Compiler.TargetSyntax.Value.pair \_ \_ => false | Compiler.TargetSyntax.Value.adt \_ \_ => false | Compiler.TargetSyntax.Value.closure \_ \_ => false) | Compiler.TargetSyntax.Value.string leftItem => (match right with | Compiler.TargetSyntax.Value.unit => false | Compiler.TargetSyntax.Value.bool \_ => false | Compiler.TargetSyntax.Value.nat \_ => false | Compiler.TargetSyntax.Value.int \_ => false | Compiler.TargetSyntax.Value.u8 \_ => false | Compiler.TargetSyntax.Value.u16 \_ => false | Compiler.TargetSyntax.Value.u32 \_ => false | Compiler.TargetSyntax.Value.u64 \_ => false | Compiler.TargetSyntax.Value.i8 \_ => false | Compiler.TargetSyntax.Value.i16 \_ => false | Compiler.TargetSyntax.Value.i32 \_ => false | Compiler.TargetSyntax.Value.i64 \_ => false | Compiler.TargetSyntax.Value.string rightItem => (LexLeanRuntime.equal (leftItem) (rightItem) : Bool) | Compiler.TargetSyntax.Value.bytes \_ => false | Compiler.TargetSyntax.Value.ordering \_ => false | Compiler.TargetSyntax.Value.none => false | Compiler.TargetSyntax.Value.some \_ => false | Compiler.TargetSyntax.Value.ok \_ => false | Compiler.TargetSyntax.Value.error \_ => false | Compiler.TargetSyntax.Value.list \_ => false | Compiler.TargetSyntax.Value.pair \_ \_ => false | Compiler.TargetSyntax.Value.adt \_ \_ => false | Compiler.TargetSyntax.Value.closure \_ \_ => false) | Compiler.TargetSyntax.Value.bytes leftItem => (match right with | Compiler.TargetSyntax.Value.unit => false | Compiler.TargetSyntax.Value.bool \_ => false | Compiler.TargetSyntax.Value.nat \_ => false | Compiler.TargetSyntax.Value.int \_ => false | Compiler.TargetSyntax.Value.u8 \_ => false | Compiler.TargetSyntax.Value.u16 \_ => false | Compiler.TargetSyntax.Value.u32 \_ => false | Compiler.TargetSyntax.Value.u64 \_ => false | Compiler.TargetSyntax.Value.i8 \_ => false | Compiler.TargetSyntax.Value.i16 \_ => false | Compiler.TargetSyntax.Value.i32 \_ => false | Compiler.TargetSyntax.Value.i64 \_ => false | Compiler.TargetSyntax.Value.string \_ => false | Compiler.TargetSyntax.Value.bytes rightItem => (LexLeanRuntime.equal (leftItem) (rightItem) : Bool) | Compiler.TargetSyntax.Value.ordering \_ => false | Compiler.TargetSyntax.Value.none => false | Compiler.TargetSyntax.Value.some \_ => false | Compiler.TargetSyntax.Value.ok \_ => false | Compiler.TargetSyntax.Value.error \_ => false | Compiler.TargetSyntax.Value.list \_ => false | Compiler.TargetSyntax.Value.pair \_ \_ => false | Compiler.TargetSyntax.Value.adt \_ \_ => false | Compiler.TargetSyntax.Value.closure \_ \_ => false) | Compiler.TargetSyntax.Value.ordering leftItem => (match right with | Compiler.TargetSyntax.Value.unit => false | Compiler.TargetSyntax.Value.bool \_ => false | Compiler.TargetSyntax.Value.nat \_ => false | Compiler.TargetSyntax.Value.int \_ => false | Compiler.TargetSyntax.Value.u8 \_ => false | Compiler.TargetSyntax.Value.u16 \_ => false | Compiler.TargetSyntax.Value.u32 \_ => false | Compiler.TargetSyntax.Value.u64 \_ => false | Compiler.TargetSyntax.Value.i8 \_ => false | Compiler.TargetSyntax.Value.i16 \_ => false | Compiler.TargetSyntax.Value.i32 \_ => false | Compiler.TargetSyntax.Value.i64 \_ => false | Compiler.TargetSyntax.Value.string \_ => false | Compiler.TargetSyntax.Value.bytes \_ => false | Compiler.TargetSyntax.Value.ordering rightItem => Compiler.TargetSemantics.sameOrder (leftItem) (rightItem) | Compiler.TargetSyntax.Value.none => false | Compiler.TargetSyntax.Value.some \_ => false | Compiler.TargetSyntax.Value.ok \_ => false | Compiler.TargetSyntax.Value.error \_ => false | Compiler.TargetSyntax.Value.list \_ => false | Compiler.TargetSyntax.Value.pair \_ \_ => false | Compiler.TargetSyntax.Value.adt \_ \_ => false | Compiler.TargetSyntax.Value.closure \_ \_ => false) | Compiler.TargetSyntax.Value.none => (match right with | Compiler.TargetSyntax.Value.unit => false | Compiler.TargetSyntax.Value.bool \_ => false | Compiler.TargetSyntax.Value.nat \_ => false | Compiler.TargetSyntax.Value.int \_ => false | Compiler.TargetSyntax.Value.u8 \_ => false | Compiler.TargetSyntax.Value.u16 \_ => false | Compiler.TargetSyntax.Value.u32 \_ => false | Compiler.TargetSyntax.Value.u64 \_ => false | Compiler.TargetSyntax.Value.i8 \_ => false | Compiler.TargetSyntax.Value.i16 \_ => false | Compiler.TargetSyntax.Value.i32 \_ => false | Compiler.TargetSyntax.Value.i64 \_ => false | Compiler.TargetSyntax.Value.string \_ => false | Compiler.TargetSyntax.Value.bytes \_ => false | Compiler.TargetSyntax.Value.ordering \_ => false | Compiler.TargetSyntax.Value.none => true | Compiler.TargetSyntax.Value.some \_ => false | Compiler.TargetSyntax.Value.ok \_ => false | Compiler.TargetSyntax.Value.error \_ => false | Compiler.TargetSyntax.Value.list \_ => false | Compiler.TargetSyntax.Value.pair \_ \_ => false | Compiler.TargetSyntax.Value.adt \_ \_ => false | Compiler.TargetSyntax.Value.closure \_ \_ => false) | Compiler.TargetSyntax.Value.some leftItem => (match right with | Compiler.TargetSyntax.Value.unit => false | Compiler.TargetSyntax.Value.bool \_ => false | Compiler.TargetSyntax.Value.nat \_ => false | Compiler.TargetSyntax.Value.int \_ => false | Compiler.TargetSyntax.Value.u8 \_ => false | Compiler.TargetSyntax.Value.u16 \_ => false | Compiler.TargetSyntax.Value.u32 \_ => false | Compiler.TargetSyntax.Value.u64 \_ => false | Compiler.TargetSyntax.Value.i8 \_ => false | Compiler.TargetSyntax.Value.i16 \_ => false | Compiler.TargetSyntax.Value.i32 \_ => false | Compiler.TargetSyntax.Value.i64 \_ => false | Compiler.TargetSyntax.Value.string \_ => false | Compiler.TargetSyntax.Value.bytes \_ => false | Compiler.TargetSyntax.Value.ordering \_ => false | Compiler.TargetSyntax.Value.none => false | Compiler.TargetSyntax.Value.some rightItem => valueEq (leftItem) (rightItem) | Compiler.TargetSyntax.Value.ok \_ => false | Compiler.TargetSyntax.Value.error \_ => false | Compiler.TargetSyntax.Value.list \_ => false | Compiler.TargetSyntax.Value.pair \_ \_ => false | Compiler.TargetSyntax.Value.adt \_ \_ => false | Compiler.TargetSyntax.Value.closure \_ \_ => false) | Compiler.TargetSyntax.Value.ok leftItem => (match right with | Compiler.TargetSyntax.Value.unit => false | Compiler.TargetSyntax.Value.bool \_ => false | Compiler.TargetSyntax.Value.nat \_ => false | Compiler.TargetSyntax.Value.int \_ => false | Compiler.TargetSyntax.Value.u8 \_ => false | Compiler.TargetSyntax.Value.u16 \_ => false | Compiler.TargetSyntax.Value.u32 \_ => false | Compiler.TargetSyntax.Value.u64 \_ => false | Compiler.TargetSyntax.Value.i8 \_ => false | Compiler.TargetSyntax.Value.i16 \_ => false | Compiler.TargetSyntax.Value.i32 \_ => false | Compiler.TargetSyntax.Value.i64 \_ => false | Compiler.TargetSyntax.Value.string \_ => false | Compiler.TargetSyntax.Value.bytes \_ => false | Compiler.TargetSyntax.Value.ordering \_ => false | Compiler.TargetSyntax.Value.none => false | Compiler.TargetSyntax.Value.some \_ => false | Compiler.TargetSyntax.Value.ok rightItem => valueEq (leftItem) (rightItem) | Compiler.TargetSyntax.Value.error \_ => false | Compiler.TargetSyntax.Value.list \_ => false | Compiler.TargetSyntax.Value.pair \_ \_ => false | Compiler.TargetSyntax.Value.adt \_ \_ => false | Compiler.TargetSyntax.Value.closure \_ \_ => false) | Compiler.TargetSyntax.Value.error leftItem => (match right with | Compiler.TargetSyntax.Value.unit => false | Compiler.TargetSyntax.Value.bool \_ => false | Compiler.TargetSyntax.Value.nat \_ => false | Compiler.TargetSyntax.Value.int \_ => false | Compiler.TargetSyntax.Value.u8 \_ => false | Compiler.TargetSyntax.Value.u16 \_ => false | Compiler.TargetSyntax.Value.u32 \_ => false | Compiler.TargetSyntax.Value.u64 \_ => false | Compiler.TargetSyntax.Value.i8 \_ => false | Compiler.TargetSyntax.Value.i16 \_ => false | Compiler.TargetSyntax.Value.i32 \_ => false | Compiler.TargetSyntax.Value.i64 \_ => false | Compiler.TargetSyntax.Value.string \_ => false | Compiler.TargetSyntax.Value.bytes \_ => false | Compiler.TargetSyntax.Value.ordering \_ => false | Compiler.TargetSyntax.Value.none => false | Compiler.TargetSyntax.Value.some \_ => false | Compiler.TargetSyntax.Value.ok \_ => false | Compiler.TargetSyntax.Value.error rightItem => valueEq (leftItem) (rightItem) | Compiler.TargetSyntax.Value.list \_ => false | Compiler.TargetSyntax.Value.pair \_ \_ => false | Compiler.TargetSyntax.Value.adt \_ \_ => false | Compiler.TargetSyntax.Value.closure \_ \_ => false) | Compiler.TargetSyntax.Value.list leftItem => (match right with | Compiler.TargetSyntax.Value.unit => false | Compiler.TargetSyntax.Value.bool \_ => false | Compiler.TargetSyntax.Value.nat \_ => false | Compiler.TargetSyntax.Value.int \_ => false | Compiler.TargetSyntax.Value.u8 \_ => false | Compiler.TargetSyntax.Value.u16 \_ => false | Compiler.TargetSyntax.Value.u32 \_ => false | Compiler.TargetSyntax.Value.u64 \_ => false | Compiler.TargetSyntax.Value.i8 \_ => false | Compiler.TargetSyntax.Value.i16 \_ => false | Compiler.TargetSyntax.Value.i32 \_ => false | Compiler.TargetSyntax.Value.i64 \_ => false | Compiler.TargetSyntax.Value.string \_ => false | Compiler.TargetSyntax.Value.bytes \_ => false | Compiler.TargetSyntax.Value.ordering \_ => false | Compiler.TargetSyntax.Value.none => false | Compiler.TargetSyntax.Value.some \_ => false | Compiler.TargetSyntax.Value.ok \_ => false | Compiler.TargetSyntax.Value.error \_ => false | Compiler.TargetSyntax.Value.list rightItem => valuesEq (leftItem) (rightItem) | Compiler.TargetSyntax.Value.pair \_ \_ => false | Compiler.TargetSyntax.Value.adt \_ \_ => false | Compiler.TargetSyntax.Value.closure \_ \_ => false) | Compiler.TargetSyntax.Value.pair leftFirst leftSecond => (match right with | Compiler.TargetSyntax.Value.unit => false | Compiler.TargetSyntax.Value.bool \_ => false | Compiler.TargetSyntax.Value.nat \_ => false | Compiler.TargetSyntax.Value.int \_ => false | Compiler.TargetSyntax.Value.u8 \_ => false | Compiler.TargetSyntax.Value.u16 \_ => false | Compiler.TargetSyntax.Value.u32 \_ => false | Compiler.TargetSyntax.Value.u64 \_ => false | Compiler.TargetSyntax.Value.i8 \_ => false | Compiler.TargetSyntax.Value.i16 \_ => false | Compiler.TargetSyntax.Value.i32 \_ => false | Compiler.TargetSyntax.Value.i64 \_ => false | Compiler.TargetSyntax.Value.string \_ => false | Compiler.TargetSyntax.Value.bytes \_ => false | Compiler.TargetSyntax.Value.ordering \_ => false | Compiler.TargetSyntax.Value.none => false | Compiler.TargetSyntax.Value.some \_ => false | Compiler.TargetSyntax.Value.ok \_ => false | Compiler.TargetSyntax.Value.error \_ => false | Compiler.TargetSyntax.Value.list \_ => false | Compiler.TargetSyntax.Value.pair rightFirst rightSecond => (valueEq (leftFirst) (rightFirst) \&\& valueEq (leftSecond) (rightSecond)) | Compiler.TargetSyntax.Value.adt \_ \_ => false | Compiler.TargetSyntax.Value.closure \_ \_ => false) | Compiler.TargetSyntax.Value.adt leftTag leftFields => (match right with | Compiler.TargetSyntax.Value.unit => false | Compiler.TargetSyntax.Value.bool \_ => false | Compiler.TargetSyntax.Value.nat \_ => false | Compiler.TargetSyntax.Value.int \_ => false | Compiler.TargetSyntax.Value.u8 \_ => false | Compiler.TargetSyntax.Value.u16 \_ => false | Compiler.TargetSyntax.Value.u32 \_ => false | Compiler.TargetSyntax.Value.u64 \_ => false | Compiler.TargetSyntax.Value.i8 \_ => false | Compiler.TargetSyntax.Value.i16 \_ => false | Compiler.TargetSyntax.Value.i32 \_ => false | Compiler.TargetSyntax.Value.i64 \_ => false | Compiler.TargetSyntax.Value.string \_ => false | Compiler.TargetSyntax.Value.bytes \_ => false | Compiler.TargetSyntax.Value.ordering \_ => false | Compiler.TargetSyntax.Value.none => false | Compiler.TargetSyntax.Value.some \_ => false | Compiler.TargetSyntax.Value.ok \_ => false | Compiler.TargetSyntax.Value.error \_ => false | Compiler.TargetSyntax.Value.list \_ => false | Compiler.TargetSyntax.Value.pair \_ \_ => false | Compiler.TargetSyntax.Value.adt rightTag rightFields => ((Nat.beq (leftTag) (rightTag)) \&\& valuesEq (leftFields) (rightFields)) | Compiler.TargetSyntax.Value.closure \_ \_ => false) | Compiler.TargetSyntax.Value.closure leftFunction leftCaptures => (match right with | Compiler.TargetSyntax.Value.unit => false | Compiler.TargetSyntax.Value.bool \_ => false | Compiler.TargetSyntax.Value.nat \_ => false | Compiler.TargetSyntax.Value.int \_ => false | Compiler.TargetSyntax.Value.u8 \_ => false | Compiler.TargetSyntax.Value.u16 \_ => false | Compiler.TargetSyntax.Value.u32 \_ => false | Compiler.TargetSyntax.Value.u64 \_ => false | Compiler.TargetSyntax.Value.i8 \_ => false | Compiler.TargetSyntax.Value.i16 \_ => false | Compiler.TargetSyntax.Value.i32 \_ => false | Compiler.TargetSyntax.Value.i64 \_ => false | Compiler.TargetSyntax.Value.string \_ => false | Compiler.TargetSyntax.Value.bytes \_ => false | Compiler.TargetSyntax.Value.ordering \_ => false | Compiler.TargetSyntax.Value.none => false | Compiler.TargetSyntax.Value.some \_ => false | Compiler.TargetSyntax.Value.ok \_ => false | Compiler.TargetSyntax.Value.error \_ => false | Compiler.TargetSyntax.Value.list \_ => false | Compiler.TargetSyntax.Value.pair \_ \_ => false | Compiler.TargetSyntax.Value.adt \_ \_ => false | Compiler.TargetSyntax.Value.closure rightFunction rightCaptures => ((Nat.beq (leftFunction) (rightFunction)) \&\& valuesEq (leftCaptures) (rightCaptures))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{valuesEq}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Mutual recursion group \texttt{ValueEquality}, decreasing on \texttt{left}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match left with | List.nil => (match right with | List.nil => true | List.cons \_ \_ => false) | List.cons leftHead leftTail => (match right with | List.nil => false | List.cons rightHead rightTail => (valueEq (leftHead) (rightHead) \&\& valuesEq (leftTail) (rightTail))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{exprSize}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Mutual recursion group \texttt{ExpressionSize}, decreasing on \texttt{expression}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match expression with | Compiler.TargetSyntax.Expr.value \_ \_ => 1 | Compiler.TargetSyntax.Expr.var \_ => 1 | Compiler.TargetSyntax.Expr.<U+00AB>let<U+00BB> \_ \_ bound body => (1 + (exprSize (bound) + exprSize (body))) | Compiler.TargetSyntax.Expr.cond condition thenBranch elseBranch => (1 + (exprSize (condition) + (exprSize (thenBranch) + exprSize (elseBranch)))) | Compiler.TargetSyntax.Expr.<U+00AB>match<U+00BB> \_ scrutinee arms => (1 + (exprSize (scrutinee) + armsSize (arms))) | Compiler.TargetSyntax.Expr.build \_ \_ operands => (1 + exprsSize (operands)) | Compiler.TargetSyntax.Expr.call \_ operands => (1 + exprsSize (operands)) | Compiler.TargetSyntax.Expr.closure \_ operands => (1 + exprsSize (operands)) | Compiler.TargetSyntax.Expr.apply target operands => (1 + (exprSize (target) + exprsSize (operands))) | Compiler.TargetSyntax.Expr.prim \_ operands => (1 + exprsSize (operands)) | Compiler.TargetSyntax.Expr.first inner => (1 + exprSize (inner)) | Compiler.TargetSyntax.Expr.second inner => (1 + exprSize (inner)) | Compiler.TargetSyntax.Expr.field inner \_ => (1 + exprSize (inner)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{exprsSize}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Mutual recursion group \texttt{ExpressionSize}, decreasing on \texttt{expressions}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match expressions with | List.nil => 0 | List.cons head rest => (exprSize (head) + exprsSize (rest)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{armsSize}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Mutual recursion group \texttt{ExpressionSize}, decreasing on \texttt{arms}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match arms with | List.nil => 0 | List.cons head rest => (armSize (head) + armsSize (rest)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{armSize}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Mutual recursion group \texttt{ExpressionSize}, decreasing on \texttt{arm}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match arm with | Compiler.TargetSyntax.Arm.arm \_ \_ body => (1 + exprSize (body)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{functionsSize}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match functions with | List.nil => 0 | List.cons head rest => (exprSize ((head).body) + functionsSize (rest)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{statusOn}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Status}.\par
+\noindent Definition: \texttt{(match domain with | List.nil => Status.admitted (0) (0) | List.cons argument rest => (match Compiler.TargetSemantics.run (fuel) (system) (0) ((argument :: ([] : List (Compiler.TargetSyntax.Value)))) with | Compiler.TargetSemantics.Outcome.value produced steps => (match Compiler.TargetSemantics.run (fuel) (reference) (0) ((argument :: ([] : List (Compiler.TargetSyntax.Value)))) with | Compiler.TargetSemantics.Outcome.value expected \_ => (if valueEq (produced) (expected) then (match statusOn (system) (reference) (fuel) (rest) with | Status.admitted restSteps size => Status.admitted ((steps + restSteps)) (size) | Status.inadmissible => Status.inadmissible | Status.unresolved => Status.unresolved) else Status.inadmissible) | Compiler.TargetSemantics.Outcome.overflow \_ => Status.unresolved | Compiler.TargetSemantics.Outcome.stuck => Status.unresolved | Compiler.TargetSemantics.Outcome.exhausted => Status.unresolved) | Compiler.TargetSemantics.Outcome.overflow \_ => Status.inadmissible | Compiler.TargetSemantics.Outcome.stuck => Status.inadmissible | Compiler.TargetSemantics.Outcome.exhausted => Status.unresolved))}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{status}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Status}.\par
+\noindent Definition: \texttt{(let system : Compiler.TargetSyntax.Program := realize (grammar) (selector); (match statusOn (system) ((request).reference) (((request).machine).fuel) ((request).domain) with | Status.admitted steps \_ => Status.admitted ((steps + (LexLeanRuntime.multiply ((LexLeanRuntime.length ((request).domain) : Nat)) (preparationCharge (((request).machine).actions)) : Nat))) (functionsSize ((system).functions)) | Status.inadmissible => Status.inadmissible | Status.unresolved => Status.unresolved))}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{statuses}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{List ((Prod (Nat) (Status)))}.\par
+\noindent Definition: \texttt{(match selectors with | List.nil => ([] : List ((Prod (Nat) (Status)))) | List.cons selector rest => ((next, status (request) (grammar) (selector)) :: statuses (request) (grammar) (rest) ((next + 1))))}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{anyUnresolved}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match entries with | List.nil => false | List.cons entry rest => (match (entry).2 with | Status.unresolved => true | Status.admitted \_ \_ => anyUnresolved (rest) | Status.inadmissible => anyUnresolved (rest)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{admitted}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{List ((Prod (Nat) ((Prod (Nat) (Nat)))))}.\par
+\noindent Definition: \texttt{(match entries with | List.nil => ([] : List ((Prod (Nat) ((Prod (Nat) (Nat)))))) | List.cons entry rest => (match (entry).2 with | Status.admitted steps size => (((entry).1, (steps, size)) :: admitted (rest)) | Status.inadmissible => admitted (rest) | Status.unresolved => admitted (rest)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{minimumSteps}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match costed with | List.nil => best | List.cons entry rest => minimumSteps (rest) ((if (Nat.blt (((entry).2).1) (best)) then ((entry).2).1 else best)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{withSteps}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{List (Nat)}.\par
+\noindent Definition: \texttt{(match costed with | List.nil => ([] : List (Nat)) | List.cons entry rest => (if (Nat.beq (((entry).2).1) (value)) then ((entry).1 :: withSteps (rest) (value)) else withSteps (rest) (value)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{dominates}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(((Nat.ble ((left).1) ((right).1)) \&\& (Nat.ble ((left).2) ((right).2))) \&\& ((Nat.blt ((left).1) ((right).1)) || (Nat.blt ((left).2) ((right).2))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{dominated}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match others with | List.nil => false | List.cons other rest => (dominates ((other).2) (cost) || dominated (cost) (rest)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{nondominated}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{List (Nat)}.\par
+\noindent Definition: \texttt{(match candidates with | List.nil => ([] : List (Nat)) | List.cons entry rest => (if dominated ((entry).2) (all) then nondominated (rest) (all) else ((entry).1 :: nondominated (rest) (all))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{evaluate}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Answer}.\par
+\noindent Definition: \texttt{(let entries : List ((Prod (Nat) (Status))) := statuses (request) (grammar) (expand (grammar)) (0); (if anyUnresolved (entries) then Answer.incomplete else (let costed : List ((Prod (Nat) ((Prod (Nat) (Nat))))) := admitted (entries); (match costed with | List.nil => Answer.infeasible | List.cons head \_ => (match (request).objective with | Objective.scalar => (let best : Nat := minimumSteps (costed) (((head).2).1); Answer.argmin (withSteps (costed) (best)) (best)) | Objective.vector => Answer.frontier (nondominated (costed) (costed)))))))}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{answer}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Answer}.\par
+\noindent Definition: \texttt{(match validate (request) with | Option.none => (match (request).carrier with | Carrier.grammar grammar => evaluate (request) (grammar) | Carrier.internalPlans => Answer.incomplete | Carrier.optimizerOutput => Answer.incomplete | Carrier.discovered \_ => Answer.incomplete | Carrier.cached => Answer.incomplete) | Option.some rejection => Answer.rejected (rejection))}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{weaklyBelow}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match left with | List.nil => true | List.cons leftHead leftRest => (match right with | List.nil => false | List.cons rightHead rightRest => ((Nat.ble (leftHead) (rightHead)) \&\& weaklyBelow (leftRest) (rightRest))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{strictlyBelow}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(weaklyBelow (left) (right) \&\& (!weaklyBelow (right) (left)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{tableDominated}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match table with | List.nil => false | List.cons row rest => (strictlyBelow ((row).2) (cost) || tableDominated (cost) (rest)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{tableFrontierFrom}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{List (Nat)}.\par
+\noindent Definition: \texttt{(match rows with | List.nil => ([] : List (Nat)) | List.cons row rest => (if tableDominated ((row).2) (table) then tableFrontierFrom (rest) (table) else ((row).1 :: tableFrontierFrom (rest) (table))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{tableFrontier}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{List (Nat)}.\par
+\noindent Definition: \texttt{tableFrontierFrom (table) (table)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{sameIds}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match left with | List.nil => (match right with | List.nil => true | List.cons \_ \_ => false) | List.cons leftHead leftRest => (match right with | List.nil => false | List.cons rightHead rightRest => ((Nat.beq (leftHead) (rightHead)) \&\& sameIds (leftRest) (rightRest))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{tableAttains}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match table with | List.nil => false | List.cons row rest => ((weaklyBelow ((row).2) (cost) \&\& weaklyBelow (cost) ((row).2)) || tableAttains (rest) (cost)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{rowMinimum}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match table with | List.nil => best | List.cons row rest => rowMinimum (rest) ((match (row).2 with | List.nil => best | List.cons cost \_ => (if (Nat.blt (cost) (best)) then cost else best))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{rewriteOnce}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Option (Nat)}.\par
+\noindent Definition: \texttt{(match rules with | List.nil => Option.none | List.cons rule rest => (if (Nat.beq ((rule).1) (item)) then Option.some ((rule).2) else rewriteOnce (rest) (item)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{normalize}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match fuel with | Nat.zero => item | Nat.succ remaining => (match rewriteOnce (rules) (item) with | Option.none => item | Option.some next => normalize (remaining) (rules) (next)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{listMax}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match costs with | List.nil => worst | List.cons cost rest => listMax (rest) ((if (Nat.blt (worst) (cost)) then cost else worst)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{uniformWorst}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match table with | List.nil => best | List.cons row rest => uniformWorst (rest) ((let worst : Nat := listMax ((row).2) (0); (if (Nat.blt (worst) (best)) then worst else best))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{vec02Frontier}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(tableFrontier (((0, (1 :: (3 :: ([] : List (Nat))))) :: ((1, (2 :: (2 :: ([] : List (Nat))))) :: ((2, (3 :: (1 :: ([] : List (Nat))))) :: ((3, (3 :: (3 :: ([] : List (Nat))))) :: ([] : List ((Prod (Nat) (List (Nat)))))))))) = (0 :: (1 :: (2 :: ([] : List (Nat))))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{rej14ComponentwiseMinimaUnattained}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(tableAttains (((0, (1 :: (3 :: ([] : List (Nat))))) :: ((1, (2 :: (2 :: ([] : List (Nat))))) :: ((2, (3 :: (1 :: ([] : List (Nat))))) :: ((3, (3 :: (3 :: ([] : List (Nat))))) :: ([] : List ((Prod (Nat) (List (Nat)))))))))) ((1 :: (1 :: ([] : List (Nat))))) = false)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{rej29FrontierOmission}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(sameIds (tableFrontier (((0, (1 :: (3 :: ([] : List (Nat))))) :: ((1, (2 :: (2 :: ([] : List (Nat))))) :: ((2, (3 :: (1 :: ([] : List (Nat))))) :: ((3, (3 :: (3 :: ([] : List (Nat))))) :: ([] : List ((Prod (Nat) (List (Nat))))))))))) ((0 :: (1 :: ([] : List (Nat))))) = false)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{vec01Optimum}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(rowMinimum (((0, (5 :: ([] : List (Nat)))) :: ((1, (6 :: ([] : List (Nat)))) :: ([] : List ((Prod (Nat) (List (Nat)))))))) (1000) = 5)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{vec01Extension}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(rowMinimum (((0, (5 :: ([] : List (Nat)))) :: ((1, (6 :: ([] : List (Nat)))) :: ((2, (4 :: ([] : List (Nat)))) :: ([] : List ((Prod (Nat) (List (Nat))))))))) (1000) = 4)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{vec04NormalFormIsB}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(normalize (10) (((0, 1) :: ([] : List ((Prod (Nat) (Nat)))))) (0) = 1)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{vec04GlobalMinimumIsC}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(tableFrontier (((0, (2 :: ([] : List (Nat)))) :: ((1, (1 :: ([] : List (Nat)))) :: ((2, (0 :: ([] : List (Nat)))) :: ([] : List ((Prod (Nat) (List (Nat))))))))) = (2 :: ([] : List (Nat))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{vec17EnvelopeAtZero}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(rowMinimum (((0, (0 :: ([] : List (Nat)))) :: ((1, (10 :: ([] : List (Nat)))) :: ([] : List ((Prod (Nat) (List (Nat)))))))) (1000) = 0)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{vec17EnvelopeAtOne}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(rowMinimum (((0, (10 :: ([] : List (Nat)))) :: ((1, (0 :: ([] : List (Nat)))) :: ([] : List ((Prod (Nat) (List (Nat)))))))) (1000) = 0)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{vec17UniformWorstCase}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(uniformWorst (((0, (0 :: (10 :: ([] : List (Nat))))) :: ((1, (10 :: (0 :: ([] : List (Nat))))) :: ([] : List ((Prod (Nat) (List (Nat)))))))) (1000) = 10)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\end{document}

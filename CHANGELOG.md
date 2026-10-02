@@ -136,6 +136,28 @@ versions, and the entries below say what each tag does and does not claim.
   for the few primitives the kernel cannot reduce, Lean's evaluator),
   LexLean's own collection primitives, and `rustc`
   (`TC-01`..`TC-07`, `cargo xtask check-calculus`).
+- GNAF requests over the calculus (§17.15), after UOR-GNAF
+  `uor-gnaf/1-draft.2`, cited by revision and SHA-256 as the authority
+  `UOR-GNAF-1-DRAFT-2`. The module `Gnaf` of `compiler/` fixes, before any
+  optimizer runs:
+  - the problem, a reference program and a non-empty domain;
+  - the machine contract, with the closed action kinds (observation,
+    preprocessing, advice, retained state, dispatch, fallback, communication,
+    randomness, scheduling, execution) and their charges;
+  - the comparison boundary;
+  - the universe, a grammar of complete systems (fixed plans and dispatching
+    selectors over shared plans) with definitional completeness evidence;
+  - the scalar or componentwise (steps, size) order;
+  - the claim class and its scope.
+
+  Optimizer-defined, discovered, cached, and internal-plan universes are
+  rejected, as are hidden costs, unrealizable actions, and claims over the
+  wrong order or beyond the grammar. An unknown cost leaves the answer
+  incomplete. Every committed request's answer is a kernel-checked theorem,
+  and the authority's GNAF-VEC-01/02/04/17 and GNAF-REJ-14/29 vectors are
+  theorems of the model. The host side `lexlean::gnaf` loads requests
+  (`lexlean/gnaf-request/1`, new `LLB6006`), bounds fuel and universe size
+  (`LLS8002`), and transcribes the answer (`GN-01`..`GN-07`).
 - The language-1.2 portable runtime exposes every definition, so a
   definition imported from another module reduces in the kernel through the
   primitives it applies; the 1.2 `lean_backend` version is now `11`, and the

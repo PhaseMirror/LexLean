@@ -1585,3 +1585,45 @@ id = "TC-07"
 level = "build"
 suite = "calculus"
 statement = "Every fixture with an observable outcome renders to safe Rust that rustc compiles with warnings denied and that prints exactly the denotation's value or overflow, and a planted renderer discrepancy is detected."
+
+[[id]]
+id = "GN-01"
+level = "build"
+suite = "gnaf"
+statement = "Every committed GNAF request and fixture is canonical and validates against the GNAF schemas, every malformed request or invalid reference or realized program fails closed with LLB6006, and fuel or a universe beyond the host's capacity fails closed with LLS8002."
+
+[[id]]
+id = "GN-02"
+level = "build"
+suite = "gnaf"
+statement = "The GNAF model is a kernel-checked LexLean definition, Lean's kernel reduces the answer of every committed request to the answer the host transcription computes, and a wrong answer or an answer computed from a universe with a system omitted is rejected by Lean."
+
+[[id]]
+id = "GN-03"
+level = "build"
+suite = "gnaf"
+statement = "Candidate membership is the grammar's expansion fixed before any optimizer, and optimizer-defined, discovered, cached, and internal-plan universes and missing, self-referential, or optimizer-citing completeness evidence are rejected."
+
+[[id]]
+id = "GN-04"
+level = "build"
+suite = "gnaf"
+statement = "Every action a system performs is charged by steps and every admitted preparation action by a positive constant or a common prepared boundary, hidden zero-cost, free, undeclared, duplicated, unaccounted, and unrealizable actions are rejected, and declared preparation charges enter every system's cost."
+
+[[id]]
+id = "GN-05"
+level = "build"
+suite = "gnaf"
+statement = "Scalar claims require the total step order and Pareto claims the componentwise steps-and-size order, a scalar claim over the partial order, a vector claim over the total order, an undecided claim class, and a scope beyond the grammar universe are rejected, and a frontier answer has incomparable members."
+
+[[id]]
+id = "GN-06"
+level = "build"
+suite = "gnaf"
+statement = "Complete-system cost includes selection, the system argmin differs from the best internal plan and from the per-input plan envelope that no system attains, an inadmissible system is excluded, and an unresolved system makes the answer incomplete rather than being removed."
+
+[[id]]
+id = "GN-07"
+level = "build"
+suite = "gnaf"
+statement = "The authority's GNAF-VEC-01, GNAF-VEC-02, GNAF-VEC-04, GNAF-VEC-17, GNAF-REJ-14, and GNAF-REJ-29 vectors are kernel-checked theorems of the model, and the authority is cited by revision and SHA-256 with a some-true ledger claim."

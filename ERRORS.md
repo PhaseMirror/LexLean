@@ -40,6 +40,12 @@ A production-realization target program is malformed, violates the calculus's st
 
 Class: `language`. Exit code: 1.
 
+## `LLB6006` --- GNAF request malformed
+
+A GNAF request is not a closed `lexlean/gnaf-request/1` document, or its reference program or a system its universe realizes is not a valid target program.
+
+Class: `language`. Exit code: 1.
+
 ## `LLC0001` --- Invalid command-line usage
 
 Invalid command-line usage.

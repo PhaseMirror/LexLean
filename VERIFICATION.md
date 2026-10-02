@@ -12,7 +12,7 @@ How this repository's claims are checked, which recipe enforces which rule, and 
 | `model` | `cargo xtask validate-model` | R1 (model is the single source; every model file parsed with unknown-field rejection), R2 (honesty levels and vocabulary, via the meta-gate), R3 (register/scenario/test bijection, Gherkin subset), R4 (`audit-deferral`), R5 (`audit-errors`), R6 (`audit-shipped`, including the shipped crate's normative links), R8 (`audit-generated`, `audit-language-closure`), RP-09 (`audit-no-unsafe`), PD-07 (`audit-production`), §27.5 (CONFORMANCE.md and ERRORS.md equal regeneration) |
 | `spec-links` | `cargo xtask validate-spec-links` | RP-07, §27.6: the §31 table and `model/ids.toml` are bijective and byte-consistent |
 | `lint` | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | no tolerated warnings |
-| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 263 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
+| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 270 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
 | `features` | `cargo check --workspace --all-features --all-targets` | every target compiles |
 | `bdd` | `cargo test -p repo-conformance` | R3, §27.7, §27.8: register ↔ scenario ↔ test bijection, the meta-gate, and its own falsifiability test |
 | `examples` | `cargo xtask verify-examples` | §28.6, EX-01: every example directory and the `compiler` project (§17.14) format, lock, check, build, and verify with real Lean 4.32.1; when an example commits `expected/verify/`, its normalized verification records must equal it (§29.5) |
@@ -23,7 +23,7 @@ How this repository's claims are checked, which recipe enforces which rule, and 
 Outside `vv`:
 
 - `just fixtures` (`cargo xtask check-fixtures`) runs every §28.2 fixture under `tests/fixtures/` and `tests/negative/` through the CLI entry point and compares exit code, canonical command result, diagnostics, artifact list, and platform-independent hashes with `expected/`. `just fixtures-write` is the only rewrite path.
-- `just calculus` (`cargo xtask check-calculus`) compares every committed target fixture under `compiler/fixtures/` and the generated `TargetFixtures` module with what the hand-written fixture set renders (§17.14); `just test` enforces the same comparison through `conformance_tc_03`. `just calculus-write` is the only rewrite path.
+- `just calculus` (`cargo xtask check-calculus`) compares every committed target fixture under `compiler/fixtures/`, every GNAF request under `compiler/gnaf/`, and the generated `TargetFixtures` and `GnafFixtures` modules with what the hand-written fixture sets render (§17.14, §17.15); `just test` enforces the same comparison through `conformance_tc_03` and `conformance_gn_01`. `just calculus-write` is the only rewrite path.
 - `just verify-write` (`cargo xtask verify-examples --write`) is the only path that rewrites `examples/*/expected/verify/`.
 - `just release` runs `vv` and then `cargo xtask release-check` (RP-12): every §30.3 artifact by content, the §30.4 completion criteria, and the crate-packaging round trip (`cargo package`, extract, offline build, `--version` equal to the in-repository binary). It is refused until 1.0.0.
 
@@ -632,6 +632,54 @@ the realization table: "runtime construct `primitive.map_size` has no realizatio
 ```
 
 Removed: the row was restored; `conformance_tc_06` passes.
+
+### GNAF kernel oracle can fail
+
+Planted: the host's `lexlean::gnaf::expand` omitted every dispatching system
+from the grammar universe, and `cargo xtask check-calculus --write`
+regenerated the GNAF fixtures from it, so `argmin-over-systems` expected the
+best fixed plan (`argmin [1] 76`) instead of the dispatching system. The
+oracle is Lean's kernel reducing the `Gnaf` model, which still expands the
+whole grammar. Command: `lexlean verify` in `compiler/`. Expected: every
+answer that depends on a dispatching system is refused (eight theorems).
+
+```text
+error[LLV7002]: Lean rejected `Compiler.GnafFixtures` (error): Tactic `rfl` failed: The left-hand side
+  Gnaf.answer argminOverSystemsRequest
+is not definitionally equal to the right-hand side
+  Gnaf.Answer.argmin [1] 76
+```
+
+Removed: `expand` was restored and the fixtures regenerated; `compiler/`
+verifies and `conformance_gn_02` passes.
+
+### GNAF hidden-cost rejection can fail
+
+Planted: the host's `check_performed` accepted a `free` charge for an action
+systems perform. Command: `cargo test -p repo-conformance --test
+conformance -- conformance_gn_04`. Expected: a request that declares
+observation free is answered instead of refused.
+
+```text
+thread 'conformance_gn_04' panicked at crates/conformance/src/cases/gnaf.rs:552:17:
+assertion `left == right` failed: reject-free-observation
+  left: Argmin { members: [2], steps: 63 }
+ right: Rejected { rejection: HiddenCost { action: Observation } }
+```
+
+Removed: the charge rule was restored; `conformance_gn_04` passes.
+
+### check-calculus covers the GNAF fixtures
+
+Planted: the committed answer of `compiler/gnaf/argmin-over-systems.json`
+was edited from 63 to 62 steps. Command: `cargo xtask check-calculus`.
+
+```text
+gate failed: compiler/gnaf/argmin-over-systems.json differs from its generator; run `cargo xtask check-calculus --write`
+```
+
+Removed: `cargo xtask check-calculus --write` restored the generated bytes;
+the gate reports 113 generated files equal to their generator.
 
 ### language-1.2 imported runtime reduction can fail
 
