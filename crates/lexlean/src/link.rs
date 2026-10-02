@@ -170,6 +170,9 @@ pub struct CheckedModule {
     /// Display spellings of proof-introduced locals (for canonical
     /// formatting and rendering).
     pub proof_spellings: BTreeMap<LocalId, String>,
+    /// Language 1.2: the eligibility report of the module's production
+    /// roots, absent when it declares none (§17.13).
+    pub production: Option<crate::production::ModuleReport>,
 }
 
 /// The result of `check`: everything the backends and verification need.
@@ -616,6 +619,61 @@ fn check_project_inline(
         } else {
             None
         };
+        // §17.13: every production root is analysed over the linked
+        // closure of this module and its imports before any backend runs.
+        let production = match &semantic {
+            Some(semantic) if project.config.language == crate::LANGUAGE_1_2 => {
+                let mut linked: BTreeMap<String, crate::production::eligibility::LinkedModule<'_>> =
+                    modules
+                        .iter()
+                        .filter_map(|(name, module)| {
+                            module.document.semantic.as_ref().map(|semantic| {
+                                (
+                                    name.clone(),
+                                    crate::production::eligibility::LinkedModule {
+                                        lean_module: &module.document.lean_module,
+                                        semantic,
+                                    },
+                                )
+                            })
+                        })
+                        .collect();
+                linked.insert(
+                    module_name.clone(),
+                    crate::production::eligibility::LinkedModule {
+                        lean_module: &lean_module,
+                        semantic,
+                    },
+                );
+                crate::production::eligibility::analyse_module(module_name, &linked).map_err(
+                    |failure| {
+                        let range = load
+                            .ast
+                            .semantic
+                            .as_ref()
+                            .map_or((0, load.atoms.len()), |ast| ast.data.range);
+                        let (code, reason) = match failure {
+                            crate::production::eligibility::AnalysisError::Ineligible(reason) => {
+                                (code!("LLT4005"), reason)
+                            }
+                            crate::production::eligibility::AnalysisError::Internal(reason) => {
+                                (code!("LLI9001"), reason)
+                            }
+                        };
+                        err(vec![Diagnostic::new(
+                            code,
+                            format!("phase production: {reason}"),
+                        )
+                        .with_span(span_of_range(
+                            &load.path,
+                            &load.atoms,
+                            range,
+                        ))])
+                    },
+                )?
+            }
+            Some(_) | None => None,
+        };
         let document = DocumentModule {
             name: module_name.clone(),
             lean_module,
@@ -661,6 +719,7 @@ fn check_project_inline(
                 decl_origins,
                 visible,
                 proof_spellings,
+                production,
             },
         );
     }

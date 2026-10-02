@@ -15,6 +15,7 @@ mod latex_pdf;
 mod lean_backend;
 mod lexical_closure;
 mod lexicon;
+mod production;
 mod proofs;
 mod repository;
 mod security;
@@ -46,6 +47,7 @@ pub fn run(id: &str) {
         "CL" => cli_api::run(id),
         "SE" => security::run(id),
         "EX" => examples::run(id),
+        "PD" => production::run(id),
         _ => panic!("no conformance case is wired for {id}"),
     }
 }

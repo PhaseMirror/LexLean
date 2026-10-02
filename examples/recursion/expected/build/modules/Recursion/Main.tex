@@ -75,7 +75,7 @@
 \noindent Kind: \texttt{definition}.\par
 \noindent Well-founded measure: \texttt{value}; decrease evidence per call: \texttt{reduce\_decreases}.\par
 \noindent Parameters: \texttt{(value : Nat) (bound : Nat)}.\par
-\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Execution: executable, non-escaping closures only.\par
 \noindent Type: \texttt{Nat}.\par
 \noindent Definition: \texttt{(if (Nat.beq (bound) (0)) then value else (if (Nat.blt (value) (bound)) then value else reduce ((LexLeanRuntime.subtract (value) (bound) : Nat)) (bound)))}.\par
 \noindent Axiom policy: \texttt{exact [Quot.sound, propext]}.\par
@@ -135,7 +135,7 @@
 \noindent Kind: \texttt{definition}.\par
 \noindent Well-founded measure: \texttt{weight (term)}; decrease evidence per call: \texttt{reassociate\_literal, reassociate\_plus}.\par
 \noindent Parameters: \texttt{(term : Recursion.Syntax.Term)}.\par
-\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Execution: executable, non-escaping closures only.\par
 \noindent Type: \texttt{Recursion.Syntax.Term}.\par
 \noindent Definition: \texttt{(match term with | Recursion.Syntax.Term.literal value => Recursion.Syntax.Term.literal (value) | Recursion.Syntax.Term.plus left right => (match left with | Recursion.Syntax.Term.literal value => Recursion.Syntax.Term.plus (Recursion.Syntax.Term.literal (value)) (reassociate (right)) | Recursion.Syntax.Term.plus inner rest => reassociate (Recursion.Syntax.Term.plus (inner) (Recursion.Syntax.Term.plus (rest) (right)))))}.\par
 \noindent Axiom policy: \texttt{exact [Quot.sound, propext]}.\par
@@ -152,7 +152,7 @@
 \noindent Kind: \texttt{definition}.\par
 \noindent Well-founded measure: \texttt{weight (term)}; decrease evidence per call: \texttt{reassociate\_literal, prune\_plus}.\par
 \noindent Parameters: \texttt{(term : Recursion.Syntax.Term)}.\par
-\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Execution: executable, non-escaping closures only.\par
 \noindent Type: \texttt{Recursion.Syntax.Term}.\par
 \noindent Definition: \texttt{(match term with | Recursion.Syntax.Term.literal value => Recursion.Syntax.Term.literal (value) | Recursion.Syntax.Term.plus left right => (match left with | Recursion.Syntax.Term.literal \_ => prune (right) | Recursion.Syntax.Term.plus inner \_ => prune (Recursion.Syntax.Term.plus (inner) (right))))}.\par
 \noindent Axiom policy: \texttt{exact [Quot.sound, propext]}.\par
@@ -164,7 +164,7 @@
 \noindent Kind: \texttt{definition}.\par
 \noindent Mutual recursion group \texttt{Folding}, decreasing on \texttt{expression}.\par
 \noindent Parameters: \texttt{(expression : Recursion.Syntax.Expr)}.\par
-\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Execution: executable, non-escaping closures only.\par
 \noindent Type: \texttt{Recursion.Syntax.Expr}.\par
 \noindent Definition: \texttt{(match expression with | Recursion.Syntax.Expr.literal value => Recursion.Syntax.Expr.literal (value) | Recursion.Syntax.Expr.plus left right => (let foldedLeft : Recursion.Syntax.Expr := foldExpr (left); (let foldedRight : Recursion.Syntax.Expr := foldExpr (right); (match foldedLeft with | Recursion.Syntax.Expr.literal leftValue => (match foldedRight with | Recursion.Syntax.Expr.literal rightValue => Recursion.Syntax.Expr.literal ((leftValue + rightValue)) | Recursion.Syntax.Expr.plus \_ \_ => Recursion.Syntax.Expr.plus (foldedLeft) (foldedRight) | Recursion.Syntax.Expr.block \_ \_ => Recursion.Syntax.Expr.plus (foldedLeft) (foldedRight)) | Recursion.Syntax.Expr.plus \_ \_ => Recursion.Syntax.Expr.plus (foldedLeft) (foldedRight) | Recursion.Syntax.Expr.block \_ \_ => Recursion.Syntax.Expr.plus (foldedLeft) (foldedRight)))) | Recursion.Syntax.Expr.block statements result => Recursion.Syntax.Expr.block (foldStatements (statements)) (foldExpr (result)))}.\par
 \noindent Axiom policy: \texttt{none}.\par
@@ -172,7 +172,7 @@
 \noindent Kind: \texttt{definition}.\par
 \noindent Mutual recursion group \texttt{Folding}, decreasing on \texttt{statements}.\par
 \noindent Parameters: \texttt{(statements : List (Recursion.Syntax.Stmt))}.\par
-\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Execution: executable, non-escaping closures only.\par
 \noindent Type: \texttt{List (Recursion.Syntax.Stmt)}.\par
 \noindent Definition: \texttt{(match statements with | List.nil => ([] : List (Recursion.Syntax.Stmt)) | List.cons head tail => (foldStatement (head) :: foldStatements (tail)))}.\par
 \noindent Axiom policy: \texttt{none}.\par
@@ -180,7 +180,7 @@
 \noindent Kind: \texttt{definition}.\par
 \noindent Mutual recursion group \texttt{Folding}, decreasing on \texttt{statement}.\par
 \noindent Parameters: \texttt{(statement : Recursion.Syntax.Stmt)}.\par
-\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Execution: executable, non-escaping closures only.\par
 \noindent Type: \texttt{Recursion.Syntax.Stmt}.\par
 \noindent Definition: \texttt{(match statement with | Recursion.Syntax.Stmt.assign target value => Recursion.Syntax.Stmt.assign (target) (foldExpr (value)) | Recursion.Syntax.Stmt.sequence first second => Recursion.Syntax.Stmt.sequence (foldStatement (first)) (foldStatement (second)))}.\par
 \noindent Axiom policy: \texttt{none}.\par
@@ -202,7 +202,7 @@
 \noindent Kind: \texttt{definition}.\par
 \noindent Well-founded measure: \texttt{((number + number) + 1)}; decrease evidence per call: \texttt{ping\_to\_pong}.\par
 \noindent Parameters: \texttt{(number : Nat)}.\par
-\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Execution: executable, non-escaping closures only.\par
 \noindent Type: \texttt{Nat}.\par
 \noindent Definition: \texttt{(if (Nat.beq (number) (0)) then 0 else (pong (number) + 1))}.\par
 \noindent Axiom policy: \texttt{exact [Quot.sound, propext]}.\par
@@ -210,7 +210,7 @@
 \noindent Kind: \texttt{definition}.\par
 \noindent Well-founded measure: \texttt{(number + number)}; decrease evidence per call: \texttt{pong\_to\_ping}.\par
 \noindent Parameters: \texttt{(number : Nat)}.\par
-\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Execution: executable, non-escaping closures only.\par
 \noindent Type: \texttt{Nat}.\par
 \noindent Definition: \texttt{(if (Nat.beq (number) (0)) then 0 else (ping ((LexLeanRuntime.subtract (number) (1) : Nat)) + 1))}.\par
 \noindent Axiom policy: \texttt{exact [Quot.sound, propext]}.\par

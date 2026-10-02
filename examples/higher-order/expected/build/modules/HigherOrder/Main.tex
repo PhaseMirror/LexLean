@@ -7,7 +7,7 @@
 \noindent Kind: \texttt{definition}.\par
 \noindent Parameters: \texttt{(offset : Nat) (values : List (Nat))}.\par
 \noindent Closure 1: binds \texttt{(value)}, captures \texttt{(offset)}.\par
-\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Execution: executable, non-escaping closures only.\par
 \noindent Type: \texttt{List (Nat)}.\par
 \noindent Definition: \texttt{HigherOrder.Combinators.mapList (Nat) (Nat) ((fun (value : Nat) => (value + offset))) (values)}.\par
 \noindent Axiom policy: \texttt{none}.\par
@@ -15,14 +15,14 @@
 \noindent Kind: \texttt{definition}.\par
 \noindent Parameters: \texttt{(values : List (Nat))}.\par
 \noindent Closure 1: binds \texttt{(sum, value)}, captures \texttt{()}.\par
-\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Execution: executable, non-escaping closures only.\par
 \noindent Type: \texttt{Nat}.\par
 \noindent Definition: \texttt{HigherOrder.Combinators.foldList (Nat) (Nat) ((fun (sum : Nat) (value : Nat) => (sum + value))) (0) (values)}.\par
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{bumpAll}}
 \noindent Kind: \texttt{definition}.\par
 \noindent Parameters: \texttt{(values : List (Nat))}.\par
-\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Execution: executable, non-escaping closures only.\par
 \noindent Type: \texttt{List (Nat)}.\par
 \noindent Definition: \texttt{HigherOrder.Combinators.mapList (Nat) (Nat) ((HigherOrder.Combinators.increment)) (values)}.\par
 \noindent Axiom policy: \texttt{none}.\par

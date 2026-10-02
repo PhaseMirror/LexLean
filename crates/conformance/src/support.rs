@@ -56,7 +56,13 @@ fn declaration(value: &SnapshotSemanticDeclaration) -> usize {
         SnapshotSemanticDeclaration::Inductive { constructors, mutual, .. } => {
             constructors.len() + mutual.as_ref().map_or(0, String::len)
         }
-        SnapshotSemanticDeclaration::Definition { result, body, .. } => ty(result) + term(body),
+        SnapshotSemanticDeclaration::Definition { result, body, production, .. } => {
+            ty(result)
+                + term(body)
+                + production.as_ref().map_or(0, |root: &lexlean::SnapshotProduction| {
+                    root.targets.len() + root.effects.len()
+                })
+        }
         SnapshotSemanticDeclaration::Theorem { statement, proof, .. } => term(statement) + prove(proof),
     }
 }
@@ -256,11 +262,17 @@ impl P {
     /// assertion is made against the command that would: the §21.8 mutation
     /// lock may exist, a build or verification root may not.
     pub fn assert_no_backend_output(&self) {
+        self.assert_no_backend_output_with("LLT4001");
+    }
+
+    /// [`Self::assert_no_backend_output`] for a pre-backend failure with
+    /// another code, such as a production-eligibility failure (`LLT4005`).
+    pub fn assert_no_backend_output_with(&self, code: &str) {
         let built = self.engine().build(BuildRequest {
             selection: Selection::Entrypoints,
         });
         let error = built.err().expect("a link-time failure refuses build");
-        expect_code(&error, "LLT4001");
+        expect_code(&error, code);
         for output in [".lexlean/build", ".lexlean/verified"] {
             assert!(
                 !self.root.join(output).exists(),

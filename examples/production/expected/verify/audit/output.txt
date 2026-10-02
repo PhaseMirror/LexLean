@@ -1,0 +1,17 @@
+'Production.Kernel.Shape' does not depend on any axioms
+'Production.Kernel.applyTwice' does not depend on any axioms
+'Production.Kernel.area' does not depend on any axioms
+'Production.Kernel.area_square' does not depend on any axioms
+'Production.Kernel.countdown' depends on axioms: [propext, Quot.sound]
+'Production.Kernel.countdown_decreases' depends on axioms: [propext, Quot.sound]
+'Production.Kernel.firstOr' does not depend on any axioms
+'Production.Kernel.positive' does not depend on any axioms
+'Production.Kernel.total' does not depend on any axioms
+'Production.Main.checkedSum' depends on axioms: [propext, Quot.sound]
+'Production.Main.halvings' depends on axioms: [propext, Quot.sound]
+'Production.Main.headOr' does not depend on any axioms
+'Production.Main.quadruple' does not depend on any axioms
+'Production.Main.quadruple_three' does not depend on any axioms
+'Production.Main.shapeArea' does not depend on any axioms
+'Production.Main.sumAll' does not depend on any axioms
+'Production.Main.sum_three' does not depend on any axioms

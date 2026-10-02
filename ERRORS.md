@@ -250,6 +250,12 @@ Document-entry signature mismatch.
 
 Class: `language`. Exit code: 1.
 
+## `LLT4005` --- Production root not eligible for a declared target
+
+Production root not eligible for a declared target.
+
+Class: `language`. Exit code: 1.
+
 ## `LLV7001` --- Lean/Lake/leanchecker version or executable mismatch
 
 Lean/Lake/leanchecker version or executable mismatch.

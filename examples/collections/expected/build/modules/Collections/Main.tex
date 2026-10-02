@@ -9,7 +9,7 @@
 \noindent Closure 1: binds \texttt{(state)}, captures \texttt{()}.\par
 \noindent Closure 2: binds \texttt{(outer, left)}, captures \texttt{(state)}.\par
 \noindent Closure 3: binds \texttt{(inner, right)}, captures \texttt{(left)}.\par
-\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Execution: executable, non-escaping closures only.\par
 \noindent Type: \texttt{(Prod (Set ((Prod (Nat) (Nat)))) (Bool))}.\par
 \noindent Definition: \texttt{(LexLeanCollections.iterateUntil ((fun (state : Set ((Prod (Nat) (Nat)))) => (let derived : Set ((Prod (Nat) (Nat))) := (LexLeanCollections.setFold ((fun (outer : Set ((Prod (Nat) (Nat)))) (left : (Prod (Nat) (Nat))) => (LexLeanCollections.setFold ((fun (inner : Set ((Prod (Nat) (Nat)))) (right : (Prod (Nat) (Nat))) => (if (Nat.beq ((left).2) ((right).1)) then (LexLeanCollections.setInsert (inner) (((left).1, (right).2)) : Set ((Prod (Nat) (Nat)))) else inner))) (outer) (state) : Set ((Prod (Nat) (Nat)))))) (state) (state) : Set ((Prod (Nat) (Nat)))); (if (Nat.beq ((LexLeanCollections.setSize (derived) : Nat)) ((LexLeanCollections.setSize (state) : Nat))) then Option.none else Option.some (derived))))) (8) (parents) : (Prod (Set ((Prod (Nat) (Nat)))) (Bool)))}.\par
 \noindent Axiom policy: \texttt{exact [propext]}.\par

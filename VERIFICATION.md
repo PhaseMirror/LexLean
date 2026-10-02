@@ -9,10 +9,10 @@ How this repository's claims are checked, which recipe enforces which rule, and 
 | Recipe | Command | Rules it enforces |
 | --- | --- | --- |
 | `fmt-check` | `cargo fmt --all -- --check` | one canonical source formatting |
-| `model` | `cargo xtask validate-model` | R1 (model is the single source; every model file parsed with unknown-field rejection), R2 (honesty levels and vocabulary, via the meta-gate), R3 (register/scenario/test bijection, Gherkin subset), R4 (`audit-deferral`), R5 (`audit-errors`), R6 (`audit-shipped`, including the shipped crate's normative links), R8 (`audit-generated`, `audit-language-closure`), RP-09 (`audit-no-unsafe`), §27.5 (CONFORMANCE.md and ERRORS.md equal regeneration) |
+| `model` | `cargo xtask validate-model` | R1 (model is the single source; every model file parsed with unknown-field rejection), R2 (honesty levels and vocabulary, via the meta-gate), R3 (register/scenario/test bijection, Gherkin subset), R4 (`audit-deferral`), R5 (`audit-errors`), R6 (`audit-shipped`, including the shipped crate's normative links), R8 (`audit-generated`, `audit-language-closure`), RP-09 (`audit-no-unsafe`), PD-07 (`audit-production`), §27.5 (CONFORMANCE.md and ERRORS.md equal regeneration) |
 | `spec-links` | `cargo xtask validate-spec-links` | RP-07, §27.6: the §31 table and `model/ids.toml` are bijective and byte-consistent |
 | `lint` | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | no tolerated warnings |
-| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 243 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
+| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 250 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
 | `features` | `cargo check --workspace --all-features --all-targets` | every target compiles |
 | `bdd` | `cargo test -p repo-conformance` | R3, §27.7, §27.8: register ↔ scenario ↔ test bijection, the meta-gate, and its own falsifiability test |
 | `examples` | `cargo xtask verify-examples` | §28.6, EX-01: every example directory formats, locks, checks, builds, and verifies with real Lean 4.32.1; when an example commits `expected/verify/`, its normalized verification records must equal it (§29.5) |
@@ -221,6 +221,78 @@ branch was first pushed in. Command: `cargo xtask validate-spec-links`.
 gate failed: RP-07: §31 states 223 required capability IDs but its table has 228 rows
 ```
 
+### audit-production can fail
+
+Planted: the explicit arm `SemanticPrimitive::GraphTopological =>
+"primitive.graph_topological",` in
+`crates/lexlean/src/production/eligibility.rs` replaced by the wildcard
+`_ => "primitive.graph_topological",`, and separately by the binding
+catch-all `_other => "primitive.graph_topological",`. Commands: `cargo xtask
+validate-model` and `cargo clippy -p lexlean -- -D warnings`. Expected: both
+the audit and the compiler refuse each default, so neither gate alone is
+load-bearing.
+
+```text
+gate failed: §17.13: crates/lexlean/src/production/eligibility.rs:152: a wildcard arm would classify constructs by default
+gate failed: §17.13: crates/lexlean/src/production/eligibility.rs:152: a binding or wildcard catch-all arm would classify constructs by default
+error: wildcard matches only a single variant and will also match any future added variants
+   --> crates/lexlean/src/production/eligibility.rs:152:9
+```
+
+The compiler sees only enum matches, so the audit alone covers a tuple
+default and an equality chain over the IR. `conformance_pd_07` plants, against
+the committed source, the wildcard, the binding catch-all, a rest pattern, an
+`if let`, a tuple pattern `(_, _)`, an `==` test on `SemanticType`, an unnamed
+`SemanticInteger::UInt64`, and a `SemanticPrimitive::GraphTopological` that
+is listed but matched nowhere, and asserts that the audit reports each one.
+Removed: every arm restored; both gates pass.
+
+### production root monomorphism can fail
+
+Planted: the check in `analyse_root` that a root declares no type parameters
+was disabled (`if false && !type_parameters.is_empty()`). Command: `cargo test
+-p repo-conformance --test conformance -- conformance_pd_05`. Expected: the
+`production-phantom-type-parameter` root, whose signature never mentions its
+type parameter, is no longer refused for declaring it; only the walk's second
+check, which refuses a type parameter that survives instantiation, still
+stops it, and the case observes the changed reason.
+
+```text
+thread 'conformance_pd_05' panicked at crates/conformance/src/cases/production.rs:646:17:
+production-phantom-type-parameter: expected "production root declares the type parameters (Item)", got LLT4005: phase production: production root `LanguageTwelve.Main.count` is not eligible for target `rust-std`: the type parameter `Item` is never instantiated in the closure (in `LanguageTwelve.Main.count`, reached by LanguageTwelve.Main.count; 1 violation(s) in total)
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 249 filtered out
+```
+
+Removed: the check was restored; `conformance_pd_05` passes and the fixture
+fails with `LLT4005` naming both violations.
+
+### production target dependence can fail
+
+Planted: the allocation test in `analyse_root` replaced by one that holds for
+every target (`if target.allocation || !target.allocation {`), so a
+no-allocation target admitted allocation as an effect. Command: `cargo test -p
+repo-conformance --test conformance -- conformance_pd_04 conformance_pd_05`.
+
+```text
+thread 'conformance_pd_05' panicked at crates/conformance/src/cases/production.rs:646:17:
+production-unbounded-type: expected "construct `type.list` requires heap allocation, which target `rust-core` does not provide", got LLT4005: phase production: production root `LanguageTwelve.Main.first` is not eligible for target `rust-core`: effect mismatch: construct `type.list` realizes effect `allocation`, which the root does not admit (in `LanguageTwelve.Main.first`, reached by LanguageTwelve.Main.first; 1 violation(s) in total)
+thread 'conformance_pd_04' panicked at crates/conformance/src/support.rs:372:14:
+check fails
+```
+
+### production effect admission can fail
+
+Planted: the admitted-effect test disabled (`if false &&
+!production.effects.contains(effect) {`), so a root realized effects it did
+not declare. Command: `cargo test -p repo-conformance --test conformance --
+conformance_pd_05`. The first fixture whose only violation is an unadmitted
+effect now checks.
+
+```text
+thread 'conformance_pd_05' panicked at crates/conformance/src/support.rs:372:14:
+check fails
+```
+
 ### language-1.2 version routing can fail
 
 Planted: the language-1.2 construct gate in `SemanticModule::validate` was
@@ -232,7 +304,7 @@ Expected: the committed language-1.2 example no longer checks, and the
 negative fixture of a `let` under language 1.1 is accepted.
 
 ```text
-thread 'conformance_sm_23' panicked at crates/conformance/src/support.rs:350:14:
+thread 'conformance_sm_23' panicked at crates/conformance/src/support.rs:362:14:
 check succeeds: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLT4001"), message: "phase link: `let` is a language-1.2 construct; language 1.1 rejects it", ... }] }
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 227 filtered out
 gate failed: tests/negative/language-1.2-construct-under-1.1: step 1 `check ` exited 0, case.toml expects 1
@@ -291,7 +363,7 @@ structural eliminator. Command: `cargo test -p repo-conformance --test
 conformance -- conformance_df_13`.
 
 ```text
-thread 'conformance_df_13' panicked at crates/conformance/src/support.rs:360:14:
+thread 'conformance_df_13' panicked at crates/conformance/src/support.rs:372:14:
 check fails
 ```
 
@@ -305,7 +377,7 @@ well-formed `Wrap` with a constructor field `Tree (Wrap)` is no longer
 rejected at all; only the positivity rule refused it.
 
 ```text
-thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:360:14:
+thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:372:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 230 filtered out
 ```
@@ -394,7 +466,7 @@ Command: `cargo test -p repo-conformance --test conformance --
 conformance_df_17`. Expected: the forged-evidence mutation links.
 
 ```text
-thread 'conformance_df_17' panicked at crates/conformance/src/support.rs:360:14:
+thread 'conformance_df_17' panicked at crates/conformance/src/support.rs:372:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 238 filtered out
 ```
@@ -411,7 +483,7 @@ so a member could call its group on its own argument. Command: `cargo test
 `isOdd (number)` mutation links.
 
 ```text
-thread 'conformance_df_16' panicked at crates/conformance/src/support.rs:360:14:
+thread 'conformance_df_16' panicked at crates/conformance/src/support.rs:372:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 238 filtered out
 ```
@@ -489,7 +561,7 @@ product field. Expected: the renamed type parameter is admitted, and Lean,
 not linking, is the first to refuse the capture.
 
 ```text
-thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:360:14:
+thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:372:14:
 check fails
 
 checked 1 module (source 0eec48d541180c1a6dbf34539884c1063f8a6637964a1f7667a5b6c0f73a4d15, semantic 1fe3fc4d4fa60d781de6ea42be16516d7b6b860a2918f6ed351b40ad6e1e0d2c)
@@ -527,7 +599,7 @@ test -p repo-conformance --test conformance -- conformance_sm_29`.
 Expected: the `02` mutation links.
 
 ```text
-thread 'conformance_sm_29' panicked at crates/conformance/src/support.rs:360:14:
+thread 'conformance_sm_29' panicked at crates/conformance/src/support.rs:372:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
 ```
@@ -566,7 +638,7 @@ seeded graphs and the 24-node chain, whose last node is such a successor,
 disagree with the independent model.
 
 ```text
-thread 'conformance_sm_30' panicked at crates/conformance/src/support.rs:1817:10:
+thread 'conformance_sm_30' panicked at crates/conformance/src/support.rs:1829:10:
 the module verifies with real Lean: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLV7002"), message: "Lean rejected `Collections.Main` (error): Tactic `decide` proved that the proposition\n  LexLeanCollections.graphTopological
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
 ```
@@ -584,7 +656,7 @@ canonical order disagreed with Lean's `Key Int` instance. Command: `cargo test
 insertion of the source order, fail under verification.
 
 ```text
-thread 'conformance_sm_28' panicked at crates/conformance/src/support.rs:1817:10:
+thread 'conformance_sm_28' panicked at crates/conformance/src/support.rs:1829:10:
 the module verifies with real Lean: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLV7002"), message: "Lean rejected `Collections.Main` (error): Tactic `decide` proved that the proposition\n  [-2, -10, -100, 0, 3, 9, 100] =\n    LexLeanCollections.listFold (fun built element => LexLeanCollections.setInsert built element) []\n      [3, -2, 0, -10, 100, -100, 9]\nis false"
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
 ```
@@ -601,7 +673,7 @@ conformance -- conformance_sm_28`. Expected: the seeded union theorems,
 whose right-hand sides come from `BTreeSet`, fail under verification.
 
 ```text
-thread 'conformance_sm_28' panicked at crates/conformance/src/support.rs:1817:10:
+thread 'conformance_sm_28' panicked at crates/conformance/src/support.rs:1829:10:
 the module verifies with real Lean: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLV7002"), message: "Lean rejected `Collections.Main` (error): Tactic `decide` proved that the proposition\n  LexLeanCollections.setUnion [1, 2, 3] [0, 5] = [0, 1, 2, 3, 5]\nis false"
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
 ```
@@ -615,7 +687,7 @@ Lean refused eleven theorems: `op_set_union` and ten of the twelve seeded
 Planted: `fn   badly_formatted( ) {}` appended to `crates/model/src/release.rs`. Command: `cargo fmt --all -- --check`. Expected: a formatting diff and a nonzero exit.
 
 ```text
-Diff in crates/model/src/release.rs:563:
+Diff in crates/model/src/release.rs:569:
          );
      }
  }
@@ -849,7 +921,7 @@ Removed: the function was deleted; clippy is clean.
 Planted: the last hex digit of the empty-input SHA-256 vector in `crates/model/src/release.rs` changed from `5` to `6`. Command: `cargo test -p repo-model --all-features`. Expected: the unit test fails on the digest.
 
 ```text
-thread 'release::tests::the_local_sha256_agrees_with_the_test_vectors' panicked at crates/model/src/release.rs:556:9:
+thread 'release::tests::the_local_sha256_agrees_with_the_test_vectors' panicked at crates/model/src/release.rs:557:9:
 assertion `left == right` failed
   left: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
  right: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b856"

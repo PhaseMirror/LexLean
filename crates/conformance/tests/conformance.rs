@@ -1219,3 +1219,38 @@ fn conformance_ex_07() {
 fn conformance_ex_08() {
     repo_conformance::cases::run("EX-08");
 }
+
+#[test]
+fn conformance_pd_01() {
+    repo_conformance::cases::run("PD-01");
+}
+
+#[test]
+fn conformance_pd_02() {
+    repo_conformance::cases::run("PD-02");
+}
+
+#[test]
+fn conformance_pd_03() {
+    repo_conformance::cases::run("PD-03");
+}
+
+#[test]
+fn conformance_pd_04() {
+    repo_conformance::cases::run("PD-04");
+}
+
+#[test]
+fn conformance_pd_05() {
+    repo_conformance::cases::run("PD-05");
+}
+
+#[test]
+fn conformance_pd_06() {
+    repo_conformance::cases::run("PD-06");
+}
+
+#[test]
+fn conformance_pd_07() {
+    repo_conformance::cases::run("PD-07");
+}

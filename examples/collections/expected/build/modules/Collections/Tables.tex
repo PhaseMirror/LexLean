@@ -6,7 +6,7 @@
 \subsection*{\texttt{declare}}
 \noindent Kind: \texttt{definition}.\par
 \noindent Parameters: \texttt{(table : Map (String) (Nat)) (name : String) (slot : Nat)}.\par
-\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Execution: executable, non-escaping closures only.\par
 \noindent Type: \texttt{Map (String) (Nat)}.\par
 \noindent Definition: \texttt{(LexLeanCollections.mapInsert (table) (name) (slot) : Map (String) (Nat))}.\par
 \noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
@@ -14,7 +14,7 @@
 \noindent Kind: \texttt{definition}.\par
 \noindent Parameters: \texttt{(names : List (String))}.\par
 \noindent Closure 1: binds \texttt{(table, name)}, captures \texttt{()}.\par
-\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Execution: executable, non-escaping closures only.\par
 \noindent Type: \texttt{Map (String) (Nat)}.\par
 \noindent Definition: \texttt{(LexLeanCollections.listFold ((fun (table : Map (String) (Nat)) (name : String) => declare (table) (name) ((LexLeanCollections.mapSize (table) : Nat)))) (([] : List (Prod (String) (Nat)))) (names) : Map (String) (Nat))}.\par
 \noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par

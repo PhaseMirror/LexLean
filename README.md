@@ -120,6 +120,7 @@ Every directory under [examples/](examples/) is discovered by the example gate (
 | [higher-order](examples/higher-order/) | Language-1.2 first-class functions (SPEC.md §17.12): generic `mapList`, `foldList`, and `compose`; lambdas with explicit captures; definition references across modules; a visitor record of functions over an arithmetic AST agreeing with direct evaluation; a generic induction theorem applied at `Nat`; executable definitions passing only non-escaping closures. |
 | [recursion](examples/recursion/) | Language-1.2 recursion (SPEC.md §17.12): mutual structural groups over a nested rose tree, the mutual `Expr`/`Stmt` syntax, and the naturals, each lowered with `termination_by structural`; three well-founded normalizations (`countdown`, `reduce`, a bounded `search`) whose per-call decrease obligations are proved by `linear_arithmetic` and bound as explicit evidence; closed values computed by kernel reduction under exact axiom policies. |
 | [collections](examples/collections/) | Language-1.2 ordered collections (SPEC.md §17.12): a String-keyed compiler symbol table built by an executable fold, a call graph whose reachability and least-first topological order the kernel computes, a cyclic graph with no order, a reasoning-state fixed point (the ancestor closure of a parent relation) reached by bounded iteration, and reordered literals that are equal by construction. |
+| [production](examples/production/) | Language-1.2 production eligibility (SPEC.md §17.13): six declared roots across two modules beside formal-only theorems and a proposition-valued definition; an effect-free fixed-width root eligible on `rust-core` and `rust-std`, overflow-admitting roots over a non-recursive inductive and a non-escaping closure, a well-founded root whose termination evidence is erased, and allocation-admitting list roots eligible on `rust-std` only, including a generic dependency instantiated at `Nat`; each root's closure, effects, and dispositions are published as its eligibility report. |
 | [uor-atlas](examples/uor-atlas/) | The complete native Atlas declaration and proof graph, including the census/group chain, `S37`, `S38`, and the authoritative integer-uniqueness statement `S43`; no handwritten Atlas module is a generated dependency. |
 
 ## Building and running the gate
@@ -131,7 +132,7 @@ just vv        # the complete normative acceptance gate (SPEC.md §9.2)
 just release   # vv, then the §30 release criterion; refused until 1.0.0
 ```
 
-All 243 registered conformance IDs are implemented and pass; `just vv` runs clean from a checkout with the pinned toolchain installed.
+All 250 registered conformance IDs are implemented and pass; `just vv` runs clean from a checkout with the pinned toolchain installed.
 
 `just vv` is the Linux x86-64 gate. On the other four supported hosts (§8.3) the crate builds and every test runs. A case whose assertions need something the host does not have runs its platform-independent assertions and prints which ones it skipped: the pinned toolchain, a `#!/bin/sh` program for the external-provider cases, a filesystem that distinguishes two names differing only in case, or one that accepts a name that is not valid UTF-8. Each is detected at run time rather than assumed from the target triple, and on Linux x86-64 the toolchain gate is mandatory, so nothing there passes vacuously.
 
@@ -155,6 +156,7 @@ Every row is validated by `just vv`; the IDs link the claim to its register row,
 | Fifteen-stage verification with leanchecker replay and exact axiom audit | `VR-01`..`VR-19` | `build` |
 | The exact CLI contract and the stable seven-method Rust `Engine` API | `CL-01`..`CL-21` | `build` |
 | Filesystem confinement, no shell, no hidden network, closed failure model | `SE-01`..`SE-12` | `build` |
+| Language-1.2 production eligibility: closed targets, effects, and construct dispositions; runtime closures; target-dependent, fail-closed root analysis; deterministic eligibility reports; an exhaustiveness audit | `PD-01`..`PD-07` | `build` |
 | The literal `nat-add-zero` example, the Lean-verified feature examples, and the complete negative fixture suite | `EX-01`..`EX-08` | `build` |
 
 Range rows abbreviate consecutive registered IDs; every individual ID in each range is registered in [`model/ids.toml`](model/ids.toml) at the stated level with its own scenario and test.

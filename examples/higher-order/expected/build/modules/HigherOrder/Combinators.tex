@@ -7,7 +7,7 @@
 \noindent Kind: \texttt{definition}.\par
 \noindent Type parameters: \texttt{(Input, Output)}.\par
 \noindent Parameters: \texttt{(transform : ((Input) -> (Output))) (values : List (Input))}.\par
-\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Execution: executable, non-escaping closures only.\par
 \noindent Type: \texttt{List (Output)}.\par
 \noindent Definition: \texttt{(match values with | List.nil => ([] : List (Output)) | List.cons head tail => ((transform (head)) :: mapList (Input) (Output) (transform) (tail)))}.\par
 \noindent Axiom policy: \texttt{none}.\par
@@ -15,7 +15,7 @@
 \noindent Kind: \texttt{definition}.\par
 \noindent Type parameters: \texttt{(Input, Output)}.\par
 \noindent Parameters: \texttt{(step : ((Output) -> (Input) -> (Output))) (initial : Output) (values : List (Input))}.\par
-\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Execution: executable, non-escaping closures only.\par
 \noindent Type: \texttt{Output}.\par
 \noindent Definition: \texttt{(match values with | List.nil => initial | List.cons head tail => foldList (Input) (Output) (step) ((step (initial) (head))) (tail))}.\par
 \noindent Axiom policy: \texttt{none}.\par
@@ -30,7 +30,7 @@
 \subsection*{\texttt{increment}}
 \noindent Kind: \texttt{definition}.\par
 \noindent Parameters: \texttt{(value : Nat)}.\par
-\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Execution: executable, non-escaping closures only.\par
 \noindent Type: \texttt{Nat}.\par
 \noindent Definition: \texttt{(value + 1)}.\par
 \noindent Axiom policy: \texttt{none}.\par
@@ -53,7 +53,7 @@
 \subsection*{\texttt{evaluate}}
 \noindent Kind: \texttt{definition}.\par
 \noindent Parameters: \texttt{(expression : Arith)}.\par
-\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Execution: executable, non-escaping closures only.\par
 \noindent Type: \texttt{Nat}.\par
 \noindent Definition: \texttt{(match expression with | Arith.literal value => value | Arith.plus left right => (evaluate (left) + evaluate (right)) | Arith.twice inner => (let half : Nat := evaluate (inner); (half + half)))}.\par
 \noindent Axiom policy: \texttt{none}.\par

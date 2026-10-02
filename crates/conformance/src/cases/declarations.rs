@@ -1023,7 +1023,7 @@ pub(crate) fn run(id: &str) {
             // The document states every parameter with its type and every
             // closure with exactly what it binds and captures.
             assert!(
-                tex.contains("\\subsection*{\\texttt{addAll}}\n\\noindent Kind: \\texttt{definition}.\\par\n\\noindent Parameters: \\texttt{(offset : Nat) (values : List (Nat))}.\\par\n\\noindent Closure 1: binds \\texttt{(value)}, captures \\texttt{(offset)}.\\par\n\\noindent Execution: production-eligible, non-escaping closures only.\\par\n"),
+                tex.contains("\\subsection*{\\texttt{addAll}}\n\\noindent Kind: \\texttt{definition}.\\par\n\\noindent Parameters: \\texttt{(offset : Nat) (values : List (Nat))}.\\par\n\\noindent Closure 1: binds \\texttt{(value)}, captures \\texttt{(offset)}.\\par\n\\noindent Execution: executable, non-escaping closures only.\\par\n"),
                 "{tex}"
             );
             let combinators_tex = support::tex_text(&rendered, "Combinators");

@@ -171,7 +171,7 @@ pub(crate) fn run(id: &str) {
         // exactly the one prescribed diagnostic code.
         "EX-07" => {
             let root = support::repo_root();
-            let prescribed: [(&str, &str); 92] = [
+            let prescribed: [(&str, &str); 105] = [
                 ("unknown-word", "LLL1004"),
                 ("unknown-symbol", "LLL1004"),
                 ("unknown-control", "LLL1004"),
@@ -269,6 +269,20 @@ pub(crate) fn run(id: &str) {
                 ("collection-unbounded-iteration", "LLT4001"),
                 ("collection-literal-limit", "LLS8002"),
                 ("collection-under-1.1", "LLT4001"),
+                // §17.13: a production root fails closed before any backend.
+                ("production-hidden-dependency", "LLT4005"),
+                ("production-unbounded-type", "LLT4005"),
+                ("production-runtime-incompatible-type", "LLT4005"),
+                ("production-effect-mismatch", "LLT4005"),
+                ("production-higher-order-escape", "LLT4005"),
+                ("production-formal-only-dependency", "LLT4005"),
+                ("production-literal-width", "LLT4005"),
+                ("production-root-not-executable", "LLT4005"),
+                ("production-polymorphic-root", "LLT4005"),
+                ("production-phantom-type-parameter", "LLT4005"),
+                ("production-universe-boundary", "LLT4005"),
+                ("production-named-type-boundary", "LLT4005"),
+                ("production-unknown-target", "LLT4001"),
             ];
             let negative_root = root.join("tests/negative");
             let mut classes: Vec<String> = std::fs::read_dir(negative_root.as_std_path())

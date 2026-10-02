@@ -320,6 +320,19 @@ pub fn render_build(
         files.push((map_path, map_bytes));
         files.push((coverage_path, coverage_bytes));
         files.push((closure_path, closure_json));
+        // §17.13: the eligibility of every production root is a build
+        // artifact, so the closure, effects, and dispositions that admitted
+        // a root are content-addressed evidence beside the generated code.
+        if let Some(report) = &checked_module.production {
+            let production_path = format!("production/{module_path}.eligibility.json");
+            let production_bytes = report.to_file_bytes();
+            outputs.push(file_row(
+                "production-eligibility",
+                &production_path,
+                &production_bytes,
+            ));
+            files.push((production_path, production_bytes));
+        }
 
         manifest_modules.push(ModuleRow {
             module: name.clone(),

@@ -644,7 +644,20 @@ pub struct SemanticTermination {
     pub evidence: Vec<MemberRef>,
 }
 
+/// Language-1.2 production-root declaration (§17.13): the registered targets
+/// the definition must be eligible for, both sorted and unique, and the
+/// registered effects its realization may have.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SemanticProduction {
+    pub targets: Vec<String>,
+    pub effects: Vec<String>,
+}
+
 /// A closed declaration.
+// Declarations are parsed once and held in a module's ordered list, never
+// moved in bulk, so the size of the definition variant costs nothing.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[serde(deny_unknown_fields)]
@@ -703,6 +716,10 @@ pub enum SemanticDeclaration {
         /// evidence theorem per recursive call site.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         termination: Option<SemanticTermination>,
+        /// Language 1.2: the definition is a production root for the listed
+        /// targets, admitting exactly the listed effects (§17.13).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        production: Option<SemanticProduction>,
     },
     Theorem {
         name: String,
@@ -1134,6 +1151,7 @@ impl SemanticDeclaration {
             executable,
             mutual,
             termination,
+            production,
         } = self
         else {
             return None;
@@ -1178,6 +1196,7 @@ impl SemanticDeclaration {
             axioms: axioms.clone(),
             executable: *executable,
             mutual: mutual.clone(),
+            production: production.clone(),
         };
         let text = serde_json::to_string(&normalized).expect("definition serializes");
         let canonical = crate::artifact::canonical_json::Json::parse(text.as_bytes())
@@ -3891,6 +3910,7 @@ fn check_definition(
         executable,
         mutual,
         termination,
+        production,
     } = declaration
     else {
         return Ok(());
@@ -3910,6 +3930,12 @@ fn check_definition(
     }
     if mutual.is_some() {
         require_language_1_2(env, "mutual definition group")?;
+    }
+    if let Some(production) = production {
+        // The declaration's shape is checked here; whether the root is
+        // eligible is decided over its linked closure (§17.13, LLT4005).
+        require_language_1_2(env, "production root")?;
+        crate::production::check_declaration(name, &production.targets, &production.effects)?;
     }
     if termination.is_some() {
         require_language_1_2(env, "well-founded termination evidence")?;

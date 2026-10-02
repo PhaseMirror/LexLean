@@ -220,6 +220,18 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `GL-17` | `build` | Language 1.2 resolves the exact 1.2 builtin package closure and enforces 1.2 lexicon semantics. |
 | `GL-18` | `build` | Cross-version package, lexicon, and lock combinations fail closed before backend execution. |
 
+## production
+
+| ID | Level | Statement |
+| --- | --- | --- |
+| `PD-01` | `build` | The closed production registry fixes the language-1.2 targets, effects, and the disposition of every semantic construct kind, and every construct the eligibility analysis can classify has exactly one registry row. |
+| `PD-02` | `build` | Formal-only theorems, propositions, and non-executable definitions coexist with eligible executable production roots, and a module that declares no production root is never analysed for production. |
+| `PD-03` | `build` | A production root's runtime closure contains exactly its transitive computational dependencies across modules at their type instantiations, and its termination evidence is recorded as erased and never realized. |
+| `PD-04` | `build` | Production eligibility depends on the declared target: a construct that requires heap allocation is an admitted effect on a target with allocation and makes the root ineligible on a target without it. |
+| `PD-05` | `build` | A production root fails with LLT4005 before any backend runs when it declares type parameters or is not declared executable, when its boundary holds a universe, proposition, type parameter, or function, directly or in a named type's fields, or when its closure reaches a formal-only construct, a literal outside the target width, unavailable allocation, or an effect the root does not admit. |
+| `PD-06` | `build` | Every production root's eligibility report is a deterministic, schema-valid build artifact recording its runtime closure, realized types, erased dependencies, constructs, and per-target effects with their sources. |
+| `PD-07` | `build` | The eligibility analysis classifies every semantic construct by an explicit exhaustive match, and the exhaustiveness audit rejects a planted wildcard arm, rest pattern, implicit-default binding form, or unnamed IR variant. |
+
 ## proofs
 
 | ID | Level | Statement |

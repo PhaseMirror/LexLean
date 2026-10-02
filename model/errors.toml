@@ -288,6 +288,13 @@ title = "Document-entry signature mismatch"
 statement = "Document-entry signature mismatch."
 
 [[error]]
+code = "LLT4005"
+class = "language"
+exit = 1
+title = "Production root not eligible for a declared target"
+statement = "Production root not eligible for a declared target."
+
+[[error]]
 code = "LLV7001"
 class = "environment"
 exit = 3
