@@ -302,6 +302,8 @@ The completed repository MUST have this layout. Additional files are allowed onl
 ├── compiler/
 │   ├── expected/
 │   ├── fixtures/
+│   ├── gnaf/
+│   ├── gnaf.manifest.json
 │   ├── lake-manifest.json
 │   ├── lakefile.toml
 │   ├── lean-toolchain
@@ -350,6 +352,7 @@ The completed repository MUST have this layout. Additional files are allowed onl
 │   │       │   └── resolve.rs
 │   │       ├── error.rs
 │   │       ├── fmt.rs
+│   │       ├── gnaf.rs
 │   │       ├── grammar/
 │   │       │   ├── chart.rs
 │   │       │   ├── math.rs
@@ -425,6 +428,7 @@ The completed repository MUST have this layout. Additional files are allowed onl
 │       ├── nat-1.1/
 │       └── nat-1.2/
 ├── model/
+│   ├── authorities/
 │   ├── authorities.toml
 │   ├── errors.toml
 │   ├── ids.toml
@@ -439,6 +443,8 @@ The completed repository MUST have this layout. Additional files are allowed onl
 │   ├── coverage.schema.json
 │   ├── diagnostic.schema.json
 │   ├── entry.schema.json
+│   ├── gnaf-fixture.schema.json
+│   ├── gnaf-request.schema.json
 │   ├── lexicon.schema.json
 │   ├── lexicon-v2.schema.json
 │   ├── lock.schema.json
@@ -3170,6 +3176,197 @@ discrepancies must be detected. This is `build` evidence for the renderings,
 not a proof of them; preservation of meaning from LexLean through the
 calculus to Rust is a separate obligation.
 
+### 17.15 GNAF requests over the calculus
+
+A claim that a realization is optimal is meaningful only against a candidate
+universe, a machine, and an order fixed before any optimizer runs. LexLean
+fixes them by the request components of UOR-GNAF (`uor-gnaf/1-draft.2`,
+authority `UOR-GNAF-1-DRAFT-2`, §27.4): the module `Gnaf` of `compiler/` is
+the normative model, a LexLean definition Lean elaborates, replays, and
+axiom-audits. It defines the request, its fail-closed validation, the
+universe and the theorem that it is complete, and the answer the request's
+universe has under the calculus denotation of §17.14. It imports only
+`TargetSyntax` and `TargetSemantics`, and nothing in it calls, cites, or is
+computed from an optimizer.
+
+**Request.** A request (`lexlean/gnaf-request/1`,
+`schemas/gnaf-request.schema.json`) names:
+
+1. the problem: a reference program and a non-empty domain of arguments
+   (UOR-GNAF §8.1), so that an empty domain never makes a claim vacuously
+   true;
+2. the machine contract X and accounting model M (§8.2, §9.1): fuel; the
+   machine's hard capacity, the largest fuel, domain, universe, and declared
+   charge it admits; the operand-size treatment, `weighted` (every primitive
+   charged its operands' and result's weight, as §17.14 charges it) or
+   `unit`; and for each admitted kind of action its charge. The kinds are
+   observation, preprocessing, advice, retained state, dispatch, fallback,
+   communication, randomness, scheduling, and execution, and a charge is
+   `steps`, a constant per invocation, `free`, or `undeclared`. The
+   comparison boundary (§10.8) is `complete`, `prepared_state`, or
+   `prepared_plan`, and the prepared artifacts bound in the common initial
+   state of every competitor each name the preparation action that produced
+   it and the SHA-256 of its bytes;
+3. the universe U_sys (§8.3): a carrier, its completeness evidence, and its
+   `SystemUniverseId`. The only admitted carrier is a grammar of complete
+   systems: an argument type, a result type, plans shared by every system,
+   each with the preparation actions it needs before an invocation, and
+   strictly increasing dispatch thresholds. Its members are exactly the fixed
+   systems, one per plan, then for every threshold every dispatch from a
+   small plan to a large plan, both ranging over every plan, in that order.
+   A system is the complete selector-plus-executor (§8.5): it realizes as one
+   program whose entry function (index 0) is its selector and whose plans
+   sit at indices 1 onward. The only admitted completeness evidence is
+   `grammar_equality`, which cites the kernel theorem `Gnaf.expandComplete`.
+   The `SystemUniverseId` is the framed SHA-256 `lexlean-gnaf-universe-v1`
+   of the problem, the machine, and the carrier in canonical JSON, computed
+   from the request before any evaluation; a stated identity is only an
+   equality check against it;
+4. the objective and order (§9.2, §9.3): `scalar` is total cost over the
+   domain, totally ordered, lower is better; `vector` is the pair of total
+   cost and size, ordered componentwise with no weighting;
+5. the claim class (§12.4), every class of the authority, with
+   `profile_defined_comparison` carrying its profile, class, and result shape
+   and `instance_optimal` its two constants, and the scope the claim ranges
+   over: the grammar universe, all calculus programs, or all Rust programs.
+
+**Validation.** `Gnaf.validate` returns the first violated rule, in this
+order, and `Gnaf.answer` of a refused request is `rejected` with it:
+
+1. an empty domain;
+2. a carrier that is not a grammar: one system's internal plans taken as
+   the universe (`internal_plan_universe`), an optimizer's output, the
+   candidates a search discovered, or a cache;
+3. completeness evidence that is missing, cites the universe's own
+   identity, or cites an optimizer;
+4. a request beyond the capacity its machine binds: more fuel, domain
+   arguments, or systems than the capacity admits, or a declared charge
+   above it (`beyond_capacity`);
+5. the `unit` operand-size treatment, under which a primitive whose work
+   grows with its operands is an unbounded action at unit cost
+   (`unit_cost_operands`, §8.2);
+6. an action kind accounted twice (`duplicate_action`);
+7. an action some system performs (observation, dispatch, fallback,
+   execution) that is unaccounted, or charged other than by `steps`: the
+   calculus counts that work as steps, so a zero, constant, free, or
+   undeclared charge hides or replaces it (`hidden_cost`);
+8. an admitted preparation action (preprocessing, advice, retained state)
+   charged by `steps` (the calculus has no preparation phase whose steps it
+   counts), by zero, or `undeclared` (`hidden_cost`), or `free` other than
+   on a prepared boundary whose common initial state binds an artifact it
+   prepared (`unbound_preparation`, §10.8); and an admitted communication,
+   randomness, or scheduling action, which the sequential deterministic
+   calculus machine does not have, so no system of the grammar realizes it
+   (`unrealizable_action`);
+9. a prepared artifact of an action that is not admitted `free`, which
+   would exclude work that is charged (`stray_prepared_artifact`);
+10. a plan needing a preparation action the machine does not account
+    (`unaccounted_action`);
+11. `restricted_universe_optimal`, which §12.4 makes a legacy alias that a
+    conforming answer never emits as a base class (`claim_alias`); a scalar
+    claim (`global_optimal`, `argmin_complete`) over the vector order, a
+    vector claim (`pareto_optimal`, `frontier_complete`) over the scalar
+    order, or any other claim class, which this model does not decide
+    (`unsupported_claim`);
+12. a scope beyond the grammar universe. No coverage bridge from the grammar
+    to all calculus programs or to all Rust programs is proved, so such a
+    claim is refused (`uncovered_scope`) rather than inferred from the
+    grammar's answer.
+
+**Completeness.** `Gnaf.wellFormed` states the grammar's membership
+semantics without the expansion: a fixed system runs a plan below the plan
+count, and a dispatch runs two such plans at a declared threshold.
+`Gnaf.expandComplete` proves, for every grammar and every selector, that the
+selector is a member of `Gnaf.expand` exactly when it is well formed; Lean's
+kernel checks the proof by induction over the expansion's construction. The
+expansion and the membership semantics depend on nothing but the grammar.
+
+**Answer.** For a valid request, every system is evaluated on every domain
+argument with the request's fuel. The first argument on which the system
+does not return the reference's value decides: overflow, a stuck
+evaluation, or a different value makes the system inadmissible, and an
+exhausted evaluation leaves it unresolved. A system that agrees everywhere
+is admitted with its cost, its total steps plus, on every invocation, the
+declared constant of each preparation each plan it can run needs, and its
+size, one per expression node and match arm of every function reachable
+from its entry. A plan's preparation is therefore charged exactly to the
+systems that can run it, and code a system cannot run is not its size. An
+unresolved system is never removed and never given an infinite cost
+(§8.4): any unresolved system makes the answer `incomplete`. Otherwise the
+answer is `infeasible` when nothing is admitted; for `scalar`, `argmin`, every
+admitted system attaining the minimum cost and that minimum; for `vector`,
+`frontier`, every admitted system no other strictly dominates. Both are
+computed by the model's one generic order, `Gnaf.argmin` and
+`Gnaf.frontier`, over rows of an identity and a cost; equal costs never
+dominate each other, so every equal-cost system is kept (GNAF-REJ-21).
+Because a dispatching system pays for its observation and selection, the
+best internal plan and the per-input envelope of the plans are not complete
+systems' costs, and the model never answers with them. `Gnaf.certifies`
+accepts a claimed argmin or frontier exactly when it is the request's own,
+as an identity set, and `Gnaf.minimaAttained` says whether some admitted
+system attains the componentwise minima of the admitted costs.
+
+**Host side.** `lexlean::gnaf` transcribes the model step for step: `load`
+reads a request and checks what the model presupposes, reporting `LLB6006`
+for a malformed request; a reference program, plan, or realized system that
+is not valid under §17.14; a domain argument outside the reference entry's
+parameter type or on which the reference returns no value under the
+request's fuel; grammar argument and result types other than the entry's;
+repeated thresholds; a plan preparing by an action that is not preparation,
+or naming one twice; and a stated universe identity other than the one the
+request's components determine. `answer` evaluates it; and request, status,
+and answer terms are emitted so the kernel confirms each committed request.
+The host evaluator's capacity is part of the machine it offers: a machine
+asking for, or a request using, more than fuel 4096, 1024 domain
+arguments, 65,536 systems, or charges of 2^32 is `LLS8002`. Within that
+capacity every declared charge fits the host's integers, so a step total
+the host cannot represent is `LLS8002` as well, never a cost the model would
+not report. Evaluation runs on a stack sized for the request's fuel, and a
+panic of the evaluation thread is `LLI9001`.
+
+**Fixtures.** The requests under `compiler/gnaf/` (`lexlean/gnaf-fixture/1`,
+`schemas/gnaf-fixture.schema.json`) each name a request and its expected
+answer. They include a Pareto frontier of incomparable systems; ties from a
+duplicated plan, in an argmin and in a frontier; GNAF-VEC-02 posed over the
+calculus, four systems of which exactly three form the frontier; a
+dispatching system that is the argmin although the best single plan is not
+and although the per-input envelope of the plans is lower than any system
+attains; an inadmissible plan excluded; an unknown cost making the answer
+incomplete; a plan's preparation moving the argmin; prepared artifacts
+bound in the common initial state; and a refused request for every rule
+above. The generated module `GnafFixtures` (compared with its generator by
+`cargo xtask check-calculus`) states for each request that `Gnaf.universeOf`
+reduces to the host's expansion and `Gnaf.answer` to the expected answer,
+for each answered request that `Gnaf.statusesOf` reduces to the host's
+statuses, and for the posed GNAF-VEC-02 that no frontier with a member
+omitted is certified while the frontier in another order is, and that no
+system attains the componentwise minima; each is decided by Lean's kernel.
+A wrong answer, an answer computed from a universe with a system omitted, a
+tie with a member dropped, and a universe with a system omitted are
+rejected by Lean. The GNAF schemas are generated with the fixtures, and
+their calculus definitions are `schemas/target-program.schema.json`'s own.
+
+**Authority vectors, dependency manifest, and honesty.** The authority's
+normative fixtures GNAF-VEC-01 (the compositions of its operations, with
+their path identities, and the S0 certificate invalid for S1), GNAF-VEC-02,
+GNAF-VEC-04, GNAF-VEC-17 (the pointwise envelope, the uniform worst case,
+and the fair randomized expectation), GNAF-REJ-14, and GNAF-REJ-29 (§16) are
+theorems of `Gnaf` over the same `argmin`, `frontier`, and certification the
+answers are computed by, decided by the kernel. `compiler/gnaf.manifest.json`
+is the dependency manifest §20 requires: the draft's revision and SHA-256,
+every kind, operation, machine, cost, proof, interchange, and address profile
+with its role, every restriction of the admitted universe, and the claim
+classes the model actually answers. The authority's requirements are
+`some-true` here: reproduced from the cited document, a copy of which is
+vendored at `model/authorities/UOR-GNAF-v1-draft.2.md` and whose SHA-256
+`cargo xtask validate-model` recomputes. The model and its fixtures are
+`build` evidence that LexLean realizes them, not a proof of the authority.
+UOR-NAF is informative to UOR-GNAF (§20) and is neither cited as evidence
+nor relied upon. A request's answer is a statement about the grammar
+universe under the calculus's step accounting; it is not a claim about
+machine time, about calculus programs outside the grammar, or about Rust
+programs.
+
 ### 17.16 Rust backend
 
 The Rust backend renders target programs (§17.14) to Rust without making Rust
@@ -3847,7 +4044,8 @@ tree. The language-1.1 ID excludes the files introduced solely for 1.2:
 `language/production-1.2.toml`, `language/lcnf-1.2/`, `language/core-1.2/`,
 `language/std/{bool,int,nat}-1.2/`, `schemas/attestation-v2.schema.json`,
 `schemas/build-manifest-v2.schema.json`,
-`schemas/compiler-input.schema.json`,
+`schemas/compiler-input.schema.json`, `schemas/gnaf-fixture.schema.json`,
+`schemas/gnaf-request.schema.json`,
 `schemas/lexicon-v2.schema.json`, `schemas/lock-1.1.schema.json`,
 `schemas/lock-v2.schema.json`, `schemas/production-eligibility.schema.json`,
 `schemas/project-v2.schema.json`, `schemas/rust-package.schema.json`,
@@ -4789,6 +4987,7 @@ The initial registry MUST include at least these exact codes and meanings:
 | `LLB6003` | Artifact hash, schema, or atomic publication failure. |
 | `LLB6004` | PDF-provider protocol failure. |
 | `LLB6005` | Target realization program or Rust package invalid or unrenderable (§17.14, §17.16). |
+| `LLB6006` | GNAF request malformed (§17.15). |
 | `LLV7001` | Lean/Lake/leanchecker version or executable mismatch. |
 | `LLV7002` | Generated Lean elaboration or compilation failure. |
 | `LLV7003` | `leanchecker` replay failure. |
@@ -4799,7 +4998,7 @@ The initial registry MUST include at least these exact codes and meanings:
 | `LLV7011` | Named-root extraction rejected (§22.10). |
 | `LLV7012` | Lean compiler-front-end authority drift (§22.10). |
 | `LLS8001` | Path escape, symlink, special file, or filesystem identity conflict. |
-| `LLS8002` | Explicit project resource limit exceeded. |
+| `LLS8002` | Explicit resource limit exceeded: a project limit or an evaluator's declared capacity (§17.15). |
 | `LLS8003` | Network operation attempted outside permitted lock acquisition. |
 | `LLS8004` | Child environment, executable, hash, or shell-policy violation. |
 | `LLI9001` | Internal invariant failure. |
@@ -4859,6 +5058,15 @@ The initial repository has no `open` implementation claim. An open research or p
 | `PRINT-AXIOMS-4-32-1` | Lean 4.32.1 `#print axioms` output behavior |
 
 Corresponding ledger claims are `some-true`. LexLean tests realize compatibility with those authorities but do not re-register Lean's guarantees as LexLean proofs.
+
+The production profile adds `UOR-GNAF-1-DRAFT-2`, the UOR-GNAF normative draft
+`uor-gnaf/1-draft.2` that §17.15 models, identified by its source revision and
+the SHA-256 of the document; a copy is vendored at
+`model/authorities/UOR-GNAF-v1-draft.2.md`, and an authority row that vendors
+its source names the copy in `vendored` with `checksum = "sha256:<hex>"`,
+which `cargo xtask validate-model` recomputes from the copy's bytes. Its ledger
+claim is `some-true`, and the GN conformance IDs are `build` evidence that
+LexLean realizes it.
 
 ### 27.5 Generated documents
 
@@ -5124,7 +5332,7 @@ Tests MUST establish that LexLean rejects, at minimum:
 
 ### 28.6 Example verification
 
-Every directory under `examples/` is discovered rather than listed. Each example MUST include its lock and expected platform-independent build outputs. `cargo xtask verify-examples` runs `fmt --check`, `lock --check`, `check`, `build`, and `verify`. The `compiler/` project (§17.14) passes the same gates as an example.
+Every directory under `examples/` is discovered rather than listed. Each example MUST include its lock and expected platform-independent build outputs. `cargo xtask verify-examples` runs `fmt --check`, `lock --check`, `check`, `build`, and `verify`. The `compiler/` project (§17.14, §17.15) passes the same gates as an example.
 
 ---
 
@@ -5651,8 +5859,16 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `RB-05` | `rust-backend` | A function that can overflow returns R<T> and every call to it propagates, any other returns its value, an export whose declared errors differ from its function's fails with LLB6005, and a crate that drops, invents, or misreturns a failure is refused. | §17.16 |
 | `RB-06` | `rust-backend` | Every committed package builds offline under its declared gates, rustc warnings and Clippy's default lints denied with ten documented exceptions, the export of each one with an observable outcome, called from a separate crate, prints exactly the denotation's observable outcome, and so does every primitive instance on its boundary and seeded inputs; a planted lint and a planted semantic mutation are detected. | §17.16 |
 | `RB-07` | `rust-backend` | Packages are deterministic and content-addressed: renderings by two separate processes under different roots and environments are byte-identical to each other and to the committed package, every manifest and provenance validates against its schema, the provenance binds the SHA-256 of each file, the program identity, the runtime LexLean's semantics records, the sources, and the language-1.2 compiler-semantics ID, and every committed package's sources are the semantic ID of the verified build stating its program. | §17.16, §21.7 |
+| `GN-01` | `gnaf` | Every committed GNAF request and fixture is canonical, validates against the GNAF schemas whose calculus definitions are the target program schema's, and states its components' universe identity; a malformed request, an invalid reference, plan, or realized program, a reference without a value on a domain argument, or a wrong universe identity fails closed with LLB6006, and a machine or request beyond the host's capacity fails closed with LLS8002. | §17.15, §26.3 |
+| `GN-02` | `gnaf` | The GNAF model is a kernel-checked LexLean definition, Lean's kernel reduces the universe, the system statuses, and the answer of every committed request to what the host transcription computes, and a wrong answer, an answer computed from a universe with a system omitted, a tie with a member dropped, and a universe with a system omitted are rejected by Lean. | §17.15 |
+| `GN-03` | `gnaf` | Candidate membership is the grammar's expansion, which a kernel-checked theorem proves equal to the grammar's well-formed selectors for every grammar, independent of evaluation and fixed by a universe identity before any optimizer, and optimizer-defined, discovered, cached, and internal-plan universes and missing, self-referential, or optimizer-citing completeness evidence are rejected. | §17.15 |
+| `GN-04` | `gnaf` | Every action a system performs is charged by steps, every admitted preparation action by a positive constant for each plan that needs it or by a prepared artifact bound in the common initial state, operands are charged by weight, and a request fits the capacity its machine binds; hidden zero-cost, free, undeclared, duplicated, unaccounted, unbound, stray, unit-cost, over-capacity, and unrealizable actions are rejected, and a plan's preparation enters exactly the cost of the systems that can run it. | §17.15 |
+| `GN-05` | `gnaf` | Scalar claims require the total step order and Pareto claims the componentwise steps-and-size order, a scalar claim over the partial order, a vector claim over the total order, the restricted-universe alias, an undecided claim class, and a scope beyond the grammar universe are rejected, equal-cost systems are all kept, a frontier answer has incomparable members, and GNAF-VEC-02 posed over the calculus has a frontier of exactly three of four systems for which no omission is certified and whose componentwise minima no system attains. | §17.15 |
+| `GN-06` | `gnaf` | Complete-system cost includes selection and counts only the code a system can run, the system argmin differs from the best internal plan and from the per-input plan envelope that no system attains, an inadmissible system is excluded, and an unresolved system makes the answer incomplete rather than being removed. | §17.15 |
+| `GN-07` | `gnaf` | The authority's GNAF-VEC-01, GNAF-VEC-02, GNAF-VEC-04, GNAF-VEC-17, GNAF-REJ-14, and GNAF-REJ-29 vectors are kernel-checked theorems over the argmin and frontier the answers are computed by, stated with the authority's numbers, and the authority is vendored with a recomputed SHA-256, cited by revision, and claimed some-true. | §17.15, §27.4 |
+| `GN-08` | `gnaf` | The GNAF dependency manifest names the authority's revision and SHA-256, every kind, operation, machine, cost, proof, interchange, and address profile with its role, every restriction of the admitted universe, and exactly the claim classes the model answers, and equals its generator. | §17.15, §27.4 |
 
-**Total required capability IDs:** 270.
+**Total required capability IDs:** 278.
 
 No row may be downgraded to `some-true` or `open`. Upstream Lean facts are ledger/authority rows, not substitutions for these build behaviors.
 
