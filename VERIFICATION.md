@@ -232,7 +232,7 @@ Expected: the committed language-1.2 example no longer checks, and the
 negative fixture of a `let` under language 1.1 is accepted.
 
 ```text
-thread 'conformance_sm_23' panicked at crates/conformance/src/support.rs:340:14:
+thread 'conformance_sm_23' panicked at crates/conformance/src/support.rs:350:14:
 check succeeds: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLT4001"), message: "phase link: `let` is a language-1.2 construct; language 1.1 rejects it", ... }] }
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 227 filtered out
 gate failed: tests/negative/language-1.2-construct-under-1.1: step 1 `check ` exited 0, case.toml expects 1
@@ -291,7 +291,7 @@ structural eliminator. Command: `cargo test -p repo-conformance --test
 conformance -- conformance_df_13`.
 
 ```text
-thread 'conformance_df_13' panicked at crates/conformance/src/support.rs:350:14:
+thread 'conformance_df_13' panicked at crates/conformance/src/support.rs:360:14:
 check fails
 ```
 
@@ -384,7 +384,7 @@ Command: `cargo test -p repo-conformance --test conformance --
 conformance_df_17`. Expected: the forged-evidence mutation links.
 
 ```text
-thread 'conformance_df_17' panicked at crates/conformance/src/support.rs:350:14:
+thread 'conformance_df_17' panicked at crates/conformance/src/support.rs:360:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 238 filtered out
 ```
@@ -401,7 +401,7 @@ so a member could call its group on its own argument. Command: `cargo test
 `isOdd (number)` mutation links.
 
 ```text
-thread 'conformance_df_16' panicked at crates/conformance/src/support.rs:350:14:
+thread 'conformance_df_16' panicked at crates/conformance/src/support.rs:360:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 238 filtered out
 ```
@@ -436,7 +436,7 @@ conformance_sm_29`. Expected: reordered equivalent graph literals no longer
 link to one semantic identity.
 
 ```text
-thread 'conformance_sm_29' panicked at crates/conformance/src/cases/semantic_ir.rs:2017:13:
+thread 'conformance_sm_29' panicked at crates/conformance/src/cases/semantic_ir.rs:2032:13:
 assertion `left == right` failed: the semantics do not
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
 ```
@@ -470,7 +470,7 @@ build && lexlean verify` in `examples/collections`, where pinned Lean is the
 oracle.
 
 ```text
-thread 'conformance_sm_28' panicked at crates/conformance/src/cases/semantic_ir.rs:1938:17:
+thread 'conformance_sm_28' panicked at crates/conformance/src/cases/semantic_ir.rs:1953:17:
 missing "namespace LexLeanCollections" in:
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
 error[LLV7002]: Lean rejected `Collections.Measure` (error lean.unknownIdentifier): Unknown identifier `LexLeanCollections.mapSize`
