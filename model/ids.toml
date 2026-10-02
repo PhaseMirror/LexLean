@@ -648,13 +648,13 @@ statement = "Language 1.2 finite maps and sets over closed ordered key types, th
 id = "SM-29"
 level = "build"
 suite = "semantic-ir"
-statement = "Reordered equivalent map, set, and graph literals link to byte-identical semantic data and generated artifacts, while duplicate keys, non-literal literal keys, and key types without a canonical order are rejected."
+statement = "Reordered equivalent map, set, and graph literals link to byte-identical semantic data and generated Lean, LaTeX, and lexicon-closure artifacts, while duplicate keys, non-literal literal keys, and key types without a canonical order are rejected."
 
 [[id]]
 id = "SM-30"
 level = "build"
 suite = "semantic-ir"
-statement = "Language 1.2 graph literals reference only declared nodes, and successor, reachability, and topological-order queries are deterministic, bounded by the node count, and report a cycle as none."
+statement = "Language 1.2 graph literals reference only declared nodes, a graph's nodes are its keys and every successor, and successor, reachability, and topological-order queries are deterministic, bounded by the node count, and report a cycle as none."
 
 [[id]]
 id = "DF-01"
@@ -1494,7 +1494,7 @@ statement = "Production eligibility depends on the declared target: a construct 
 id = "PD-05"
 level = "build"
 suite = "production"
-statement = "A production root fails with LLT4005 before any backend runs when its boundary holds a universe, proposition, type parameter, or function, or its closure reaches a formal-only, erased, non-executable, or unresolved dependency, a literal outside the target width, unavailable allocation, or an effect the root does not admit."
+statement = "A production root fails with LLT4005 before any backend runs when it declares type parameters or is not declared executable, when its boundary holds a universe, proposition, type parameter, or function, directly or in a named type's fields, or when its closure reaches a formal-only construct, a literal outside the target width, unavailable allocation, or an effect the root does not admit."
 
 [[id]]
 id = "PD-06"
