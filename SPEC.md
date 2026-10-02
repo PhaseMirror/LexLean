@@ -2487,12 +2487,36 @@ either backend runs; they do not defer to what Lean would accept.
    `cases` applies to every inductive.
 8. **Lowering.** Each inductive lowers to one `public inductive` with
    positional `(_ : T)` fields; each mutual group lowers to one
-   `mutual ... end` block. The canonical LaTeX of a
-   `lexlean/semantic-module/2` module additionally lists every constructor
-   with its field types, the mutual group label, and every structure or class
-   field; language-1.1 documents keep their bytes.
+   `mutual ... end` block. A constructor's identity is its owner and name,
+   `Owner.ctor`, qualified by its module when imported; constructor names are
+   unique within their owner and lowered in declaration order. The canonical
+   LaTeX of a `lexlean/semantic-module/2` module additionally lists the type
+   parameters of every parameterized inductive, structure, or class, every
+   constructor with its field types, the mutual group label, and every
+   structure or class field; language-1.1 documents keep their bytes.
 9. **Accounting.** Every constructor field type is charged recursively to
-   `max_ir_nodes`.
+   `max_ir_nodes`, and a `lexlean/semantic-module/2` module is also charged
+   one node per type parameter, per constructor, and per mutual group label,
+   so no part of a data declaration is free; language-1.1 modules keep their
+   historical count.
+10. **Binder hygiene.** The backend refers to the module's own declarations,
+    to the built-in names it emits (`And`, `Bool`, `ByteArray`, `Except`,
+    `Iff`, `Int`, `Int8`..`Int64`, `LexLeanCollections`, `LexLeanRuntime`,
+    `List`, `Nat`, `Option`, `Ordering`, `Prod`, `Prop`, `Result`, `String`,
+    `Type`, `UInt8`..`UInt64`, `Unit`, `and_congr`, `congr`, `decide`, `id`,
+    `rfl`), and to every imported declaration through the project's module
+    prefix, all without qualification. In a `lexlean/semantic-module/2`
+    module no binder (a type parameter, a value parameter, or a pattern,
+    `let`, quantifier, lambda, or proof binder) is spelled like a declaration of the
+    module, one of those built-in names, or the first segment of the module
+    prefix, because Lean would resolve the reference to the binder after
+    linking has accepted the module. The language-1.1 contract is frozen
+    and does not carry this rule.
+11. **Source maps.** In a `lexlean/semantic-module/2` module every
+    declaration is its own mapping node in both artifacts, relating its
+    generated Lean and LaTeX to exactly its object in the source; the
+    preamble and closing map to the whole module. Language-1.1 maps keep
+    their module granularity and bytes.
 
 #### Higher-order code (language 1.2)
 
@@ -2504,17 +2528,24 @@ either backend runs; they do not defer to what Lean would accept.
    definition's parameters, result, or body, or in a theorem's statement or
    proof arguments, mentions only declared type parameters; this also holds
    for language-1.1 definitions, whose scope is empty. A language-1.2 type
-   parameter is not spelled like a backend type (`Bool`, `ByteArray`,
-   `Except`, `Int`, `Int8`..`Int64`, `List`, `Nat`, `Option`, `Ordering`,
-   `Prod`, `Prop`, `String`, `Type`, `UInt8`..`UInt64`, `Unit`), a document
-   type in scope, the declaration itself, or any value binder of the same
-   declaration, each of which it would capture in the generated binder. An
+   parameter obeys binder hygiene (rule 10 of the recursive-data rules: no
+   declaration of the module, built-in name, or module prefix root), and is
+   moreover not spelled like any value binder of the same declaration. An
+   imported document type is referred to through the module prefix, so a
+   type parameter of its spelling captures nothing. A type parameter that its declaration
+   mentions nowhere (no parameter, result, body, statement, or proof type)
+   lowers as `(_T : Type)`, so Lean's unused-variable linter stays silent. An
    explicit type argument instantiates a `(T : Type)` binder and so never
    mentions the universe `Type`.
 2. **No polymorphic recursion.** A recursive call passes exactly the
-   definition's own type parameters, in order. Every executable root
-   therefore has finitely many specializations, obtained by substituting its
-   closed type arguments; this is the monomorphization rule.
+   definition's own type parameters, in order (the `polymorphic-recursion`
+   negative fixture). Consequently a closed instantiation of a definition
+   reaches only finitely many instantiations: a recursive call repeats the
+   current one, and every other call is to an earlier definition at type
+   arguments built from the caller's. This is the monomorphization rule.
+   LexLean emits the generic definitions with explicit `(T : Type)` binders
+   and the explicit type arguments of every use; it does not emit
+   specialized copies, and no claim here depends on one.
 3. **Lambdas.** A `lambda` binds at least one typed parameter and lists its
    `captures`: strictly sorted, unique enclosing locals that are exactly the
    free locals of its body. Only the captures and the parameters are visible
@@ -2532,8 +2563,12 @@ either backend runs; they do not defer to what Lean would accept.
    records, for each definition, `alpha_id`: the SHA-256 of the canonical
    JSON of the definition after renaming its type parameters to `T0, T1, ...`
    and its value parameters and every term binder to `_0, _1, ...` in
-   binding order, each binder scoped to its own subterm, with every lambda's
-   renamed captures sorted again. Alpha-equivalent definitions share it; any
+   evaluation order (the parameters, then the body's subterms as they are
+   evaluated: an application's function before its arguments, a
+   conditional's condition, then branch, and else branch, operands left to
+   right), each binder scoped to its own subterm, with every lambda's
+   renamed captures sorted again; the order does not depend on how the
+   definition serializes. Alpha-equivalent definitions share it; any
    other change alters it.
 6. **Production eligibility.** Higher-order values are formal by default. A
    definition marked `"executable":true` is production-eligible only when
@@ -2565,9 +2600,14 @@ Termination evidence is semantic data, never tactic or backend text; no
 1. **Structural recursion** of a single definition follows the
    recursive-data rule 6 above.
 2. **Mutual groups.** Definitions carrying the same `mutual` label form one
-   group: contiguous, at least two members, identical type parameters, each
-   structurally recursive (`recursive_argument`, a top-level match on it, no
-   `termination`). Every member's decreasing type belongs to one *recursive
+   group: contiguous, at least two members, identical type parameters, and
+   either every member structurally recursive (`recursive_argument`, a
+   top-level match on it, no `termination`) or every member well-founded
+   (rule 3); a group mixing the two is rejected. The *recursion call graph*
+   of a group has an edge from each member to every member its body calls
+   or references; every member calls into the group and the graph is
+   strongly connected, so no member is outside the mutual recursion. For a
+   structural group: Every member's decreasing type belongs to one *recursive
    family*: the naturals; the lists of one element type; or one inductive
    group at one instantiation of its type parameters, together with `List`
    or `Option` of its members exactly when the group's constructors nest a
@@ -2585,9 +2625,10 @@ Termination evidence is semantic data, never tactic or backend text; no
    group is rejected. No member of the group being checked is called or
    referenced under a lambda, and none is referenced as a value.
 3. **Well-founded recursion.** A definition with `termination` has no
-   `recursive_argument` and no `mutual`. Its `measure` is a binder-free term
-   of type `Nat` over the parameters that does not mention the definition.
-   Its recursive calls pass the definition's own type parameters, do not
+   `recursive_argument`; it is standalone, a group of one, or a member of a
+   well-founded mutual group. Its `measure` is a binder-free term of type
+   `Nat` over its parameters that mentions no member of its group. Its
+   recursive calls (calls to any member of its group) pass the group's own type parameters, do not
    occur in another recursive call's argument or under a `lambda` or
    quantifier, and the definition is never referenced as a value. A call's
    arguments, and every enclosing `if` condition and `match` scrutinee,
@@ -2596,7 +2637,8 @@ Termination evidence is semantic data, never tactic or backend text; no
    `match` of the body is numbered in one fixed pre-order; each call site,
    in that order, has the *decrease obligation*
    `h1 -> ... -> measure[args] < measure` over its enclosing nodes, outermost
-   first, where an `if` contributes `c = b` for its condition `c` and branch
+   first, where the conclusion compares the *callee's* measure at the call's
+   arguments with the caller's own measure, and an `if` contributes `c = b` for its condition `c` and branch
    polarity `b`, and a `match` contributes `s = v` for its scrutinee `s` and
    the value `v` the branch's pattern denotes over its binders (a Boolean
    literal, a pair for `Prod.mk`, and otherwise the constructor applied to
@@ -2604,9 +2646,17 @@ Termination evidence is semantic data, never tactic or backend text; no
    prior theorem of the same module per call site, in order, whose type
    parameters equal the definition's, whose parameters are the definition's
    followed by every enclosing match binder with its type, outermost first,
-   and whose statement equals the obligation exactly. Linking rejects any other evidence; Lean
-   verification checks every evidence proof. A definition whose evidence is
-   not proved is therefore never verified.
+   and whose statement equals the obligation exactly. Linking rejects any
+   other evidence, so no recursive call enters the linked IR without its
+   exact, separately named decrease obligation: unguarded recursion cannot
+   enter it. Whether an obligation is *true* is a proof, and LexLean, as for
+   every proof, leaves it to Lean's kernel at verification (§22): a false
+   evidence theorem with the exact statement links, and verification refuses
+   both the theorem and the definition (Lean independently refuses a
+   nonterminating well-founded definition), so the project is never
+   verified (`recursion-false-evidence`). An `executable` definition is
+   production-eligible as linked IR, and no production claim holds for a
+   project that is not verified.
 4. **Well-founded lowering.** The definition lowers to
    `@[expose, semireducible] public def`, each `if` to
    `match (generalizing := false) __decreaseN : c with | true => ... | false => ...`,
@@ -2619,8 +2669,14 @@ Termination evidence is semantic data, never tactic or backend text; no
    evidence states it; each binder appears in its match's hypothesis, so Lean
    solves the `_` by unification and a binder the branch ignores stays
    `_`; Lean still refines the decreasing goal by each match on a variable,
-   and `subst_vars` applies the same substitutions to the evidence, so the
-   evidence closes the goal it was stated for and no other. A parameter
+   and `subst_vars` applies the same substitutions to the evidence. Each
+   goal is closed by the first evidence theorem whose statement it is, after
+   those substitutions; since every evidence theorem states exactly one call
+   site's obligation, which theorem closes a goal is not observable, and
+   Lean presents a cross-member goal of a mutual group as the callee's
+   measure at the arguments against the caller's measure, the obligation's
+   own conclusion. A well-founded mutual group lowers to one `mutual ... end`
+   block of such definitions. A parameter
    neither the body nor the measure mentions lowers as `_name` and is passed
    as `_name`; generated names begin with two underscores, which no lowered
    source binder does. Semireducibility lets closed instances reduce in
@@ -2649,10 +2705,17 @@ Termination evidence is semantic data, never tactic or backend text; no
 2. **Representation.** A map value is its strictly ascending entry list and
    a set its strictly ascending element list, so equal maps and sets are
    structurally equal and iterate identically. Generated Lean represents
-   `map K V` as `List (Prod K V)` and `set K` as `List K`; the closed
-   operations are the only producers, so the canonical invariant holds by
-   construction. Memory is one entry or element per member; every literal
-   entry, element, node, and edge is charged to `max_ir_nodes`.
+   `map K V` as `List (Prod K V)` and `set K` as `List K`, and the
+   canonical document names them `Map (K) (V)` and `Set (K)`. Literals and
+   the closed operations are the only producers, and each operation maps
+   strictly ascending lists to strictly ascending lists; `SM-28` and `SM-30`
+   check this differentially, under Lean, against an independent ordered-map
+   model on seeded random operation sequences. Memory is one entry or
+   element per member. Every literal entry, element, node, and edge is
+   charged to `max_ir_nodes` in linking, so an oversized literal is
+   `LLS8002` before either backend runs; a computed collection is a runtime
+   value whose size is bounded only by the operations that build it, and
+   the cost of each operation is stated in item 4.
 3. **Literals.** A `map_literal`, `set_literal`, or `graph_literal` is keyed
    only by literal values (natural, integer, string, and Boolean literals
    and pairs of them); other keys are inserted with `map_insert` or
@@ -2662,8 +2725,10 @@ Termination evidence is semantic data, never tactic or backend text; no
    element, node, or edge, and
    a graph edge whose source or target is not a declared node, then sorts
    every literal into canonical order. Reordered equivalent source therefore
-   links to identical semantic data, semantic identities, and generated
-   artifacts; only the source identity records the textual order.
+   links to identical semantic data and semantic identities, and generates
+   byte-identical Lean modules, LaTeX modules, and lexicon closures; only
+   the source identity and the artifacts that record source positions (the
+   build manifest, source maps, and coverage) record the textual order.
 4. **Operations.** Each collection primitive has one explicit result type:
    insertion replaces an existing key, removal of an absent key is the
    identity, lookup returns `Option`, keys/values/entries/elements are
@@ -2671,19 +2736,29 @@ Termination evidence is semantic data, never tactic or backend text; no
    left, intersection and difference keep the left operand's order, and
    `map_fold`, `set_fold`, and `list_fold` visit members in ascending (or
    list) order with the state as the step's first argument. A graph is
-   `map node (set node)`; `graph_successors` of an absent node is empty;
+   `map node (set node)`. Its *nodes* are its keys together with every
+   successor, so a successor inserted without an entry of its own is a node
+   with no successors; `graph_successors` of an absent node is empty;
    `graph_reachable` is the breadth-first closure including the start node,
    computed in at most node-count-plus-one rounds, each of which either adds
    a node or ends the search, so the bound never truncates the closure;
-   `graph_topological` is Kahn's order taking the least ready node first,
-   removing one node per round within the same bound, or none when a cycle
-   remains.
+   `graph_topological` is Kahn's order over every node, taking the least
+   ready node first, removing one node per round within the same bound, or
+   none when a cycle remains. Costs, in key comparisons, for collections of
+   `n` and `m` members, a graph of `V` nodes and `E` edges, and maximum
+   out-degree `d`: insertion, removal, lookup, and membership `O(n)`;
+   size, keys, values, entries, elements, and folds `O(n)` steps; union
+   `O(m(n + m))`; intersection and difference `O(nm)`; successors `O(V)`;
+   reachability `O(V^2(V + E))`; topological order `O(V^3(V + d))`. Every
+   intermediate list holds at most the members of its result or of the
+   graph's node set.
 5. **State threading.** State is explicit and pure: `list_fold`, `map_fold`,
    `set_fold`, `iterate` (exactly `n` steps), and `iterate_until` (until the
-   step returns none or the natural-number bound is exhausted, returning the
+   step returns none or its natural-number fuel is exhausted, returning the
    final state and whether a fixed point was reached) take the step as a
-   function argument. Every iteration has a bound; no ambient mutable state
-   exists. A lambda or function reference passed as a step is in a closure
+   function argument. The count and the fuel are required arguments, so
+   every iteration performs at most that many steps; an iteration without
+   one is rejected in linking. No ambient mutable state exists. A lambda or function reference passed as a step is in a closure
    position, so executable definitions may use these combinators.
 6. **Runtime.** A module that writes a collection type or literal, or
    applies any collection primitive (including one applied only to a
@@ -4294,6 +4369,9 @@ Tests MUST establish that LexLean rejects, at minimum:
 - a recursive occurrence with the wrong number of type arguments;
 - a constructor applied to the wrong number of arguments;
 - a forward reference outside a mutual group;
+- an uninhabited cycle through a mutual group;
+- a match on a value of one type with the constructors of another;
+- a binder spelled like a name the generated Lean refers to;
 - a lambda that omits a used capture;
 - a lambda that declares an unused capture;
 - an application with the wrong number of arguments;
@@ -4321,6 +4399,12 @@ Tests MUST establish that LexLean rejects, at minimum:
 - a mutual label shared by an inductive group and a definition group;
 - a call to another member of a mutual group under a lambda;
 - a well-founded definition referring to itself as a value;
+- a mutual member that calls no member of its group;
+- a mutual group whose call graph is not strongly connected;
+- a mutual group mixing structural and well-founded members;
+- a well-founded measure that mentions a member of its group;
+- false well-founded evidence stating the exact obligation, refused by
+  verification (`LLV7002`).
 - a duplicate key in a map literal;
 - a map keyed by a type without a canonical order;
 - a map literal keyed by a non-literal value;
@@ -4329,7 +4413,8 @@ Tests MUST establish that LexLean rejects, at minimum:
 - a graph edge to an undeclared node;
 - a duplicate graph edge;
 - a fold step whose type does not thread the state;
-- an iteration without its bound;
+- an iteration without its fuel;
+- a collection literal beyond `max_ir_nodes` (`LLS8002`);
 - a collection under language 1.1.
 
 ### 28.6 Example verification
@@ -4697,8 +4782,8 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `SM-26` | `semantic-ir` | Language 1.2 snapshots carry a deterministic alpha identity per definition that alpha-equivalent definitions share and any other change alters. | §17.12, §21 |
 | `SM-27` | `semantic-ir` | Language 1.2 snapshots carry complete recursion evidence (mutual labels, decreasing arguments, measures, and evidence bindings), and changing an evidence binding changes the semantic and alpha identities. | §17.12, §21 |
 | `SM-28` | `semantic-ir` | Language 1.2 finite maps and sets over closed ordered key types, their literals, and their primitive operations are typed, lowered to the fixed ordered-collection runtime, and verified. | §17.12 |
-| `SM-29` | `semantic-ir` | Reordered equivalent map, set, and graph literals link to byte-identical semantic data and generated artifacts, while duplicate keys, non-literal literal keys, and key types without a canonical order are rejected. | §17.12, §21 |
-| `SM-30` | `semantic-ir` | Language 1.2 graph literals reference only declared nodes, and successor, reachability, and topological-order queries are deterministic, bounded by the node count, and report a cycle as none. | §17.12 |
+| `SM-29` | `semantic-ir` | Reordered equivalent map, set, and graph literals link to byte-identical semantic data and generated Lean, LaTeX, and lexicon-closure artifacts, while duplicate keys, non-literal literal keys, and key types without a canonical order are rejected. | §17.12, §21 |
+| `SM-30` | `semantic-ir` | Language 1.2 graph literals reference only declared nodes, a graph's nodes are its keys and every successor, and successor, reachability, and topological-order queries are deterministic, bounded by the node count, and report a cycle as none. | §17.12 |
 | `DF-01` | `declarations` | A valid type-definition sentence emits one nonrecursive sort-valued Lean def linked to its document entry. | §15.7, §18.6 |
 | `DF-02` | `declarations` | A valid term-definition sentence emits one nonrecursive explicitly typed Lean def. | §15.7, §18.6 |
 | `DF-03` | `declarations` | A valid predicate-definition sentence emits one nonrecursive Prop-valued Lean def. | §15.7, §18.6 |

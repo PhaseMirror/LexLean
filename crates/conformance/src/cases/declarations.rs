@@ -628,11 +628,60 @@ pub(crate) fn run(id: &str) {
                 "public inductive Rose (Item : Type) where\n  | node (_ : Item) (_ : List (Rose (Item)))\n",
                 "mutual\npublic inductive Expr where\n",
                 "public inductive Stmt where\n  | assign (_ : String) (_ : Expr)\n  | sequence (_ : Stmt) (_ : Stmt)\nend\n",
+                "mutual\npublic inductive Node (Item : Type) where\n  | node (_ : Item) (_ : Branches (Item))\n\npublic inductive Branches (Item : Type) where\n",
             ] {
                 assert!(types.contains(expected), "missing {expected:?} in:\n{types}");
             }
             let tex = support::tex_text(&rendered, "Types");
             assert!(tex.contains("Mutual group: \\texttt{Syntax}"), "{tex}");
+            for expected in [
+                "\\subsection*{\\texttt{Tree}}\n\\noindent Kind: \\texttt{inductive}.\\par\n\\noindent Type parameters: \\texttt{(Item)}.\\par\n\\noindent Constructor \\texttt{leaf}: \\texttt{()}.\\par\n",
+                "\\noindent Type parameters: \\texttt{(Problem, Item)}.\\par\n",
+                "\\subsection*{\\texttt{Located}}\n\\noindent Kind: \\texttt{structure}.\\par\n\\noindent Type parameters: \\texttt{(Item)}.\\par\n\\noindent Field \\texttt{value}: \\texttt{Item}.\\par\n",
+            ] {
+                assert!(tex.contains(expected), "missing {expected:?} in:\n{tex}");
+            }
+            // Language 1.2 maps every declaration to its own source object,
+            // in both artifacts.
+            let (_, map_bytes) = rendered
+                .files
+                .iter()
+                .find(|(path, _)| path == "maps/RecursiveData/Types.map.json")
+                .expect("the Types source map");
+            let map: serde_json::Value = serde_json::from_slice(map_bytes).expect("map JSON");
+            let types_text = project.read("src/Types.lex.tex");
+            let declaration_nodes: Vec<u64> = map["nodes"]
+                .as_array()
+                .expect("nodes")
+                .iter()
+                .filter(|node| node["kind"] == "semantic-declaration")
+                .map(|node| node["id"].as_u64().expect("id"))
+                .collect();
+            assert_eq!(
+                declaration_nodes.len(),
+                16,
+                "eight declarations in each artifact"
+            );
+            for mapping in map["mappings"].as_array().expect("mappings") {
+                if !declaration_nodes.contains(&mapping["node"].as_u64().expect("node")) {
+                    continue;
+                }
+                let range =
+                    |key: &str| usize::try_from(mapping[key].as_u64().expect(key)).expect("fits");
+                let object: serde_json::Value =
+                    serde_json::from_str(&types_text[range("src_start")..range("src_end")])
+                        .expect("a declaration maps to exactly its own source object");
+                let name = object["name"].as_str().expect("a declaration name");
+                let generated = if mapping["artifact"] == 0 {
+                    &types
+                } else {
+                    &tex
+                };
+                assert!(
+                    generated[range("gen_start")..range("gen_end")].contains(name),
+                    "the generated range of `{name}` names it"
+                );
+            }
             let _ = support::verify_ok_backed("DF-12", &project);
 
             let types_source = project.read("src/Types.lex.tex");
@@ -660,11 +709,13 @@ pub(crate) fn run(id: &str) {
                 r#"{"arguments":[],"kind":"named","member":{"name":"Tree"}}"#,
                 "type `Tree` expects 1 argument(s), received 0",
             );
-            // Positivity: a recursive occurrence inside another document type.
+            // Positivity: a recursive occurrence inside another document
+            // type. The added declaration is otherwise well formed and unused,
+            // so only the positivity rule can refuse it.
             mutate(
-                r#"{"element":{"arguments":[{"kind":"parameter","name":"Item"}],"kind":"named","member":{"name":"Rose"}},"kind":"list"}"#,
-                r#"{"arguments":[{"arguments":[{"kind":"parameter","name":"Item"}],"kind":"named","member":{"name":"Rose"}}],"kind":"named","member":{"name":"Tree"}}"#,
-                "positivity violation in `Rose.node`",
+                r#"{"fields":[{"name":"value""#,
+                r#"{"constructors":[{"fields":[],"name":"empty"},{"fields":[{"arguments":[{"arguments":[],"kind":"named","member":{"name":"Wrap"}}],"kind":"named","member":{"name":"Tree"}}],"name":"wrap"}],"kind":"inductive","name":"Wrap","parameters":[],"type_parameters":[]},{"fields":[{"name":"value""#,
+                "positivity violation in `Wrap.wrap`",
             );
             // An uninhabited cycle: removing the only base case of `Tree`.
             mutate(
@@ -698,6 +749,43 @@ pub(crate) fn run(id: &str) {
                 r#""kind":"inductive","name":"Option""#,
                 "declaration name `Option` is reserved for the built-in type",
             );
+            // Binder hygiene: a type parameter spelled like a declaration of
+            // the module (the inductive itself or a mutual group member), a
+            // built-in type the backend names, or the module prefix would
+            // capture that name in generated Lean.
+            let rename_problem = |to: &str, message: &str| {
+                let copy = P::copy_example("recursive-data");
+                copy.write(
+                    "src/Types.lex.tex",
+                    &types_source.replace(r#""Problem""#, &format!("\"{to}\"")),
+                );
+                let error = copy.check_fails_with("LLT4001");
+                assert!(
+                    error.to_string().contains(message),
+                    "expected {message:?}, got {error}"
+                );
+                copy.assert_no_backend_output();
+            };
+            rename_problem(
+                "Outcome",
+                "binder `Outcome` in `Outcome` is spelled like the declaration `Outcome`",
+            );
+            rename_problem(
+                "Expr",
+                "binder `Expr` in `Outcome` is spelled like the declaration `Expr`",
+            );
+            rename_problem(
+                "Prod",
+                "binder `Prod` in `Outcome` is spelled like the built-in Lean name `Prod`",
+            );
+            rename_problem(
+                "Nat",
+                "binder `Nat` in `Outcome` is spelled like the built-in Lean name `Nat`",
+            );
+            rename_problem(
+                "RecursiveData",
+                "binder `RecursiveData` in `Outcome` is spelled like the module prefix `RecursiveData`",
+            );
             // A self-referential structure.
             mutate(
                 r#"{"name":"value","type":{"kind":"parameter","name":"Item"}}"#,
@@ -722,11 +810,12 @@ pub(crate) fn run(id: &str) {
                 "LLT4001: phase link: forward or missing type `RemoteFlag`"
             );
 
-            // Resource accounting charges every recursive constructor field:
-            // the data module alone is charged at least one node per
-            // declaration, constructor, and field type, and one node fewer
-            // than its observed charge overruns the limit.
-            let limit_at = |limit: u64| {
+            // Resource accounting charges the data module exactly: one node
+            // per declaration, per type node of every field, and, in
+            // language 1.2, per type parameter, per constructor, and per
+            // mutual label. The limit equal to the charge of the modules
+            // through `Types` admits it, and one less overruns.
+            let limited_project = |limit: u64| {
                 let limited = P::copy_example("recursive-data");
                 limited.edit(
                     "lexlean.toml",
@@ -734,7 +823,12 @@ pub(crate) fn run(id: &str) {
                     &format!("max_ir_nodes = {limit}"),
                 );
                 limited.relock();
-                limited.check_fails_with("LLS8002").to_string()
+                limited
+            };
+            let limit_at = |limit: u64| {
+                limited_project(limit)
+                    .check_fails_with("LLS8002")
+                    .to_string()
             };
             let message = limit_at(1);
             assert!(message.contains("through module `Types`"), "{message}");
@@ -744,11 +838,17 @@ pub(crate) fn run(id: &str) {
                 .and_then(|tail| tail.split(' ').next())
                 .and_then(|count| count.parse().ok())
                 .expect("observed node count");
-            assert!(
-                observed >= 30,
-                "recursive data is charged recursively: {observed}"
-            );
+            // Declarations 8; field type nodes 32; type parameters 7;
+            // constructors 13; mutual labels 4.
+            assert_eq!(observed, 64, "the exact charge of `Types`");
             assert!(limit_at(observed - 1).contains(&format!("observed {observed} ")));
+            let at_limit = limited_project(observed)
+                .check_fails_with("LLS8002")
+                .to_string();
+            assert!(
+                !at_limit.contains("through module `Types`"),
+                "the exact charge of `Types` is admitted: {at_limit}"
+            );
         }
         // §17.12: structural recursion and induction over a recursive
         // inductive use exactly its direct recursive fields.
@@ -828,6 +928,35 @@ pub(crate) fn run(id: &str) {
             assert!(main.contains("exact map_identity (Nat) ("), "{main}");
             let _ = support::verify_ok_backed("DF-14", &project);
 
+            // A type parameter its declaration never mentions lowers as
+            // `_name`, so Lean's unused-variable linter stays silent and the
+            // project still verifies with no unexpected output.
+            let phantom = P::copy_example("higher-order");
+            let source = phantom.read("src/Combinators.lex.tex");
+            let end = r#"],"spec":"lexlean/semantic-module/2"}"#;
+            phantom.write(
+                "src/Combinators.lex.tex",
+                &source.replacen(
+                    end,
+                    &format!(
+                        r#",{{"body":{{"kind":"var","name":"value"}},"kind":"definition","name":"keepNat","parameters":[{{"name":"value","type":{{"kind":"nat"}}}}],"result":{{"kind":"nat"}},"type_parameters":["Phantom"]}},{{"kind":"theorem","name":"phantomTheorem","parameters":[],"proof":{{"kind":"reflexivity"}},"statement":{{"kind":"eq","left":{{"kind":"nat","value":"1"}},"right":{{"kind":"nat","value":"1"}}}},"type_parameters":["Ghost"]}}{end}"#
+                    ),
+                    1,
+                ),
+            );
+            phantom.check_ok();
+            let phantom_lean = support::lean_text(&support::rendered(&phantom), "Combinators");
+            for expected in [
+                "public def keepNat (_Phantom : Type) (value : Nat) : Nat := value\n",
+                "public theorem phantomTheorem (_Ghost : Type) : (1 = 1) := by\n",
+            ] {
+                assert!(
+                    phantom_lean.contains(expected),
+                    "missing {expected:?} in:\n{phantom_lean}"
+                );
+            }
+            let _ = support::verify_ok_backed("DF-14", &phantom);
+
             let mutate = |file: &str, from: &str, to: &str, message: &str| {
                 let copy = P::copy_example("higher-order");
                 let source = copy.read(file);
@@ -889,8 +1018,19 @@ pub(crate) fn run(id: &str) {
         "DF-15" => {
             let project = P::copy_example("higher-order");
             project.check_ok();
-            let tex = support::tex_text(&support::rendered(&project), "Main");
-            assert!(tex.contains("Execution: production-eligible, non-escaping closures only."));
+            let rendered = support::rendered(&project);
+            let tex = support::tex_text(&rendered, "Main");
+            // The document states every parameter with its type and every
+            // closure with exactly what it binds and captures.
+            assert!(
+                tex.contains("\\subsection*{\\texttt{addAll}}\n\\noindent Kind: \\texttt{definition}.\\par\n\\noindent Parameters: \\texttt{(offset : Nat) (values : List (Nat))}.\\par\n\\noindent Closure 1: binds \\texttt{(value)}, captures \\texttt{(offset)}.\\par\n\\noindent Execution: production-eligible, non-escaping closures only.\\par\n"),
+                "{tex}"
+            );
+            let combinators_tex = support::tex_text(&rendered, "Combinators");
+            assert!(
+                combinators_tex.contains("\\noindent Type parameters: \\texttt{(Input, Output)}.\\par\n\\noindent Parameters: \\texttt{(transform : ((Input) -> (Output))) (values : List (Input))}.\\par\n"),
+                "{combinators_tex}"
+            );
             let mutate = |file: &str, from: &str, to: &str, message: &str| {
                 let copy = P::copy_example("higher-order");
                 let source = copy.read(file);
@@ -916,7 +1056,7 @@ pub(crate) fn run(id: &str) {
                 "src/Main.lex.tex",
                 r#""kind":"definition","name":"evaluator""#,
                 r#""executable":true,"kind":"definition","name":"evaluator""#,
-                "escaping closure: executable definition `evaluator` returns a function",
+                "escaping closure: executable definition `evaluator` returns a value of type Combinators.Visitor, which holds a function",
             );
             // Receiving closures inside data.
             mutate(
@@ -939,6 +1079,97 @@ pub(crate) fn run(id: &str) {
                 r#""kind":"definition","name":"mapList""#,
                 "executable definition `addAll` calls non-executable `Combinators::mapList`",
             );
+            // Every rejection rule of higher-order code, on a declaration
+            // appended to an otherwise valid module.
+            for (file, declarations, message) in [
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"kind":"nat","value":"0"},"executable":true,"kind":"definition","name":"probeHigher","parameters":[{"name":"handler","type":{"kind":"function","parameters":[{"kind":"function","parameters":[{"kind":"nat"}],"result":{"kind":"nat"}}],"result":{"kind":"nat"}}}],"result":{"kind":"nat"}}"#,
+                    "executable definition `probeHigher` parameter `handler` is a higher-order function of functions",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"binder":{"name":"step","type":{"kind":"function","parameters":[{"kind":"nat"}],"result":{"kind":"nat"}}},"body":{"arguments":[{"kind":"var","name":"number"}],"function":{"kind":"var","name":"step"},"kind":"apply"},"kind":"let","value":{"body":{"kind":"var","name":"value"},"captures":[],"kind":"lambda","parameters":[{"name":"value","type":{"kind":"nat"}}]}},"executable":true,"kind":"definition","name":"probeLet","parameters":[{"name":"number","type":{"kind":"nat"}}],"result":{"kind":"nat"}}"#,
+                    "escaping closure in executable definition `probeLet`: a function is bound by let",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"kind":"first","value":{"kind":"pair","left":{"kind":"var","name":"number"},"right":{"kind":"var","name":"step"}}},"executable":true,"kind":"definition","name":"probeValue","parameters":[{"name":"step","type":{"kind":"function","parameters":[{"kind":"nat"}],"result":{"kind":"nat"}}},{"name":"number","type":{"kind":"nat"}}],"result":{"kind":"nat"}}"#,
+                    "escaping closure in executable definition `probeValue`: the function `step` is used as a value",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"kind":"first","value":{"kind":"pair","left":{"kind":"var","name":"number"},"right":{"function":{"module":"Combinators","name":"increment"},"kind":"function_ref"}}},"executable":true,"kind":"definition","name":"probeReference","parameters":[{"name":"number","type":{"kind":"nat"}}],"result":{"kind":"nat"}}"#,
+                    "escaping closure in executable definition `probeReference`: a function reference may only be passed directly to an executable function parameter or applied",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"arguments":[{"kind":"var","name":"number"}],"function":{"condition":{"kind":"bool","value":true},"else_value":{"kind":"var","name":"step"},"kind":"if","then_value":{"kind":"var","name":"step"}},"kind":"apply"},"executable":true,"kind":"definition","name":"probeApply","parameters":[{"name":"step","type":{"kind":"function","parameters":[{"kind":"nat"}],"result":{"kind":"nat"}}},{"name":"number","type":{"kind":"nat"}}],"result":{"kind":"nat"}}"#,
+                    "executable definition `probeApply` applies a function value that is not a parameter, lambda, or function reference",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"kind":"add","left":{"kind":"var","name":"value"},"right":{"kind":"nat","value":"1"}},"kind":"definition","name":"plainIncrement","parameters":[{"name":"value","type":{"kind":"nat"}}],"result":{"kind":"nat"}},{"body":{"arguments":[{"function":{"name":"plainIncrement"},"kind":"function_ref"},{"kind":"var","name":"values"}],"function":{"module":"Combinators","name":"mapList"},"kind":"call","type_arguments":[{"kind":"nat"},{"kind":"nat"}]},"executable":true,"kind":"definition","name":"probeFormal","parameters":[{"name":"values","type":{"element":{"kind":"nat"},"kind":"list"}}],"result":{"element":{"kind":"nat"},"kind":"list"}}"#,
+                    "executable definition `probeFormal` references non-executable `plainIncrement`",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"branches":[{"binders":[],"body":{"kind":"nat","value":"0"},"constructor":{"name":"Nat.zero"}},{"binders":["smaller"],"body":{"arguments":[{"kind":"var","name":"smaller"}],"function":{"function":{"name":"probeSelf"},"kind":"function_ref"},"kind":"apply"},"constructor":{"name":"Nat.succ"}}],"kind":"match","scrutinee":{"kind":"var","name":"number"}},"kind":"definition","name":"probeSelf","parameters":[{"name":"number","type":{"kind":"nat"}}],"recursive_argument":"number","result":{"kind":"nat"}}"#,
+                    "recursive definition `probeSelf` cannot be referenced as a value of itself",
+                ),
+                (
+                    "src/Combinators.lex.tex",
+                    r#"{"body":{"kind":"var","name":"item"},"kind":"definition","name":"probeCapture","parameters":[{"name":"item","type":{"kind":"parameter","name":"Visitor"}}],"result":{"kind":"parameter","name":"Visitor"},"type_parameters":["Visitor"]}"#,
+                    "binder `Visitor` in `probeCapture` is spelled like the declaration `Visitor`",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"kind":"var","name":"item"},"kind":"definition","name":"probeBound","parameters":[{"name":"item","type":{"kind":"parameter","name":"item"}}],"result":{"kind":"parameter","name":"item"},"type_parameters":["item"]}"#,
+                    "type parameter `item` is also bound as a value in the same declaration",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"arguments":[{"kind":"var","name":"number"}],"function":{"body":{"kind":"nat","value":"1"},"captures":[],"kind":"lambda","parameters":[]},"kind":"apply"},"kind":"definition","name":"probeLambda","parameters":[{"name":"number","type":{"kind":"nat"}}],"result":{"kind":"nat"}}"#,
+                    "a lambda binds at least one parameter",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"kind":"nat","value":"0"},"kind":"definition","name":"probeFunctionType","parameters":[{"name":"step","type":{"kind":"function","parameters":[],"result":{"kind":"nat"}}}],"result":{"kind":"nat"}}"#,
+                    "a function type has at least one parameter",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"arguments":[],"function":{"kind":"var","name":"step"},"kind":"apply"},"kind":"definition","name":"probeNoArguments","parameters":[{"name":"step","type":{"kind":"function","parameters":[{"kind":"nat"}],"result":{"kind":"nat"}}}],"result":{"kind":"nat"}}"#,
+                    "an application supplies at least one argument",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"kind":"var","name":"item"},"kind":"definition","name":"probeOwn","parameters":[{"name":"item","type":{"kind":"parameter","name":"probeOwn"}}],"result":{"kind":"parameter","name":"probeOwn"},"type_parameters":["probeOwn"]}"#,
+                    "binder `probeOwn` in `probeOwn` is spelled like the declaration `probeOwn`",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"kind":"var","name":"item"},"kind":"definition","name":"probePrefix","parameters":[{"name":"item","type":{"kind":"parameter","name":"HigherOrder"}}],"result":{"kind":"parameter","name":"HigherOrder"},"type_parameters":["HigherOrder"]}"#,
+                    "binder `HigherOrder` in `probePrefix` is spelled like the module prefix `HigherOrder`",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"arguments":[{"body":{"kind":"var","name":"addAll"},"captures":[],"kind":"lambda","parameters":[{"name":"addAll","type":{"kind":"nat"}}]},{"kind":"var","name":"values"}],"function":{"module":"Combinators","name":"mapList"},"kind":"call","type_arguments":[{"kind":"nat"},{"kind":"nat"}]},"kind":"definition","name":"probeShadow","parameters":[{"name":"values","type":{"element":{"kind":"nat"},"kind":"list"}}],"result":{"element":{"kind":"nat"},"kind":"list"}}"#,
+                    "binder `addAll` in `probeShadow` is spelled like the declaration `addAll`",
+                ),
+            ] {
+                let copy = P::copy_example("higher-order");
+                let source = copy.read(file);
+                let end = r#"],"spec":"lexlean/semantic-module/2"}"#;
+                assert!(source.contains(end), "{file} ends its declarations");
+                copy.write(file, &source.replacen(end, &format!(",{declarations}{end}"), 1));
+                let error = copy.check_fails_with("LLT4001");
+                assert!(
+                    error.to_string().contains(message),
+                    "expected {message:?}, got {error}"
+                );
+                copy.assert_no_backend_output();
+            }
         }
         // §17.12: mutual structural recursion over one recursive family.
         "DF-16" => {
@@ -1062,6 +1293,17 @@ pub(crate) fn run(id: &str) {
                         ] {
                 assert!(main.contains(expected), "missing {expected:?} in:\n{main}");
             }
+            // A well-founded mutual group is one `mutual` block; `ping`
+            // calls `pong` on the same argument, which only the two measures
+            // order, so the obligation compares the callee's measure.
+            for expected in [
+                "mutual\n@[expose, semireducible] public def ping (number : Nat) : Nat := ",
+                "termination_by ((number + number) + 1)\ndecreasing_by all_goals first | (have __evidence := ping_to_pong (number) (__decrease0); subst_vars; exact __evidence)\n",
+                "decreasing_by all_goals first | (have __evidence := pong_to_ping (number) (__decrease0); subst_vars; exact __evidence)\nend\n",
+                "public theorem ping_to_pong (number : Nat) : (((Nat.beq (number) (0)) = false) -> ((number + number) < ((number + number) + 1)))",
+            ] {
+                assert!(main.contains(expected), "missing {expected:?} in:\n{main}");
+            }
             let tex = support::tex_text(&rendered, "Main");
             assert!(tex.contains("Well-founded measure:"), "{tex}");
             // Lean must accept every well-founded definition with its bound
@@ -1070,6 +1312,25 @@ pub(crate) fn run(id: &str) {
             let reject = |from: &str, to: &str, message: &str| {
                 P::assert_mutation_rejected("recursion", "src/Main.lex.tex", from, to, message);
             };
+            // A cross-member obligation states the callee's measure: evidence
+            // comparing the caller's own measure is not it.
+            reject(
+                r#""statement":{"conclusion":{"kind":"lt","left":{"kind":"add","left":{"kind":"var","name":"number"},"right":{"kind":"var","name":"number"}}"#,
+                r#""statement":{"conclusion":{"kind":"lt","left":{"kind":"add","left":{"kind":"add","left":{"kind":"var","name":"number"},"right":{"kind":"var","name":"number"}},"right":{"kind":"nat","value":"1"}}"#,
+                "evidence `ping_to_pong` for recursive call 0 of `ping` does not state its decrease obligation exactly",
+            );
+            // The group's call graph: `pong` stops calling `ping`.
+            reject(
+                r#""else_value":{"kind":"add","left":{"arguments":[{"arguments":[{"kind":"var","name":"number"},{"kind":"nat","value":"1"}],"kind":"primitive","operation":"subtract","result":{"kind":"nat"}}],"function":{"name":"ping"},"kind":"call"}"#,
+                r#""else_value":{"kind":"add","left":{"arguments":[{"kind":"var","name":"number"},{"kind":"nat","value":"1"}],"kind":"primitive","operation":"subtract","result":{"kind":"nat"}}"#,
+                "mutual group `Bounce` member `pong` calls no member of its group",
+            );
+            // A well-founded member cannot join a structural group.
+            reject(
+                r#""mutual":"Bounce","name":"pong""#,
+                r#""mutual":"Folding","name":"pong""#,
+                "mutual group `Folding`",
+            );
             // Forged evidence: a theorem whose statement is not the call's
             // decrease obligation.
             reject(
@@ -1081,9 +1342,9 @@ pub(crate) fn run(id: &str) {
             reject(
                 r#""termination":{"evidence":[{"name":"countdown_decreases"}],"measure":{"kind":"var","name":"number"}}"#,
                 r#""termination":{"evidence":[{"name":"countdown_decreases"}],"measure":{"arguments":[{"kind":"var","name":"number"},{"kind":"var","name":"steps"}],"function":{"name":"countdown"},"kind":"call"}}"#,
-                "refers to `countdown` itself (cyclic measure)",
+                "refers to `countdown` itself or a member of its group (cyclic measure)",
             );
-            // Missing evidence and a non-parameter argument.
+            // One evidence theorem per call site, no more.
             reject(
                 r#""termination":{"evidence":[{"name":"countdown_decreases"}]"#,
                 r#""termination":{"evidence":[{"name":"countdown_decreases"},{"name":"countdown_decreases"}]"#,
@@ -1143,7 +1404,7 @@ pub(crate) fn run(id: &str) {
                 "src/Main.lex.tex",
                 r#""parameters":[{"name":"visited","type":{"element":{"kind":"nat"},"kind":"list"}},{"name":"element","type":{"kind":"nat"}}]},{"element":{"kind":"nat"},"kind":"nil"},{"head":{"kind":"nat","value":"5"}"#,
                 r#""parameters":[{"name":"element","type":{"kind":"nat"}},{"name":"visited","type":{"element":{"kind":"nat"},"kind":"list"}}]},{"element":{"kind":"nat"},"kind":"nil"},{"head":{"kind":"nat","value":"5"}"#,
-                "primitive ListFold argument 0 has type Function { parameters: [Nat, List { element: Nat }], result: List { element: Nat } }, expected Function { parameters: [List { element: Nat }, Nat], result: List { element: Nat } }",
+                "primitive ListFold argument 0 has type ((Nat) -> (List (Nat)) -> (List (Nat))), expected ((List (Nat)) -> (Nat) -> (List (Nat)))",
             );
         }
         other => panic!("no declarations case is wired for {other}"),

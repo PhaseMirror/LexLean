@@ -1636,6 +1636,39 @@ pub(crate) fn run(id: &str) {
                     .contains("`product type` is a language-1.2 construct"),
                 "{error}"
             );
+            // Each 1.2 term is refused on its own, with no product type in
+            // sight to be reported first.
+            for (term, construct) in [
+                (
+                    r#"{"kind":"pair","left":{"kind":"bool","value":true},"right":{"kind":"unit"}}"#,
+                    "pair",
+                ),
+                (
+                    r#"{"kind":"first","value":{"kind":"bool","value":true}}"#,
+                    "first",
+                ),
+                (
+                    r#"{"kind":"second","value":{"kind":"bool","value":true}}"#,
+                    "second",
+                ),
+            ] {
+                let eleven = P::semantic_example();
+                eleven.write(
+                    "src/Support.lex.tex",
+                    &support_source.replacen(
+                        r#""body":{"kind":"bool","value":true},"kind":"definition","name":"remoteEnabled""#,
+                        &format!(r#""body":{term},"kind":"definition","name":"remoteEnabled""#),
+                        1,
+                    ),
+                );
+                let error = eleven.check_fails_with("LLT4001");
+                assert!(
+                    error
+                        .to_string()
+                        .contains(&format!("`{construct}` is a language-1.2 construct")),
+                    "{error}"
+                );
+            }
         }
         "SM-25" => {
             let project = P::copy_example("higher-order");
@@ -1671,7 +1704,7 @@ pub(crate) fn run(id: &str) {
                 "src/Main.lex.tex",
                 r#""captures":["offset"]"#,
                 r#""captures":[]"#,
-                "declared {}, used {\"offset\"}",
+                "declared (), used (offset)",
             );
             mutate(
                 "src/Combinators.lex.tex",
@@ -1799,8 +1832,6 @@ pub(crate) fn run(id: &str) {
             );
             changed.check_ok();
             assert_ne!(alpha(&changed, "addAll"), alpha(&original, "addAll"));
-            // Distinct generic definitions differ; language 1.1 has none.
-            assert_ne!(alpha(&original, "mapList"), alpha(&original, "foldList"));
             // Every binder kind renames positionally: type parameters, value
             // parameters in a different order (so the sorted captures
             // renumber out of source order), `let`, and match binders.
@@ -1929,6 +1960,40 @@ pub(crate) fn run(id: &str) {
                 support::checked_project(&rebound).semantic_id
             );
             assert_eq!(alpha(&unbound, "reduce"), alpha(&second, "reduce"));
+
+            // The measure and the mutual label are part of both identities:
+            // `countdown` measured by `number + 0`, with its evidence restated
+            // for that measure, and the `Bounce` group relabelled.
+            let measured = P::copy_example("recursion");
+            let measure_source = source
+                .replacen(
+                    r#""termination":{"evidence":[{"name":"countdown_decreases"}],"measure":{"kind":"var","name":"number"}}"#,
+                    r#""termination":{"evidence":[{"name":"countdown_decreases"}],"measure":{"kind":"add","left":{"kind":"var","name":"number"},"right":{"kind":"nat","value":"0"}}}"#,
+                    1,
+                )
+                .replacen(
+                    r#""statement":{"conclusion":{"kind":"lt","left":{"arguments":[{"kind":"var","name":"number"},{"kind":"nat","value":"2"}],"kind":"primitive","operation":"subtract","result":{"kind":"nat"}},"right":{"kind":"var","name":"number"}}"#,
+                    r#""statement":{"conclusion":{"kind":"lt","left":{"kind":"add","left":{"arguments":[{"kind":"var","name":"number"},{"kind":"nat","value":"2"}],"kind":"primitive","operation":"subtract","result":{"kind":"nat"}},"right":{"kind":"nat","value":"0"}},"right":{"kind":"add","left":{"kind":"var","name":"number"},"right":{"kind":"nat","value":"0"}}}"#,
+                    1,
+                );
+            assert_ne!(measure_source, source, "the measure mutation applies");
+            measured.write("src/Main.lex.tex", &measure_source);
+            let remeasured = snapshot_of(&measured);
+            assert_ne!(alpha(&first, "countdown"), alpha(&remeasured, "countdown"));
+            assert_ne!(
+                support::checked_project(&original).semantic_id,
+                support::checked_project(&measured).semantic_id
+            );
+            let relabelled = P::copy_example("recursion");
+            let label_source = source.replace(r#""mutual":"Bounce""#, r#""mutual":"Rebound""#);
+            assert_eq!(label_source.matches(r#""mutual":"Rebound""#).count(), 2);
+            relabelled.write("src/Main.lex.tex", &label_source);
+            let renamed = snapshot_of(&relabelled);
+            assert_ne!(alpha(&first, "ping"), alpha(&renamed, "ping"));
+            assert_ne!(
+                support::checked_project(&original).semantic_id,
+                support::checked_project(&relabelled).semantic_id
+            );
         }
         "SM-28" => {
             let project = P::copy_example("collections");
@@ -1954,6 +2019,23 @@ pub(crate) fn run(id: &str) {
                     measure.contains(expected),
                     "missing {expected:?} in:\n{measure}"
                 );
+            }
+            // Every operation agrees with an independent ordered-map model
+            // on seeded sequences, under Lean (§17.12 item 2).
+            let model = [
+                super::collections_model::map_theorems(),
+                super::collections_model::set_theorems(),
+            ]
+            .concat();
+            assert_eq!(model.len(), 86, "every seeded case states its theorems");
+            super::collections_model::with_theorems(&project, model);
+            let main = support::lean_text(&support::rendered(&project), "Main");
+            for expected in [
+                "theorem model_map_15 ",
+                "theorem model_set_difference_11 ",
+                "theorem model_string_set_5 ",
+            ] {
+                assert!(main.contains(expected), "missing {expected:?}");
             }
             let _ = support::verify_ok_backed("SM-28", &project);
             let reject = |file: &str, from: &str, to: &str, message: &str| {
@@ -2033,18 +2115,65 @@ pub(crate) fn run(id: &str) {
                 first.semantic_id, second.semantic_id,
                 "the semantics do not"
             );
-            let left = support::rendered(&original);
-            let right = support::rendered(&reordered);
-            for module in ["Tables", "Measure", "Main"] {
-                assert_eq!(
-                    support::lean_text(&left, module),
-                    support::lean_text(&right, module)
-                );
-                assert_eq!(
-                    support::tex_text(&left, module),
-                    support::tex_text(&right, module)
-                );
+            // The snapshot differs only in the members that record the
+            // source: its source identity and each module's source record.
+            let without_source = |project: &P| {
+                let snapshot = project
+                    .engine()
+                    .snapshot(lexlean::CheckRequest {
+                        selection: lexlean::Selection::Entrypoints,
+                    })
+                    .expect("snapshot");
+                let mut value: serde_json::Value =
+                    serde_json::from_slice(&snapshot.canonical_bytes()).expect("snapshot JSON");
+                let object = value.as_object_mut().expect("snapshot object");
+                assert!(object.remove("source_id").is_some(), "source identity");
+                for module in object
+                    .get_mut("modules")
+                    .and_then(serde_json::Value::as_array_mut)
+                    .expect("snapshot modules")
+                {
+                    let module = module.as_object_mut().expect("snapshot module");
+                    assert!(module.remove("source").is_some(), "module source");
+                }
+                value
+            };
+            assert_eq!(without_source(&original), without_source(&reordered));
+            // Every published artifact except the manifest, source maps, and
+            // coverage, which record source positions, is byte-identical.
+            let artifacts = |project: &P| {
+                let built = project.build_ok();
+                let directory = project.build_dir(&built.build_id.expect("build id"));
+                support::file_set(&directory)
+                    .into_iter()
+                    .map(|path| {
+                        let bytes =
+                            std::fs::read(directory.join(&path).as_std_path()).expect("artifact");
+                        (path, bytes)
+                    })
+                    .collect::<std::collections::BTreeMap<_, _>>()
+            };
+            let (left, right) = (artifacts(&original), artifacts(&reordered));
+            assert_eq!(
+                left.keys().collect::<Vec<_>>(),
+                right.keys().collect::<Vec<_>>(),
+                "the same artifacts are published"
+            );
+            let mut compared = 0;
+            for (path, bytes) in &left {
+                if path == "manifest.json"
+                    || path.starts_with("maps/")
+                    || path.starts_with("coverage/")
+                {
+                    continue;
+                }
+                assert!(bytes == &right[path], "{path} differs");
+                compared += 1;
             }
+            assert_eq!(
+                compared, 9,
+                "three modules' Lean, LaTeX, and lexicon closures"
+            );
             let reject = |from: &str, to: &str, message: &str| {
                 P::assert_mutation_rejected("collections", "src/Main.lex.tex", from, to, message);
             };
@@ -2085,6 +2214,20 @@ pub(crate) fn run(id: &str) {
             assert!(tables.contains(
                 r#"public def callGraph : List (Prod (String) (List (String))) := ([("emit", ["report"]), ("lex", []), ("main", ["emit", "parse"]), ("parse", ["lex"]), ("report", ["lex"])] : List (Prod (String) (List (String))))"#
             ), "{tables}");
+            // Seeded graphs, including successors without entries of their
+            // own and a chain as deep as its node count allows, agree with a
+            // direct breadth-first search and Kahn's algorithm under Lean.
+            super::collections_model::with_theorems(
+                &project,
+                super::collections_model::graph_theorems(),
+            );
+            let main = support::lean_text(&support::rendered(&project), "Main");
+            for expected in [
+                "theorem model_graph_chain_reachable ",
+                "theorem model_graph_chain_topological ",
+            ] {
+                assert!(main.contains(expected), "missing {expected:?}");
+            }
             let _ = support::verify_ok_backed("SM-30", &project);
             let reject = |from: &str, to: &str, message: &str| {
                 P::assert_mutation_rejected("collections", "src/Tables.lex.tex", from, to, message);

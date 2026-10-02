@@ -648,13 +648,13 @@ statement = "Language 1.2 finite maps and sets over closed ordered key types, th
 id = "SM-29"
 level = "build"
 suite = "semantic-ir"
-statement = "Reordered equivalent map, set, and graph literals link to byte-identical semantic data and generated artifacts, while duplicate keys, non-literal literal keys, and key types without a canonical order are rejected."
+statement = "Reordered equivalent map, set, and graph literals link to byte-identical semantic data and generated Lean, LaTeX, and lexicon-closure artifacts, while duplicate keys, non-literal literal keys, and key types without a canonical order are rejected."
 
 [[id]]
 id = "SM-30"
 level = "build"
 suite = "semantic-ir"
-statement = "Language 1.2 graph literals reference only declared nodes, and successor, reachability, and topological-order queries are deterministic, bounded by the node count, and report a cycle as none."
+statement = "Language 1.2 graph literals reference only declared nodes, a graph's nodes are its keys and every successor, and successor, reachability, and topological-order queries are deterministic, bounded by the node count, and report a cycle as none."
 
 [[id]]
 id = "DF-01"

@@ -411,4 +411,48 @@ decreasing_by all_goals first | (have __evidence := reassociate_literal (term) _
 public theorem prune_result : (weight (prune (Recursion.Syntax.Term.plus (Recursion.Syntax.Term.plus (Recursion.Syntax.Term.literal (1)) (Recursion.Syntax.Term.literal (2))) (Recursion.Syntax.Term.literal (3)))) = 1) := by
   decide
 
+mutual
+@[expose] public def foldExpr : (expression : Recursion.Syntax.Expr) -> Recursion.Syntax.Expr
+  | Recursion.Syntax.Expr.literal value => Recursion.Syntax.Expr.literal (value)
+  | Recursion.Syntax.Expr.plus left right => (let foldedLeft : Recursion.Syntax.Expr := foldExpr (left); (let foldedRight : Recursion.Syntax.Expr := foldExpr (right); (match foldedLeft with | Recursion.Syntax.Expr.literal leftValue => (match foldedRight with | Recursion.Syntax.Expr.literal rightValue => Recursion.Syntax.Expr.literal ((leftValue + rightValue)) | Recursion.Syntax.Expr.plus _ _ => Recursion.Syntax.Expr.plus (foldedLeft) (foldedRight) | Recursion.Syntax.Expr.block _ _ => Recursion.Syntax.Expr.plus (foldedLeft) (foldedRight)) | Recursion.Syntax.Expr.plus _ _ => Recursion.Syntax.Expr.plus (foldedLeft) (foldedRight) | Recursion.Syntax.Expr.block _ _ => Recursion.Syntax.Expr.plus (foldedLeft) (foldedRight))))
+  | Recursion.Syntax.Expr.block statements result => Recursion.Syntax.Expr.block (foldStatements (statements)) (foldExpr (result))
+termination_by structural expression => expression
+
+@[expose] public def foldStatements : (statements : List (Recursion.Syntax.Stmt)) -> List (Recursion.Syntax.Stmt)
+  | List.nil => ([] : List (Recursion.Syntax.Stmt))
+  | List.cons head tail => (foldStatement (head) :: foldStatements (tail))
+termination_by structural statements => statements
+
+@[expose] public def foldStatement : (statement : Recursion.Syntax.Stmt) -> Recursion.Syntax.Stmt
+  | Recursion.Syntax.Stmt.assign target value => Recursion.Syntax.Stmt.assign (target) (foldExpr (value))
+  | Recursion.Syntax.Stmt.sequence first second => Recursion.Syntax.Stmt.sequence (foldStatement (first)) (foldStatement (second))
+termination_by structural statement => statement
+end
+
+public theorem folding_sample : (foldExpr (Recursion.Syntax.Expr.block ((Recursion.Syntax.Stmt.assign ("x") (Recursion.Syntax.Expr.plus (Recursion.Syntax.Expr.literal (1)) (Recursion.Syntax.Expr.literal (2))) :: ([] : List (Recursion.Syntax.Stmt)))) (Recursion.Syntax.Expr.plus (Recursion.Syntax.Expr.literal (2)) (Recursion.Syntax.Expr.plus (Recursion.Syntax.Expr.literal (3)) (Recursion.Syntax.Expr.literal (4))))) = Recursion.Syntax.Expr.block ((Recursion.Syntax.Stmt.assign ("x") (Recursion.Syntax.Expr.literal (3)) :: ([] : List (Recursion.Syntax.Stmt)))) (Recursion.Syntax.Expr.literal (9))) := by
+  rfl
+
+public theorem ping_to_pong (number : Nat) : (((Nat.beq (number) (0)) = false) -> ((number + number) < ((number + number) + 1))) := by
+  intros
+  try set_option linter.unusedSimpArgs false in simp only [← Bool.not_eq_true, Nat.beq_eq, Nat.blt_eq, Nat.ble_eq, LexLeanRuntime.subtract, LexLeanRuntime.multiply] at *
+  omega
+
+public theorem pong_to_ping (number : Nat) : (((Nat.beq (number) (0)) = false) -> ((((LexLeanRuntime.subtract (number) (1) : Nat) + (LexLeanRuntime.subtract (number) (1) : Nat)) + 1) < (number + number))) := by
+  intros
+  try set_option linter.unusedSimpArgs false in simp only [← Bool.not_eq_true, Nat.beq_eq, Nat.blt_eq, Nat.ble_eq, LexLeanRuntime.subtract, LexLeanRuntime.multiply] at *
+  omega
+
+mutual
+@[expose, semireducible] public def ping (number : Nat) : Nat := (match (generalizing := false) __decrease0 : (Nat.beq (number) (0)) with | true => 0 | false => (pong (number) + 1))
+termination_by ((number + number) + 1)
+decreasing_by all_goals first | (have __evidence := ping_to_pong (number) (__decrease0); subst_vars; exact __evidence)
+
+@[expose, semireducible] public def pong (number : Nat) : Nat := (match (generalizing := false) __decrease0 : (Nat.beq (number) (0)) with | true => 0 | false => (ping ((LexLeanRuntime.subtract (number) (1) : Nat)) + 1))
+termination_by (number + number)
+decreasing_by all_goals first | (have __evidence := pong_to_ping (number) (__decrease0); subst_vars; exact __evidence)
+end
+
+public theorem ping_seven : (ping (7) = 14) := by
+  decide
+
 end Recursion.Main
