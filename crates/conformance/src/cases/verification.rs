@@ -742,6 +742,27 @@ pub(crate) fn run(id: &str) {
             let fixture = support::verified();
             let files = support::file_set(&fixture.outcome.root);
             type Matcher = Box<dyn Fn(&str) -> bool>;
+            // The slots present exactly when a production root exists.
+            let production: Vec<(&str, Matcher)> = vec![
+                (
+                    "production/*.eligibility.json",
+                    Box::new(|f: &str| {
+                        f.starts_with("production/") && f.ends_with(".eligibility.json")
+                    }),
+                ),
+                (
+                    "extract/*.lean",
+                    Box::new(|f: &str| f.starts_with("extract/") && f.ends_with(".lean")),
+                ),
+                (
+                    "extract/process.json",
+                    Box::new(|f: &str| f == "extract/process.json"),
+                ),
+                (
+                    "production/compiler-input.json",
+                    Box::new(|f: &str| f == "production/compiler-input.json"),
+                ),
+            ];
             let patterns: Vec<(&str, Matcher)> = vec![
                 (
                     "attestation.json",
@@ -809,6 +830,10 @@ pub(crate) fn run(id: &str) {
                     patterns.iter().any(|(_, matches)| matches(file)),
                     "§22.8: `{file}` is outside the fixed artifact set"
                 );
+                assert!(
+                    !production.iter().any(|(_, matches)| matches(file)),
+                    "§22.8: `{file}` exists without a production root"
+                );
             }
             for (pattern, matches) in &patterns {
                 assert!(
@@ -826,6 +851,34 @@ pub(crate) fn run(id: &str) {
                 } else if file.starts_with("coverage/") {
                     support::assert_json_file_schema("coverage", &root.join(file));
                 }
+            }
+            // A language-1.2 project with production roots carries exactly
+            // the same set plus the extraction slots.
+            if support::lean_backed("VR-13") {
+                let project = P::copy_example("production");
+                let verified = support::verify_ok(&project);
+                let root = &verified.root;
+                let files = support::file_set(root);
+                for file in &files {
+                    assert!(
+                        patterns
+                            .iter()
+                            .chain(&production)
+                            .any(|(_, matches)| matches(file)),
+                        "§22.8: `{file}` is outside the fixed artifact set"
+                    );
+                }
+                for (pattern, matches) in patterns.iter().chain(&production) {
+                    assert!(
+                        files.iter().any(|file| matches(file)),
+                        "§22.8: the `{pattern}` slot is populated with production roots"
+                    );
+                }
+                support::assert_json_file_schema("attestation-v2", &root.join("attestation.json"));
+                support::assert_json_file_schema(
+                    "compiler-input",
+                    &root.join("production/compiler-input.json"),
+                );
             }
         }
         // §22.9: the attestation ID is computed over the body without its
@@ -887,6 +940,16 @@ pub(crate) fn run(id: &str) {
                 ),
                 ("audit", "tests/negative/malformed-axiom-output", "LLV7004"),
                 ("policy", "tests/negative/axiom-policy-excess", "LLV7005"),
+                (
+                    "extraction",
+                    "tests/negative/extraction-rejected",
+                    "LLV7011",
+                ),
+                (
+                    "extraction authority",
+                    "tests/negative/extraction-authority-drift",
+                    "LLV7012",
+                ),
             ];
             for (stage, fixture, code) in stages {
                 let observed = crate::fixtures::check(&root.join(fixture))

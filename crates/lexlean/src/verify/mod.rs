@@ -1470,8 +1470,14 @@ pub fn run(
             return Err(fail(rejection(lcnf::classify_failure(&driver, &combined))));
         }
         require_silent(&record, "named-root extraction", true).map_err(fail)?;
-        let input = lcnf::compiler_input(&record.stdout, &roots, &modules, &production_reports)
-            .map_err(|reason| fail(rejection(reason)))?;
+        let input = lcnf::compiler_input(
+            &driver,
+            &record.stdout,
+            &roots,
+            &modules,
+            &production_reports,
+        )
+        .map_err(|reason| fail(rejection(reason)))?;
         let bytes = input.to_file_bytes();
         write_staged(
             staging.path(),
@@ -1618,7 +1624,19 @@ pub fn run(
         ])
     };
     let mut body_fields = vec![
-        ("spec", Json::Str("lexlean/attestation/1".to_owned())),
+        // Language 1.2 routes to its own attestation schema, which records
+        // the compiler input; the 1.0 and 1.1 shape is frozen (§22.9).
+        (
+            "spec",
+            Json::Str(
+                if project.config.language == crate::LANGUAGE_1_2 {
+                    "lexlean/attestation/2"
+                } else {
+                    "lexlean/attestation/1"
+                }
+                .to_owned(),
+            ),
+        ),
         ("status", Json::Str("verified".to_owned())),
         ("semantic_id", Json::Str(checked.semantic_id.to_hex())),
         ("source_id", Json::Str(checked.source_id.to_hex())),

@@ -188,6 +188,29 @@ versions, and the entries below say what each tag does and does not claim.
   Verification publishes the canonical, root-independent
   `production/compiler-input.json` (`lexlean/compiler-input/1`, schema
   `compiler-input`) and records it in the attestation (`NE-01`..`NE-06`).
+  Changes after review:
+  - The adapter reports facts only. For everything reachable from the roots
+    it reports each constant's kind, module, computability, and kernel uses,
+    and the base-phase LCNF of every code-generating project definition,
+    runtime members included. The host decides each closure, its runtime
+    members, its erased proofs, recursion (cycles of the use graph), and
+    admissibility, and carries the eligibility analysis's monomorphization
+    plan into the compiler input (`lexlean/compiler-input/2`).
+  - The authority registry (`lexlean/lcnf-authority/2`) is closed. Every
+    constant the adapter uses is one call, type, or plumbing row. Every
+    extraction checks the adapter's constants against it, compares each
+    signature structurally (default values and binder kinds included), and
+    compares each type's constructors with Lean's.
+  - A warning beside the record is drift. Universe levels are recorded.
+    Variable scope is lexical.
+  - Language-1.2 attestations are `lexlean/attestation/2`
+    (`attestation-v2` schema), which records the compiler input. The
+    verified layout lists the eligibility reports, and VR-13 checks it on a
+    project with production roots.
+  - New fixtures `extraction-rejected` (`LLV7011`) and
+    `extraction-authority-drift` (`LLV7012`) run end to end. The adapter's
+    classification is checked on real Lean over a hand-written module, and
+    the authority statement is a `some-true` ledger claim.
 - Every semantic-module member must survive into the typed value: an extra
   member of a unit variant (for example `{"kind":"reflexivity","tactic":...}`)
   was silently ignored and is now rejected in every language.

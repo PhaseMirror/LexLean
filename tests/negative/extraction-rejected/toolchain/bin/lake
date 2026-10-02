@@ -1,0 +1,17 @@
+#!/bin/sh
+# Passes every invocation to the pinned lake except `lake env lean` on the
+# extraction module, whose record is rewritten to report the translated
+# `Production.Kernel.area` as an opaque constant; the host refuses the
+# inconsistent record (SPEC.md 22.10: extraction rejection).
+real="$(dirname "$(readlink -f "$(dirname "$0")/lean")")/lake"
+if [ "$1" = "env" ] && [ "$2" = "lean" ]; then
+  case "$3" in
+    */extract/LexLeanExtract.*.lean)
+      out="$("$real" "$@")"
+      code=$?
+      printf '%s\n' "$out" | sed 's/"name":"Production.Kernel.area","kind":"definition"/"name":"Production.Kernel.area","kind":"opaque"/'
+      exit $code
+      ;;
+  esac
+fi
+exec "$real" "$@"

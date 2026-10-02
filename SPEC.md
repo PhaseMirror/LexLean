@@ -407,6 +407,7 @@ The completed repository MUST have this layout. Additional files are allowed onl
 │   └── ledger.toml
 ├── schemas/
 │   ├── attestation.schema.json
+│   ├── attestation-v2.schema.json
 │   ├── build-manifest.schema.json
 │   ├── build-manifest-v2.schema.json
 │   ├── compiler-input.schema.json
@@ -3425,7 +3426,8 @@ nested partition of the embedded tree. The language-1.2 ID covers the whole
 tree. The language-1.1 ID excludes the files introduced solely for 1.2:
 `language/bootstrap-1.2.toml`, `language/semantics-1.2.toml`,
 `language/production-1.2.toml`, `language/lcnf-1.2/`, `language/core-1.2/`,
-`language/std/{bool,int,nat}-1.2/`, `schemas/build-manifest-v2.schema.json`,
+`language/std/{bool,int,nat}-1.2/`, `schemas/attestation-v2.schema.json`,
+`schemas/build-manifest-v2.schema.json`,
 `schemas/compiler-input.schema.json`,
 `schemas/lexicon-v2.schema.json`, `schemas/lock-1.1.schema.json`,
 `schemas/lock-v2.schema.json`, `schemas/production-eligibility.schema.json`,
@@ -3724,6 +3726,7 @@ audit/output.txt
 audit/<audit-module-member>.process.json
 process/lean/*.json
 process/leanchecker/*.json
+production/*.eligibility.json              # when a production root exists
 extract/<extraction-module>.lean           # when a production root exists
 extract/process.json                       # when a production root exists
 production/compiler-input.json             # when a production root exists
@@ -3758,6 +3761,12 @@ The body records:
 - optional PDF process and bytes;
 - overall status exactly `verified`.
 
+A language-1.0 or 1.1 project's attestation is `lexlean/attestation/1`
+(`schemas/attestation.schema.json`). A language-1.2 project's is
+`lexlean/attestation/2` (`schemas/attestation-v2.schema.json`, in the 1.2-only
+partition): the same body plus `compiler_input`, present exactly when a
+production root exists. Routing is fixed by the project language.
+
 There is no timestamp in the hashed attestation. Digital signing is outside language 1.0; release automation may sign the completed file without changing its contents.
 
 ### 22.10 Named-root extraction
@@ -3767,68 +3776,117 @@ Lean's own compiler front end, at one explicit authority boundary. Lean's
 behavior there is an external authority (`LEAN-LCNF-4-32-1`), cited and pinned,
 never a LexLean-proved fact.
 
-**Authority interface.** `language/lcnf-1.2/authority.toml` is the closed
-registry of every Lean operation and LCNF data type the extraction uses. Each
-call row names the constant, its exact signature at Lean 4.32.1
-(`f054605aea4b840552cca2e725580bffd1e1b704`), the defining source file at that
-revision with its SHA-256, and its role; each type row names the matched
-constructors. The registry and the adapter are in the language-1.2 partition
-(§21.2), so both are part of the compiler-semantics ID. No user source can
-supply LCNF, a Lean expression, or a root name: roots are the linked
-production roots (§17.13).
+**Authority interface.** `language/lcnf-1.2/authority.toml`
+(`lexlean/lcnf-authority/2`) is the closed registry of every constant the
+adapter's own definitions use, each in exactly one class:
+
+- a *call* (a definition of Lean's `Lean` namespace other than a projection,
+  recursor, instance, or matcher) names its exact signature at Lean 4.32.1
+  (`f054605aea4b840552cca2e725580bffd1e1b704`), the defining source file at
+  that revision with its SHA-256, and its role;
+- a *type* of the `Lean` namespace names its complete constructor list in
+  Lean's order;
+- *plumbing* lists every other used constant by name: constructors,
+  projections, recursors, instances, matchers, and core-library data, whose
+  meaning the calls and types fix.
+
+The registry and the adapter are in the language-1.2 partition (§21.2), so
+both are part of the compiler-semantics ID. No user source can supply LCNF, a
+Lean expression, or a root name: roots are the linked production roots
+(§17.13).
 
 **Adapter.** `language/lcnf-1.2/extract.lean` is the only Lean the extraction
-runs. Its code contains no comment and no optimization or application policy:
-for each root it walks the definitions Lean's compiler reaches, translates
-each with `Lean.Compiler.LCNF.toDecl` in the base phase and runs no LCNF pass
-afterwards, records the project's inductives and every other constant the
-code names with its kind, defining module, computability, and whether code is
-generated for it, and records as erased every project theorem its kernel
-values reach, through compiler-generated helpers. A constant of the project's
-modules outside the fixed runtime namespaces (`<module>.LexLeanRuntime`,
-`<module>.LexLeanCollections`) is a closure member; anything else is an
-external. It prints one `lexlean/lcnf-extraction/1` record.
+runs, and it reports facts, not decisions. Its code contains no comment and
+no optimization or application policy. From the roots it follows the code of
+every translated definition: a constant of the project's generated modules
+(the fixed runtime namespaces `<module>.LexLeanRuntime` and
+`<module>.LexLeanCollections` included) that is a computable definition Lean
+generates code for is translated with `Lean.Compiler.LCNF.toDecl` in the base
+phase, and no LCNF pass runs afterwards. It records, for every project
+constant reached through code or named by a reached kernel value, its kind,
+defining module, computability, whether code is generated for it, whether it
+is a compiler-generated helper, and the constants its kernel value names; for
+a translated definition, its safety, universe parameters, LCNF type,
+parameters, code, and the constants that code names; for a project inductive,
+its constructors with their LCNF types; and, for every other constant
+translated code names, the same facts. Universe levels are recorded wherever
+a constant is instantiated. It prints one `lexlean/lcnf-extraction/2` record.
 
 **Driver.** Verification generates the module `LexLeanExtract.X<hex32>` (the
 first 32 hex digits of the semantic ID; a reserved module name) with exactly:
-`module`, `public meta import Lean`, one `import all` per generated module, one
-`meta example : <signature> := @<name>` per registry call in registry order,
-the adapter, and one `#eval` naming the roots, the modules, and the runtime
-namespaces. It is elaborated with `lake env lean` against the staged module
-outputs, after policy enforcement (stage 12, §22.1). An elaboration failure on
-a probe line or inside the adapter is authority drift (`LLV7012`); an error the
-adapter raises (an unknown root or an unresolved constant) is a rejection
-(`LLV7011`).
+`module`, `public meta import Lean`, one `import all` per generated module, the
+fixed option `set_option linter.unusedVariables false`, the adapter, a
+`universe` declaration of the universe variables the registered signatures
+name, one `lexlean_signature <name> : <signature>` per registry call in
+registry order, one `#eval` of the registry check, and one `#eval` naming the
+roots and the modules. It is elaborated with `lake env lean` against the
+staged module outputs, after policy enforcement (stage 12, §22.1).
+
+- `lexlean_signature` fails unless the constant's type equals the registered
+  signature structurally up to binder names: a changed result, argument,
+  binder kind, universe, or default value is drift, even where definitional
+  equality would hide it.
+- The registry check fails unless the adapter's own definitions use exactly
+  the registered constants, each in its registered class, and every registered
+  type has exactly its registered constructors.
+- Any Lean message on a probe line, on the registry check, or inside the
+  adapter, and any message the adapter raises as drift, is authority drift
+  (`LLV7012`), whether or not Lean exits successfully; Lean reports messages
+  on standard output, so a warning is never mistaken for part of the record.
+- An error the adapter raises by name (an unknown root, an unresolved
+  constant) is a rejection (`LLV7011`).
+
+**Decisions.** The host decides everything the facts admit:
+
+- each root's *closure* is the translated project definitions reached from
+  it through translated code; a reached project constant that Lean does not
+  translate is refused by its facts;
+- the closure's *runtime members* are those of the runtime namespaces; its
+  *source members* must equal the root's production-eligibility closure;
+- its *erased proofs* are the project theorems its members' kernel values
+  name, directly or through compiler-generated helpers, and the non-helper
+  ones must equal the eligibility analysis's erased dependencies;
+- a definition is *recursive* exactly when it lies on a cycle of the
+  translations' use graph;
+- each closure carries the eligibility analysis's monomorphization plan: every
+  instance with its declaration and type arguments.
 
 **Fail-closed rejection (`LLV7011`).** The host reads the record with a closed
 schema and rejects:
 
-- a record that is malformed, carries extra output, or answers other roots;
+- a record that is malformed, reports a constant twice, carries extra output,
+  or answers other roots;
 - a Lean version or source commit other than the pin (`LLV7012`);
+- a translation reported for a constant Lean does not compile, or whose
+  listed uses differ from what its code names;
 - a closure member that is a theorem (a proof-as-runtime dependency), an
-  axiom, an opaque, unsafe, or partial definition, noncomputable, without
-  generated code, or implemented externally;
+  axiom, an opaque (Lean's form of a partial definition), unsafe,
+  noncomputable, without generated code, or implemented externally;
 - an unsupported compiler form: an LCNF type with no closed representation, or
-  a variable used before it is bound;
-- an external that is neither a constant of Lean's `Init` library nor a member
-  of a generated module's runtime namespaces, or that is an axiom, opaque, or
-  noncomputable (an unresolved dependency);
-- a constant the extracted code names that is neither a closure member, a
-  project inductive or constructor, nor a recorded external (a dropped
+  a variable used outside the lexical scope that binds it;
+- an external that is not a constant of Lean's `Init` library, or that is an
+  axiom, opaque, or noncomputable (an unresolved dependency);
+- a constant translated code names that is neither reported as a project
+  constant nor recorded as an external (a dropped dependency), and a project
+  constant a kernel value names that is not reported (an unresolved
   dependency);
-- a root whose Lean closure differs from its production-eligibility closure:
+- a root whose source members differ from its production-eligibility closure:
   a member only Lean reaches is a dependency the eligibility analysis dropped,
-  a member only the analysis reaches is one Lean does not compile, and the two
-  must name the same erased proofs;
-- a proof that is both erased and realized.
+  and a member only the analysis reaches is one Lean does not compile;
+- a root whose erased proofs differ from the eligibility analysis's.
+
+Base-phase translation names fixed-width literals through their `OfNat`
+instances, so the record's fixed-width literal forms, which the schema admits,
+are exercised only by the host's record tests, not by pinned Lean.
 
 **Compiler input.** On success verification publishes
-`production/compiler-input.json` (`lexlean/compiler-input/1`,
+`production/compiler-input.json` (`lexlean/compiler-input/2`,
 `schemas/compiler-input.schema.json`): the Lean identity, the roots, each
-root's closure and erased proofs, every closure definition with its type,
-parameters, and LCNF code, the project inductives, the externals, and the
-erased proofs. Every LCNF variable is renamed `v<n>` in first-occurrence
-order within its declaration and every list is sorted, so the bytes and their
+root's closure with its source members, runtime members, instances, and erased
+proofs, every closure definition with its recursion, universe parameters,
+type, parameters, and LCNF code, the project inductives, the externals, and
+the erased proofs. Every LCNF variable is renamed `v<n>` in binding order
+within its declaration and every list is sorted, so the bytes and their
 SHA-256 (the compiler-input ID) depend on neither Lean's unique-name counter,
 the source path, nor the host. The attestation records the byte length and
 SHA-256, and the normalized verification records include the input, the
@@ -5094,7 +5152,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `VR-10` | `verification` | The axiom parser accepts only the pinned exact output forms and rejects missing, duplicate, extra, or malformed records. | §22.5 |
 | `VR-11` | `verification` | None, allow-subset, and exact axiom policies are enforced exactly and recorded per declaration. | §22.6 |
 | `VR-12` | `verification` | Child process output is normalized with the exact path and line rules before hashing. | §22.7 |
-| `VR-13` | `verification` | A verified directory contains the complete fixed source, map, coverage, olean, probe, audit, and process artifact set. | §22.8 |
+| `VR-13` | `verification` | A verified directory contains the complete fixed source, map, coverage, olean, probe, audit, and process artifact set, and, exactly when a production root exists, the eligibility reports, the extraction module, its process record, and the compiler input. | §22.8 |
 | `VR-14` | `verification` | The attestation ID is computed over the canonical body with its ID field removed. | §22.9 |
 | `VR-15` | `verification` | Any failed verification stage removes staging and produces no verified artifact or verified status. | §6 I11, §22 |
 | `VR-16` | `verification` | Axioms flowing from imported theorems remain subject to the generated declaration's policy. | §22.6 |
@@ -5149,11 +5207,11 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `PD-05` | `production` | A production root fails with LLT4005 before any backend runs when it declares type parameters or is not declared executable, when its boundary holds a universe, proposition, type parameter, or function, directly or in a named type's fields, or when its closure reaches a formal-only construct, a literal outside the target width, unavailable allocation, or an effect the root does not admit. | §17.13, §26.3 |
 | `PD-06` | `production` | Every production root's eligibility report is a deterministic, schema-valid build artifact recording its runtime closure, realized types, erased dependencies, constructs, and per-target effects with their sources. | §17.13, §21.5 |
 | `PD-07` | `production` | The eligibility analysis classifies every semantic construct by an explicit exhaustive match, and the exhaustiveness audit rejects a planted wildcard arm, rest pattern, implicit-default binding form, or unnamed IR variant. | §17.13, §27.10 |
-| `NE-01` | `extraction` | Verifying a project with production roots extracts every root through Lean's compiler front end into one canonical compiler input whose bytes and ID are schema-valid, recorded in the attestation, and identical from distinct roots, and a project without a production root publishes none. | §22.10, §26.3 |
-| `NE-02` | `extraction` | Each root's extracted closure is exactly its computational dependencies, equals its production-eligibility closure, names every constant its code uses, and records proof-only dependencies as erased and never as runtime members. | §22.10, §26.3 |
+| `NE-01` | `extraction` | Verifying a project with production roots extracts every root through Lean's compiler front end into one canonical compiler input whose bytes and ID are schema-valid, recorded in the attestation, and identical from distinct project directories, and a project without a production root publishes none. | §22.10, §26.3 |
+| `NE-02` | `extraction` | Each root's extracted closure is exactly its computational dependencies, equals its production-eligibility closure, carries its runtime members and monomorphization instances, names every constant its code uses, marks recursion from the use graph, and records proof-only dependencies as erased and never as runtime members. | §22.10, §26.3 |
 | `NE-03` | `extraction` | An unknown root, an opaque, axiomatic, unsafe, partial, or noncomputable dependency, an external implementation, an unresolved external, an unsupported compiler form, and a malformed, noisy, or foreign extraction record fail closed with LLV7011. | §22.10, §26.3 |
-| `NE-04` | `extraction` | Every Lean operation the extraction uses has a registry row with its exact signature and pinned source identity, every row is probed under pinned Lean on each extraction, the adapter runs no LCNF pass, and a drifted signature or Lean identity fails with LLV7012. | §22.10, §26.3 |
-| `NE-05` | `extraction` | A dependency dropped from Lean's extracted closure, from its declarations, or from the production-eligibility closure fails extraction with LLV7011 before any compiler input is published. | §22.10, §26.3 |
+| `NE-04` | `extraction` | Every constant the extraction adapter uses is registered exactly once, as a call with its exact signature and pinned source identity, a type with its exact constructors, or plumbing; each extraction compares every signature structurally and the adapter's constants with the registry under pinned Lean, the adapter runs no LCNF pass, and drift of a signature, a constructor list, the adapter's constants, its output, or the Lean identity fails with LLV7012. | §22.10, §26.3 |
+| `NE-05` | `extraction` | A dependency dropped from Lean's extracted facts or from the production-eligibility closure fails extraction with LLV7011 before any compiler input is published. | §22.10, §26.3 |
 | `NE-06` | `extraction` | A proof-only dependency presented as a runtime closure member fails extraction with LLV7011 before any compiler input is published. | §22.10, §26.3 |
 
 **Total required capability IDs:** 256.
