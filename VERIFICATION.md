@@ -358,6 +358,23 @@ thread 'conformance_df_15' panicked at crates/conformance/src/cases/declarations
 expected "escaping closure: executable definition `evaluator` returns a function", got LLT4001: phase link: escaping closure in executable definition `evaluator`: a lambda may only be passed directly to an executable function parameter or applied
 ```
 
+### unused semantic binder lowering can fail
+
+Planted: `bound_name` kept every binder's own name (`if used || true`), so a
+definition parameter, quantifier, `let`, or lambda binder its scope never
+mentions reached Lean unprefixed, where the unused-variable linter warns and
+verification fails with `LLV7006`. Command: `cargo test -p repo-conformance
+--test conformance -- conformance_sm_08`.
+
+```text
+thread 'conformance_sm_08' panicked at crates/conformance/src/cases/semantic_ir.rs:572:17:
+missing "public def constantTrue (_ignored : Nat) : Bool := true" in:
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 234 filtered out
+```
+
+Removed: the prefix was restored; `conformance_sm_08` passes and pinned Lean
+verifies both the language-1.1 and the language-1.2 projects it builds.
+
 ### fmt-check can fail
 
 Planted: `fn   badly_formatted( ) {}` appended to `crates/model/src/release.rs`. Command: `cargo fmt --all -- --check`. Expected: a formatting diff and a nonzero exit.

@@ -59,6 +59,11 @@ versions, and the entries below say what each tag does and does not claim.
   and a universe type argument.
 - Language 1.1 definitions now reject a type parameter written inside their
   body: the scope is empty, so such a definition could never elaborate.
+- A semantic-module definition parameter, quantifier, `let`, or lambda binder
+  that its scope never mentions now lowers as `_name`. Such a module type
+  checked and built but failed verification with `LLV7006` on pinned Lean's
+  unused-variable warning; only Lean text that never verified changes
+  (`SM-08`).
 - The public snapshot DTO `SnapshotTerm` gains the `Let`, `Pair`, `First`,
   `Second`, `Lambda`, `Apply`, and `FunctionRef` variants and call type
   arguments, `SnapshotType` gains `Product` and `Function`, declarations gain

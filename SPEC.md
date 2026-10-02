@@ -2345,6 +2345,14 @@ Every semantic declaration, nested type, term, primitive argument/result,
 match branch, and proof is charged recursively to `max_ir_nodes`; counting
 only the top-level declaration array is forbidden.
 
+A semantic binder its scope never mentions (a definition parameter, a
+quantifier, `let`, or lambda binder, or a match pattern binder) lowers as
+`_name` (a match pattern binder as `_`). Pinned Lean's unused-variable linter
+warns on such a binder under its own name, verification admits no
+unexpected output (§20.2), and semantic names begin with an ASCII letter, so
+`_name` captures nothing. The binder's type, position, and meaning are
+unchanged.
+
 The closed proof variants are reflexivity, decidable Boolean bridging,
 `simp only` over a nonempty sorted unique set of document definitions,
 induction hypotheses, and the fixed `Bool.and_eq_true`, `Nat.beq_eq`, or

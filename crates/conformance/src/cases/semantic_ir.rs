@@ -549,6 +549,43 @@ pub(crate) fn run(id: &str) {
                 "an unreferenced introduced hypothesis is `_llh0`: {lean}"
             );
             support::verify_ok_backed("SM-08", &unused_hypothesis);
+
+            // Semantic-module binders follow the same rule: a definition
+            // parameter, quantifier, `let`, or lambda parameter its scope
+            // never mentions lowers as `_name`, and pinned Lean verifies the
+            // module instead of failing it on a linter warning.
+            let eleven = P::semantic_example();
+            let support_source = eleven.read("src/Support.lex.tex");
+            eleven.write(
+                "src/Support.lex.tex",
+                &support_source.replacen(
+                    r#"{"declarations":["#,
+                    r#"{"declarations":[{"body":{"kind":"bool","value":true},"kind":"definition","name":"constantTrue","parameters":[{"name":"ignored","type":{"kind":"nat"}}],"result":{"kind":"bool"}},{"body":{"binder":{"name":"ignored","type":{"kind":"nat"}},"body":{"kind":"eq","left":{"kind":"nat","value":"0"},"right":{"kind":"nat","value":"0"}},"kind":"forall"},"kind":"definition","name":"vacuous","parameters":[],"result":{"kind":"prop"}},"#,
+                    1,
+                ),
+            );
+            let lean = support::lean_text(&support::rendered(&eleven), "Support");
+            for expected in [
+                "public def constantTrue (_ignored : Nat) : Bool := true",
+                "public def vacuous : Prop := (forall (_ignored : Nat), (0 = 0))",
+            ] {
+                assert!(lean.contains(expected), "missing {expected:?} in:\n{lean}");
+            }
+            support::verify_ok_backed("SM-08", &eleven);
+            let twelve = P::copy_example("higher-order");
+            let combinators = twelve.read("src/Combinators.lex.tex");
+            twelve.write(
+                "src/Combinators.lex.tex",
+                &combinators.replacen(
+                    r#"{"declarations":["#,
+                    r#"{"declarations":[{"body":{"binder":{"name":"spare","type":{"kind":"nat"}},"body":{"arguments":[{"kind":"nat","value":"0"}],"function":{"body":{"kind":"nat","value":"1"},"captures":[],"kind":"lambda","parameters":[{"name":"value","type":{"kind":"nat"}}]},"kind":"apply"},"kind":"let","value":{"kind":"nat","value":"2"}},"kind":"definition","name":"constantOne","parameters":[],"result":{"kind":"nat"}},"#,
+                    1,
+                ),
+            );
+            let lean = support::lean_text(&support::rendered(&twelve), "Combinators");
+            let expected = "public def constantOne : Nat := (let _spare : Nat := 2; ((fun (_value : Nat) => 1) (0)))";
+            assert!(lean.contains(expected), "missing {expected:?} in:\n{lean}");
+            support::verify_ok_backed("SM-08", &twelve);
         }
         // §17.9: alpha-safe serialization with dense binder indices.
         "SM-09" => {

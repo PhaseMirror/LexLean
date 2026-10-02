@@ -56,6 +56,16 @@ fn string_literal(value: &str) -> String {
     output
 }
 
+/// The Lean spelling of a binder: its identifier when its scope mentions
+/// it, otherwise `_name`, which the unused-variable linter exempts.
+fn bound_name(name: &str, used: bool) -> String {
+    if used {
+        identifier(name)
+    } else {
+        format!("_{name}")
+    }
+}
+
 fn term_uses(term: &SemanticTerm, local: &str) -> bool {
     let pair = |left: &SemanticTerm, right: &SemanticTerm| {
         term_uses(left, local) || term_uses(right, local)
@@ -275,6 +285,27 @@ impl Render<'_> {
                 out
             }
         }
+    }
+
+    /// Binders the scope never mentions lower as `_name`: Lean's
+    /// unused-variable linter would otherwise warn, and verification admits
+    /// no unexpected output. Semantic names begin with an ASCII letter, so
+    /// `_name` captures no other binder.
+    fn scoped_parameters(
+        &self,
+        parameters: &[SemanticParameter],
+        used: impl Fn(&str) -> bool,
+    ) -> String {
+        parameters
+            .iter()
+            .map(|parameter| {
+                format!(
+                    " ({} : {})",
+                    bound_name(&parameter.name, used(&parameter.name)),
+                    self.ty(&parameter.r#type)
+                )
+            })
+            .collect()
     }
 
     fn parameters(&self, parameters: &[SemanticParameter]) -> String {
@@ -605,7 +636,7 @@ impl Render<'_> {
             SemanticTerm::Iff { left, right } => binary("<->", left, right),
             SemanticTerm::Forall { binder, body } => format!(
                 "(forall ({} : {}), {})",
-                identifier(&binder.name),
+                bound_name(&binder.name, term_uses(body, &binder.name)),
                 self.ty(&binder.r#type),
                 self.term(body)
             ),
@@ -615,7 +646,7 @@ impl Render<'_> {
                 body,
             } => format!(
                 "(let {} : {} := {}; {})",
-                identifier(&binder.name),
+                bound_name(&binder.name, term_uses(body, &binder.name)),
                 self.ty(&binder.r#type),
                 self.term(value),
                 self.term(body)
@@ -629,7 +660,7 @@ impl Render<'_> {
                 parameters, body, ..
             } => format!(
                 "(fun{} => {})",
-                self.parameters(parameters),
+                self.scoped_parameters(parameters, |name| term_uses(body, name)),
                 self.term(body)
             ),
             SemanticTerm::Apply {
@@ -1307,7 +1338,7 @@ pub fn render_lean(
                     text.push_str(&format!(
                         "@[expose] public def {name}{}{} : {} := {}\n",
                         render.type_parameters(type_parameters),
-                        render.parameters(parameters),
+                        render.scoped_parameters(parameters, |local| term_uses(body, local)),
                         render.ty(result),
                         render.term(body)
                     ));
