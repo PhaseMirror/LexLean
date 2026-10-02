@@ -57,9 +57,43 @@ versions, and the entries below say what each tag does and does not claim.
   Eight new negative fixtures cover positivity, non-uniformity, an
   uninhabited cycle, a recursive structure, a non-contiguous group, bad type
   arguments, a constructor mismatch, and a forward reference.
+- Language-1.2 higher-order code (§17.12): function types, lambdas with exact
+  explicit captures, full applications, definition references, and generic
+  definitions and theorems with explicit type arguments and no polymorphic
+  recursion. `executable` definitions are production-eligible only with
+  non-escaping closures and executable callees: no type they state or write
+  may hold a function, directly or through a document type's fields, and a
+  function parameter is used only where a closure may be. Type parameters
+  never capture a backend type, a document type, or a value binder, and the
+  universe is never a type argument. Snapshots record a per-definition alpha
+  identity (`DF-14`, `DF-15`, `SM-25`, `SM-26`, `examples/higher-order`),
+  exposed as `SnapshotSemanticDeclaration::alpha_identity` and
+  `SemanticSnapshot::alpha_ids`. Fifteen new negative fixtures cover
+  capture, arity, typing, escaping closures (returned, stored in an
+  `Option`, and passed in or out of a structure), polymorphic ambiguity and
+  recursion, recursion under a lambda, formal callees, a captured type name,
+  and a universe type argument.
+  Changes after review:
+  - Binder hygiene (§17.12 rule 10) covers generic type parameters and
+    lambda parameters, so neither the declaration's own name, a sibling
+    declaration, nor the module prefix can be captured.
+  - A type parameter its declaration never mentions lowers as `(_T : Type)`.
+  - The alpha identity numbers binders in evaluation order rather than in
+    serialized member order.
+  - The 1.2 LaTeX states every parameter with its type and every closure
+    with what it binds and captures.
+- Language 1.1 definitions now reject a type parameter written inside their
+  body: the scope is empty, so such a definition could never elaborate.
+- A semantic-module definition parameter, quantifier, `let`, or lambda binder
+  that its scope never mentions now lowers as `_name`. Such a module type
+  checked and built but failed verification with `LLV7006` on pinned Lean's
+  unused-variable warning; only Lean text that never verified changes
+  (`SM-08`).
 - The public snapshot DTO `SnapshotTerm` gains the `Let`, `Pair`, `First`,
-  and `Second` variants, `SnapshotType` gains `Product`, and the inductive
-  declaration gains an optional `mutual` label; downstream exhaustive
+  `Second`, `Lambda`, `Apply`, and `FunctionRef` variants and call type
+  arguments, `SnapshotType` gains `Product` and `Function`, declarations gain
+  optional `mutual`, `type_parameters`, and `executable` fields, and
+  `SnapshotProof::Apply` gains type arguments; downstream exhaustive
   matches must add them.
 - New conformance IDs `CF-17`, `CF-18`, `GL-17`, `GL-18`, and `SM-23`; new
   example `examples/language-1.2`, verified with real Lean; ten new negative

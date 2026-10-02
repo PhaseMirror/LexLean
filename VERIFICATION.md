@@ -12,7 +12,7 @@ How this repository's claims are checked, which recipe enforces which rule, and 
 | `model` | `cargo xtask validate-model` | R1 (model is the single source; every model file parsed with unknown-field rejection), R2 (honesty levels and vocabulary, via the meta-gate), R3 (register/scenario/test bijection, Gherkin subset), R4 (`audit-deferral`), R5 (`audit-errors`), R6 (`audit-shipped`, including the shipped crate's normative links), R8 (`audit-generated`, `audit-language-closure`), RP-09 (`audit-no-unsafe`), §27.5 (CONFORMANCE.md and ERRORS.md equal regeneration) |
 | `spec-links` | `cargo xtask validate-spec-links` | RP-07, §27.6: the §31 table and `model/ids.toml` are bijective and byte-consistent |
 | `lint` | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | no tolerated warnings |
-| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 231 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
+| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 235 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
 | `features` | `cargo check --workspace --all-features --all-targets` | every target compiles |
 | `bdd` | `cargo test -p repo-conformance` | R3, §27.7, §27.8: register ↔ scenario ↔ test bijection, the meta-gate, and its own falsifiability test |
 | `examples` | `cargo xtask verify-examples` | §28.6, EX-01: every example directory formats, locks, checks, builds, and verifies with real Lean 4.32.1; when an example commits `expected/verify/`, its normalized verification records must equal it (§29.5) |
@@ -232,7 +232,7 @@ Expected: the committed language-1.2 example no longer checks, and the
 negative fixture of a `let` under language 1.1 is accepted.
 
 ```text
-thread 'conformance_sm_23' panicked at crates/conformance/src/support.rs:307:14:
+thread 'conformance_sm_23' panicked at crates/conformance/src/support.rs:318:14:
 check succeeds: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLT4001"), message: "phase link: `let` is a language-1.2 construct; language 1.1 rejects it", ... }] }
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 227 filtered out
 gate failed: tests/negative/language-1.2-construct-under-1.1: step 1 `check ` exited 0, case.toml expects 1
@@ -291,7 +291,7 @@ structural eliminator. Command: `cargo test -p repo-conformance --test
 conformance -- conformance_df_13`.
 
 ```text
-thread 'conformance_df_13' panicked at crates/conformance/src/support.rs:317:14:
+thread 'conformance_df_13' panicked at crates/conformance/src/support.rs:328:14:
 check fails
 ```
 
@@ -305,13 +305,85 @@ well-formed `Wrap` with a constructor field `Tree (Wrap)` is no longer
 rejected at all; only the positivity rule refused it.
 
 ```text
-thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:317:14:
+thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:328:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 230 filtered out
 ```
 
 Removed: the rule was restored; `conformance_df_12` passes and the
 `recursive-type-positivity` negative fixture fails with `LLT4001`.
+
+### lambda capture closure can fail
+
+Planted: the exact-capture rule for `lambda` was bypassed (`if false && used
+!= declared`), so a lambda could declare captures its body does not use.
+Command: `cargo test -p repo-conformance --test conformance --
+conformance_sm_25`. Expected: the capture mutation no longer fails with the
+exact-capture diagnostic (an undeclared use still fails later as an unbound
+local, and an unused declared capture is accepted).
+
+```text
+thread 'conformance_sm_25' panicked at crates/conformance/src/cases/semantic_ir.rs:1696:17:
+expected "declared (), used (offset)", got LLT4001: phase link: unbound local `offset`
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 234 filtered out
+```
+
+Removed: the rule was restored; `conformance_sm_25` passes and the
+`lambda-capture-extra` negative fixture fails with `LLT4001`.
+
+### higher-order lowering can fail
+
+Planted: the Lean lowering of `call` dropped its explicit type arguments
+(`for argument in type_arguments.iter().take(0)` in
+`crates/lexlean/src/backend/semantic.rs`), so a generic call lowered to a
+call of the wrong arity. Command: `cargo test -p repo-conformance --test
+conformance -- conformance_sm_25 conformance_df_14`.
+
+```text
+thread 'conformance_df_14' panicked at crates/conformance/src/cases/declarations.rs:926:13:
+assertion failed: combinators.contains("mapList (Input) (Output) (transform) (tail)")
+thread 'conformance_sm_25' panicked at crates/conformance/src/cases/semantic_ir.rs:1684:17:
+missing "HigherOrder.Combinators.mapList (Nat) (Nat) ((fun (value : Nat) => (value + offset))) (values)" in:
+```
+
+Removed: the type arguments were restored; `conformance_sm_25` and
+`conformance_df_14` pass.
+
+### closure escape through data can fail
+
+Planted: `holds_function` stopped looking through a document type's field
+types (`false && type_info(member, env)...`), so a record of closures was data
+without functions. Command: `cargo test -p repo-conformance --test
+conformance -- conformance_df_15`. The executable `evaluator` that returns a
+`Visitor` of closures is no longer refused for returning a function.
+
+```text
+thread 'conformance_df_15' panicked at crates/conformance/src/cases/declarations.rs:1040:17:
+expected "escaping closure: executable definition `evaluator` returns a value of type Combinators.Visitor, which holds a function", got LLT4001: phase link: escaping closure in executable definition `evaluator`: a lambda may only be passed directly to an executable function parameter or applied
+```
+
+Removed: the field types were restored; `conformance_df_15` passes and the
+`escaping-closure-structure` negative fixture fails with `LLT4001`.
+
+### unused semantic binder lowering can fail
+
+Planted: `bound_name` kept every binder's own name (`if used || true`), so a
+definition parameter, quantifier, `let`, or lambda binder its scope never
+mentions reached Lean unprefixed, where the unused-variable linter warns and
+verification fails with `LLV7006`; the same holds for a type parameter its
+declaration never mentions. Command: `cargo test -p repo-conformance --test
+conformance -- conformance_sm_08 conformance_df_14`.
+
+```text
+thread 'conformance_df_14' panicked at crates/conformance/src/cases/declarations.rs:953:17:
+missing "public def keepNat (_Phantom : Type) (value : Nat) : Nat := value\n" in:
+thread 'conformance_sm_08' panicked at crates/conformance/src/cases/semantic_ir.rs:572:17:
+missing "public def constantTrue (_ignored : Nat) : Bool := true" in:
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 233 filtered out
+```
+
+Removed: the prefix was restored; `conformance_sm_08` passes and pinned Lean
+verifies both the language-1.1 and the language-1.2 projects it builds.
 
 ### binder hygiene can fail
 
@@ -324,7 +396,7 @@ product field. Expected: the renamed type parameter is admitted, and Lean,
 not linking, is the first to refuse the capture.
 
 ```text
-thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:317:14:
+thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:328:14:
 check fails
 
 checked 1 module (source 0eec48d541180c1a6dbf34539884c1063f8a6637964a1f7667a5b6c0f73a4d15, semantic 1fe3fc4d4fa60d781de6ea42be16516d7b6b860a2918f6ed351b40ad6e1e0d2c)

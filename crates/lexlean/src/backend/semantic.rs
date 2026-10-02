@@ -5,9 +5,10 @@ use crate::backend::{EmitSource, Emitter};
 use crate::code;
 use crate::diagnostic::Diagnostic;
 use crate::ir::semantic::{
-    MemberRef, SemanticAssignment, SemanticBranch, SemanticDeclaration, SemanticModule,
-    SemanticParameter, SemanticPrimitive, SemanticProof, SemanticProofBranch, SemanticReflection,
-    SemanticReflectionComparison, SemanticReflectionField, SemanticTerm, SemanticType,
+    mentions_type_parameter, MemberRef, SemanticAssignment, SemanticBranch, SemanticDeclaration,
+    SemanticModule, SemanticParameter, SemanticPrimitive, SemanticProof, SemanticProofBranch,
+    SemanticReflection, SemanticReflectionComparison, SemanticReflectionField, SemanticTerm,
+    SemanticType,
 };
 use crate::link::CheckedModule;
 use crate::source::coverage::Origin;
@@ -54,6 +55,16 @@ fn string_literal(value: &str) -> String {
     }
     output.push('"');
     output
+}
+
+/// The Lean spelling of a binder: its identifier when its scope mentions
+/// it, otherwise `_name`, which the unused-variable linter exempts.
+fn bound_name(name: &str, used: bool) -> String {
+    if used {
+        identifier(name)
+    } else {
+        format!("_{name}")
+    }
 }
 
 fn term_uses(term: &SemanticTerm, local: &str) -> bool {
@@ -124,6 +135,17 @@ fn term_uses(term: &SemanticTerm, local: &str) -> bool {
         | SemanticTerm::First { value }
         | SemanticTerm::Second { value } => term_uses(value, local),
         SemanticTerm::Pair { left, right } => term_uses(left, local) || term_uses(right, local),
+        SemanticTerm::Lambda {
+            parameters, body, ..
+        } => !parameters.iter().any(|parameter| parameter.name == local) && term_uses(body, local),
+        SemanticTerm::Apply {
+            function,
+            arguments,
+        } => {
+            term_uses(function, local)
+                || arguments.iter().any(|argument| term_uses(argument, local))
+        }
+        SemanticTerm::FunctionRef { .. } => false,
         SemanticTerm::Record { fields, .. } => fields
             .iter()
             .any(|assignment| term_uses(&assignment.value, local)),
@@ -255,7 +277,36 @@ impl Render<'_> {
             SemanticType::Product { left, right } => {
                 format!("(Prod ({}) ({}))", self.ty(left), self.ty(right))
             }
+            SemanticType::Function { parameters, result } => {
+                let mut out = String::from("(");
+                for parameter in parameters {
+                    out.push_str(&format!("({}) -> ", self.ty(parameter)));
+                }
+                out.push_str(&format!("({}))", self.ty(result)));
+                out
+            }
         }
+    }
+
+    /// Binders the scope never mentions lower as `_name`: Lean's
+    /// unused-variable linter would otherwise warn, and verification admits
+    /// no unexpected output. Semantic names begin with an ASCII letter, so
+    /// `_name` captures no other binder.
+    fn scoped_parameters(
+        &self,
+        parameters: &[SemanticParameter],
+        used: impl Fn(&str) -> bool,
+    ) -> String {
+        parameters
+            .iter()
+            .map(|parameter| {
+                format!(
+                    " ({} : {})",
+                    bound_name(&parameter.name, used(&parameter.name)),
+                    self.ty(&parameter.r#type)
+                )
+            })
+            .collect()
     }
 
     fn parameters(&self, parameters: &[SemanticParameter]) -> String {
@@ -274,6 +325,7 @@ impl Render<'_> {
     fn recursive_equations(
         &self,
         name: &str,
+        type_binders: &str,
         parameters: &[SemanticParameter],
         result: &SemanticType,
         recursive_argument: &str,
@@ -289,7 +341,7 @@ impl Render<'_> {
         if !matches!(scrutinee.as_ref(), SemanticTerm::Var { name } if name == recursive_argument) {
             return None;
         }
-        let mut text = format!("@[expose] public def {} :", identifier(name));
+        let mut text = format!("@[expose] public def {}{type_binders} :", identifier(name));
         for parameter in parameters {
             text.push_str(&format!(
                 " ({} : {}) ->",
@@ -334,6 +386,24 @@ impl Render<'_> {
             text.push_str(&format!("  | {patterns} => {}\n", self.term(&branch.body)));
         }
         Some(text)
+    }
+
+    /// A definition's or theorem's type parameters; one its declaration
+    /// never mentions lowers as `_name`, like an unused value binder.
+    fn scoped_type_parameters(
+        &self,
+        parameters: &[String],
+        declaration: &SemanticDeclaration,
+    ) -> String {
+        parameters
+            .iter()
+            .map(|parameter| {
+                format!(
+                    " ({} : Type)",
+                    bound_name(parameter, mentions_type_parameter(declaration, parameter))
+                )
+            })
+            .collect()
     }
 
     fn type_parameters(&self, parameters: &[String]) -> String {
@@ -519,9 +589,15 @@ impl Render<'_> {
             }
             SemanticTerm::Call {
                 function,
+                type_arguments,
                 arguments,
             } => {
                 let mut out = self.member(function);
+                for argument in type_arguments {
+                    out.push_str(" (");
+                    out.push_str(&self.ty(argument));
+                    out.push(')');
+                }
                 for argument in arguments {
                     out.push_str(" (");
                     out.push_str(&self.term(argument));
@@ -575,7 +651,7 @@ impl Render<'_> {
             SemanticTerm::Iff { left, right } => binary("<->", left, right),
             SemanticTerm::Forall { binder, body } => format!(
                 "(forall ({} : {}), {})",
-                identifier(&binder.name),
+                bound_name(&binder.name, term_uses(body, &binder.name)),
                 self.ty(&binder.r#type),
                 self.term(body)
             ),
@@ -585,7 +661,7 @@ impl Render<'_> {
                 body,
             } => format!(
                 "(let {} : {} := {}; {})",
-                identifier(&binder.name),
+                bound_name(&binder.name, term_uses(body, &binder.name)),
                 self.ty(&binder.r#type),
                 self.term(value),
                 self.term(body)
@@ -595,6 +671,35 @@ impl Render<'_> {
             }
             SemanticTerm::First { value } => format!("({}).1", self.term(value)),
             SemanticTerm::Second { value } => format!("({}).2", self.term(value)),
+            SemanticTerm::Lambda {
+                parameters, body, ..
+            } => format!(
+                "(fun{} => {})",
+                self.scoped_parameters(parameters, |name| term_uses(body, name)),
+                self.term(body)
+            ),
+            SemanticTerm::Apply {
+                function,
+                arguments,
+            } => {
+                let mut out = format!("({}", self.term(function));
+                for argument in arguments {
+                    out.push_str(&format!(" ({})", self.term(argument)));
+                }
+                out.push(')');
+                out
+            }
+            SemanticTerm::FunctionRef {
+                function,
+                type_arguments,
+            } => {
+                let mut out = format!("({}", self.member(function));
+                for argument in type_arguments {
+                    out.push_str(&format!(" ({})", self.ty(argument)));
+                }
+                out.push(')');
+                out
+            }
         }
     }
 
@@ -731,10 +836,19 @@ impl Render<'_> {
                     )
                 }
             },
-            SemanticProof::Apply { theorem, arguments } => {
-                let arguments = arguments
+            SemanticProof::Apply {
+                theorem,
+                type_arguments,
+                arguments,
+            } => {
+                let arguments = type_arguments
                     .iter()
-                    .map(|argument| format!(" ({})", self.term(argument)))
+                    .map(|argument| format!(" ({})", self.ty(argument)))
+                    .chain(
+                        arguments
+                            .iter()
+                            .map(|argument| format!(" ({})", self.term(argument))),
+                    )
                     .collect::<String>();
                 format!("{pad}exact {}{arguments}\n", self.member(theorem))
             }
@@ -1363,15 +1477,24 @@ pub fn render_lean(
             }
             SemanticDeclaration::Definition {
                 name,
+                type_parameters,
                 parameters,
                 result,
                 body,
                 recursive_argument,
                 ..
             } => {
+                let type_binders = render.scoped_type_parameters(type_parameters, declaration);
                 if let Some(recursive_argument) = recursive_argument {
                     let equations = render
-                        .recursive_equations(name, parameters, result, recursive_argument, body)
+                        .recursive_equations(
+                            name,
+                            &type_binders,
+                            parameters,
+                            result,
+                            recursive_argument,
+                            body,
+                        )
                         .ok_or_else(|| {
                             Diagnostic::new(
                                 code!("LLI9001"),
@@ -1382,8 +1505,8 @@ pub fn render_lean(
                 } else {
                     let name = identifier(name);
                     text.push_str(&format!(
-                        "@[expose] public def {name}{} : {} := {}\n",
-                        render.parameters(parameters),
+                        "@[expose] public def {name}{type_binders}{} : {} := {}\n",
+                        render.scoped_parameters(parameters, |local| term_uses(body, local)),
                         render.ty(result),
                         render.term(body)
                     ));
@@ -1391,6 +1514,7 @@ pub fn render_lean(
             }
             SemanticDeclaration::Theorem {
                 name,
+                type_parameters,
                 parameters,
                 statement,
                 proof,
@@ -1398,7 +1522,8 @@ pub fn render_lean(
             } => {
                 let name = identifier(name);
                 text.push_str(&format!(
-                    "public theorem {name}{} : {} := by\n{}",
+                    "public theorem {name}{}{} : {} := by\n{}",
+                    render.scoped_type_parameters(type_parameters, declaration),
                     render.parameters(parameters),
                     render.term(statement),
                     render.proof(proof, 1)
@@ -1442,6 +1567,42 @@ fn tex_escape(text: &str) -> String {
         }
     }
     out
+}
+
+/// Language 1.2: a declaration's value parameters with their types, so a
+/// function-typed parameter is visible in the document.
+fn latex_parameters(render: &Render<'_>, parameters: &[SemanticParameter], text: &mut String) {
+    if !parameters.is_empty() {
+        text.push_str(&format!(
+            "\\noindent Parameters: \\texttt{{{}}}.\\par\n",
+            tex_escape(render.parameters(parameters).trim_start())
+        ));
+    }
+}
+
+/// Language 1.2: every closure a definition forms, in pre-order, with the
+/// locals it captures (explicit in the semantics, implicit in Lean's `fun`).
+fn latex_closures(body: &SemanticTerm, text: &mut String) {
+    let mut index = 0;
+    crate::ir::semantic::visit_terms(body, &mut |term| {
+        if let SemanticTerm::Lambda {
+            parameters,
+            captures,
+            ..
+        } = term
+        {
+            index += 1;
+            let names: Vec<&str> = parameters
+                .iter()
+                .map(|parameter| parameter.name.as_str())
+                .collect();
+            text.push_str(&format!(
+                "\\noindent Closure {index}: binds \\texttt{{({})}}, captures \\texttt{{({})}}.\\par\n",
+                tex_escape(&names.join(", ")),
+                tex_escape(&captures.join(", "))
+            ));
+        }
+    });
 }
 
 /// Render the same semantic module as canonical explanatory LaTeX.
@@ -1488,9 +1649,12 @@ pub fn render_latex(
         }
         match declaration {
             SemanticDeclaration::Definition {
+                type_parameters,
+                parameters,
                 result,
                 body,
                 axioms,
+                executable,
                 ..
             } => {
                 let policy = if axioms.is_empty() {
@@ -1498,6 +1662,19 @@ pub fn render_latex(
                 } else {
                     format!("exact [{}]", axioms.join(", "))
                 };
+                if version_2 && !type_parameters.is_empty() {
+                    text.push_str(&format!(
+                        "\\noindent Type parameters: \\texttt{{({})}}.\\par\n",
+                        tex_escape(&type_parameters.join(", "))
+                    ));
+                }
+                if version_2 {
+                    latex_parameters(&render, parameters, &mut text);
+                    latex_closures(body, &mut text);
+                }
+                if version_2 && *executable {
+                    text.push_str("\\noindent Execution: production-eligible, non-escaping closures only.\\par\n");
+                }
                 text.push_str(&format!(
                     "\\noindent Type: \\texttt{{{}}}.\\par\n\\noindent Definition: \\texttt{{{}}}.\\par\n\\noindent Axiom policy: \\texttt{{{}}}.\\par\n",
                     tex_escape(&render.ty(result)),
@@ -1506,13 +1683,26 @@ pub fn render_latex(
                 ));
             }
             SemanticDeclaration::Theorem {
-                statement, axioms, ..
+                statement,
+                axioms,
+                type_parameters,
+                parameters,
+                ..
             } => {
                 let policy = if axioms.is_empty() {
                     "none".to_owned()
                 } else {
                     format!("exact [{}]", axioms.join(", "))
                 };
+                if version_2 && !type_parameters.is_empty() {
+                    text.push_str(&format!(
+                        "\\noindent Type parameters: \\texttt{{({})}}.\\par\n",
+                        tex_escape(&type_parameters.join(", "))
+                    ));
+                }
+                if version_2 {
+                    latex_parameters(&render, parameters, &mut text);
+                }
                 text.push_str(&format!(
                     "\\noindent Statement: \\texttt{{{}}}.\\par\n\\noindent Axiom policy: \\texttt{{{}}}.\\par\n",
                     tex_escape(&render.term(statement)),

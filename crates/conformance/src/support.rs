@@ -75,6 +75,7 @@ fn ty(value: &SnapshotType) -> usize {
         SnapshotType::List { element } => ty(element),
         SnapshotType::Named { arguments, .. } => arguments.iter().map(ty).sum(),
         SnapshotType::Product { left, right } => ty(left) + ty(right),
+        SnapshotType::Function { parameters, result } => parameters.iter().map(ty).sum::<usize>() + ty(result),
     }
 }
 
@@ -90,7 +91,10 @@ fn term(value: &SnapshotTerm) -> usize {
         SnapshotTerm::Nil { element } => ty(element),
         SnapshotTerm::Cons { head, tail } => term(head) + term(tail),
         SnapshotTerm::Record { fields, .. } => fields.iter().map(|v| term(&v.value)).sum(),
-        SnapshotTerm::Constructor { arguments, .. } | SnapshotTerm::Call { arguments, .. } => arguments.iter().map(term).sum(),
+        SnapshotTerm::Constructor { arguments, .. } => arguments.iter().map(term).sum(),
+        SnapshotTerm::Call { type_arguments, arguments, .. } => {
+            type_arguments.iter().map(ty).sum::<usize>() + arguments.iter().map(term).sum::<usize>()
+        }
         SnapshotTerm::InstanceValue { arguments, .. } => arguments.iter().map(ty).sum(),
         SnapshotTerm::Project { value, .. } | SnapshotTerm::Not { value } => term(value),
         SnapshotTerm::If { condition, then_value, else_value } => term(condition) + term(then_value) + term(else_value),
@@ -106,6 +110,11 @@ fn term(value: &SnapshotTerm) -> usize {
         SnapshotTerm::Let { binder, value, body } => ty(&binder.r#type) + term(value) + term(body),
         SnapshotTerm::Pair { left, right } => term(left) + term(right),
         SnapshotTerm::First { value } | SnapshotTerm::Second { value } => term(value),
+        SnapshotTerm::Lambda { parameters, captures, body } => {
+            parameters.iter().map(|v| ty(&v.r#type)).sum::<usize>() + captures.len() + term(body)
+        }
+        SnapshotTerm::Apply { function, arguments } => term(function) + arguments.iter().map(term).sum::<usize>(),
+        SnapshotTerm::FunctionRef { type_arguments, .. } => type_arguments.iter().map(ty).sum(),
     }
 }
 
@@ -119,7 +128,9 @@ fn prove(value: &SnapshotProof) -> usize {
             lexlean::SnapshotReflection::List { .. } => 1,
             lexlean::SnapshotReflection::Record { fields, .. } => fields.len(),
         },
-        SnapshotProof::Apply { arguments, .. } => arguments.iter().map(term).sum(),
+        SnapshotProof::Apply { type_arguments, arguments, .. } => {
+            type_arguments.iter().map(ty).sum::<usize>() + arguments.iter().map(term).sum::<usize>()
+        }
     }
 }
 "#,

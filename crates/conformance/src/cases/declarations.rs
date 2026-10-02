@@ -1,4 +1,4 @@
-//! The `declarations` suite: DF-01..DF-13.
+//! The `declarations` suite: DF-01..DF-15.
 
 use lexlean::ir::declaration::{DeclBody, DeclKind};
 
@@ -910,6 +910,266 @@ pub(crate) fn run(id: &str) {
                 r#"{"kind":"theorem","name":"rose_label","parameters":[{"name":"rose","type":{"arguments":[{"kind":"nat"}],"kind":"named","member":{"module":"Types","name":"Rose"}}}],"proof":{"branches":[{"binders":["label","children"],"constructor":"node","proof":{"kind":"reflexivity"}}],"kind":"induction","scrutinee":"rose"}"#,
                 "requires a self-recursive inductive without nested or mutual occurrences",
             );
+        }
+        // §17.12: generic definitions and theorems are explicitly
+        // instantiated, never polymorphically recursive, and closed over
+        // their declared type parameters.
+        "DF-14" => {
+            let project = P::copy_example("higher-order");
+            project.check_ok();
+            let rendered = support::rendered(&project);
+            let combinators = support::lean_text(&rendered, "Combinators");
+            assert!(
+                combinators.contains("public def mapList (Input : Type) (Output : Type) : (transform : ((Input) -> (Output))) -> (values : List (Input)) -> List (Output)\n"),
+                "{combinators}"
+            );
+            assert!(combinators.contains("mapList (Input) (Output) (transform) (tail)"));
+            let main = support::lean_text(&rendered, "Main");
+            assert!(main.contains("exact map_identity (Nat) ("), "{main}");
+            let _ = support::verify_ok_backed("DF-14", &project);
+
+            // A type parameter its declaration never mentions lowers as
+            // `_name`, so Lean's unused-variable linter stays silent and the
+            // project still verifies with no unexpected output.
+            let phantom = P::copy_example("higher-order");
+            let source = phantom.read("src/Combinators.lex.tex");
+            let end = r#"],"spec":"lexlean/semantic-module/2"}"#;
+            phantom.write(
+                "src/Combinators.lex.tex",
+                &source.replacen(
+                    end,
+                    &format!(
+                        r#",{{"body":{{"kind":"var","name":"value"}},"kind":"definition","name":"keepNat","parameters":[{{"name":"value","type":{{"kind":"nat"}}}}],"result":{{"kind":"nat"}},"type_parameters":["Phantom"]}},{{"kind":"theorem","name":"phantomTheorem","parameters":[],"proof":{{"kind":"reflexivity"}},"statement":{{"kind":"eq","left":{{"kind":"nat","value":"1"}},"right":{{"kind":"nat","value":"1"}}}},"type_parameters":["Ghost"]}}{end}"#
+                    ),
+                    1,
+                ),
+            );
+            phantom.check_ok();
+            let phantom_lean = support::lean_text(&support::rendered(&phantom), "Combinators");
+            for expected in [
+                "public def keepNat (_Phantom : Type) (value : Nat) : Nat := value\n",
+                "public theorem phantomTheorem (_Ghost : Type) : (1 = 1) := by\n",
+            ] {
+                assert!(
+                    phantom_lean.contains(expected),
+                    "missing {expected:?} in:\n{phantom_lean}"
+                );
+            }
+            let _ = support::verify_ok_backed("DF-14", &phantom);
+
+            let mutate = |file: &str, from: &str, to: &str, message: &str| {
+                let copy = P::copy_example("higher-order");
+                let source = copy.read(file);
+                assert!(source.contains(from), "fixture lacks {from:?}");
+                copy.write(file, &source.replacen(from, to, 1));
+                let error = copy.check_fails_with("LLT4001");
+                assert!(
+                    error.to_string().contains(message),
+                    "expected {message:?}, got {error}"
+                );
+                copy.assert_no_backend_output();
+            };
+            mutate(
+                "src/Main.lex.tex",
+                r#""function":{"module":"Combinators","name":"mapList"},"kind":"call","type_arguments":[{"kind":"nat"},{"kind":"nat"}]"#,
+                r#""function":{"module":"Combinators","name":"mapList"},"kind":"call""#,
+                "function `Combinators::mapList` expects 2 explicit type argument(s), received 0",
+            );
+            mutate(
+                "src/Combinators.lex.tex",
+                r#""function":{"name":"mapList"},"kind":"call","type_arguments":[{"kind":"parameter","name":"Input"},{"kind":"parameter","name":"Output"}]"#,
+                r#""function":{"name":"mapList"},"kind":"call","type_arguments":[{"kind":"parameter","name":"Output"},{"kind":"parameter","name":"Input"}]"#,
+                "polymorphic recursion is not permitted",
+            );
+            mutate(
+                "src/Combinators.lex.tex",
+                r#"{"element":{"kind":"parameter","name":"Output"},"kind":"nil"}"#,
+                r#"{"element":{"kind":"parameter","name":"Other"},"kind":"nil"}"#,
+                "unbound type parameter `Other`",
+            );
+            mutate(
+                "src/Main.lex.tex",
+                r#""theorem":{"name":"map_identity"},"type_arguments":[{"kind":"nat"}]"#,
+                r#""theorem":{"name":"map_identity"}"#,
+                "theorem `map_identity` expects 1 explicit type argument(s), received 0",
+            );
+
+            // Language 1.1 has no generic definitions, and a type it writes
+            // inside a definition body is closed over the empty scope.
+            let eleven = P::semantic_example();
+            let support_source = eleven.read("src/Support.lex.tex");
+            let generic = support_source.replacen(
+                r#""name":"remoteEnabled","parameters":[],"result":{"kind":"bool"}"#,
+                r#""name":"remoteEnabled","parameters":[],"result":{"kind":"bool"},"type_parameters":["Item"]"#,
+                1,
+            );
+            assert_ne!(generic, support_source, "the 1.1 fixture is mutated");
+            eleven.write("src/Support.lex.tex", &generic);
+            let error = eleven.check_fails_with("LLT4001");
+            assert!(
+                error
+                    .to_string()
+                    .contains("`definition type parameters` is a language-1.2 construct"),
+                "{error}"
+            );
+        }
+        // §17.12: an executable definition forms only non-escaping closures
+        // and calls only executable definitions.
+        "DF-15" => {
+            let project = P::copy_example("higher-order");
+            project.check_ok();
+            let rendered = support::rendered(&project);
+            let tex = support::tex_text(&rendered, "Main");
+            // The document states every parameter with its type and every
+            // closure with exactly what it binds and captures.
+            assert!(
+                tex.contains("\\subsection*{\\texttt{addAll}}\n\\noindent Kind: \\texttt{definition}.\\par\n\\noindent Parameters: \\texttt{(offset : Nat) (values : List (Nat))}.\\par\n\\noindent Closure 1: binds \\texttt{(value)}, captures \\texttt{(offset)}.\\par\n\\noindent Execution: production-eligible, non-escaping closures only.\\par\n"),
+                "{tex}"
+            );
+            let combinators_tex = support::tex_text(&rendered, "Combinators");
+            assert!(
+                combinators_tex.contains("\\noindent Type parameters: \\texttt{(Input, Output)}.\\par\n\\noindent Parameters: \\texttt{(transform : ((Input) -> (Output))) (values : List (Input))}.\\par\n"),
+                "{combinators_tex}"
+            );
+            let mutate = |file: &str, from: &str, to: &str, message: &str| {
+                let copy = P::copy_example("higher-order");
+                let source = copy.read(file);
+                assert!(source.contains(from), "fixture lacks {from:?}");
+                copy.write(file, &source.replacen(from, to, 1));
+                let error = copy.check_fails_with("LLT4001");
+                assert!(
+                    error.to_string().contains(message),
+                    "expected {message:?}, got {error}"
+                );
+                copy.assert_no_backend_output();
+            };
+            // Returning a closure.
+            mutate(
+                "src/Combinators.lex.tex",
+                r#""kind":"definition","name":"compose""#,
+                r#""executable":true,"kind":"definition","name":"compose""#,
+                "escaping closure: executable definition `compose` returns a function",
+            );
+            // Returning a record of closures: a document type whose fields
+            // hold functions holds them too.
+            mutate(
+                "src/Main.lex.tex",
+                r#""kind":"definition","name":"evaluator""#,
+                r#""executable":true,"kind":"definition","name":"evaluator""#,
+                "escaping closure: executable definition `evaluator` returns a value of type Combinators.Visitor, which holds a function",
+            );
+            // Receiving closures inside data.
+            mutate(
+                "src/Combinators.lex.tex",
+                r#""kind":"definition","name":"visit""#,
+                r#""executable":true,"kind":"definition","name":"visit""#,
+                "escaping closure: executable definition `visit` parameter `visitor` stores a function in data",
+            );
+            // A closure stored in a pair escapes even when never returned.
+            mutate(
+                "src/Main.lex.tex",
+                r#""body":{"arguments":[{"body":{"kind":"add","left":{"kind":"var","name":"sum"},"right":{"kind":"var","name":"value"}},"captures":[],"kind":"lambda","parameters":[{"name":"sum","type":{"kind":"nat"}},{"name":"value","type":{"kind":"nat"}}]},{"kind":"nat","value":"0"},{"kind":"var","name":"values"}]"#,
+                r#""body":{"arguments":[{"body":{"kind":"add","left":{"kind":"var","name":"sum"},"right":{"kind":"var","name":"value"}},"captures":[],"kind":"lambda","parameters":[{"name":"sum","type":{"kind":"nat"}},{"name":"value","type":{"kind":"nat"}}]},{"kind":"first","value":{"kind":"pair","left":{"kind":"nat","value":"0"},"right":{"body":{"kind":"var","name":"probe"},"captures":[],"kind":"lambda","parameters":[{"name":"probe","type":{"kind":"nat"}}]}}},{"kind":"var","name":"values"}]"#,
+                "escaping closure in executable definition `total`",
+            );
+            // A non-executable callee.
+            mutate(
+                "src/Combinators.lex.tex",
+                r#""executable":true,"kind":"definition","name":"mapList""#,
+                r#""kind":"definition","name":"mapList""#,
+                "executable definition `addAll` calls non-executable `Combinators::mapList`",
+            );
+            // Every rejection rule of higher-order code, on a declaration
+            // appended to an otherwise valid module.
+            for (file, declarations, message) in [
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"kind":"nat","value":"0"},"executable":true,"kind":"definition","name":"probeHigher","parameters":[{"name":"handler","type":{"kind":"function","parameters":[{"kind":"function","parameters":[{"kind":"nat"}],"result":{"kind":"nat"}}],"result":{"kind":"nat"}}}],"result":{"kind":"nat"}}"#,
+                    "executable definition `probeHigher` parameter `handler` is a higher-order function of functions",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"binder":{"name":"step","type":{"kind":"function","parameters":[{"kind":"nat"}],"result":{"kind":"nat"}}},"body":{"arguments":[{"kind":"var","name":"number"}],"function":{"kind":"var","name":"step"},"kind":"apply"},"kind":"let","value":{"body":{"kind":"var","name":"value"},"captures":[],"kind":"lambda","parameters":[{"name":"value","type":{"kind":"nat"}}]}},"executable":true,"kind":"definition","name":"probeLet","parameters":[{"name":"number","type":{"kind":"nat"}}],"result":{"kind":"nat"}}"#,
+                    "escaping closure in executable definition `probeLet`: a function is bound by let",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"kind":"first","value":{"kind":"pair","left":{"kind":"var","name":"number"},"right":{"kind":"var","name":"step"}}},"executable":true,"kind":"definition","name":"probeValue","parameters":[{"name":"step","type":{"kind":"function","parameters":[{"kind":"nat"}],"result":{"kind":"nat"}}},{"name":"number","type":{"kind":"nat"}}],"result":{"kind":"nat"}}"#,
+                    "escaping closure in executable definition `probeValue`: the function `step` is used as a value",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"kind":"first","value":{"kind":"pair","left":{"kind":"var","name":"number"},"right":{"function":{"module":"Combinators","name":"increment"},"kind":"function_ref"}}},"executable":true,"kind":"definition","name":"probeReference","parameters":[{"name":"number","type":{"kind":"nat"}}],"result":{"kind":"nat"}}"#,
+                    "escaping closure in executable definition `probeReference`: a function reference may only be passed directly to an executable function parameter or applied",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"arguments":[{"kind":"var","name":"number"}],"function":{"condition":{"kind":"bool","value":true},"else_value":{"kind":"var","name":"step"},"kind":"if","then_value":{"kind":"var","name":"step"}},"kind":"apply"},"executable":true,"kind":"definition","name":"probeApply","parameters":[{"name":"step","type":{"kind":"function","parameters":[{"kind":"nat"}],"result":{"kind":"nat"}}},{"name":"number","type":{"kind":"nat"}}],"result":{"kind":"nat"}}"#,
+                    "executable definition `probeApply` applies a function value that is not a parameter, lambda, or function reference",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"kind":"add","left":{"kind":"var","name":"value"},"right":{"kind":"nat","value":"1"}},"kind":"definition","name":"plainIncrement","parameters":[{"name":"value","type":{"kind":"nat"}}],"result":{"kind":"nat"}},{"body":{"arguments":[{"function":{"name":"plainIncrement"},"kind":"function_ref"},{"kind":"var","name":"values"}],"function":{"module":"Combinators","name":"mapList"},"kind":"call","type_arguments":[{"kind":"nat"},{"kind":"nat"}]},"executable":true,"kind":"definition","name":"probeFormal","parameters":[{"name":"values","type":{"element":{"kind":"nat"},"kind":"list"}}],"result":{"element":{"kind":"nat"},"kind":"list"}}"#,
+                    "executable definition `probeFormal` references non-executable `plainIncrement`",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"branches":[{"binders":[],"body":{"kind":"nat","value":"0"},"constructor":{"name":"Nat.zero"}},{"binders":["smaller"],"body":{"arguments":[{"kind":"var","name":"smaller"}],"function":{"function":{"name":"probeSelf"},"kind":"function_ref"},"kind":"apply"},"constructor":{"name":"Nat.succ"}}],"kind":"match","scrutinee":{"kind":"var","name":"number"}},"kind":"definition","name":"probeSelf","parameters":[{"name":"number","type":{"kind":"nat"}}],"recursive_argument":"number","result":{"kind":"nat"}}"#,
+                    "recursive definition `probeSelf` cannot be referenced as a value of itself",
+                ),
+                (
+                    "src/Combinators.lex.tex",
+                    r#"{"body":{"kind":"var","name":"item"},"kind":"definition","name":"probeCapture","parameters":[{"name":"item","type":{"kind":"parameter","name":"Visitor"}}],"result":{"kind":"parameter","name":"Visitor"},"type_parameters":["Visitor"]}"#,
+                    "binder `Visitor` in `probeCapture` is spelled like the declaration `Visitor`",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"kind":"var","name":"item"},"kind":"definition","name":"probeBound","parameters":[{"name":"item","type":{"kind":"parameter","name":"item"}}],"result":{"kind":"parameter","name":"item"},"type_parameters":["item"]}"#,
+                    "type parameter `item` is also bound as a value in the same declaration",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"arguments":[{"kind":"var","name":"number"}],"function":{"body":{"kind":"nat","value":"1"},"captures":[],"kind":"lambda","parameters":[]},"kind":"apply"},"kind":"definition","name":"probeLambda","parameters":[{"name":"number","type":{"kind":"nat"}}],"result":{"kind":"nat"}}"#,
+                    "a lambda binds at least one parameter",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"kind":"nat","value":"0"},"kind":"definition","name":"probeFunctionType","parameters":[{"name":"step","type":{"kind":"function","parameters":[],"result":{"kind":"nat"}}}],"result":{"kind":"nat"}}"#,
+                    "a function type has at least one parameter",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"arguments":[],"function":{"kind":"var","name":"step"},"kind":"apply"},"kind":"definition","name":"probeNoArguments","parameters":[{"name":"step","type":{"kind":"function","parameters":[{"kind":"nat"}],"result":{"kind":"nat"}}}],"result":{"kind":"nat"}}"#,
+                    "an application supplies at least one argument",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"kind":"var","name":"item"},"kind":"definition","name":"probeOwn","parameters":[{"name":"item","type":{"kind":"parameter","name":"probeOwn"}}],"result":{"kind":"parameter","name":"probeOwn"},"type_parameters":["probeOwn"]}"#,
+                    "binder `probeOwn` in `probeOwn` is spelled like the declaration `probeOwn`",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"kind":"var","name":"item"},"kind":"definition","name":"probePrefix","parameters":[{"name":"item","type":{"kind":"parameter","name":"HigherOrder"}}],"result":{"kind":"parameter","name":"HigherOrder"},"type_parameters":["HigherOrder"]}"#,
+                    "binder `HigherOrder` in `probePrefix` is spelled like the module prefix `HigherOrder`",
+                ),
+                (
+                    "src/Main.lex.tex",
+                    r#"{"body":{"arguments":[{"body":{"kind":"var","name":"addAll"},"captures":[],"kind":"lambda","parameters":[{"name":"addAll","type":{"kind":"nat"}}]},{"kind":"var","name":"values"}],"function":{"module":"Combinators","name":"mapList"},"kind":"call","type_arguments":[{"kind":"nat"},{"kind":"nat"}]},"kind":"definition","name":"probeShadow","parameters":[{"name":"values","type":{"element":{"kind":"nat"},"kind":"list"}}],"result":{"element":{"kind":"nat"},"kind":"list"}}"#,
+                    "binder `addAll` in `probeShadow` is spelled like the declaration `addAll`",
+                ),
+            ] {
+                let copy = P::copy_example("higher-order");
+                let source = copy.read(file);
+                let end = r#"],"spec":"lexlean/semantic-module/2"}"#;
+                assert!(source.contains(end), "{file} ends its declarations");
+                copy.write(file, &source.replacen(end, &format!(",{declarations}{end}"), 1));
+                let error = copy.check_fails_with("LLT4001");
+                assert!(
+                    error.to_string().contains(message),
+                    "expected {message:?}, got {error}"
+                );
+                copy.assert_no_backend_output();
+            }
         }
         other => panic!("no declarations case is wired for {other}"),
     }

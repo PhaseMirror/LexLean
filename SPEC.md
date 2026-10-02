@@ -2345,6 +2345,14 @@ Every semantic declaration, nested type, term, primitive argument/result,
 match branch, and proof is charged recursively to `max_ir_nodes`; counting
 only the top-level declaration array is forbidden.
 
+A semantic binder its scope never mentions (a definition parameter, a
+quantifier, `let`, or lambda binder, or a match pattern binder) lowers as
+`_name` (a match pattern binder as `_`). Pinned Lean's unused-variable linter
+warns on such a binder under its own name, verification admits no
+unexpected output (§20.2), and semantic names begin with an ASCII letter, so
+`_name` captures nothing. The binder's type, position, and meaning are
+unchanged.
+
 The closed proof variants are reflexivity, decidable Boolean bridging,
 `simp only` over a nonempty sorted unique set of document definitions,
 induction hypotheses, and the fixed `Bool.and_eq_true`, `Nat.beq_eq`, or
@@ -2423,6 +2431,10 @@ backend runs.
 | `pair`, `first`, `second` terms | `lexlean/semantic-module/2` | `{"kind":"pair","left":a,"right":b}` has the product of its component types and lowers to `(a, b)`; `first` and `second` require a product operand and lower to `(v).1` and `(v).2`. A `match` on a product has exactly one `Prod.mk` branch with two binders. |
 | recursive inductive | `lexlean/semantic-module/2` | A constructor field may mention the inductive being declared, under the recursive-data rules below. |
 | `mutual` inductive label | `lexlean/semantic-module/2` | `"mutual":"Label"` on an inductive places it in a mutual group under the recursive-data rules below. |
+| `function` type | `lexlean/semantic-module/2` | `{"kind":"function","parameters":[T...],"result":U}` with at least one parameter, lowered to `((T1) -> ... -> (U))`. |
+| `lambda`, `apply`, `function_ref` terms | `lexlean/semantic-module/2` | Anonymous functions with explicit captures, full application of a function value, and a document definition as a function value, under the higher-order rules below. |
+| generic definitions and theorems | `lexlean/semantic-module/2` | `type_parameters` on a definition or theorem and `type_arguments` on a `call`, a `function_ref`, or an `apply` proof, under the higher-order rules below. |
+| `executable` definitions | `lexlean/semantic-module/2` | `"executable":true` asserts production eligibility under the higher-order rules below. |
 
 #### Recursive data (language 1.2)
 
@@ -2489,7 +2501,7 @@ either backend runs; they do not defer to what Lean would accept.
     `rfl`), and to every imported declaration through the project's module
     prefix, all without qualification. In a `lexlean/semantic-module/2`
     module no binder (a type parameter, a value parameter, or a pattern,
-    `let`, quantifier, or proof binder) is spelled like a declaration of the
+    `let`, quantifier, lambda, or proof binder) is spelled like a declaration of the
     module, one of those built-in names, or the first segment of the module
     prefix, because Lean would resolve the reference to the binder after
     linking has accepted the module. The language-1.1 contract is frozen
@@ -2499,6 +2511,80 @@ either backend runs; they do not defer to what Lean would accept.
     generated Lean and LaTeX to exactly its object in the source; the
     preamble and closing map to the whole module. Language-1.1 maps keep
     their module granularity and bytes.
+
+#### Higher-order code (language 1.2)
+
+1. **Generic declarations.** A definition or theorem may declare ordered,
+   unique `type_parameters`; they lower to explicit `(T : Type)` binders
+   before the value parameters. Every `call`, `function_ref`, and theorem
+   `apply` supplies exactly the callee's type arguments, explicitly: there is
+   no inference, so no use is ambiguous. Every type written in a
+   definition's parameters, result, or body, or in a theorem's statement or
+   proof arguments, mentions only declared type parameters; this also holds
+   for language-1.1 definitions, whose scope is empty. A language-1.2 type
+   parameter obeys binder hygiene (rule 10 of the recursive-data rules: no
+   declaration of the module, built-in name, or module prefix root), and is
+   moreover not spelled like any value binder of the same declaration. An
+   imported document type is referred to through the module prefix, so a
+   type parameter of its spelling captures nothing. A type parameter that its declaration
+   mentions nowhere (no parameter, result, body, statement, or proof type)
+   lowers as `(_T : Type)`, so Lean's unused-variable linter stays silent. An
+   explicit type argument instantiates a `(T : Type)` binder and so never
+   mentions the universe `Type`.
+2. **No polymorphic recursion.** A recursive call passes exactly the
+   definition's own type parameters, in order (the `polymorphic-recursion`
+   negative fixture). Consequently a closed instantiation of a definition
+   reaches only finitely many instantiations: a recursive call repeats the
+   current one, and every other call is to an earlier definition at type
+   arguments built from the caller's. This is the monomorphization rule.
+   LexLean emits the generic definitions with explicit `(T : Type)` binders
+   and the explicit type arguments of every use; it does not emit
+   specialized copies, and no claim here depends on one.
+3. **Lambdas.** A `lambda` binds at least one typed parameter and lists its
+   `captures`: strictly sorted, unique enclosing locals that are exactly the
+   free locals of its body. Only the captures and the parameters are visible
+   in the body, and a parameter may not shadow any enclosing local. A
+   recursive definition may not call or reference itself inside a lambda.
+   A lambda lowers to `(fun (x : T) ... => body)`.
+4. **Application.** `apply` fully applies a function-typed value: the
+   argument count equals the function type's parameter count and each
+   argument has the parameter's type; a function value with no statically
+   known function type is not applied. It lowers to `(f (a) ... )`.
+   `function_ref` names a prior definition with at least one value
+   parameter at explicit type arguments and has its function type.
+5. **Identity.** Binder names are part of the semantic value and therefore
+   of every source and semantic identity. A language-1.2 snapshot also
+   records, for each definition, `alpha_id`: the SHA-256 of the canonical
+   JSON of the definition after renaming its type parameters to `T0, T1, ...`
+   and its value parameters and every term binder to `_0, _1, ...` in
+   evaluation order (the parameters, then the body's subterms as they are
+   evaluated: an application's function before its arguments, a
+   conditional's condition, then branch, and else branch, operands left to
+   right), each binder scoped to its own subterm, with every lambda's
+   renamed captures sorted again; the order does not depend on how the
+   definition serializes. Alpha-equivalent definitions share it; any
+   other change alters it.
+6. **Production eligibility.** Higher-order values are formal by default. A
+   definition marked `"executable":true` is production-eligible only when
+   every closure it forms is non-escaping and second-class. A type *holds a
+   function* when it is a function type, or a container, product, or
+   document type that holds one through its type arguments or, transitively,
+   through the field types of its declaration. Its result type and every
+   non-function parameter type hold no function; no type written in its body
+   (a type argument, a `let`, `nil`, or lambda parameter type, a primitive
+   result type) holds one, so no data value in it carries a closure; a
+   function-typed parameter takes and returns no function and occurs only
+   where a closure may; a lambda or
+   function reference occurs only as a direct argument to a function-typed
+   parameter of an executable callee, or as the function of an `apply`; the
+   function of an `apply` is a parameter, a lambda, or a function reference,
+   never a projection or other computed value; no `let` binds a function;
+   and every called or referenced definition is itself executable (or the
+   definition itself, recursively). Any violation fails closed in linking;
+   nothing is silently lowered.
+7. **Accounting.** Function types, lambda parameter types, type arguments,
+   and every subterm are charged to `max_ir_nodes`. Recursive occurrences of
+   an inductive group under a function type are rejected by positivity.
 
 Routing is fixed by the project language and is never inferred from module
 content, so no byte sequence has two meanings:
@@ -4104,7 +4190,22 @@ Tests MUST establish that LexLean rejects, at minimum:
 - a forward reference outside a mutual group;
 - an uninhabited cycle through a mutual group;
 - a match on a value of one type with the constructors of another;
-- a binder spelled like a name the generated Lean refers to.
+- a binder spelled like a name the generated Lean refers to;
+- a lambda that omits a used capture;
+- a lambda that declares an unused capture;
+- an application with the wrong number of arguments;
+- an application of a non-function value;
+- a lambda whose type differs from the expected function type;
+- an executable definition that returns a closure;
+- a generic call without its type arguments;
+- a polymorphically recursive call;
+- a recursive call inside a lambda;
+- an executable definition that calls a non-executable definition;
+- an executable definition that stores a closure in an `Option`;
+- an executable definition that returns a structure of closures;
+- an executable definition that receives a structure of closures;
+- a type parameter spelled like a built-in Lean type;
+- the universe `Type` as an explicit type argument.
 
 ### 28.6 Example verification
 
@@ -4467,6 +4568,8 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `SM-22` | `semantic-ir` | The public owned snapshot DTO and schemas cover every portable type, literal, primitive, and explicit definition axiom policy without backend text. | §17.11, §21 |
 | `SM-23` | `semantic-ir` | Language 1.2 semantic modules use the versioned module and snapshot schemas and accept the typed nonrecursive let term, which language 1.1 rejects before either backend runs. | §17.12 |
 | `SM-24` | `semantic-ir` | Language 1.2 product types, pairs, projections, and product matches are typed, snapshotted under the v2 schemas, and give identical semantic IDs from distinct roots. | §17.12, §21 |
+| `SM-25` | `semantic-ir` | Language 1.2 function types, lambdas with exact explicit captures, full applications, and definition references are typed, lowered to fixed Lean, and verified. | §17.12, §18 |
+| `SM-26` | `semantic-ir` | Language 1.2 snapshots carry a deterministic alpha identity per definition that alpha-equivalent definitions share and any other change alters. | §17.12, §21 |
 | `DF-01` | `declarations` | A valid type-definition sentence emits one nonrecursive sort-valued Lean def linked to its document entry. | §15.7, §18.6 |
 | `DF-02` | `declarations` | A valid term-definition sentence emits one nonrecursive explicitly typed Lean def. | §15.7, §18.6 |
 | `DF-03` | `declarations` | A valid predicate-definition sentence emits one nonrecursive Prop-valued Lean def. | §15.7, §18.6 |
@@ -4480,6 +4583,8 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `DF-11` | `declarations` | Language 1.1 checks and lowers generic structures, classes, instances, inductives, definitions, structural recursion, matches, Boolean validators, and closed proofs from semantic source data. | §17.11 |
 | `DF-12` | `declarations` | Language 1.2 inductives admit uniform, strictly positive self, nested, and mutual recursion with a buildable base case, all checked before either backend runs. | §17.12 |
 | `DF-13` | `declarations` | Language 1.2 structural recursion and induction over a recursive inductive use exactly its direct recursive fields, across modules, with one induction hypothesis per recursive field. | §17.12 |
+| `DF-14` | `declarations` | Language 1.2 generic definitions and theorems take explicit type parameters, every use supplies exactly their type arguments, recursion is never polymorphic, and every written type mentions only declared parameters. | §17.12 |
+| `DF-15` | `declarations` | An executable language-1.2 definition forms only non-escaping closures and calls only executable definitions; every violation fails before either backend runs. | §17.12 |
 | `PF-01` | `proofs` | Assume and exact-style simple proof sentences create scoped introductions and exact proof nodes. | §16.2 |
 | `PF-02` | `proofs` | Simple Apply is accepted only when its declared signature yields exactly one residual premise. | §16.2 |
 | `PF-03` | `proofs` | Structured apply requires every numbered residual premise exactly once and in signature order. | §16.6 |
@@ -4597,7 +4702,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `EX-07` | `examples` | The negative fixture suite covers every required rejection class and prescribed diagnostic family. | §28.5 |
 | `EX-08` | `examples` | Every example directory is discovered automatically and must satisfy the full example gate. | §28.6 |
 
-**Total required capability IDs:** 231.
+**Total required capability IDs:** 235.
 
 No row may be downgraded to `some-true` or `open`. Upstream Lean facts are ledger/authority rows, not substitutions for these build behaviors.
 

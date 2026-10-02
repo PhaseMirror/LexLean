@@ -1,4 +1,4 @@
-//! The `semantic-ir` suite: SM-01..SM-24.
+//! The `semantic-ir` suite: SM-01..SM-26.
 
 use std::collections::BTreeSet;
 use std::process::Command;
@@ -549,6 +549,43 @@ pub(crate) fn run(id: &str) {
                 "an unreferenced introduced hypothesis is `_llh0`: {lean}"
             );
             support::verify_ok_backed("SM-08", &unused_hypothesis);
+
+            // Semantic-module binders follow the same rule: a definition
+            // parameter, quantifier, `let`, or lambda parameter its scope
+            // never mentions lowers as `_name`, and pinned Lean verifies the
+            // module instead of failing it on a linter warning.
+            let eleven = P::semantic_example();
+            let support_source = eleven.read("src/Support.lex.tex");
+            eleven.write(
+                "src/Support.lex.tex",
+                &support_source.replacen(
+                    r#"{"declarations":["#,
+                    r#"{"declarations":[{"body":{"kind":"bool","value":true},"kind":"definition","name":"constantTrue","parameters":[{"name":"ignored","type":{"kind":"nat"}}],"result":{"kind":"bool"}},{"body":{"binder":{"name":"ignored","type":{"kind":"nat"}},"body":{"kind":"eq","left":{"kind":"nat","value":"0"},"right":{"kind":"nat","value":"0"}},"kind":"forall"},"kind":"definition","name":"vacuous","parameters":[],"result":{"kind":"prop"}},"#,
+                    1,
+                ),
+            );
+            let lean = support::lean_text(&support::rendered(&eleven), "Support");
+            for expected in [
+                "public def constantTrue (_ignored : Nat) : Bool := true",
+                "public def vacuous : Prop := (forall (_ignored : Nat), (0 = 0))",
+            ] {
+                assert!(lean.contains(expected), "missing {expected:?} in:\n{lean}");
+            }
+            support::verify_ok_backed("SM-08", &eleven);
+            let twelve = P::copy_example("higher-order");
+            let combinators = twelve.read("src/Combinators.lex.tex");
+            twelve.write(
+                "src/Combinators.lex.tex",
+                &combinators.replacen(
+                    r#"{"declarations":["#,
+                    r#"{"declarations":[{"body":{"binder":{"name":"spare","type":{"kind":"nat"}},"body":{"arguments":[{"kind":"nat","value":"0"}],"function":{"body":{"kind":"nat","value":"1"},"captures":[],"kind":"lambda","parameters":[{"name":"value","type":{"kind":"nat"}}]},"kind":"apply"},"kind":"let","value":{"kind":"nat","value":"2"}},"kind":"definition","name":"constantOne","parameters":[],"result":{"kind":"nat"}},"#,
+                    1,
+                ),
+            );
+            let lean = support::lean_text(&support::rendered(&twelve), "Combinators");
+            let expected = "public def constantOne : Nat := (let _spare : Nat := 2; ((fun (_value : Nat) => 1) (0)))";
+            assert!(lean.contains(expected), "missing {expected:?} in:\n{lean}");
+            support::verify_ok_backed("SM-08", &twelve);
         }
         // §17.9: alpha-safe serialization with dense binder indices.
         "SM-09" => {
@@ -1632,6 +1669,208 @@ pub(crate) fn run(id: &str) {
                     "{error}"
                 );
             }
+        }
+        "SM-25" => {
+            let project = P::copy_example("higher-order");
+            project.check_ok();
+            let rendered = support::rendered(&project);
+            let main = support::lean_text(&rendered, "Main");
+            for expected in [
+                "HigherOrder.Combinators.mapList (Nat) (Nat) ((fun (value : Nat) => (value + offset))) (values)",
+                "HigherOrder.Combinators.mapList (Nat) (Nat) ((HigherOrder.Combinators.increment)) (values)",
+                "public def addThenDouble : ((Nat) -> (Nat)) :=",
+                "(addThenDouble (4)) = 10",
+            ] {
+                assert!(main.contains(expected), "missing {expected:?} in:\n{main}");
+            }
+            let combinators = support::lean_text(&rendered, "Combinators");
+            assert!(combinators.contains("(fun (value : Input) => (outer ((inner (value)))))"));
+            let _ = support::verify_ok_backed("SM-25", &project);
+
+            let mutate = |file: &str, from: &str, to: &str, message: &str| {
+                let copy = P::copy_example("higher-order");
+                let source = copy.read(file);
+                assert!(source.contains(from), "fixture lacks {from:?}");
+                copy.write(file, &source.replacen(from, to, 1));
+                let error = copy.check_fails_with("LLT4001");
+                assert!(
+                    error.to_string().contains(message),
+                    "expected {message:?}, got {error}"
+                );
+                copy.assert_no_backend_output();
+            };
+            // Capture is explicit and exact.
+            mutate(
+                "src/Main.lex.tex",
+                r#""captures":["offset"]"#,
+                r#""captures":[]"#,
+                "declared (), used (offset)",
+            );
+            mutate(
+                "src/Combinators.lex.tex",
+                r#""captures":["inner","outer"]"#,
+                r#""captures":["inner","outer","value"]"#,
+                "lambda capture `value` is not an enclosing local",
+            );
+            mutate(
+                "src/Combinators.lex.tex",
+                r#""captures":["inner","outer"]"#,
+                r#""captures":["outer","inner"]"#,
+                "lambda captures are strictly sorted and unique",
+            );
+            // A lambda parameter never shadows a local.
+            mutate(
+                "src/Main.lex.tex",
+                r#""captures":["offset"],"kind":"lambda","parameters":[{"name":"value""#,
+                r#""captures":["offset"],"kind":"lambda","parameters":[{"name":"offset""#,
+                "shadowed lambda parameter `offset`",
+            );
+            // Applications are full and typed.
+            mutate(
+                "src/Main.lex.tex",
+                r#""arguments":[{"kind":"nat","value":"4"}]"#,
+                r#""arguments":[{"kind":"nat","value":"4"},{"kind":"nat","value":"5"}]"#,
+                "application expects 1 argument(s), received 2",
+            );
+            mutate(
+                "src/Combinators.lex.tex",
+                r#""function":{"kind":"var","name":"transform"}"#,
+                r#""function":{"kind":"var","name":"head"}"#,
+                "application of a non-function value",
+            );
+            // A reference names a function, not a constant.
+            mutate(
+                "src/Main.lex.tex",
+                r#"{"arguments":[],"function":{"name":"addThenDouble"},"kind":"call"}"#,
+                r#"{"function":{"name":"evaluator"},"kind":"function_ref"}"#,
+                "`evaluator` has no parameters and is not a function value",
+            );
+
+            // Language 1.1 rejects a lambda.
+            let eleven = P::semantic_example();
+            let support_source = eleven.read("src/Support.lex.tex");
+            eleven.write(
+                "src/Support.lex.tex",
+                &support_source.replacen(
+                    r#""body":{"kind":"bool","value":true},"kind":"definition","name":"remoteEnabled""#,
+                    r#""body":{"arguments":[{"kind":"bool","value":true}],"function":{"body":{"kind":"var","name":"flag"},"captures":[],"kind":"lambda","parameters":[{"name":"flag","type":{"kind":"bool"}}]},"kind":"apply"},"kind":"definition","name":"remoteEnabled""#,
+                    1,
+                ),
+            );
+            let error = eleven.check_fails_with("LLT4001");
+            assert!(
+                error.to_string().contains("is a language-1.2 construct"),
+                "{error}"
+            );
+        }
+        "SM-26" => {
+            let snapshot_of = |project: &P| {
+                project
+                    .engine()
+                    .snapshot(lexlean::CheckRequest {
+                        selection: lexlean::Selection::Entrypoints,
+                    })
+                    .expect("snapshot")
+            };
+            let alpha = |project: &P, name: &str| {
+                snapshot_of(project)
+                    .alpha_ids()
+                    .into_iter()
+                    .find(|(_, declaration, _)| declaration == name)
+                    .map(|(_, _, digest)| digest)
+                    .unwrap_or_else(|| panic!("alpha identity of `{name}`"))
+            };
+            let original = P::copy_example("higher-order");
+            let other_root = P::copy_example("higher-order");
+            let first = snapshot_of(&original);
+            assert_eq!(
+                first.canonical_bytes(),
+                snapshot_of(&other_root).canonical_bytes()
+            );
+            let value: serde_json::Value =
+                serde_json::from_slice(&first.canonical_bytes()).expect("snapshot JSON");
+            support::assert_schema("semantic-snapshot-v2", "the higher-order snapshot", &value);
+            let definitions = first.alpha_ids().len();
+            assert_eq!(
+                definitions, 11,
+                "every definition carries an alpha identity"
+            );
+
+            // Renaming the lambda binder and the parameter keeps the alpha
+            // identity and changes the semantic identity.
+            let renamed = P::copy_example("higher-order");
+            let source = renamed.read("src/Main.lex.tex");
+            let renamed_source = source
+                .replacen(
+                    r#"{"body":{"kind":"add","left":{"kind":"var","name":"value"},"right":{"kind":"var","name":"offset"}},"captures":["offset"],"kind":"lambda","parameters":[{"name":"value","type":{"kind":"nat"}}]}"#,
+                    r#"{"body":{"kind":"add","left":{"kind":"var","name":"item"},"right":{"kind":"var","name":"shift"}},"captures":["shift"],"kind":"lambda","parameters":[{"name":"item","type":{"kind":"nat"}}]}"#,
+                    1,
+                )
+                .replacen(
+                    r#""name":"addAll","parameters":[{"name":"offset","type":{"kind":"nat"}}"#,
+                    r#""name":"addAll","parameters":[{"name":"shift","type":{"kind":"nat"}}"#,
+                    1,
+                );
+            assert_ne!(renamed_source, source, "the renaming applies");
+            renamed.write("src/Main.lex.tex", &renamed_source);
+            renamed.check_ok();
+            assert_eq!(alpha(&renamed, "addAll"), alpha(&original, "addAll"));
+            assert_ne!(
+                support::checked_project(&renamed).semantic_id,
+                support::checked_project(&original).semantic_id,
+                "binder names remain part of the semantic identity"
+            );
+            // Swapping the operands is not an alpha renaming.
+            let changed = P::copy_example("higher-order");
+            changed.write(
+                "src/Main.lex.tex",
+                &source.replacen(
+                    r#"{"kind":"add","left":{"kind":"var","name":"value"},"right":{"kind":"var","name":"offset"}}"#,
+                    r#"{"kind":"add","left":{"kind":"var","name":"offset"},"right":{"kind":"var","name":"value"}}"#,
+                    1,
+                ),
+            );
+            changed.check_ok();
+            assert_ne!(alpha(&changed, "addAll"), alpha(&original, "addAll"));
+            // Every binder kind renames positionally: type parameters, value
+            // parameters in a different order (so the sorted captures
+            // renumber out of source order), `let`, and match binders.
+            let identity = |json: &str| {
+                serde_json::from_str::<lexlean::SnapshotSemanticDeclaration>(json)
+                    .expect("declaration JSON")
+                    .alpha_identity()
+                    .expect("a definition has an alpha identity")
+            };
+            for (left, right) in [
+                (
+                    r#"{"kind":"definition","name":"pick","type_parameters":["Item"],"parameters":[{"name":"value","type":{"kind":"parameter","name":"Item"}}],"result":{"kind":"parameter","name":"Item"},"body":{"kind":"var","name":"value"}}"#,
+                    r#"{"kind":"definition","name":"pick","type_parameters":["Source"],"parameters":[{"name":"value","type":{"kind":"parameter","name":"Source"}}],"result":{"kind":"parameter","name":"Source"},"body":{"kind":"var","name":"value"}}"#,
+                ),
+                (
+                    r#"{"kind":"definition","name":"sum","parameters":[{"name":"a","type":{"kind":"nat"}},{"name":"b","type":{"kind":"nat"}}],"result":{"kind":"nat"},"body":{"kind":"apply","function":{"kind":"lambda","parameters":[{"name":"x","type":{"kind":"nat"}}],"captures":["a","b"],"body":{"kind":"add","left":{"kind":"var","name":"a"},"right":{"kind":"var","name":"b"}}},"arguments":[{"kind":"nat","value":"0"}]}}"#,
+                    r#"{"kind":"definition","name":"sum","parameters":[{"name":"b","type":{"kind":"nat"}},{"name":"a","type":{"kind":"nat"}}],"result":{"kind":"nat"},"body":{"kind":"apply","function":{"kind":"lambda","parameters":[{"name":"x","type":{"kind":"nat"}}],"captures":["a","b"],"body":{"kind":"add","left":{"kind":"var","name":"b"},"right":{"kind":"var","name":"a"}}},"arguments":[{"kind":"nat","value":"0"}]}}"#,
+                ),
+                (
+                    r#"{"kind":"definition","name":"twice","parameters":[{"name":"value","type":{"kind":"nat"}}],"result":{"kind":"nat"},"body":{"kind":"let","binder":{"name":"half","type":{"kind":"nat"}},"value":{"kind":"var","name":"value"},"body":{"kind":"add","left":{"kind":"var","name":"half"},"right":{"kind":"var","name":"half"}}}}"#,
+                    r#"{"kind":"definition","name":"twice","parameters":[{"name":"value","type":{"kind":"nat"}}],"result":{"kind":"nat"},"body":{"kind":"let","binder":{"name":"part","type":{"kind":"nat"}},"value":{"kind":"var","name":"value"},"body":{"kind":"add","left":{"kind":"var","name":"part"},"right":{"kind":"var","name":"part"}}}}"#,
+                ),
+                (
+                    r#"{"kind":"definition","name":"head","parameters":[{"name":"values","type":{"kind":"list","element":{"kind":"nat"}}}],"result":{"kind":"nat"},"body":{"kind":"match","scrutinee":{"kind":"var","name":"values"},"branches":[{"constructor":{"name":"List.nil"},"binders":[],"body":{"kind":"nat","value":"0"}},{"constructor":{"name":"List.cons"},"binders":["first","rest"],"body":{"kind":"var","name":"first"}}]}}"#,
+                    r#"{"kind":"definition","name":"head","parameters":[{"name":"values","type":{"kind":"list","element":{"kind":"nat"}}}],"result":{"kind":"nat"},"body":{"kind":"match","scrutinee":{"kind":"var","name":"values"},"branches":[{"constructor":{"name":"List.nil"},"binders":[],"body":{"kind":"nat","value":"0"}},{"constructor":{"name":"List.cons"},"binders":["item","others"],"body":{"kind":"var","name":"item"}}]}}"#,
+                ),
+            ] {
+                assert_eq!(identity(left), identity(right), "{left}\n{right}");
+            }
+            // A renaming that changes which binder is used is not one.
+            assert_ne!(
+                identity(
+                    r#"{"kind":"definition","name":"head","parameters":[{"name":"values","type":{"kind":"list","element":{"kind":"nat"}}}],"result":{"kind":"nat"},"body":{"kind":"match","scrutinee":{"kind":"var","name":"values"},"branches":[{"constructor":{"name":"List.nil"},"binders":[],"body":{"kind":"nat","value":"0"}},{"constructor":{"name":"List.cons"},"binders":["first","rest"],"body":{"kind":"var","name":"first"}}]}}"#
+                ),
+                identity(
+                    r#"{"kind":"definition","name":"head","parameters":[{"name":"values","type":{"kind":"list","element":{"kind":"nat"}}}],"result":{"kind":"nat"},"body":{"kind":"match","scrutinee":{"kind":"var","name":"values"},"branches":[{"constructor":{"name":"List.nil"},"binders":[],"body":{"kind":"nat","value":"0"}},{"constructor":{"name":"List.cons"},"binders":["first","rest"],"body":{"kind":"var","name":"values"}}]}}"#
+                ),
+            );
+            assert!(snapshot_of(&P::semantic_example()).alpha_ids().is_empty());
         }
         other => panic!("no semantic-ir case is wired for {other}"),
     }

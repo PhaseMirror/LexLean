@@ -1,0 +1,73 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\begin{document}
+\section*{Semantic declarations}
+\subsection*{\texttt{addAll}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(offset : Nat) (values : List (Nat))}.\par
+\noindent Closure 1: binds \texttt{(value)}, captures \texttt{(offset)}.\par
+\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Type: \texttt{List (Nat)}.\par
+\noindent Definition: \texttt{HigherOrder.Combinators.mapList (Nat) (Nat) ((fun (value : Nat) => (value + offset))) (values)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{total}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(values : List (Nat))}.\par
+\noindent Closure 1: binds \texttt{(sum, value)}, captures \texttt{()}.\par
+\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{HigherOrder.Combinators.foldList (Nat) (Nat) ((fun (sum : Nat) (value : Nat) => (sum + value))) (0) (values)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{bumpAll}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(values : List (Nat))}.\par
+\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Type: \texttt{List (Nat)}.\par
+\noindent Definition: \texttt{HigherOrder.Combinators.mapList (Nat) (Nat) ((HigherOrder.Combinators.increment)) (values)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{addThenDouble}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Closure 1: binds \texttt{(value)}, captures \texttt{()}.\par
+\noindent Type: \texttt{((Nat) -> (Nat))}.\par
+\noindent Definition: \texttt{HigherOrder.Combinators.compose (Nat) (Nat) (Nat) ((fun (value : Nat) => (value + value))) ((HigherOrder.Combinators.increment))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{evaluator}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Closure 1: binds \texttt{(value)}, captures \texttt{()}.\par
+\noindent Closure 2: binds \texttt{(left, right)}, captures \texttt{()}.\par
+\noindent Closure 3: binds \texttt{(value)}, captures \texttt{()}.\par
+\noindent Type: \texttt{HigherOrder.Combinators.Visitor}.\par
+\noindent Definition: \texttt{(\{ onLiteral := (fun (value : Nat) => value), onPlus := (fun (left : Nat) (right : Nat) => (left + right)), onTwice := (fun (value : Nat) => (value + value)) \} : HigherOrder.Combinators.Visitor)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{add\_all}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(addAll (10) ((1 :: (2 :: (3 :: ([] : List (Nat)))))) = (11 :: (12 :: (13 :: ([] : List (Nat))))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{total\_sum}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(total ((1 :: (2 :: (3 :: (4 :: ([] : List (Nat))))))) = 10)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{bump\_all}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(bumpAll ((0 :: (4 :: ([] : List (Nat))))) = (1 :: (5 :: ([] : List (Nat)))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{composed}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{((addThenDouble (4)) = 10)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{visitor\_agrees}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(HigherOrder.Combinators.visit (evaluator) (HigherOrder.Combinators.Arith.plus (HigherOrder.Combinators.Arith.literal (2)) (HigherOrder.Combinators.Arith.twice (HigherOrder.Combinators.Arith.literal (3)))) = HigherOrder.Combinators.evaluate (HigherOrder.Combinators.Arith.plus (HigherOrder.Combinators.Arith.literal (2)) (HigherOrder.Combinators.Arith.twice (HigherOrder.Combinators.Arith.literal (3)))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{map\_identity}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Type parameters: \texttt{(Input)}.\par
+\noindent Parameters: \texttt{(values : List (Input))}.\par
+\noindent Statement: \texttt{(HigherOrder.Combinators.mapList (Input) (Input) ((fun (value : Input) => value)) (values) = values)}.\par
+\noindent Axiom policy: \texttt{exact [propext]}.\par
+\subsection*{\texttt{map\_identity\_numbers}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(HigherOrder.Combinators.mapList (Nat) (Nat) ((fun (value : Nat) => value)) ((7 :: (8 :: ([] : List (Nat))))) = (7 :: (8 :: ([] : List (Nat)))))}.\par
+\noindent Axiom policy: \texttt{exact [propext]}.\par
+\end{document}

@@ -1,0 +1,60 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\begin{document}
+\section*{Semantic declarations}
+\subsection*{\texttt{mapList}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type parameters: \texttt{(Input, Output)}.\par
+\noindent Parameters: \texttt{(transform : ((Input) -> (Output))) (values : List (Input))}.\par
+\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Type: \texttt{List (Output)}.\par
+\noindent Definition: \texttt{(match values with | List.nil => ([] : List (Output)) | List.cons head tail => ((transform (head)) :: mapList (Input) (Output) (transform) (tail)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{foldList}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type parameters: \texttt{(Input, Output)}.\par
+\noindent Parameters: \texttt{(step : ((Output) -> (Input) -> (Output))) (initial : Output) (values : List (Input))}.\par
+\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Type: \texttt{Output}.\par
+\noindent Definition: \texttt{(match values with | List.nil => initial | List.cons head tail => foldList (Input) (Output) (step) ((step (initial) (head))) (tail))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{compose}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type parameters: \texttt{(Input, Output, Final)}.\par
+\noindent Parameters: \texttt{(outer : ((Output) -> (Final))) (inner : ((Input) -> (Output)))}.\par
+\noindent Closure 1: binds \texttt{(value)}, captures \texttt{(inner, outer)}.\par
+\noindent Type: \texttt{((Input) -> (Final))}.\par
+\noindent Definition: \texttt{(fun (value : Input) => (outer ((inner (value)))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{increment}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(value : Nat)}.\par
+\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(value + 1)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{Arith}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{literal}: \texttt{(Nat)}.\par
+\noindent Constructor \texttt{plus}: \texttt{(Arith, Arith)}.\par
+\noindent Constructor \texttt{twice}: \texttt{(Arith)}.\par
+\subsection*{\texttt{Visitor}}
+\noindent Kind: \texttt{structure}.\par
+\noindent Field \texttt{onLiteral}: \texttt{((Nat) -> (Nat))}.\par
+\noindent Field \texttt{onPlus}: \texttt{((Nat) -> (Nat) -> (Nat))}.\par
+\noindent Field \texttt{onTwice}: \texttt{((Nat) -> (Nat))}.\par
+\subsection*{\texttt{visit}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(visitor : Visitor) (expression : Arith)}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match expression with | Arith.literal value => ((visitor).onLiteral (value)) | Arith.plus left right => ((visitor).onPlus (visit (visitor) (left)) (visit (visitor) (right))) | Arith.twice inner => ((visitor).onTwice (visit (visitor) (inner))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{evaluate}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(expression : Arith)}.\par
+\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match expression with | Arith.literal value => value | Arith.plus left right => (evaluate (left) + evaluate (right)) | Arith.twice inner => (let half : Nat := evaluate (inner); (half + half)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\end{document}
