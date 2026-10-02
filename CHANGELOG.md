@@ -270,19 +270,34 @@ versions, and the entries below say what each tag does and does not claim.
   - `rust-core` names no heap type, runtime function, or construct;
   - failure is typed exactly: a function that can overflow returns `R<T>`
     and every call to it propagates, and any other returns its value;
-  - every construct corresponds to an element of the program it realizes.
+  - every construct carries the calculus element it was lowered from, and
+    is refused unless its correspondence row names that element, at that
+    element's width, and the program uses it.
+
+  Strings are escaped by LexLean itself, independently of the toolchain's
+  Unicode tables. A type no value inhabits is rendered as an empty match
+  where it is a parameter and omitted where it is an arm, and any other
+  computation of one is refused. Units, literal and equal branches, matches
+  that rebuild their scrutinee, and the other shapes Rust's lint gate
+  constrains are rendered as it admits (§17.16, Lowering).
 
   Packages (`lexlean::calculus::package`, manifests `lexlean/rust-package/1`,
   provenance `lexlean/rust-provenance/1`) add exported functions with
   checked names, passing modes (`own`, `borrow`, `copy`), and declared
-  failure modes. Each package also carries a Cargo manifest whose lint table
-  is the package's gate, and provenance binding every file's SHA-256, the
+  failure modes; a boundary holding a function value at any depth, or a
+  version part that is not a canonical `u64`, is refused. Each package also
+  carries a Cargo manifest whose lint table is the package's gate (ten
+  documented exceptions), and provenance binding every file's SHA-256, the
   program identity, the runtime, the sources, and the language-1.2
-  compiler-semantics ID. `language/semantics-1.2.toml` gains `rust_backend`.
-  Every fixture is committed as a package in each profile that admits it,
-  along with negative manifests for identifier collisions, ownership
-  mismatch, unsupported boundary types, hidden allocation, and arithmetic
-  mismatch (`RB-01`..`RB-07`).
+  compiler-semantics ID. `language/semantics-1.2.toml` gains `rust_backend`
+  and the SHA-256 of each profile's runtime. Every fixture whose entry takes
+  and returns first-order data is committed as a package in each profile
+  that admits it, bound by its `sources` to the semantic ID of the verified
+  `compiler` build that states its program, along with negative manifests
+  for identifier collisions, ownership mismatch, unsupported boundary and
+  uninhabited types, hidden allocation, arithmetic mismatch, and
+  noncanonical versions and sources (`RB-01`..`RB-07`). The harnesses that
+  run packages live in the conformance crate.
 - The language-1.2 portable runtime exposes every definition, so a
   definition imported from another module reduces in the kernel through the
   primitives it applies. The 1.2 `lean_backend` version is bumped, and the

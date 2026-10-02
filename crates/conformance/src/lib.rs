@@ -16,6 +16,7 @@ mod lx;
 pub mod meta;
 pub mod runner;
 pub mod rust_differential;
+pub mod rust_harness;
 pub mod rust_packages;
 pub mod schema;
 

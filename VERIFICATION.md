@@ -932,28 +932,64 @@ is not definitionally equal to the right-hand side
 ### rust construct correspondence can fail
 
 Planted: the correspondence row of `call:runtime:nat_add` was deleted from
-`crates/lexlean/src/calculus/rust/validate.rs`. Command: `cargo test -p
-repo-conformance --test conformance -- conformance_rb_01`. Expected: every
-rendering that adds naturals emits a construct with no target-semantics
-correspondence.
+`crates/lexlean/src/calculus/rust/validate.rs`. Command: `cargo test -p repo-conformance --test conformance -- conformance_rb_01`. Expected:
+every rendering that adds naturals emits a construct with no
+target-semantics correspondence.
 
 ```text
-thread 'conformance_rb_01' (18572) panicked at crates/conformance/src/cases/rust_backend.rs:242:40:
+thread 'conformance_rb_01' (22507) panicked at crates/conformance/src/cases/rust_backend.rs:509:40:
 adt-evaluation (rust-std): the construct `call:runtime:nat_add` has no target-semantics correspondence
 ```
 
 Removed: the row was restored; `conformance_rb_01` passes.
 
+### rust correspondence is checked per construct instance
+
+Planted: lowering chose `nat_mul` for every `nat_add` term
+(`Prim::NatAdd => Item::NatMul` in `lower.rs`). Many fixtures use both
+primitives, so a check of the program's element set as a whole would admit
+it. Command: `cargo test -p repo-conformance --test conformance -- conformance_rb_01`. Expected: the call is refused because its own origin
+is `prim:nat_add`.
+
+```text
+thread 'conformance_rb_01' (11292) panicked at crates/conformance/src/cases/rust_backend.rs:509:40:
+adt-evaluation (rust-std): the construct `call:runtime:nat_mul` does not realize `prim:nat_add`, the element it was lowered from
+```
+
+A second plant chose the `u16` checked addition for every `u8` one:
+
+```text
+thread 'conformance_rb_01' (12208) panicked at crates/conformance/src/cases/rust_backend.rs:509:40:
+fixed-checked-narrow (rust-std): the construct `call:runtime:checked_add` works at width Some(U16), but `prim:checked_add` is at Some(U8)
+```
+
+Removed: `item` was restored; `conformance_rb_01` passes. `RB-01` also
+plants both mutations on a lowered crate directly.
+
+### rust closure correspondence admits an inline closure
+
+Planted: the row of `enum:closures` named only `type:fn`, so a function
+type realized by a closure the program never states a type for is
+unjustified. Command: `cargo test -p repo-conformance --test conformance -- conformance_rb_01`. Expected: the fixtures whose closure types
+are stated nowhere are refused.
+
+```text
+thread 'conformance_rb_01' (29092) panicked at crates/conformance/src/cases/rust_backend.rs:509:40:
+closure-captures (rust-core): the construct `enum:closures` does not realize `expr:closure`, the element it was lowered from
+```
+
+Removed: the row was restored; `conformance_rb_01` passes, and
+`closure-inline` renders and runs.
+
 ### rust identifier collision can fail
 
 Planted: the package check admitted Rust keywords as exported names
-(`KEYWORDS.contains(&name) && name.is_empty()`). Command: `cargo test -p
-repo-conformance --test conformance -- conformance_rb_02`. Expected: the
-committed negative manifest exporting `match` is packaged.
+(`KEYWORDS.contains(&name) && name.is_empty()`). Command: `cargo test -p repo-conformance --test conformance -- conformance_rb_02`. Expected: the committed negative
+manifest that the check exists for is packaged.
 
 ```text
-thread 'conformance_rb_02' (2095) panicked at crates/conformance/src/cases/rust_backend.rs:101:51:
-the manifest is refused: Package { files: {"Cargo.toml": [91, 112, 97, 99, 107, 97, 103, 101, 93, ...
+thread 'conformance_rb_02' (29709) panicked at crates/conformance/src/cases/rust_backend.rs:108:13:
+identifier-keyword: the negative manifest packages
 ```
 
 Removed: the check was restored; `conformance_rb_02` passes.
@@ -961,13 +997,12 @@ Removed: the check was restored; `conformance_rb_02` passes.
 ### rust ownership mismatch can fail
 
 Planted: the package check let an export copy a parameter of any type
-(`Passing::Copy => ...`). Command: `cargo test -p repo-conformance --test
-conformance -- conformance_rb_03`. Expected: the negative manifest copying
-a list parameter is packaged.
+(`Passing::Copy => ...`). Command: `cargo test -p repo-conformance --test conformance -- conformance_rb_03`. Expected: the committed negative
+manifest that the check exists for is packaged.
 
 ```text
-thread 'conformance_rb_03' (2716) panicked at crates/conformance/src/cases/rust_backend.rs:101:51:
-the manifest is refused: Package { files: {"Cargo.toml": [91, 112, 97, 99, 107, 97, 103, 101, 93, ...
+thread 'conformance_rb_03' (30347) panicked at crates/conformance/src/cases/rust_backend.rs:108:13:
+ownership-copy-list: the negative manifest packages
 ```
 
 Removed: the check was restored; `conformance_rb_03` passes.
@@ -975,13 +1010,38 @@ Removed: the check was restored; `conformance_rb_03` passes.
 ### rust boundary type check can fail
 
 Planted: the package check never found a function value at an export's
-boundary. Command: `cargo test -p repo-conformance --test conformance --
-conformance_rb_04`. Expected: the negative manifest exporting a function
-that takes a closure is packaged.
+boundary (`Ty::Fn { .. } => false`). Command: `cargo test -p repo-conformance --test conformance -- conformance_rb_04`. Expected: the committed negative
+manifest that the check exists for is packaged.
 
 ```text
-thread 'conformance_rb_04' (3358) panicked at crates/conformance/src/cases/rust_backend.rs:101:51:
-the manifest is refused: Package { files: {"Cargo.toml": [91, 112, 97, 99, 107, 97, 103, 101, 93, ...
+thread 'conformance_rb_04' (31065) panicked at crates/conformance/src/cases/rust_backend.rs:108:13:
+unsupported-function-boundary: the negative manifest packages
+```
+
+Removed: the check was restored; `conformance_rb_04` passes.
+
+### rust boundary check reaches into records
+
+Planted: the boundary check stopped at a named type
+(`false && seen.insert(*index)` in `holds_function`). Command: `cargo test -p repo-conformance --test conformance -- conformance_rb_04`. Expected: the committed negative
+manifest that the check exists for is packaged.
+
+```text
+thread 'conformance_rb_04' (31880) panicked at crates/conformance/src/cases/rust_backend.rs:108:13:
+unsupported-function-in-record: the negative manifest packages
+```
+
+Removed: the check was restored; `conformance_rb_04` passes.
+
+### rust uninhabited value refusal can fail
+
+Planted: lowering no longer refused a call whose result type no value
+inhabits (the `self.inhabited(&result)?` of `Term::Call` was deleted). Command: `cargo test -p repo-conformance --test conformance -- conformance_rb_04`. Expected: the committed negative
+manifest that the check exists for is packaged.
+
+```text
+thread 'conformance_rb_04' (32579) panicked at crates/conformance/src/cases/rust_backend.rs:108:13:
+unsupported-uninhabited-value: the negative manifest packages
 ```
 
 Removed: the check was restored; `conformance_rb_04` passes.
@@ -989,47 +1049,214 @@ Removed: the check was restored; `conformance_rb_04` passes.
 ### rust declared failure check can fail
 
 Planted: the package check admitted an export declaring no errors for a
-function that can overflow. Command: `cargo test -p repo-conformance --test
-conformance -- conformance_rb_05`. Expected: the negative manifest
-`arithmetic-undeclared-overflow` is packaged.
+function that can overflow (`(Errors::None, true) if false`). Command: `cargo test -p repo-conformance --test conformance -- conformance_rb_05`. Expected: the committed negative
+manifest that the check exists for is packaged.
 
 ```text
-thread 'conformance_rb_05' (3997) panicked at crates/conformance/src/cases/rust_backend.rs:101:51:
-the manifest is refused: Package { files: {"Cargo.toml": [91, 112, 97, 99, 107, 97, 103, 101, 93, ...
+thread 'conformance_rb_05' (759) panicked at crates/conformance/src/cases/rust_backend.rs:108:13:
+arithmetic-undeclared-overflow: the negative manifest packages
 ```
 
 Removed: the check was restored; `conformance_rb_05` passes.
 
-### rust package lint gate can fail
+### rust version check can fail
 
-Planted: the committed `compiler/rust/rust-std/nat-arithmetic/Cargo.toml`
-set Clippy's default lints to `allow`. Command: `cargo test -p
-repo-conformance --test conformance -- conformance_rb_06`. Expected: the
-package with a planted clone of a `Copy` value passes Clippy. Setting the
-group to `warn` instead is not a weakening: the package's
-`[lints.rust] warnings = "deny"` makes every Clippy warning an error, and
-that plant is refused like the original.
+Planted: the version check read each part as a `u128`, so a part above
+`u64::MAX`, which Cargo refuses, passed. Command: `cargo test -p repo-conformance --test conformance -- conformance_rb_07`. Expected: the committed negative
+manifest that the check exists for is packaged.
 
 ```text
-thread 'conformance_rb_06' (19149) panicked at crates/conformance/src/cases/rust_backend.rs:584:13:
+thread 'conformance_rb_07' (1325) panicked at crates/conformance/src/cases/rust_backend.rs:108:13:
+version-overflow: the negative manifest packages
+```
+
+Removed: the check was restored; `conformance_rb_07` passes.
+
+### rust package lint gate can fail
+
+Planted: the generated `Cargo.toml` set Clippy's default lints to `allow`,
+and the packages were regenerated. Command: `cargo test -p repo-conformance --test conformance -- conformance_rb_06`. Expected: the package
+with a planted clone of a `Copy` value passes Clippy.
+
+```text
+thread 'conformance_rb_06' (10515) panicked at crates/conformance/src/cases/rust_backend.rs:1015:13:
 the planted lint is refused
 ```
 
-Removed: the manifest was restored; `conformance_rb_06` passes.
+Removed: the generator was restored and the packages regenerated;
+`conformance_rb_06` passes.
+
+### rust lint exceptions and lowering rules are load-bearing
+
+Each of the ten exceptions of `package::ALLOWED_LINTS` was removed in turn
+(its entry renamed to the pedantic `too_many_lines`), and each rendering rule
+of §17.16 **Lowering** was disabled in turn; after each plant the packages
+were regenerated and `conformance_rb_06` (with `conformance_rb_01`) ran.
+Expected: a committed package fails its gate, so no exception or rule is
+admitted without a fixture that needs it. Every plant was refused; the
+first lint or build error of each:
+
+| Exception removed, or rule disabled | First refusal |
+| --- | --- |
+| `type_complexity` | `very complex type used` |
+| `too_many_arguments` | `this function has too many arguments (8/7)` |
+| `large_enum_variant` | `large size difference between variants` |
+| `result_large_err` | `the Err-variant returned from this function is very large` |
+| `result_unit_err` | ``this returns a `Result<_, ()>` `` |
+| `single_match` | ``you seem to be trying to use `match` for an equality check`` |
+| `manual_unwrap_or` | ``this pattern reimplements `Option::unwrap_or` `` |
+| `manual_unwrap_or_default` | ``match can be simplified with `.unwrap_or_default()` `` |
+| `manual_map` | ``manual implementation of `Option::map` `` |
+| `manual_ok_err` | ``manual implementation of `ok` `` |
+| unit result written `-> ()` | `unneeded unit return type` |
+| unit block value written `()` | `unneeded unit expression` |
+| unit binder bound by name | ``unused variable: `v0` `` |
+| unit capture read through its reference | `passing a unit value to a function` |
+| computed unit operand passed directly | `passing a unit value to a function` |
+| computed unit returned as `Ok(e)` | `passing a unit value to a function` |
+| unit dispatch result wrapped as `Ok(f(..))` | `passing a unit value to a function` |
+| empty unit `else` written | ``this `else` branch is empty`` |
+| inner `if` of an `if` without `else` not bound | ``this `if` statement can be collapsed`` |
+| literal Boolean branches kept | `this if-then-else expression returns a bool literal` |
+| equal branches kept | ``this `if` has identical blocks`` |
+| literal condition not bound | ``this `if` has identical blocks`` |
+| rebuilding match kept | `this match expression is unnecessary` |
+| binding returned by its block kept | ``returning the result of a `let` binding from a block`` |
+| computed record matched in place | ``in a `match` scrutinee, avoid complex blocks`` |
+| zero test negated as `!m == 0` | `RB-01`: no run package emits a nonzero test; `RB-06`: an export and the denotation disagree |
+| uninhabited parameter's body rendered | `unreachable definition` |
+| uninhabited arm rendered | `unreachable definition` |
+
+The transcripts are of the form:
+
+```text
+thread 'conformance_rb_06' (18145) panicked at crates/conformance/src/cases/rust_backend.rs:885:13:
+a package fails its lint gate:
+error: very complex type used. Consider factoring parts into `type` definitions
+```
+
+Removed: every exception and rule was restored and the packages
+regenerated; `conformance_rb_06` passes.
+
+### rust runtime mutation is detected by the differential
+
+Planted: `parse_int` returned `Ok(None)` for a decimal outside `i64`
+(`Some(None) => Ok(None)` in the runtime). Command: `cargo test -p repo-conformance --test conformance -- conformance_rb_06`. Expected: the
+primitive differential, which runs every primitive instance on its
+boundary and seeded inputs, finds the inputs whose denotation overflows.
+
+```text
+thread 'conformance_rb_06' (2037) panicked at crates/conformance/src/cases/rust_backend.rs:942:17:
+primitives_std: the rendering and the denotation disagree on 3 of 51441 runs: ["run 38634: {\"kind\":\"none\"} != {\"kind\":\"overflow\"}", "run 38650: {\"kind\":\"none\"} != {\"kind\":\"overflow\"}", "run 38656: {\"kind\":\"none\"} != {\"kind\":\"overflow\"}"]
+```
+
+A second plant computed `int_rem` as `a.checked_rem(b).unwrap_or(z)`, so
+`i64::MIN rem -1` returned the default:
+
+```text
+thread 'conformance_rb_06' (17475) panicked at crates/conformance/src/cases/rust_backend.rs:942:17:
+primitives_core: the rendering and the denotation disagree on 1 of 39092 runs: ["run 8393: {\"kind\":\"int\",\"value\":\"-9223372036854775807\"} != {\"kind\":\"int\",\"value\":\"0\"}"]
+```
+
+Removed: the runtime was restored; `conformance_rb_06` passes.
+
+### rust lowering mutation is detected
+
+Planted: a closure's dispatch passed its captures in reverse order
+(`.rev()` in the printer of `Fn<n>::apply`), and, separately, a field
+projection bound the mirrored field (`if field == types.len() - 1 -
+selected`); the packages were regenerated each time. Command: `cargo test -p repo-conformance --test conformance -- conformance_rb_06`.
+Expected: a run package computes another value. At `20b4ed6`, whose
+fixtures captured and projected only naturals, both were caught as the
+export and the denotation disagreeing (`closure_captures_core` and
+`record_fields_core`). The fixtures now also capture a number with a string
+and project from records of mixed types, so the same mutations no longer
+type check and the build refuses them first:
+
+```text
+thread 'conformance_rb_06' (3563) panicked at crates/conformance/src/cases/rust_backend.rs:869:13:
+a package does not build:
+error[E0308]: arguments to this function are incorrect
+```
+
+and for the projection:
+
+```text
+thread 'conformance_rb_06' (6453) panicked at crates/conformance/src/cases/rust_backend.rs:869:13:
+a package does not build:
+error[E0614]: type `u64` cannot be dereferenced
+```
+
+Removed: the lowering was restored and the packages regenerated;
+`conformance_rb_06` passes.
 
 ### rust provenance binding can fail
 
-Planted: the provenance hashed only the core runtime for every profile.
-Command: `cargo test -p repo-conformance --test conformance --
-conformance_rb_07`. Expected: a `rust-std` package's provenance no longer
-equals the committed one.
+Planted: the provenance hashed only the core runtime for every profile,
+and the packages were regenerated. Command: `cargo test -p repo-conformance --test conformance -- conformance_rb_07`. Expected: a `rust-std`
+package's provenance no longer records the runtime LexLean's semantics
+records.
 
 ```text
-thread 'conformance_rb_07' (17867) panicked at crates/conformance/src/cases/rust_backend.rs:678:21:
-assertion `left == right` failed: /home/user/wt-24/compiler/rust/rust-std/adt-evaluation/provenance.json
+thread 'conformance_rb_07' (28593) panicked at crates/conformance/src/cases/rust_backend.rs:1134:17:
+assertion `left == right` failed: compiler/rust/rust-std/adt-evaluation: the runtime is the one LexLean's semantics records
 ```
 
 Removed: the hash was restored; `conformance_rb_07` passes.
+
+### rust cross-root determinism can fail
+
+Planted: the provenance's version carried the renderer's working
+directory (`format!("{}+{}", manifest.version, current_dir)`), and the
+packages were regenerated. Command: `cargo test -p repo-conformance --test conformance -- conformance_rb_07`. Expected: the two renderer
+processes, each run with its own working directory and environment, write
+different bytes.
+
+```text
+thread 'conformance_rb_07' (13568) panicked at crates/conformance/src/cases/rust_backend.rs:1084:17:
+assertion `left == right` failed: rust-core/boolean-shapes/provenance.json: the renderers of two roots disagree
+```
+
+Removed: the provenance was restored and the packages regenerated;
+`conformance_rb_07` passes.
+
+### rust source binding can fail
+
+Planted: the package generator wrote the zero identity as every package's
+`sources`, and the packages were regenerated. Command: `cargo test -p repo-conformance --test conformance -- conformance_rb_07`. Expected: no
+package binds the verified build that states its program.
+
+```text
+thread 'conformance_rb_07' (30490) panicked at crates/conformance/src/cases/rust_backend.rs:1141:46:
+compiler/rust/rust-std/adt-evaluation: sources ["0000000000000000000000000000000000000000000000000000000000000000"] are not the semantic ID cd690f0a5afba87d8ddeebfb51773d2d833d2d9b0f897cc9c5702224d8b1994d of the verified compiler build
+```
+
+A second plant made the binding check accept any single source
+(`sources.len() != 1`); the forged-identity check refused it:
+
+```text
+thread 'conformance_rb_07' (19913) panicked at crates/conformance/src/cases/rust_backend.rs:1154:69:
+forged: ()
+```
+
+Removed: the generator and the check were restored and the packages
+regenerated; `conformance_rb_07` passes.
+
+### rust runtime identity record can fail
+
+Planted: `nat_sub` wrapped (`a.wrapping_sub(b)`) without updating
+`language/semantics-1.2.toml`. Command: `cargo test -p lexlean --lib
+the_compiler_semantics_records_the_runtime`. Expected: the runtime no longer
+has the digest LexLean's compiler semantics records.
+
+```text
+thread 'calculus::rust::runtime::tests::the_compiler_semantics_records_the_runtime' (16500) panicked at crates/lexlean/src/calculus/rust/runtime.rs:603:13:
+assertion `left == right` failed: the runtime changed without its record `rust_runtime_core` in language/semantics-1.2.toml
+  left: Some("7f18f40838cbf5b74494efecbd3553c16cd6b0fb42445bdff4c8036b5f0e2a95")
+ right: Some("c87e438f590444f4c7689a09cca2110d37fea6c32564a767037c9d8647a0fe04")
+```
+
+Removed: the runtime was restored; the test passes.
 
 ### language-1.2 imported runtime reduction can fail
 

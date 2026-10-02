@@ -1590,7 +1590,7 @@ statement = "Every fixture with an observable outcome renders to a safe Rust lib
 id = "RB-01"
 level = "build"
 suite = "rust-backend"
-statement = "Every Rust rendering is built as a closed AST whose every construct corresponds to an element of the target program it realizes, every correspondence row is exercised, and a construct the program does not justify is refused."
+statement = "Every Rust rendering is built as a closed AST each of whose constructs carries the calculus element it realizes, every correspondence row and every AST node is exercised by a run package, and a construct whose row, width, or program does not justify its element is refused."
 
 [[id]]
 id = "RB-02"
@@ -1608,7 +1608,7 @@ statement = "An export that copies a parameter whose type is not Copy fails with
 id = "RB-04"
 level = "build"
 suite = "rust-backend"
-statement = "A package whose boundary holds a function value, or whose rust-core program needs the heap, fails with LLB6005, and a rust-core crate naming any heap type, runtime function, or construct is refused."
+statement = "A package whose boundary holds a function value at any depth, whose program computes a value of a type no value inhabits, or whose rust-core program needs the heap fails with LLB6005, and a rust-core crate naming any heap type, runtime function, or construct is refused."
 
 [[id]]
 id = "RB-05"
@@ -1620,10 +1620,10 @@ statement = "A function that can overflow returns R<T> and every call to it prop
 id = "RB-06"
 level = "build"
 suite = "rust-backend"
-statement = "Every committed package builds offline under its declared gates, rustc warnings and Clippy's default lints denied with three documented exceptions, and its exported function, called from a separate crate, prints exactly the denotation's observable outcome; a planted lint and a planted semantic mutation are detected."
+statement = "Every committed package builds offline under its declared gates, rustc warnings and Clippy's default lints denied with ten documented exceptions, the export of each one with an observable outcome, called from a separate crate, prints exactly the denotation's observable outcome, and so does every primitive instance on its boundary and seeded inputs; a planted lint and a planted semantic mutation are detected."
 
 [[id]]
 id = "RB-07"
 level = "build"
 suite = "rust-backend"
-statement = "Packages are deterministic and content-addressed: two renderings written under two roots are byte-identical to each other and to the committed package, every manifest and provenance validates against its schema, and the provenance binds the SHA-256 of each file, the program identity, the runtime, the sources, and the language-1.2 compiler-semantics ID."
+statement = "Packages are deterministic and content-addressed: renderings by two separate processes under different roots and environments are byte-identical to each other and to the committed package, every manifest and provenance validates against its schema, the provenance binds the SHA-256 of each file, the program identity, the runtime LexLean's semantics records, the sources, and the language-1.2 compiler-semantics ID, and every committed package's sources are the semantic ID of the verified build stating its program."

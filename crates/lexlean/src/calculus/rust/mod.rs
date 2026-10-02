@@ -28,14 +28,9 @@ pub mod runtime;
 pub mod validate;
 
 use std::collections::BTreeSet;
-use std::fmt::Write as _;
 
 use super::{Program, Ty, Value};
-use lower::{index, Lowering, Owner};
-
-fn fail<T>(reason: impl Into<String>) -> Result<T, String> {
-    Err(reason.into())
-}
+use lower::{Lowering, Owner};
 
 /// A machine profile of §17.13.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -75,6 +70,11 @@ impl Profile {
 fn elements(program: &Program, lowering: &Lowering<'_>) -> BTreeSet<String> {
     let mut out = super::realization::program_elements(program);
     out.insert("function".to_owned());
+    // Declaring an ADT uses the ADT type former, even where no stated type
+    // names the declaration.
+    if !program.adts.is_empty() {
+        out.insert("type:adt".to_owned());
+    }
     const FAILING: [&str; 9] = [
         "prim:nat_add",
         "prim:nat_mul",
@@ -93,6 +93,17 @@ fn elements(program: &Program, lowering: &Lowering<'_>) -> BTreeSet<String> {
         out.insert("indirection".to_owned());
     }
     out
+}
+
+/// The calculus elements and structural realizations a valid program's
+/// rendering in `profile` may realize, as [`validate::correspond`] checks
+/// them.
+///
+/// # Errors
+///
+/// Returns the reason the program is invalid.
+pub fn realized(program: &Program, profile: Profile) -> Result<BTreeSet<String>, String> {
+    Ok(elements(program, &Lowering::new(program, profile)?))
 }
 
 /// Lower a valid program to the closed Rust AST of `profile`, checked.
@@ -130,326 +141,42 @@ pub fn render(program: &Program, profile: Profile) -> Result<String, String> {
     Ok(ast::print(&lower(program, profile)?))
 }
 
-/// The ADTs whose values a value of `ty` can hold, and whether it can hold
-/// a string.
-fn shown(program: &Program, ty: &Ty, adts: &mut BTreeSet<u64>) -> bool {
-    match ty {
-        Ty::String => true,
-        Ty::Option { value } => shown(program, value, adts),
-        Ty::List { element } => shown(program, element, adts),
-        Ty::Result { ok, error } => shown(program, ok, adts) | shown(program, error, adts),
-        Ty::Pair { left, right } => shown(program, left, adts) | shown(program, right, adts),
-        Ty::Adt { index } => {
-            if !adts.insert(*index) {
-                return false;
-            }
-            usize::try_from(*index)
-                .ok()
-                .and_then(|adt| program.adts.get(adt))
-                .map(|adt| {
-                    adt.constructors
-                        .iter()
-                        .flatten()
-                        .cloned()
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default()
-                .iter()
-                .fold(false, |found, field| shown(program, field, adts) | found)
-        }
-        Ty::Unit
-        | Ty::Bool
-        | Ty::Nat
-        | Ty::Int
-        | Ty::Fixed { .. }
-        | Ty::Bytes
-        | Ty::Ordering
-        | Ty::Fn { .. } => false,
+/// Rust literals of the values of one program in one profile, built through
+/// the closed AST and printed by its printer: the one hook a harness that
+/// calls a rendered package needs from the renderer (§17.16).
+pub struct Literals<'a> {
+    lowering: Lowering<'a>,
+}
+
+impl<'a> Literals<'a> {
+    /// The literals of `program` in `profile`.
+    ///
+    /// # Errors
+    ///
+    /// Returns the reason the program is invalid.
+    pub fn new(program: &'a Program, profile: Profile) -> Result<Self, String> {
+        Ok(Self {
+            lowering: Lowering::new(program, profile)?,
+        })
     }
-}
 
-/// The expression printing a value of type `ty` held in `name` in its exact
-/// JSON form.
-fn show(ty: &Ty, name: &str) -> Result<String, String> {
-    let number = |kind: &str| {
-        format!(
-            "format!(\"{{{{\\\"kind\\\":\\\"{kind}\\\",\\\"value\\\":\\\"{{}}\\\"}}}}\", {name})"
-        )
-    };
-    Ok(match ty {
-        Ty::Unit => format!("{{ let () = {name}; \"{{\\\"kind\\\":\\\"unit\\\"}}\".to_owned() }}"),
-        Ty::Bool => {
-            format!("format!(\"{{{{\\\"kind\\\":\\\"bool\\\",\\\"value\\\":{{}}}}}}\", {name})")
-        }
-        Ty::Nat => number("nat"),
-        Ty::Int => number("int"),
-        Ty::Fixed { width } => number(width.name()),
-        Ty::String => format!(
-            "format!(\"{{{{\\\"kind\\\":\\\"string\\\",\\\"value\\\":{{}}}}}}\", quote({name}.text()))"
-        ),
-        Ty::Bytes => format!(
-            "format!(\"{{{{\\\"kind\\\":\\\"bytes\\\",\\\"hex\\\":\\\"{{}}\\\"}}}}\", {name}.octets().iter().map(|b| format!(\"{{b:02x}}\")).collect::<String>())"
-        ),
-        Ty::Ordering => format!(
-            "format!(\"{{{{\\\"kind\\\":\\\"ordering\\\",\\\"value\\\":\\\"{{}}\\\"}}}}\", match {name} {{ core::cmp::Ordering::Less => \"lt\", core::cmp::Ordering::Equal => \"eq\", core::cmp::Ordering::Greater => \"gt\" }})"
-        ),
-        Ty::Option { value } => {
-            let inner = show(value, "x")?;
-            format!("match {name} {{ None => \"{{\\\"kind\\\":\\\"none\\\"}}\".to_owned(), Some(x) => format!(\"{{{{\\\"kind\\\":\\\"some\\\",\\\"value\\\":{{}}}}}}\", {inner}) }}")
-        }
-        Ty::Result { ok, error } => {
-            let ok_show = show(ok, "x")?;
-            let error_show = show(error, "x")?;
-            format!("match {name} {{ Ok(x) => format!(\"{{{{\\\"kind\\\":\\\"ok\\\",\\\"value\\\":{{}}}}}}\", {ok_show}), Err(x) => format!(\"{{{{\\\"kind\\\":\\\"error\\\",\\\"value\\\":{{}}}}}}\", {error_show}) }}")
-        }
-        Ty::List { element } => {
-            let inner = show(element, "x")?;
-            format!("{{ let mut parts = Vec::new(); let mut cursor = {name}; while let Some((x, rest)) = cursor.uncons() {{ parts.push({inner}); cursor = rest; }} format!(\"{{{{\\\"kind\\\":\\\"list\\\",\\\"items\\\":[{{}}]}}}}\", parts.join(\",\")) }}")
-        }
-        Ty::Pair { left, right } => {
-            let left_show = show(left, "l")?;
-            let right_show = show(right, "r")?;
-            format!("{{ let (l, r) = {name}; format!(\"{{{{\\\"kind\\\":\\\"pair\\\",\\\"left\\\":{{}},\\\"right\\\":{{}}}}}}\", {left_show}, {right_show}) }}")
-        }
-        Ty::Adt { index } => format!("show_adt{index}({name})"),
-        Ty::Fn { .. } => return fail("a function value is not observable"),
-    })
-}
-
-/// Prints a string in the exact JSON form.
-const QUOTE: &str = r#"
-fn quote(text: &str) -> String {
-    let mut out = String::from("\"");
-    for c in text.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
+    /// The canonical Rust text of `value` at type `ty`.
+    ///
+    /// # Errors
+    ///
+    /// Returns the reason the value has no literal at `ty` in the profile.
+    pub fn literal(&mut self, value: &Value, ty: &Ty) -> Result<String, String> {
+        Ok(ast::print_expr(&self.lowering.value(value, ty)?))
     }
-    out.push('"');
-    out
-}
-"#;
 
-/// A binary crate that runs `entry` of the rendered library crate `program`
-/// on `arguments` and prints the observable outcome, the value in its exact
-/// JSON form or `{"kind":"overflow"}`, then the work the runtime counted.
-///
-/// # Errors
-///
-/// Returns the reason the program, the arguments, or the result type cannot
-/// be rendered in `profile`.
-pub fn render_harness(
-    program: &Program,
-    profile: Profile,
-    entry: u64,
-    arguments: &[Value],
-) -> Result<String, String> {
-    let owned = vec![package::Passing::Own; arguments.len()];
-    render_caller(
-        program,
-        profile,
-        entry,
-        arguments,
-        &Caller {
-            library: "program",
-            function: &format!("f{entry}"),
-            passing: &owned,
-        },
-    )
-}
-
-/// How a harness reaches the function it runs: the library crate it uses,
-/// the function's name there, and how each argument is passed.
-pub struct Caller<'a> {
-    pub library: &'a str,
-    pub function: &'a str,
-    pub passing: &'a [package::Passing],
-}
-
-/// A binary crate that runs `entry` of `program` through `caller` on
-/// `arguments` and prints the observable outcome, then the work the runtime
-/// counted, as [`render_harness`].
-///
-/// # Errors
-///
-/// As [`render_harness`].
-pub fn render_caller(
-    program: &Program,
-    profile: Profile,
-    entry: u64,
-    arguments: &[Value],
-    caller: &Caller<'_>,
-) -> Result<String, String> {
-    render_calls(
-        program,
-        profile,
-        caller.library,
-        &[Calls {
-            entry,
-            function: caller.function,
-            passing: caller.passing,
-            arguments: &[arguments.to_vec()],
-        }],
-    )
-}
-
-/// A Rust tuple of `items`: `()` when there are none.
-fn tuple(items: &[String]) -> String {
-    if items.is_empty() {
-        "()".to_owned()
-    } else {
-        format!("({},)", items.join(", "))
+    /// Whether a field of type `ty` of ADT `adt` is boxed in the rendering.
+    ///
+    /// # Errors
+    ///
+    /// Returns the reason the profile cannot box it.
+    pub fn boxed(&self, adt: u64, ty: &Ty) -> Result<bool, String> {
+        self.lowering.boxed(Owner::Adt(adt), ty)
     }
-}
-
-/// One function a harness runs, and every argument list it runs it on.
-pub struct Calls<'a> {
-    pub entry: u64,
-    pub function: &'a str,
-    pub passing: &'a [package::Passing],
-    pub arguments: &'a [Vec<Value>],
-}
-
-/// A binary crate that runs each of `calls` through the library crate
-/// `library` on each of its argument lists, in order, and prints one
-/// observable outcome per run, as [`render_harness`], then the work the
-/// runtime counted.
-///
-/// # Errors
-///
-/// As [`render_harness`], for any call.
-pub fn render_calls(
-    program: &Program,
-    profile: Profile,
-    library: &str,
-    calls: &[Calls<'_>],
-) -> Result<String, String> {
-    let mut renderer = Lowering::new(program, profile)?;
-    // An ordering argument is written with the core type, which the
-    // library uses but does not export.
-    let mut out = format!(
-        "#![forbid(unsafe_code)]\n#[allow(unused_imports)]\nuse core::cmp::Ordering;\nuse {library}::*;\n"
-    );
-    let mut adts = BTreeSet::new();
-    let mut quoted = false;
-    for call in calls {
-        let function = program
-            .functions
-            .get(index(call.entry)?)
-            .ok_or_else(|| format!("function {} is not declared", call.entry))?;
-        quoted |= shown(program, &function.result, &mut adts);
-    }
-    if quoted {
-        out.push_str(QUOTE);
-    }
-    for adt in adts {
-        let declared = program
-            .adts
-            .get(index(adt)?)
-            .ok_or_else(|| format!("ADT {adt} is not declared"))?;
-        let _ = write!(
-            out,
-            "\nfn show_adt{adt}(value: Adt{adt}) -> String {{ match value {{ "
-        );
-        for (constructor, fields) in declared.constructors.iter().enumerate() {
-            let mut patterns = Vec::new();
-            let mut shows = Vec::new();
-            for (position, ty) in fields.iter().enumerate() {
-                let held = format!("x{position}");
-                let read = if renderer.boxed(Owner::Adt(adt), ty)? {
-                    format!("(*{held}).clone()")
-                } else {
-                    held.clone()
-                };
-                patterns.push(held);
-                shows.push(show(ty, &read)?);
-            }
-            let tagged = |fields: &str| {
-                format!("format!(\"{{{{\\\"kind\\\":\\\"adt\\\",\\\"constructor\\\":{constructor},\\\"fields\\\":[{{}}]}}}}\", {fields})")
-            };
-            if fields.is_empty() {
-                let _ = write!(out, "Adt{adt}::C{constructor} => {}, ", tagged("\"\""));
-            } else {
-                let _ = write!(
-                    out,
-                    "Adt{adt}::C{constructor}({}) => {}, ",
-                    patterns.join(", "),
-                    tagged(&format!("[{}].join(\",\")", shows.join(", ")))
-                );
-            }
-        }
-        out.push_str("} }\n");
-    }
-    out.push_str("\nfn main() {\n");
-    for call in calls {
-        let function = program
-            .functions
-            .get(index(call.entry)?)
-            .ok_or_else(|| format!("function {} is not declared", call.entry))?;
-        let mut rows = Vec::new();
-        for arguments in call.arguments {
-            super::check::check_arguments(program, call.entry, arguments)?;
-            let rendered = arguments
-                .iter()
-                .zip(&function.types)
-                .map(|(argument, ty)| {
-                    renderer
-                        .value(argument, ty)
-                        .map(|value| ast::print_expr(&value))
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            rows.push(tuple(&rendered));
-        }
-        let names: Vec<String> = (0..function.types.len())
-            .map(|position| format!("a{position}"))
-            .collect();
-        let passed: Vec<String> = names
-            .iter()
-            .zip(
-                call.passing
-                    .iter()
-                    .chain(std::iter::repeat(&package::Passing::Own)),
-            )
-            .map(|(name, passing)| {
-                if *passing == package::Passing::Borrow {
-                    format!("&{name}")
-                } else {
-                    name.clone()
-                }
-            })
-            .collect();
-        let result_show = show(&function.result, "value")?;
-        // An entry that cannot overflow returns its value directly.
-        let fallible = renderer
-            .fallible
-            .get(index(call.entry)?)
-            .copied()
-            .unwrap_or(false);
-        let run = if fallible {
-            format!(
-                "        match {}({}) {{\n            Ok(value) => println!(\"{{}}\", {result_show}),\n            Err(Overflow) => println!(\"{{{{\\\"kind\\\":\\\"overflow\\\"}}}}\"),\n        }}\n",
-                call.function,
-                passed.join(", ")
-            )
-        } else {
-            format!(
-                "        let value = {}({});\n        println!(\"{{}}\", {result_show});\n",
-                call.function,
-                passed.join(", ")
-            )
-        };
-        let _ = write!(
-            out,
-            "    for {} in [{}] {{\n{run}    }}\n",
-            tuple(&names),
-            rows.join(", ")
-        );
-    }
-    out.push_str("    println!(\"work {}\", work());\n}\n");
-    Ok(out)
 }
 
 /// The observable outcome a rendered harness prints for an outcome of the
