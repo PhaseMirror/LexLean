@@ -211,6 +211,16 @@ Removed: the lowering was restored to conjunction from immutable implementation
 commit `b52d47148fd30bb667daab244233851ca5029215`; `conformance_sm_16`
 passes and its generated theorems have the exact empty observed axiom set.
 
+### specification total can fail
+
+Planted: the §31 total left at its pre-1.2 value (`**Total required
+capability IDs:** 223.`) while the table carries 228 rows --- the state this
+branch was first pushed in. Command: `cargo xtask validate-spec-links`.
+
+```text
+gate failed: RP-07: §31 states 223 required capability IDs but its table has 228 rows
+```
+
 ### language-1.2 version routing can fail
 
 Planted: the language-1.2 construct gate in `SemanticModule::validate` was
