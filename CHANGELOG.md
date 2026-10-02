@@ -99,6 +99,25 @@ versions, and the entries below say what each tag does and does not claim.
   `LLT4005` before any backend runs. Each module's report is published as
   `production/<module>.eligibility.json`, and audit-production rejects any
   default branch in the analysis (`PD-01`..`PD-07`, `examples/production`).
+- Named-root extraction (§22.10): verifying a project with production roots
+  now runs a new stage 12. Lean's compiler front end translates every
+  definition each root reaches to base-phase LCNF through the pinned adapter
+  `language/lcnf-1.2/extract.lean`, which runs no LCNF pass after the
+  translation. Every Lean operation the adapter uses is pinned in
+  `language/lcnf-1.2/authority.toml` by exact signature and source SHA-256,
+  and is probed on each run; drift fails with the new `LLV7012`.
+  Extraction fails closed with the new `LLV7011` on:
+  - an unknown root, an opaque, axiomatic, unsafe, partial, or noncomputable
+    dependency, or an unresolved or unsupported constant or form;
+  - a dropped dependency;
+  - a proof presented as a runtime member;
+  - any disagreement with the production-eligibility closure.
+
+  Each root's Lean closure must equal the eligibility closure computed from
+  the semantic IR, so two independent implementations check each other.
+  Verification publishes the canonical, root-independent
+  `production/compiler-input.json` (`lexlean/compiler-input/1`, schema
+  `compiler-input`) and records it in the attestation (`NE-01`..`NE-06`).
 - Every semantic-module member must survive into the typed value: an extra
   member of a unit variant (for example `{"kind":"reflexivity","tactic":...}`)
   was silently ignored and is now rejected in every language.

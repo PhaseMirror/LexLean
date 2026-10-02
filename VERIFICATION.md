@@ -12,7 +12,7 @@ How this repository's claims are checked, which recipe enforces which rule, and 
 | `model` | `cargo xtask validate-model` | R1 (model is the single source; every model file parsed with unknown-field rejection), R2 (honesty levels and vocabulary, via the meta-gate), R3 (register/scenario/test bijection, Gherkin subset), R4 (`audit-deferral`), R5 (`audit-errors`), R6 (`audit-shipped`, including the shipped crate's normative links), R8 (`audit-generated`, `audit-language-closure`), RP-09 (`audit-no-unsafe`), PD-07 (`audit-production`), §27.5 (CONFORMANCE.md and ERRORS.md equal regeneration) |
 | `spec-links` | `cargo xtask validate-spec-links` | RP-07, §27.6: the §31 table and `model/ids.toml` are bijective and byte-consistent |
 | `lint` | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | no tolerated warnings |
-| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 250 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
+| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 256 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
 | `features` | `cargo check --workspace --all-features --all-targets` | every target compiles |
 | `bdd` | `cargo test -p repo-conformance` | R3, §27.7, §27.8: register ↔ scenario ↔ test bijection, the meta-gate, and its own falsifiability test |
 | `examples` | `cargo xtask verify-examples` | §28.6, EX-01: every example directory formats, locks, checks, builds, and verifies with real Lean 4.32.1; when an example commits `expected/verify/`, its normalized verification records must equal it (§29.5) |
@@ -264,6 +264,56 @@ effect now checks.
 thread 'conformance_pd_05' panicked at crates/conformance/src/support.rs:372:14:
 check fails
 ```
+
+### named-root dropped dependency can fail
+
+Planted: the comparison of Lean's extracted closure with the eligibility
+closure ignored members only Lean reaches
+(`lean.difference(runtime).next().filter(|_| false)` in
+`crates/lexlean/src/production/lcnf.rs`). Command: `cargo test -p
+repo-conformance --test conformance -- conformance_ne_05`. Expected: an
+eligibility closure that drops `Production.Kernel.area` is accepted.
+
+```text
+thread 'conformance_ne_05' panicked at crates/conformance/src/cases/extraction.rs:540:26:
+expected the dropped dependency, got Ok(CompilerInput { spec: "lexlean/compiler-input/1", ...
+```
+
+Planted: the pinned adapter stopped expanding project callees (`then pending
+:= pending`), so Lean's closure dropped every dependency of each root. The
+oracle is Lean itself. Command: `lexlean lock && lexlean build && lexlean
+verify` in a copy of `examples/production`.
+
+```text
+error[LLV7011]: named-root extraction: the production-eligibility closure of `Production.Main.halvings` realizes `Production.Kernel.countdown`, which Lean's compiler does not reach
+```
+
+Removed: both were restored; `conformance_ne_05` passes and the production
+example verifies with its committed compiler input.
+
+### named-root proof-as-runtime can fail
+
+Planted: the theorem check on extracted closure members was bypassed
+(`declaration.kind == "theorem" && false`). Command: `cargo test -p
+repo-conformance --test conformance -- conformance_ne_06`. Expected: the
+proof-as-runtime class is no longer named.
+
+```text
+thread 'conformance_ne_06' panicked at crates/conformance/src/cases/extraction.rs:58:13:
+expected "proof-as-runtime dependency: the theorem `Production.Kernel.countdown_decreases` is in the runtime closure", got `Production.Kernel.countdown_decreases` is a theorem, not a definition the compiler can realize
+```
+
+Planted: the pinned adapter also walked every project theorem its kernel scan
+reached (`pending := pending.push used`). The oracle is Lean itself. Command:
+`lexlean lock && lexlean build && lexlean verify` in a copy of
+`examples/production`.
+
+```text
+error[LLV7011]: named-root extraction: proof-as-runtime dependency: the theorem `Production.Kernel.countdown._unary._proof_1` is in the runtime closure
+```
+
+Removed: both were restored; `conformance_ne_06` passes and the production
+example verifies.
 
 ### language-1.2 version routing can fail
 

@@ -1,0 +1,180 @@
+# The closed Lean compiler-front-end interface of named-root extraction
+# (SPEC.md §22.10). Every Lean operation and LCNF data type the extraction
+# adapter uses is listed with its exact signature at the pinned revision and
+# the SHA-256 of the toolchain source file that defines it. Lean's behavior is
+# an external authority (LEAN-LCNF-4-32-1): these rows cite it, they do not
+# prove it. Each call row is re-checked on every extraction by a signature
+# probe that pinned Lean must elaborate; each type row is checked by the
+# adapter's exhaustive matches, which Lean rejects if a constructor changes.
+
+spec = "lexlean/lcnf-authority/1"
+authority = "LEAN-LCNF-4-32-1"
+lean_version = "4.32.1"
+lean_githash = "f054605aea4b840552cca2e725580bffd1e1b704"
+
+[[call]]
+name = "Lean.Environment.find?"
+signature = "Lean.Environment → Lean.Name → optParam Bool false → Option Lean.ConstantInfo"
+source = "src/lean/Lean/Environment.lean"
+source_sha256 = "100b207523d1005ae87f62f4e1693806854a35c59cd9b3210dfeeaa875d0ff98"
+role = "resolve a named constant in the imported environment"
+
+[[call]]
+name = "Lean.Environment.getModuleIdxFor?"
+signature = "Lean.Environment → Lean.Name → Option Lean.ModuleIdx"
+source = "src/lean/Lean/Environment.lean"
+source_sha256 = "100b207523d1005ae87f62f4e1693806854a35c59cd9b3210dfeeaa875d0ff98"
+role = "the module that defines a constant"
+
+[[call]]
+name = "Lean.Environment.header"
+signature = "Lean.Environment → Lean.EnvironmentHeader"
+source = "src/lean/Lean/Environment.lean"
+source_sha256 = "100b207523d1005ae87f62f4e1693806854a35c59cd9b3210dfeeaa875d0ff98"
+role = "the imported module table"
+
+[[call]]
+name = "Lean.EnvironmentHeader.moduleNames"
+signature = "Lean.EnvironmentHeader → Array Lean.Name"
+source = "src/lean/Lean/Environment.lean"
+source_sha256 = "100b207523d1005ae87f62f4e1693806854a35c59cd9b3210dfeeaa875d0ff98"
+role = "module names by module index"
+
+[[call]]
+name = "Lean.Compiler.LCNF.toDecl"
+signature = "Lean.Name → Lean.Compiler.LCNF.CompilerM (Lean.Compiler.LCNF.Decl Lean.Compiler.LCNF.Purity.pure)"
+source = "src/lean/Lean/Compiler/LCNF/ToDecl.lean"
+source_sha256 = "afd8843c41b5101218ddc2ea27d077663f4db825a8aec8e6196ebde7cf086c0a"
+role = "translate one definition to base-phase LCNF; no simplification pass runs"
+
+[[call]]
+name = "Lean.Compiler.LCNF.CompilerM.run"
+signature = "{α : Type} → Lean.Compiler.LCNF.CompilerM α → optParam Lean.Compiler.LCNF.CompilerM.State { } → optParam Lean.Compiler.LCNF.Phase Lean.Compiler.LCNF.Phase.base → Lean.CoreM α"
+source = "src/lean/Lean/Compiler/LCNF/CompilerM.lean"
+source_sha256 = "3890e874022d030873b509cc7e629b3ad4019447170d02ac36d3e1fffd18275a"
+role = "run a compiler action in the base phase"
+
+[[call]]
+name = "Lean.Compiler.LCNF.toLCNFType"
+signature = "Lean.Expr → Lean.MetaM Lean.Expr"
+source = "src/lean/Lean/Compiler/LCNF/Types.lean"
+source_sha256 = "66faec7a6974d2ab29b302a06ceed44d5af1c40f009ac700a088eec6c1f8d0ae"
+role = "the LCNF type of a constructor"
+
+[[call]]
+name = "Lean.Compiler.LCNF.shouldGenerateCode"
+signature = "Lean.Name → Lean.CoreM Bool"
+source = "src/lean/Lean/Compiler/LCNF/Main.lean"
+source_sha256 = "2fe8f26c101ac2267e39fc0535c255aa7381c75337a11c4a68a416bbfdeb72b5"
+role = "whether the compiler generates code for a constant"
+
+[[call]]
+name = "Lean.isNoncomputable"
+signature = "Lean.Environment → Lean.Name → optParam Lean.EnvExtension.AsyncMode Lean.noncomputableExt.toEnvExtension.asyncMode → Bool"
+source = "src/lean/Lean/Compiler/NoncomputableAttr.lean"
+source_sha256 = "8d1ba44757e2a2b4d1916ee97b8c0dd54171ff1890db8a1452f0346119d65859"
+role = "whether a constant is noncomputable"
+
+[[call]]
+name = "Lean.Expr.getUsedConstants"
+signature = "Lean.Expr → Array Lean.Name"
+source = "src/lean/Lean/Util/FoldConsts.lean"
+source_sha256 = "8d0129eab48b7abe62ea62cbaa6e04f3076f797ffd6bf4f089621de853af72be"
+role = "the constants a kernel value mentions, for proof-only dependencies"
+
+[[call]]
+name = "Lean.ConstantInfo.value?"
+signature = "Lean.ConstantInfo → optParam Bool false → Option Lean.Expr"
+source = "src/lean/Lean/Declaration.lean"
+source_sha256 = "ca8ef13f4bb13725ebf7bc23c7de72ff1e0af75580a7007f5d3a7c69cc4004de"
+role = "the kernel value of a definition or theorem"
+
+[[call]]
+name = "Lean.ConstantInfo.isTheorem"
+signature = "Lean.ConstantInfo → Bool"
+source = "src/lean/Lean/Declaration.lean"
+source_sha256 = "ca8ef13f4bb13725ebf7bc23c7de72ff1e0af75580a7007f5d3a7c69cc4004de"
+role = "whether a dependency is a proof"
+
+[[call]]
+name = "Lean.Name.isInternal"
+signature = "Lean.Name → Bool"
+source = "src/lean/Lean/Data/Name.lean"
+source_sha256 = "09e2a9e730fffe635daefd138aa11ccf3e29768d81434884bab799776fa12f84"
+role = "whether a name is a compiler-generated helper"
+
+[[call]]
+name = "Lean.versionString"
+signature = "String"
+source = "src/lean/Init/Meta/Defs.lean"
+source_sha256 = "cc77057abfcaf2cfbe2b9b21bce7512a451a3c9e912fffb74518a25a6f467898"
+role = "the running Lean version, compared against the pin"
+
+[[call]]
+name = "Lean.githash"
+signature = "String"
+source = "src/lean/Init/Meta/Defs.lean"
+source_sha256 = "cc77057abfcaf2cfbe2b9b21bce7512a451a3c9e912fffb74518a25a6f467898"
+role = "the running Lean source commit, compared against the pin"
+
+[[call]]
+name = "Lean.Meta.MetaM.run'"
+signature = "{α : Type} → Lean.MetaM α → optParam Lean.Meta.Context { } → optParam Lean.Meta.State { } → Lean.CoreM α"
+source = "src/lean/Lean/Meta/Basic.lean"
+source_sha256 = "fc8a1b8f133d120f9261eae69d3ea372bfc2ea3df2abc60be25af28ae35deca6"
+role = "run a meta computation from the core monad"
+
+[[call]]
+name = "Lean.Elab.Command.liftCoreM"
+signature = "{α : Type} → Lean.CoreM α → Lean.Elab.Command.CommandElabM α"
+source = "src/lean/Lean/Elab/Command.lean"
+source_sha256 = "6e04aef09ca96afa8464856ea5775136d1152360df0b6a41fe81bef035c9d609"
+role = "run the extraction from the command that prints it"
+
+[[type]]
+name = "Lean.Compiler.LCNF.Code"
+source = "src/lean/Lean/Compiler/LCNF/Basic.lean"
+source_sha256 = "58601e9868b1d38f6901bb6296fcf6172cf2417d6eaec0b57f95b61a07e9e3fc"
+constructors = ["let", "fun", "jp", "jmp", "cases", "return", "unreach"]
+
+[[type]]
+name = "Lean.Compiler.LCNF.LetValue"
+source = "src/lean/Lean/Compiler/LCNF/Basic.lean"
+source_sha256 = "58601e9868b1d38f6901bb6296fcf6172cf2417d6eaec0b57f95b61a07e9e3fc"
+constructors = ["lit", "erased", "proj", "const", "fvar"]
+
+[[type]]
+name = "Lean.Compiler.LCNF.Arg"
+source = "src/lean/Lean/Compiler/LCNF/Basic.lean"
+source_sha256 = "58601e9868b1d38f6901bb6296fcf6172cf2417d6eaec0b57f95b61a07e9e3fc"
+constructors = ["erased", "fvar", "type"]
+
+[[type]]
+name = "Lean.Compiler.LCNF.Alt"
+source = "src/lean/Lean/Compiler/LCNF/Basic.lean"
+source_sha256 = "58601e9868b1d38f6901bb6296fcf6172cf2417d6eaec0b57f95b61a07e9e3fc"
+constructors = ["alt", "default"]
+
+[[type]]
+name = "Lean.Compiler.LCNF.LitValue"
+source = "src/lean/Lean/Compiler/LCNF/Basic.lean"
+source_sha256 = "58601e9868b1d38f6901bb6296fcf6172cf2417d6eaec0b57f95b61a07e9e3fc"
+constructors = ["nat", "str", "uint8", "uint16", "uint32", "uint64", "usize"]
+
+[[type]]
+name = "Lean.Compiler.LCNF.DeclValue"
+source = "src/lean/Lean/Compiler/LCNF/Basic.lean"
+source_sha256 = "58601e9868b1d38f6901bb6296fcf6172cf2417d6eaec0b57f95b61a07e9e3fc"
+constructors = ["code", "extern"]
+
+[[type]]
+name = "Lean.ConstantInfo"
+source = "src/lean/Lean/Declaration.lean"
+source_sha256 = "ca8ef13f4bb13725ebf7bc23c7de72ff1e0af75580a7007f5d3a7c69cc4004de"
+constructors = ["axiomInfo", "defnInfo", "thmInfo", "opaqueInfo", "quotInfo", "inductInfo", "ctorInfo", "recInfo"]
+
+[[type]]
+name = "Lean.DefinitionSafety"
+source = "src/lean/Lean/Declaration.lean"
+source_sha256 = "ca8ef13f4bb13725ebf7bc23c7de72ff1e0af75580a7007f5d3a7c69cc4004de"
+constructors = ["unsafe", "safe", "partial"]

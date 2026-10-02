@@ -771,6 +771,7 @@ pub fn run(
         .collect();
     all_names.push(probe_name.clone());
     all_names.push(audit_name.clone());
+    all_names.push(crate::production::lcnf::driver_name(&semantic_hex32));
 
     // Every external reached by any module (§18.8): direct globals, defined
     // values, and case constructors.
@@ -1407,7 +1408,85 @@ pub fn run(
         }
     }
 
-    // Stage 12: optional configured PDF rendering (§19.7): one row and two
+    // Stage 12: named-root extraction (§22.10). Lean's compiler front end
+    // reports the computational closure of every production root while the
+    // module-system intermediates it reads are still staged; the closure must
+    // equal the eligibility closure, and its canonical form is published.
+    let production_reports: Vec<&crate::production::ModuleReport> = checked
+        .modules
+        .values()
+        .filter_map(|module| module.production.as_ref())
+        .filter(|report| !report.roots.is_empty())
+        .collect();
+    let mut compiler_input_row: Option<Json> = None;
+    if !production_reports.is_empty() {
+        use crate::production::lcnf::{self, Rejection};
+        let rejection = |rejection: Rejection| match rejection {
+            Rejection::Drift(reason) => {
+                Diagnostic::new(code!("LLV7012"), format!("named-root extraction: {reason}"))
+            }
+            Rejection::Rejected(reason) => {
+                Diagnostic::new(code!("LLV7011"), format!("named-root extraction: {reason}"))
+            }
+        };
+        let roots: Vec<String> = production_reports
+            .iter()
+            .flat_map(|report| report.roots.iter().map(|root| root.root.clone()))
+            .collect();
+        let modules: Vec<String> = build
+            .modules
+            .iter()
+            .map(|module| module.lean_module.clone())
+            .collect();
+        let driver = lcnf::driver(&semantic_hex32, &roots, &modules)
+            .map_err(|reason| fail(internal(reason)))?;
+        write_staged(
+            staging.path(),
+            &format!("extract/{}.lean", driver.name),
+            driver.text.as_bytes(),
+        )?;
+        let source = staging_utf8
+            .join("extract")
+            .join(format!("{}.lean", driver.name));
+        let record = run_child(
+            &ChildSpec {
+                tool: "lean",
+                module: Some(driver.name.clone()),
+                program: &toolchain.lake.path,
+                executable_sha256: toolchain.lean.sha256,
+                argv: vec!["env".to_owned(), "lean".to_owned(), source.to_string()],
+                cwd: &workspace_root,
+                extra_env: vec![("LEAN_PATH".to_owned(), lean_path_env.clone())],
+                home: ChildHome::Toolchain {
+                    toolchain_bin: &toolchain_bin,
+                },
+            },
+            &limits,
+            &normalizer,
+        )
+        .map_err(fail)?;
+        if record.exit_code != 0 {
+            let combined = format!("{}{}", record.stdout, record.stderr);
+            return Err(fail(rejection(lcnf::classify_failure(&driver, &combined))));
+        }
+        require_silent(&record, "named-root extraction", true).map_err(fail)?;
+        let input = lcnf::compiler_input(&record.stdout, &roots, &modules, &production_reports)
+            .map_err(|reason| fail(rejection(reason)))?;
+        let bytes = input.to_file_bytes();
+        write_staged(
+            staging.path(),
+            "extract/process.json",
+            &record.to_json().to_file_bytes(),
+        )?;
+        write_staged(staging.path(), "production/compiler-input.json", &bytes)?;
+        compiler_input_row = Some(Json::object(vec![
+            ("byte_length", Json::from_usize(bytes.len())),
+            ("sha256", Json::Str(Sha256Digest::of(&bytes).to_hex())),
+        ]));
+        process_records.push(record);
+    }
+
+    // Stage 13: optional configured PDF rendering (§19.7): one row and two
     // process records per module.
     let mut pdf_rows: Vec<Json> = Vec::new();
     if let Some(provider) = &project.config.pdf {
@@ -1458,7 +1537,7 @@ pub fn run(
         }
     }
 
-    // Stage 13: no unexpected absolute paths in successful output (§22.7),
+    // Stage 14: no unexpected absolute paths in successful output (§22.7),
     // over every process record.
     for record in &process_records {
         if normalizer.has_unexpected_absolute_path(&record.stdout)
@@ -1521,7 +1600,7 @@ pub fn run(
         ]));
     }
 
-    // Stage 14: the attestation (§22.9). No timestamp is hashed. The
+    // Stage 15: the attestation (§22.9). No timestamp is hashed. The
     // running executable must be readable to be recorded; nothing is
     // fabricated in its place.
     let lexlean_executable_sha256 = std::env::current_exe()
@@ -1604,6 +1683,9 @@ pub fn run(
         ),
         ("declarations", Json::Arr(declaration_rows)),
     ];
+    if let Some(row) = compiler_input_row {
+        body_fields.push(("compiler_input", row));
+    }
     if !pdf_rows.is_empty() {
         body_fields.push(("pdf", Json::Arr(pdf_rows)));
     }
@@ -1621,7 +1703,7 @@ pub fn run(
     };
     write_staged(staging.path(), "attestation.json", &full.to_file_bytes())?;
 
-    // Stage 15: atomic publication (§21.8).
+    // Stage 16: atomic publication (§21.8).
     let target = verified_root.join(this_attestation_id.to_hex());
     if target.as_std_path().exists() {
         // A repeated verification of identical content reuses the

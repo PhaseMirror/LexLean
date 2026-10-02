@@ -8,6 +8,7 @@
 //! computational closure of a root is ever inspected.
 
 pub mod eligibility;
+pub mod lcnf;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;

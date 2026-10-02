@@ -1507,3 +1507,39 @@ id = "PD-07"
 level = "build"
 suite = "production"
 statement = "The eligibility analysis classifies every semantic construct by an explicit exhaustive match, and the exhaustiveness audit rejects a planted wildcard arm, rest pattern, implicit-default binding form, or unnamed IR variant."
+
+[[id]]
+id = "NE-01"
+level = "build"
+suite = "extraction"
+statement = "Verifying a project with production roots extracts every root through Lean's compiler front end into one canonical compiler input whose bytes and ID are schema-valid, recorded in the attestation, and identical from distinct roots, and a project without a production root publishes none."
+
+[[id]]
+id = "NE-02"
+level = "build"
+suite = "extraction"
+statement = "Each root's extracted closure is exactly its computational dependencies, equals its production-eligibility closure, names every constant its code uses, and records proof-only dependencies as erased and never as runtime members."
+
+[[id]]
+id = "NE-03"
+level = "build"
+suite = "extraction"
+statement = "An unknown root, an opaque, axiomatic, unsafe, partial, or noncomputable dependency, an external implementation, an unresolved external, an unsupported compiler form, and a malformed, noisy, or foreign extraction record fail closed with LLV7011."
+
+[[id]]
+id = "NE-04"
+level = "build"
+suite = "extraction"
+statement = "Every Lean operation the extraction uses has a registry row with its exact signature and pinned source identity, every row is probed under pinned Lean on each extraction, the adapter runs no LCNF pass, and a drifted signature or Lean identity fails with LLV7012."
+
+[[id]]
+id = "NE-05"
+level = "build"
+suite = "extraction"
+statement = "A dependency dropped from Lean's extracted closure, from its declarations, or from the production-eligibility closure fails extraction with LLV7011 before any compiler input is published."
+
+[[id]]
+id = "NE-06"
+level = "build"
+suite = "extraction"
+statement = "A proof-only dependency presented as a runtime closure member fails extraction with LLV7011 before any compiler input is published."

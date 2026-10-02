@@ -123,6 +123,17 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `EX-07` | `build` | The negative fixture suite covers every required rejection class and prescribed diagnostic family. |
 | `EX-08` | `build` | Every example directory is discovered automatically and must satisfy the full example gate. |
 
+## extraction
+
+| ID | Level | Statement |
+| --- | --- | --- |
+| `NE-01` | `build` | Verifying a project with production roots extracts every root through Lean's compiler front end into one canonical compiler input whose bytes and ID are schema-valid, recorded in the attestation, and identical from distinct roots, and a project without a production root publishes none. |
+| `NE-02` | `build` | Each root's extracted closure is exactly its computational dependencies, equals its production-eligibility closure, names every constant its code uses, and records proof-only dependencies as erased and never as runtime members. |
+| `NE-03` | `build` | An unknown root, an opaque, axiomatic, unsafe, partial, or noncomputable dependency, an external implementation, an unresolved external, an unsupported compiler form, and a malformed, noisy, or foreign extraction record fail closed with LLV7011. |
+| `NE-04` | `build` | Every Lean operation the extraction uses has a registry row with its exact signature and pinned source identity, every row is probed under pinned Lean on each extraction, the adapter runs no LCNF pass, and a drifted signature or Lean identity fails with LLV7012. |
+| `NE-05` | `build` | A dependency dropped from Lean's extracted closure, from its declarations, or from the production-eligibility closure fails extraction with LLV7011 before any compiler input is published. |
+| `NE-06` | `build` | A proof-only dependency presented as a runtime closure member fails extraction with LLV7011 before any compiler input is published. |
+
 ## grammar
 
 | ID | Level | Statement |
@@ -359,6 +370,7 @@ Never re-derived, vendored, or gated on.
 | `LAKE-4-32-1` | https://github.com/leanprover/lean4/tree/v4.32.1/src/lake | `VR-03`, `VR-17` |
 | `LEANCHECKER-4-32-1` | https://github.com/leanprover/lean4/tree/v4.32.1 | `VR-08` |
 | `PRINT-AXIOMS-4-32-1` | https://github.com/leanprover/lean4/tree/v4.32.1 (the #print axioms command); observed output fixtures under tests/golden/axiom-parser/ | `VR-09`, `VR-10` |
+| `LEAN-LCNF-4-32-1` | https://github.com/leanprover/lean4/tree/f054605aea4b840552cca2e725580bffd1e1b704/src/Lean/Compiler/LCNF | `NE-01`, `NE-02`, `NE-04` |
 
 ## Claims that are not conformance IDs
 

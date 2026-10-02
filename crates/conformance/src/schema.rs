@@ -71,6 +71,33 @@ fn resolve<'a>(root: &'a Value, reference: &str) -> Option<&'a Value> {
     root.pointer(pointer)
 }
 
+/// The violation of an object alternative (after `$ref` resolution) whose
+/// `properties` fix a member to a `const` the instance's member differs from.
+fn const_mismatch(
+    root: &Value,
+    alternative: &Value,
+    instance: &Value,
+    at: &str,
+) -> Option<Violation> {
+    let mut schema = alternative;
+    for _ in 0..64 {
+        match schema.get("$ref").and_then(Value::as_str) {
+            Some(reference) => schema = resolve(root, reference)?,
+            None => break,
+        }
+    }
+    let properties = schema.get("properties")?.as_object()?;
+    let members = instance.as_object()?;
+    properties.iter().find_map(|(key, property)| {
+        let constant = property.get("const")?;
+        let actual = members.get(key)?;
+        (actual != constant).then(|| Violation {
+            at: format!("{at}/{key}"),
+            message: format!("expected the constant {constant}, found {actual}"),
+        })
+    })
+}
+
 fn type_name(value: &Value) -> &'static str {
     match value {
         Value::Null => "null",
@@ -165,7 +192,16 @@ fn check(
             .iter()
             .map(|alternative| {
                 let mut inner = Vec::new();
-                check(root, alternative, instance, at, &mut inner, depth + 1);
+                // An alternative that pins a property to a constant the
+                // instance contradicts cannot match. Rejecting it here, before
+                // its other properties are walked, keeps tagged recursive
+                // unions linear in the instance instead of exponential in its
+                // depth; the outcome is the one the full check would reach.
+                if let Some(violation) = const_mismatch(root, alternative, instance, at) {
+                    inner.push(violation);
+                } else {
+                    check(root, alternative, instance, at, &mut inner, depth + 1);
+                }
                 inner
             })
             .collect();

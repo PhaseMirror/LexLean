@@ -157,6 +157,8 @@ fn is_v1_2_file(path: &str) -> bool {
         || path == "schemas/semantic-snapshot-v2.schema.json"
         || path == "schemas/production-eligibility.schema.json"
         || path == crate::production::REGISTRY_PATH
+        || path.starts_with("language/lcnf-1.2/")
+        || path == "schemas/compiler-input.schema.json"
 }
 
 /// The compiler-semantics ID for one selected language. Language 1.0 excludes
