@@ -72,7 +72,7 @@ fn random_value(program: &Program, ty: &target::Ty, seed: &mut u64, depth: u32) 
     Some(match ty {
         Ty::Unit => Value::Unit,
         Ty::Bool => Value::Bool {
-            value: next(seed) % 2 == 0,
+            value: next(seed).is_multiple_of(2),
         },
         Ty::Nat => Value::Nat {
             value: number(seed, 0, i128::from(u64::MAX)).to_string(),
@@ -98,7 +98,7 @@ fn random_value(program: &Program, ty: &target::Ty, seed: &mut u64, depth: u32) 
             serde_json::from_value(json!({"kind": "ordering", "value": order})).ok()?
         }
         Ty::Option { value } => {
-            if depth == 0 || next(seed) % 3 == 0 {
+            if depth == 0 || next(seed).is_multiple_of(3) {
                 Value::None
             } else {
                 Value::Some {
@@ -107,7 +107,7 @@ fn random_value(program: &Program, ty: &target::Ty, seed: &mut u64, depth: u32) 
             }
         }
         Ty::Result { ok, error } => {
-            if next(seed) % 2 == 0 {
+            if next(seed).is_multiple_of(2) {
                 Value::Ok {
                     value: Box::new(random_value(program, ok, seed, depth.saturating_sub(1))?),
                 }

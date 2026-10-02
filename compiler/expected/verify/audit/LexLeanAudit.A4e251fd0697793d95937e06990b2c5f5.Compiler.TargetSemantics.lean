@@ -4,9 +4,11 @@ import Compiler.TargetSemantics
 #print axioms Compiler.TargetSemantics.Outcomes
 #print axioms Compiler.TargetSemantics.addSteps
 #print axioms Compiler.TargetSemantics.bindAll
+#print axioms Compiler.TargetSemantics.chargeResult
 #print axioms Compiler.TargetSemantics.compareValue
 #print axioms Compiler.TargetSemantics.compareValues
 #print axioms Compiler.TargetSemantics.construct
+#print axioms Compiler.TargetSemantics.depth
 #print axioms Compiler.TargetSemantics.destruct
 #print axioms Compiler.TargetSemantics.eval
 #print axioms Compiler.TargetSemantics.evalArms
@@ -33,3 +35,5 @@ import Compiler.TargetSemantics
 #print axioms Compiler.TargetSemantics.run
 #print axioms Compiler.TargetSemantics.sameOrder
 #print axioms Compiler.TargetSemantics.toStrings
+#print axioms Compiler.TargetSemantics.weight
+#print axioms Compiler.TargetSemantics.weights
