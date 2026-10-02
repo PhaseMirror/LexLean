@@ -1,13 +1,17 @@
 //! Named-root extraction through Lean's compiler front end (SPEC.md §22.10).
 //!
-//! Lean is the authority for how a verified generated declaration compiles:
-//! the pinned adapter `language/lcnf-1.2/extract.lean` asks Lean for the
-//! base-phase LCNF of every definition a production root reaches and prints
-//! it, and nothing else. This module owns everything LexLean decides about
-//! that answer: the driver that pins the adapter and probes every authority
-//! signature, the closed reading of the adapter's output, the fail-closed
-//! rejection classes, the comparison against the production-eligibility
-//! closure, and the canonical compiler input with its content identity. No
+//! Lean is the authority for how a verified generated declaration compiles.
+//! The pinned adapter `language/lcnf-1.2/extract.lean` reports facts and
+//! nothing else: for everything reachable from the roots, each constant's
+//! kind, module, computability, and kernel-level uses, and, for every
+//! code-generating definition of the project's own modules reached through
+//! code, its base-phase LCNF. This module owns every decision about those
+//! facts: the driver that pins the adapter, probes every authority signature
+//! exactly, and checks the adapter's own constants against the closed
+//! registry; the closed reading of the record; each root's computational
+//! closure, its runtime members, and its erased proofs; the fail-closed
+//! rejection classes; the comparison against the production-eligibility
+//! closure; and the canonical compiler input with its content identity. No
 //! optimization policy lives on either side of the boundary; the adapter runs
 //! no LCNF pass after translation.
 
@@ -26,10 +30,10 @@ pub const ADAPTER_PATH: &str = "language/lcnf-1.2/extract.lean";
 pub const AUTHORITY_PATH: &str = "language/lcnf-1.2/authority.toml";
 
 /// The tag of the adapter's raw output.
-pub const EXTRACTION_SPEC: &str = "lexlean/lcnf-extraction/1";
+pub const EXTRACTION_SPEC: &str = "lexlean/lcnf-extraction/2";
 
 /// The tag of the canonical compiler input.
-pub const INPUT_SPEC: &str = "lexlean/compiler-input/1";
+pub const INPUT_SPEC: &str = "lexlean/compiler-input/2";
 
 /// The Lean namespaces of the fixed runtimes every generated module may
 /// carry, below the module's own name.
@@ -56,7 +60,8 @@ pub struct AuthorityType {
     pub constructors: Vec<String>,
 }
 
-/// The closed compiler-front-end interface.
+/// The closed compiler-front-end interface: every constant the adapter's
+/// own definitions use is exactly one call, one type, or one plumbing name.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Authority {
@@ -64,6 +69,10 @@ pub struct Authority {
     pub authority: String,
     pub lean_version: String,
     pub lean_githash: String,
+    /// Structural plumbing the adapter elaborates to: constructors,
+    /// projections, recursors, instances, and core-library data, whose
+    /// meaning is fixed by the types and calls registered beside them.
+    pub plumbing: Vec<String>,
     pub call: Vec<AuthorityCall>,
     #[serde(rename = "type")]
     pub types: Vec<AuthorityType>,
@@ -99,16 +108,22 @@ pub fn authority() -> Result<&'static Authority, String> {
             let text = embedded_text(AUTHORITY_PATH)?;
             let authority: Authority =
                 toml::from_str(text).map_err(|error| format!("{AUTHORITY_PATH}: {error}"))?;
-            if authority.spec != "lexlean/lcnf-authority/1" {
+            if authority.spec != "lexlean/lcnf-authority/2" {
                 return Err(format!(
                     "{AUTHORITY_PATH}: unsupported spec `{}`",
                     authority.spec
                 ));
             }
             let mut seen = BTreeSet::new();
-            for call in &authority.call {
-                if !seen.insert(call.name.clone()) {
-                    return Err(format!("{AUTHORITY_PATH}: duplicate call `{}`", call.name));
+            for name in authority
+                .call
+                .iter()
+                .map(|call| &call.name)
+                .chain(authority.types.iter().map(|row| &row.name))
+                .chain(&authority.plumbing)
+            {
+                if !seen.insert(name.clone()) {
+                    return Err(format!("{AUTHORITY_PATH}: `{name}` is registered twice"));
                 }
             }
             Ok(authority)
@@ -131,8 +146,44 @@ fn name_literal(name: &str) -> String {
     format!("\"{escaped}\".toName")
 }
 
-/// The generated extraction module: fixed header, one signature probe per
-/// authority call, the pinned adapter, and one command naming the roots.
+/// A Lean string literal.
+fn string_literal(text: &str) -> String {
+    let escaped: String = text
+        .chars()
+        .flat_map(|character| match character {
+            '"' => vec!['\\', '"'],
+            '\\' => vec!['\\', '\\'],
+            other => vec![other],
+        })
+        .collect();
+    format!("\"{escaped}\"")
+}
+
+/// The universe variables (`u_1`, `u_2`, …) a registered signature names,
+/// which the driver declares so the signature elaborates as written.
+fn signature_universes(signature: &str, out: &mut BTreeSet<String>) {
+    let bytes = signature.as_bytes();
+    let mut index = 0;
+    while let Some(offset) = signature[index..].find("u_") {
+        let start = index + offset;
+        let mut end = start + 2;
+        while end < bytes.len() && bytes[end].is_ascii_digit() {
+            end += 1;
+        }
+        let bounded = start == 0
+            || !(bytes[start - 1].is_ascii_alphanumeric()
+                || bytes[start - 1] == b'_'
+                || bytes[start - 1] == b'.');
+        if bounded && end > start + 2 {
+            out.insert(signature[start..end].to_owned());
+        }
+        index = end.max(start + 2);
+    }
+}
+
+/// The generated extraction module: fixed header, the pinned adapter, one
+/// exact signature probe per authority call, the check that the adapter's
+/// constants are exactly the registry's, and one command naming the roots.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Driver {
     /// The reserved module name (`LexLeanExtract.X<hex32>`).
@@ -140,6 +191,8 @@ pub struct Driver {
     pub text: String,
     /// The 1-based line of each call probe, by call name.
     pub probe_lines: BTreeMap<usize, String>,
+    /// The 1-based line of the registry closure check.
+    pub authority_line: usize,
     /// The 1-based lines the pinned adapter occupies.
     pub adapter_lines: (usize, usize),
 }
@@ -150,16 +203,14 @@ pub fn driver_name(semantic_hex32: &str) -> String {
     format!("LexLeanExtract.X{semantic_hex32}")
 }
 
-/// The runtime namespaces of a set of generated modules.
+/// Whether a qualified name is a member of a generated module's runtime.
 #[must_use]
-pub fn runtime_namespaces(modules: &[String]) -> Vec<String> {
-    let mut out = Vec::new();
-    for module in modules {
-        for namespace in RUNTIME_NAMESPACES {
-            out.push(format!("{module}.{namespace}"));
-        }
-    }
-    out
+pub fn is_runtime_member(name: &str, modules: &BTreeSet<String>) -> bool {
+    modules.iter().any(|module| {
+        RUNTIME_NAMESPACES
+            .iter()
+            .any(|namespace| name.starts_with(&format!("{module}.{namespace}.")))
+    })
 }
 
 /// Generate the extraction module.
@@ -176,44 +227,78 @@ pub fn driver(
     let adapter = adapter()?;
     let mut text = String::from("module\npublic meta import Lean\n");
     // `import all` exposes the private kernel values, so a proof reached
-    // only through a compiler-generated helper is still recorded as erased.
+    // only through a compiler-generated helper is still recorded.
     for module in modules {
         text.push_str(&format!("import all {module}\n"));
     }
-    let mut probe_lines = BTreeMap::new();
-    for call in &authority.call {
-        probe_lines.insert(text.lines().count() + 1, call.name.clone());
-        text.push_str(&format!(
-            "meta example : {} := @{}\n",
-            call.signature, call.name
-        ));
-    }
+    // Lean reports every message on standard output, where the record must
+    // stand alone; a registered signature binds instance arguments by name.
+    text.push_str("set_option linter.unusedVariables false\n");
     let adapter_start = text.lines().count() + 1;
     text.push_str(adapter);
     if !text.ends_with('\n') {
         text.push('\n');
     }
     let adapter_end = text.lines().count();
-    let list = |names: &[String]| {
+    let mut universes = BTreeSet::new();
+    for call in &authority.call {
+        signature_universes(&call.signature, &mut universes);
+    }
+    if !universes.is_empty() {
+        text.push_str(&format!(
+            "universe {}\n",
+            universes.into_iter().collect::<Vec<_>>().join(" ")
+        ));
+    }
+    let mut probe_lines = BTreeMap::new();
+    for call in &authority.call {
+        probe_lines.insert(text.lines().count() + 1, call.name.clone());
+        text.push_str(&format!(
+            "lexlean_signature {} : {}\n",
+            call.name, call.signature
+        ));
+    }
+    let list = |names: &mut dyn Iterator<Item = &String>| {
         format!(
             "#[{}]",
             names
-                .iter()
                 .map(|name| name_literal(name))
                 .collect::<Vec<_>>()
                 .join(", ")
         )
     };
+    let types = authority
+        .types
+        .iter()
+        .map(|row| {
+            format!(
+                "({}, #[{}])",
+                name_literal(&row.name),
+                row.constructors
+                    .iter()
+                    .map(|constructor| string_literal(constructor))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let authority_line = text.lines().count() + 1;
     text.push_str(&format!(
-        "#eval LexLeanExtract.main {} {} {}\n",
-        list(roots),
-        list(modules),
-        list(&runtime_namespaces(modules))
+        "#eval LexLeanExtract.checkAuthority {} #[{types}] {}\n",
+        list(&mut authority.call.iter().map(|call| &call.name)),
+        list(&mut authority.plumbing.iter())
+    ));
+    text.push_str(&format!(
+        "#eval LexLeanExtract.main {} {}\n",
+        list(&mut roots.iter()),
+        list(&mut modules.iter())
     ));
     Ok(Driver {
         name: driver_name(semantic_hex32),
         text,
         probe_lines,
+        authority_line,
         adapter_lines: (adapter_start, adapter_end),
     })
 }
@@ -228,33 +313,59 @@ pub enum Rejection {
     Rejected(String),
 }
 
-/// Classify a failed extraction process from its Lean messages: an error on
-/// a probe line or inside the pinned adapter is drift of the authority; an
-/// error the adapter raised names an unknown or unresolved constant.
+/// The drift a Lean message shows, if any: any message on a probe line, on
+/// the registry check, or inside the pinned adapter, and any message the
+/// adapter raises as drift.
+fn drift_of(driver: &Driver, message: &crate::verify::LeanMessage) -> Option<String> {
+    if let Some(call) = driver.probe_lines.get(&message.line) {
+        return Some(format!(
+            "the signature of `{call}` no longer matches the pinned registry: {}",
+            message.message
+        ));
+    }
+    if message.line == driver.authority_line || message.message.contains("lexlean-extract-drift") {
+        return Some(format!(
+            "the adapter's constants no longer match the pinned registry: {}",
+            message.message
+        ));
+    }
+    if (driver.adapter_lines.0..=driver.adapter_lines.1).contains(&message.line) {
+        return Some(format!(
+            "the pinned extraction adapter no longer elaborates cleanly: {}",
+            message.message
+        ));
+    }
+    None
+}
+
+/// Lean's messages in an extraction's output, without the record line a
+/// later command may still have printed.
+fn messages_of(output: &str) -> Vec<crate::verify::LeanMessage> {
+    let messages: String = output
+        .lines()
+        .filter(|line| !line.starts_with("{\"spec\":"))
+        .map(|line| format!("{line}\n"))
+        .collect();
+    crate::verify::parse_lean_messages(&messages)
+}
+
+/// Classify a failed extraction process from its Lean messages: drift of
+/// the authority first, then a rejection the adapter raised by name.
 #[must_use]
 pub fn classify_failure(driver: &Driver, output: &str) -> Rejection {
-    let messages = crate::verify::parse_lean_messages(output);
-    for message in &messages {
-        if let Some(call) = driver.probe_lines.get(&message.line) {
-            return Rejection::Drift(format!(
-                "the signature of `{call}` no longer matches the pinned registry: {}",
-                message.message
-            ));
-        }
+    let messages = messages_of(output);
+    if let Some(drift) = messages
+        .iter()
+        .find_map(|message| drift_of(driver, message))
+    {
+        return Rejection::Drift(drift);
     }
     if let Some(raised) = output
         .lines()
+        .filter(|line| !line.starts_with("{\"spec\":"))
         .find_map(|line| line.split_once("lexlean-extract: "))
     {
         return Rejection::Rejected(raised.1.trim().to_owned());
-    }
-    for message in &messages {
-        if (driver.adapter_lines.0..=driver.adapter_lines.1).contains(&message.line) {
-            return Rejection::Drift(format!(
-                "the pinned extraction adapter no longer elaborates: {}",
-                message.message
-            ));
-        }
     }
     Rejection::Rejected(format!(
         "the extraction process failed: {}",
@@ -270,6 +381,8 @@ pub enum LcnfType {
     Any,
     Const {
         name: String,
+        /// The universe levels the constant is instantiated at.
+        levels: Vec<String>,
     },
     App {
         head: Box<LcnfType>,
@@ -285,7 +398,9 @@ pub enum LcnfType {
     Bvar {
         index: u64,
     },
-    Sort,
+    Sort {
+        level: String,
+    },
     Unsupported {
         expression: String,
     },
@@ -333,6 +448,7 @@ pub enum LcnfValue {
     },
     Const {
         name: String,
+        levels: Vec<String>,
         arguments: Vec<LcnfArg>,
     },
     Apply {
@@ -422,28 +538,67 @@ pub enum LcnfDeclValue {
     Extern,
 }
 
-/// One closure member as the adapter reports it: either a code-generating
-/// definition with its LCNF, or a constant that is not one, kept so the
-/// host names the reason it is refused.
+/// The translation the adapter reports for a code-generating definition.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RawDeclaration {
+struct RawTranslation {
+    safe: bool,
+    level_parameters: Vec<String>,
+    #[serde(rename = "type")]
+    ty: LcnfType,
+    parameters: Vec<LcnfParam>,
+    value: LcnfDeclValue,
+    /// Every constant the translation names.
+    uses: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawConstructor {
+    name: String,
+    parameters: u64,
+    fields: u64,
+    #[serde(rename = "type")]
+    ty: LcnfType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawInductive {
+    parameters: u64,
+    indices: u64,
+    recursive: bool,
+    constructors: Vec<RawConstructor>,
+}
+
+/// One constant of the project's modules, as Lean reports it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawConstant {
     name: String,
     kind: String,
+    module: String,
     computable: bool,
     generates_code: bool,
+    internal: bool,
+    /// The constants its kernel value names.
+    kernel_uses: Vec<String>,
+    declaration: Option<RawTranslation>,
+    inductive: Option<RawInductive>,
+}
+
+/// One constant outside the project's modules that translated code names.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawExternal {
+    name: String,
+    kind: String,
+    module: String,
+    computable: bool,
+    generates_code: bool,
+    internal: bool,
     #[serde(default)]
-    safe: Option<bool>,
-    #[serde(default)]
-    recursive: Option<bool>,
-    #[serde(default)]
-    level_parameters: Option<Vec<String>>,
-    #[serde(default, rename = "type")]
-    ty: Option<LcnfType>,
-    #[serde(default)]
-    parameters: Option<Vec<LcnfParam>>,
-    #[serde(default)]
-    value: Option<LcnfDeclValue>,
+    inductive_type: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -479,12 +634,26 @@ pub struct LcnfExternal {
     pub generates_code: bool,
 }
 
+/// One instance of the eligibility analysis's monomorphization plan.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct LcnfInstance {
+    pub instance: String,
+    pub declaration: String,
+    pub type_arguments: Vec<String>,
+}
+
 /// One root's closure as Lean's compiler reaches it.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct LcnfClosure {
     pub root: String,
+    /// Source definitions, equal to the eligibility closure.
     pub declarations: Vec<String>,
+    /// Members of the generated runtimes the source definitions reach.
+    pub runtime: Vec<String>,
+    /// The instances at which the source definitions are realized.
+    pub instances: Vec<LcnfInstance>,
     pub erased: Vec<String>,
     pub internal_erased: Vec<String>,
 }
@@ -502,12 +671,8 @@ struct RawExtraction {
     spec: String,
     lean: LeanIdentity,
     roots: Vec<String>,
-    closures: Vec<LcnfClosure>,
-    declarations: Vec<RawDeclaration>,
-    inductives: Vec<LcnfInductive>,
-    externals: Vec<LcnfExternal>,
-    erased: Vec<String>,
-    internal_erased: Vec<String>,
+    constants: Vec<RawConstant>,
+    externals: Vec<RawExternal>,
 }
 
 /// A verified code-generating definition in canonical form.
@@ -522,7 +687,7 @@ pub struct LcnfDeclaration {
     pub code: LcnfCode,
 }
 
-/// The canonical compiler input (`lexlean/compiler-input/1`).
+/// The canonical compiler input (`lexlean/compiler-input/2`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CompilerInput {
     pub spec: String,
@@ -558,20 +723,34 @@ impl CompilerInput {
 }
 
 /// Renames every LCNF free variable to its first-occurrence index, so the
-/// canonical input does not depend on Lean's unique-name counter.
+/// canonical input does not depend on Lean's unique-name counter. Scope is
+/// lexical: a variable bound in one alternative, local function, or join
+/// point is not visible in a sibling.
 #[derive(Default)]
 struct Renamer {
     names: BTreeMap<String, String>,
+    bound: BTreeSet<String>,
+    counter: usize,
 }
 
 impl Renamer {
     fn bind(&mut self, id: &mut String) -> Result<(), String> {
-        let fresh = format!("v{}", self.names.len());
-        if self.names.insert(id.clone(), fresh.clone()).is_some() {
+        let fresh = format!("v{}", self.counter);
+        self.counter += 1;
+        if !self.bound.insert(id.clone()) {
             return Err(format!("LCNF variable `{id}` is bound twice"));
         }
+        self.names.insert(id.clone(), fresh.clone());
         *id = fresh;
         Ok(())
+    }
+
+    /// Run `body` in a nested scope: its bindings end with it.
+    fn scoped(&mut self, body: impl FnOnce(&mut Self) -> Result<(), String>) -> Result<(), String> {
+        let saved = self.names.clone();
+        let result = body(self);
+        self.names = saved;
+        result
     }
 
     fn reference(&self, id: &mut String) -> Result<(), String> {
@@ -589,7 +768,7 @@ impl Renamer {
             | LcnfType::Any
             | LcnfType::Const { .. }
             | LcnfType::Bvar { .. }
-            | LcnfType::Sort => Ok(()),
+            | LcnfType::Sort { .. } => Ok(()),
             LcnfType::App { head, arguments } => {
                 self.ty(head)?;
                 arguments.iter_mut().try_for_each(|argument| self.ty(argument))
@@ -623,9 +802,17 @@ impl Renamer {
 
     fn fun(&mut self, declaration: &mut LcnfFunDecl) -> Result<(), String> {
         self.bind(&mut declaration.id)?;
-        self.params(&mut declaration.parameters)?;
-        self.ty(&mut declaration.ty)?;
-        self.code(&mut declaration.value)
+        let LcnfFunDecl {
+            parameters,
+            ty,
+            value,
+            ..
+        } = declaration;
+        self.scoped(|renamer| {
+            renamer.params(parameters)?;
+            renamer.ty(ty)?;
+            renamer.code(value)
+        })
     }
 
     fn code(&mut self, code: &mut LcnfCode) -> Result<(), String> {
@@ -674,11 +861,13 @@ impl Renamer {
                     match alternative {
                         LcnfAlt::Constructor {
                             parameters, code, ..
-                        } => {
-                            self.params(parameters)?;
-                            self.code(code)?;
+                        } => self.scoped(|renamer| {
+                            renamer.params(parameters)?;
+                            renamer.code(code)
+                        })?,
+                        LcnfAlt::Default { code } => {
+                            self.scoped(|renamer| renamer.code(code))?;
                         }
-                        LcnfAlt::Default { code } => self.code(code)?,
                     }
                 }
                 Ok(())
@@ -692,7 +881,7 @@ impl Renamer {
 /// Every constant a type mentions.
 fn type_constants(ty: &LcnfType, out: &mut BTreeSet<String>) {
     match ty {
-        LcnfType::Const { name } => {
+        LcnfType::Const { name, .. } => {
             out.insert(name.clone());
         }
         LcnfType::App { head, arguments } => {
@@ -709,7 +898,7 @@ fn type_constants(ty: &LcnfType, out: &mut BTreeSet<String>) {
         | LcnfType::Any
         | LcnfType::Fvar { .. }
         | LcnfType::Bvar { .. }
-        | LcnfType::Sort
+        | LcnfType::Sort { .. }
         | LcnfType::Unsupported { .. } => {}
     }
 }
@@ -740,7 +929,9 @@ fn code_constants(code: &LcnfCode, out: &mut BTreeSet<String>) {
                 LcnfValue::Projection { type_name, .. } => {
                     out.insert(type_name.clone());
                 }
-                LcnfValue::Const { name, arguments } => {
+                LcnfValue::Const {
+                    name, arguments, ..
+                } => {
                     out.insert(name.clone());
                     for argument in arguments {
                         arg_constants(argument, out);
@@ -793,43 +984,57 @@ fn code_constants(code: &LcnfCode, out: &mut BTreeSet<String>) {
     }
 }
 
-/// The definitions of a set of eligibility reports, per qualified root.
-fn eligibility_closures(
-    reports: &[&ModuleReport],
-) -> BTreeMap<String, (BTreeSet<String>, BTreeSet<String>)> {
+/// One root's closure as the eligibility analysis computed it.
+struct EligibilityClosure {
+    declarations: BTreeSet<String>,
+    erased: BTreeSet<String>,
+    instances: Vec<LcnfInstance>,
+}
+
+/// The eligibility closures of a set of reports, per qualified root.
+fn eligibility_closures(reports: &[&ModuleReport]) -> BTreeMap<String, EligibilityClosure> {
     let mut out = BTreeMap::new();
     for report in reports {
         for root in &report.roots {
-            let declarations: BTreeSet<String> = root
-                .runtime
-                .iter()
-                .map(|member| member.declaration.clone())
-                .collect();
-            out.insert(root.root.clone(), (declarations, root.erased.clone()));
+            out.insert(
+                root.root.clone(),
+                EligibilityClosure {
+                    declarations: root
+                        .runtime
+                        .iter()
+                        .map(|member| member.declaration.clone())
+                        .collect(),
+                    erased: root.erased.clone(),
+                    instances: root
+                        .runtime
+                        .iter()
+                        .map(|member| LcnfInstance {
+                            instance: member.instance.clone(),
+                            declaration: member.declaration.clone(),
+                            type_arguments: member.type_arguments.clone(),
+                        })
+                        .collect(),
+                },
+            );
         }
     }
     out
 }
 
-fn sorted_unique(values: &[String]) -> bool {
-    values.windows(2).all(|pair| pair[0] < pair[1])
+fn unique<'a>(values: impl Iterator<Item = &'a String>) -> bool {
+    let mut seen = BTreeSet::new();
+    values.into_iter().all(|value| seen.insert(value))
 }
 
-/// Whether an external constant is one LexLean may hand to a compiler: a
-/// computable constant of Lean's own `Init` library, or a member of a
-/// generated module's fixed runtime namespaces.
-fn admissible_external(external: &LcnfExternal, modules: &BTreeSet<String>) -> Result<(), String> {
-    let runtime = modules.contains(&external.module)
-        && RUNTIME_NAMESPACES.iter().any(|namespace| {
-            external
-                .name
-                .starts_with(&format!("{}.{namespace}.", external.module))
-        });
-    let core = external.module == "Init" || external.module.starts_with("Init.");
-    if !runtime && !core {
+/// Whether a constant outside the project is one LexLean may hand to a
+/// compiler: a computable constant of Lean's own `Init` library.
+fn admissible_external(external: &RawExternal) -> Result<(), String> {
+    if external.module != "Init" && !external.module.starts_with("Init.") {
         return Err(format!(
-            "unresolved dependency: `{}` ({} from `{}`) is neither a Lean core constant nor a LexLean runtime member",
-            external.name, external.kind, external.module
+            "unresolved dependency: `{}` ({} from `{}`) is neither a Lean core constant nor a member of the project",
+            external.name,
+            external.kind,
+            external.module
         ));
     }
     match external.kind.as_str() {
@@ -854,7 +1059,44 @@ fn article(kind: &str) -> String {
     }
 }
 
-/// Validate the adapter's output and produce the canonical compiler input.
+/// Why a project constant reached through code is not a definition the
+/// compiler can realize, if it is not.
+fn unrealizable(constant: &RawConstant) -> Option<String> {
+    let name = &constant.name;
+    match constant.kind.as_str() {
+        "theorem" => Some(format!(
+            "proof-as-runtime dependency: the theorem `{name}` is in the runtime closure"
+        )),
+        "definition" if !constant.computable => Some(format!("`{name}` is noncomputable")),
+        "definition" if !constant.generates_code => Some(format!("`{name}` generates no code")),
+        "definition" => None,
+        "unsafe-definition" => Some(format!("`{name}` is unsafe")),
+        other => Some(format!(
+            "`{name}` is {}, not a definition the compiler can realize",
+            article(other)
+        )),
+    }
+}
+
+/// The Lean messages a successful extraction printed beside its record.
+fn stray_output(driver: &Driver, output: &str) -> Option<Rejection> {
+    let lines: Vec<&str> = output.trim_end_matches('\n').lines().collect();
+    if lines.len() <= 1 {
+        return None;
+    }
+    let messages = messages_of(output);
+    if let Some(drift) = messages
+        .iter()
+        .find_map(|message| drift_of(driver, message))
+    {
+        return Some(Rejection::Drift(drift));
+    }
+    Some(Rejection::Rejected(
+        "the extraction printed more than its single JSON record".to_owned(),
+    ))
+}
+
+/// Validate the adapter's facts and produce the canonical compiler input.
 ///
 /// `roots` are the qualified production roots in request order, `modules`
 /// the generated modules, and `reports` the eligibility reports whose
@@ -863,19 +1105,19 @@ fn article(kind: &str) -> String {
 /// # Errors
 ///
 /// Returns the first drift or rejection found; nothing partial is produced.
+#[allow(clippy::too_many_lines)]
 pub fn compiler_input(
+    driver: &Driver,
     output: &str,
     roots: &[String],
     modules: &[String],
     reports: &[&ModuleReport],
 ) -> Result<CompilerInput, Rejection> {
     let authority = authority().map_err(Rejection::Drift)?;
-    let payload = output.trim_end_matches('\n');
-    if payload.contains('\n') {
-        return Err(Rejection::Rejected(
-            "the extraction printed more than its single JSON record".to_owned(),
-        ));
+    if let Some(rejection) = stray_output(driver, output) {
+        return Err(rejection);
     }
+    let payload = output.trim_end_matches('\n');
     let raw: RawExtraction = serde_json::from_str(payload).map_err(|error| {
         Rejection::Rejected(format!("the extraction record is malformed: {error}"))
     })?;
@@ -898,184 +1140,329 @@ pub fn compiler_input(
         )));
     }
     let module_set: BTreeSet<String> = modules.iter().cloned().collect();
-    let mut declarations = Vec::new();
-    let mut defined = BTreeSet::new();
-    for declaration in raw.declarations {
-        let name = declaration.name.clone();
-        if declaration.kind == "theorem" {
+    if !unique(raw.constants.iter().map(|constant| &constant.name))
+        || !unique(raw.externals.iter().map(|external| &external.name))
+    {
+        return Err(Rejection::Rejected(
+            "the extraction record reports a constant twice".to_owned(),
+        ));
+    }
+    let constants: BTreeMap<&str, &RawConstant> = raw
+        .constants
+        .iter()
+        .map(|constant| (constant.name.as_str(), constant))
+        .collect();
+    let externals: BTreeMap<&str, &RawExternal> = raw
+        .externals
+        .iter()
+        .map(|external| (external.name.as_str(), external))
+        .collect();
+    for constant in &raw.constants {
+        if !module_set.contains(&constant.module) {
             return Err(Rejection::Rejected(format!(
-                "proof-as-runtime dependency: the theorem `{name}` is in the runtime closure"
+                "`{}` is reported as a project constant of `{}`, which is not a generated module",
+                constant.name, constant.module
             )));
         }
-        if declaration.kind != "definition" {
+        if constant.declaration.is_some()
+            && (constant.kind != "definition" || !constant.computable || !constant.generates_code)
+        {
             return Err(Rejection::Rejected(format!(
-                "`{name}` is {}, not a definition the compiler can realize",
-                article(&declaration.kind)
+                "`{}` carries a translation, but it is {} that Lean does not compile",
+                constant.name,
+                article(&constant.kind)
             )));
         }
-        if !declaration.computable {
-            return Err(Rejection::Rejected(format!("`{name}` is noncomputable")));
-        }
-        if !declaration.generates_code {
-            return Err(Rejection::Rejected(format!("`{name}` generates no code")));
-        }
-        let (
-            Some(safe),
-            Some(recursive),
-            Some(level_parameters),
-            Some(ty),
-            Some(parameters),
-            Some(value),
-        ) = (
-            declaration.safe,
-            declaration.recursive,
-            declaration.level_parameters,
-            declaration.ty,
-            declaration.parameters,
-            declaration.value,
-        )
-        else {
+    }
+    for external in &raw.externals {
+        if module_set.contains(&external.module) {
             return Err(Rejection::Rejected(format!(
-                "the extraction record of `{name}` lacks its code"
+                "`{}` is reported as external but belongs to the project",
+                external.name
             )));
+        }
+    }
+
+    // Every translation, renamed into canonical form once; a translation
+    // that is not admissible is refused only if a closure reaches it.
+    let mut translations: BTreeMap<&str, LcnfDeclaration> = BTreeMap::new();
+    let mut refused: BTreeMap<&str, String> = BTreeMap::new();
+    for constant in &raw.constants {
+        let Some(translation) = &constant.declaration else {
+            continue;
         };
-        if !safe {
-            return Err(Rejection::Rejected(format!("`{name}` is unsafe")));
+        let name = &constant.name;
+        if !translation.safe {
+            refused.insert(name.as_str(), format!("`{name}` is unsafe"));
+            continue;
         }
-        let LcnfDeclValue::Code { code } = value else {
-            return Err(Rejection::Rejected(format!(
-                "unsupported compiler form: `{name}` is implemented externally"
-            )));
+        let LcnfDeclValue::Code { code } = &translation.value else {
+            refused.insert(
+                name.as_str(),
+                format!("unsupported compiler form: `{name}` is implemented externally"),
+            );
+            continue;
         };
         let mut renamer = Renamer::default();
-        let mut ty = ty;
-        let mut parameters = parameters;
-        let mut code = code;
-        renamer
+        let mut ty = translation.ty.clone();
+        let mut parameters = translation.parameters.clone();
+        let mut code = code.clone();
+        if let Err(reason) = renamer
             .ty(&mut ty)
             .and_then(|()| renamer.params(&mut parameters))
             .and_then(|()| renamer.code(&mut code))
-            .map_err(|reason| Rejection::Rejected(format!("`{name}`: {reason}")))?;
-        if !defined.insert(name.clone()) {
-            return Err(Rejection::Rejected(format!("`{name}` is extracted twice")));
+        {
+            refused.insert(name.as_str(), format!("`{name}`: {reason}"));
+            continue;
         }
-        declarations.push(LcnfDeclaration {
-            name,
-            recursive,
-            level_parameters,
-            ty,
-            parameters,
-            code,
-        });
-    }
-    declarations.sort_by(|left, right| left.name.cmp(&right.name));
-    for external in &raw.externals {
-        admissible_external(external, &module_set).map_err(Rejection::Rejected)?;
-    }
-    let mut inductives = raw.inductives;
-    for inductive in &mut inductives {
-        for constructor in &mut inductive.constructors {
-            Renamer::default()
-                .ty(&mut constructor.ty)
-                .map_err(|reason| {
-                    Rejection::Rejected(format!("`{}`: {reason}", constructor.name))
-                })?;
-        }
-    }
-    inductives.sort_by(|left, right| left.name.cmp(&right.name));
-    let mut externals = raw.externals;
-    externals.sort_by(|left, right| left.name.cmp(&right.name));
-
-    // Lean's closure of every root must be exactly the eligibility
-    // analysis's: a member only Lean reaches is a dependency the analysis
-    // dropped, and a member only the analysis reaches is one Lean does not
-    // compile, such as a proof treated as runtime.
-    let expected = eligibility_closures(reports);
-    let mut union = BTreeSet::new();
-    let mut closures = raw.closures;
-    closures.sort_by(|left, right| left.root.cmp(&right.root));
-    if closures.len() != roots.len() {
-        return Err(Rejection::Rejected(format!(
-            "the extraction reports {} closures for {} roots",
-            closures.len(),
-            roots.len()
-        )));
-    }
-    for closure in &closures {
-        if !sorted_unique(&closure.declarations) || !sorted_unique(&closure.erased) {
+        // The record's own list of what the code names must be exactly
+        // what the code names.
+        let mut used = BTreeSet::new();
+        type_constants(&ty, &mut used);
+        param_constants(&parameters, &mut used);
+        code_constants(&code, &mut used);
+        let listed: BTreeSet<String> = translation.uses.iter().cloned().collect();
+        if used != listed {
             return Err(Rejection::Rejected(format!(
-                "the closure of `{}` is not sorted and unique",
-                closure.root
+                "the extraction record of `{name}` lists uses that differ from its code"
             )));
         }
-        let Some((runtime, erased)) = expected.get(&closure.root) else {
-            return Err(Rejection::Rejected(format!(
-                "unknown root: `{}` is not a production root of this project",
-                closure.root
-            )));
-        };
-        let lean: BTreeSet<String> = closure.declarations.iter().cloned().collect();
-        if let Some(dropped) = lean.difference(runtime).next() {
-            return Err(Rejection::Rejected(format!(
-                "dropped dependency: Lean's compiler reaches `{dropped}` from `{}`, but the production-eligibility closure does not",
-                closure.root
-            )));
-        }
-        if let Some(phantom) = runtime.difference(&lean).next() {
-            return Err(Rejection::Rejected(format!(
-                "the production-eligibility closure of `{}` realizes `{phantom}`, which Lean's compiler does not reach",
-                closure.root
-            )));
-        }
-        let lean_erased: BTreeSet<String> = closure.erased.iter().cloned().collect();
-        if &lean_erased != erased {
-            return Err(Rejection::Rejected(format!(
-                "the proof-only dependencies of `{}` differ: Lean erases {lean_erased:?}, the eligibility analysis {erased:?}",
-                closure.root
-            )));
-        }
-        if let Some(runtime_proof) = lean.intersection(&lean_erased).next() {
-            return Err(Rejection::Rejected(format!(
-                "proof-as-runtime dependency: `{runtime_proof}` is both erased and realized"
-            )));
-        }
-        union.extend(lean);
-    }
-    if union != defined {
-        let missing: Vec<&String> = union.symmetric_difference(&defined).collect();
-        return Err(Rejection::Rejected(format!(
-            "the extracted declarations and the root closures disagree on {missing:?}"
-        )));
-    }
-    // Completeness: every constant the extracted code names is a closure
-    // member, a project inductive or one of its constructors, or a recorded
-    // external, so no computational dependency is left implicit.
-    let mut known: BTreeSet<String> = defined.clone();
-    for inductive in &inductives {
-        known.insert(inductive.name.clone());
-        known.extend(
-            inductive
-                .constructors
-                .iter()
-                .map(|constructor| constructor.name.clone()),
+        translations.insert(
+            name.as_str(),
+            LcnfDeclaration {
+                name: name.clone(),
+                // Decided below from the graph of every translation's uses.
+                recursive: false,
+                level_parameters: translation.level_parameters.clone(),
+                ty,
+                parameters,
+                code,
+            },
         );
     }
-    known.extend(externals.iter().map(|external| external.name.clone()));
-    for declaration in &declarations {
-        let mut used = BTreeSet::new();
-        type_constants(&declaration.ty, &mut used);
-        param_constants(&declaration.parameters, &mut used);
-        code_constants(&declaration.code, &mut used);
-        if let Some(missing) = used.difference(&known).next() {
-            return Err(Rejection::Rejected(format!(
-                "dropped dependency: `{}` uses `{missing}`, which the extraction neither defines nor records",
-                declaration.name
-            )));
+
+    // A definition is recursive exactly when it lies on a cycle of the
+    // translations' use graph: it reaches itself.
+    let graph: BTreeMap<&str, Vec<&str>> = raw
+        .constants
+        .iter()
+        .filter_map(|constant| {
+            constant.declaration.as_ref().map(|translation| {
+                (
+                    constant.name.as_str(),
+                    translation
+                        .uses
+                        .iter()
+                        .map(String::as_str)
+                        .filter(|used| translations.contains_key(used))
+                        .collect(),
+                )
+            })
+        })
+        .collect();
+    for (name, declaration) in &mut translations {
+        let mut stack: Vec<&str> = graph.get(name).cloned().unwrap_or_default();
+        let mut seen = BTreeSet::new();
+        while let Some(next) = stack.pop() {
+            if next == *name {
+                declaration.recursive = true;
+                break;
+            }
+            if seen.insert(next) {
+                stack.extend(graph.get(next).into_iter().flatten().copied());
+            }
         }
     }
-    let mut erased = raw.erased;
-    erased.sort();
-    let _ = raw.internal_erased;
+
+    // Each root's computational closure, decided here from Lean's facts.
+    let expected = eligibility_closures(reports);
+    let mut closures = Vec::new();
+    let mut realized: BTreeSet<String> = BTreeSet::new();
+    let mut inductive_names: BTreeSet<String> = BTreeSet::new();
+    let mut external_names: BTreeSet<String> = BTreeSet::new();
+    let mut all_erased: BTreeSet<String> = BTreeSet::new();
+    for root in roots {
+        let Some(eligibility) = expected.get(root) else {
+            return Err(Rejection::Rejected(format!(
+                "unknown root: `{root}` is not a production root of this project"
+            )));
+        };
+        let mut members: BTreeSet<String> = BTreeSet::new();
+        let mut queue = vec![root.clone()];
+        while let Some(name) = queue.pop() {
+            if members.contains(&name) {
+                continue;
+            }
+            let Some(constant) = constants.get(name.as_str()) else {
+                return Err(Rejection::Rejected(format!(
+                    "unresolved dependency: `{name}` is reached but not reported"
+                )));
+            };
+            if let Some(reason) = unrealizable(constant) {
+                return Err(Rejection::Rejected(reason));
+            }
+            if let Some(reason) = refused.get(name.as_str()) {
+                return Err(Rejection::Rejected(reason.clone()));
+            }
+            let Some(translation) = &constant.declaration else {
+                return Err(Rejection::Rejected(format!(
+                    "dropped dependency: `{name}` is a definition Lean compiles, but the extraction reports no translation of it"
+                )));
+            };
+            members.insert(name.clone());
+            for used in &translation.uses {
+                if let Some(project) = constants.get(used.as_str()) {
+                    match project.kind.as_str() {
+                        "inductive" => {
+                            inductive_names.insert(used.clone());
+                        }
+                        "constructor" => {
+                            let owner = raw.constants.iter().find(|candidate| {
+                                candidate.inductive.as_ref().is_some_and(|inductive| {
+                                    inductive
+                                        .constructors
+                                        .iter()
+                                        .any(|constructor| &constructor.name == used)
+                                })
+                            });
+                            let Some(owner) = owner else {
+                                return Err(Rejection::Rejected(format!(
+                                    "unresolved dependency: the constructor `{used}` has no reported inductive"
+                                )));
+                            };
+                            inductive_names.insert(owner.name.clone());
+                        }
+                        _ => queue.push(used.clone()),
+                    }
+                } else if let Some(external) = externals.get(used.as_str()) {
+                    admissible_external(external).map_err(Rejection::Rejected)?;
+                    external_names.insert(used.clone());
+                } else {
+                    return Err(Rejection::Rejected(format!(
+                        "dropped dependency: `{name}` uses `{used}`, which the extraction neither defines nor records"
+                    )));
+                }
+            }
+        }
+        let (runtime, source): (BTreeSet<String>, BTreeSet<String>) = members
+            .iter()
+            .cloned()
+            .partition(|member| is_runtime_member(member, &module_set));
+        // Lean's closure of every root must be exactly the eligibility
+        // analysis's: a member only Lean reaches is a dependency the
+        // analysis dropped, and a member only the analysis reaches is one
+        // Lean does not compile.
+        if let Some(dropped) = source.difference(&eligibility.declarations).next() {
+            return Err(Rejection::Rejected(format!(
+                "dropped dependency: Lean's compiler reaches `{dropped}` from `{root}`, but the production-eligibility closure does not"
+            )));
+        }
+        if let Some(phantom) = eligibility.declarations.difference(&source).next() {
+            return Err(Rejection::Rejected(format!(
+                "the production-eligibility closure of `{root}` realizes `{phantom}`, which Lean's compiler does not reach"
+            )));
+        }
+        // The proofs the closure's kernel values reach, directly or through
+        // compiler-generated helpers, are erased.
+        let mut erased = BTreeSet::new();
+        let mut internal_erased = BTreeSet::new();
+        let mut visited = BTreeSet::new();
+        let mut kernel: Vec<&str> = members.iter().map(String::as_str).collect();
+        while let Some(name) = kernel.pop() {
+            if !visited.insert(name) {
+                continue;
+            }
+            let Some(constant) = constants.get(name) else {
+                continue;
+            };
+            for used in &constant.kernel_uses {
+                let Some(used_constant) = constants.get(used.as_str()) else {
+                    // The adapter reports every project constant a kernel
+                    // value names; one that is missing hides a dependency.
+                    if is_project(used, &module_set, &externals) {
+                        return Err(Rejection::Rejected(format!(
+                            "unresolved dependency: the kernel value of `{name}` names `{used}`, which the extraction does not report"
+                        )));
+                    }
+                    continue;
+                };
+                if used_constant.kind == "theorem" {
+                    if used_constant.internal {
+                        internal_erased.insert(used.clone());
+                    } else {
+                        erased.insert(used.clone());
+                    }
+                }
+                if used_constant.internal {
+                    kernel.push(used.as_str());
+                }
+            }
+        }
+        if erased != eligibility.erased {
+            return Err(Rejection::Rejected(format!(
+                "the proof-only dependencies of `{root}` differ: Lean erases {erased:?}, the eligibility analysis {:?}",
+                eligibility.erased
+            )));
+        }
+        all_erased.extend(erased.iter().cloned());
+        realized.extend(members.iter().cloned());
+        closures.push(LcnfClosure {
+            root: root.clone(),
+            declarations: source.into_iter().collect(),
+            runtime: runtime.into_iter().collect(),
+            instances: eligibility.instances.clone(),
+            erased: erased.into_iter().collect(),
+            internal_erased: internal_erased.into_iter().collect(),
+        });
+    }
+    closures.sort_by(|left, right| left.root.cmp(&right.root));
+    let declarations: Vec<LcnfDeclaration> = realized
+        .iter()
+        .filter_map(|name| translations.get(name.as_str()).cloned())
+        .collect();
+    let mut inductives = Vec::new();
+    for name in &inductive_names {
+        let Some(row) = constants
+            .get(name.as_str())
+            .and_then(|constant| constant.inductive.as_ref())
+        else {
+            return Err(Rejection::Rejected(format!(
+                "unresolved dependency: the inductive `{name}` has no reported constructors"
+            )));
+        };
+        let mut constructors = Vec::new();
+        for (index, constructor) in row.constructors.iter().enumerate() {
+            let mut ty = constructor.ty.clone();
+            Renamer::default().ty(&mut ty).map_err(|reason| {
+                Rejection::Rejected(format!("`{}`: {reason}", constructor.name))
+            })?;
+            constructors.push(LcnfConstructor {
+                name: constructor.name.clone(),
+                index: index as u64,
+                parameters: constructor.parameters,
+                fields: constructor.fields,
+                ty,
+            });
+        }
+        inductives.push(LcnfInductive {
+            name: name.clone(),
+            parameters: row.parameters,
+            indices: row.indices,
+            recursive: row.recursive,
+            constructors,
+        });
+    }
+    let externals: Vec<LcnfExternal> = external_names
+        .iter()
+        .filter_map(|name| externals.get(name.as_str()))
+        .map(|external| LcnfExternal {
+            name: external.name.clone(),
+            kind: external.kind.clone(),
+            module: external.module.clone(),
+            computable: external.computable,
+            generates_code: external.generates_code,
+        })
+        .collect();
     Ok(CompilerInput {
         spec: INPUT_SPEC.to_owned(),
         lean: raw.lean,
@@ -1084,6 +1471,19 @@ pub fn compiler_input(
         declarations,
         inductives,
         externals,
-        erased,
+        erased: all_erased.into_iter().collect(),
     })
+}
+
+/// Whether a name belongs to the project: reported as a project constant,
+/// or not reported as external while lying under a generated module.
+fn is_project(
+    name: &str,
+    modules: &BTreeSet<String>,
+    externals: &BTreeMap<&str, &RawExternal>,
+) -> bool {
+    !externals.contains_key(name)
+        && modules.iter().any(|module| {
+            name.starts_with(&format!("{module}.")) || name.contains(&format!(".{module}."))
+        })
 }

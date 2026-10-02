@@ -5,10 +5,12 @@
 \section*{Semantic declarations}
 \subsection*{\texttt{Tree}}
 \noindent Kind: \texttt{inductive}.\par
+\noindent Type parameters: \texttt{(Item)}.\par
 \noindent Constructor \texttt{leaf}: \texttt{()}.\par
 \noindent Constructor \texttt{node}: \texttt{(Tree (Item), Item, Tree (Item))}.\par
 \subsection*{\texttt{Rose}}
 \noindent Kind: \texttt{inductive}.\par
+\noindent Type parameters: \texttt{(Item)}.\par
 \noindent Constructor \texttt{node}: \texttt{(Item, List (Rose (Item)))}.\par
 \subsection*{\texttt{Expr}}
 \noindent Kind: \texttt{inductive}.\par
@@ -21,12 +23,25 @@
 \noindent Mutual group: \texttt{Syntax}.\par
 \noindent Constructor \texttt{assign}: \texttt{(String, Expr)}.\par
 \noindent Constructor \texttt{sequence}: \texttt{(Stmt, Stmt)}.\par
+\subsection*{\texttt{Node}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Type parameters: \texttt{(Item)}.\par
+\noindent Mutual group: \texttt{Forest}.\par
+\noindent Constructor \texttt{node}: \texttt{(Item, Branches (Item))}.\par
+\subsection*{\texttt{Branches}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Type parameters: \texttt{(Item)}.\par
+\noindent Mutual group: \texttt{Forest}.\par
+\noindent Constructor \texttt{none}: \texttt{()}.\par
+\noindent Constructor \texttt{more}: \texttt{(Node (Item), Branches (Item))}.\par
 \subsection*{\texttt{Outcome}}
 \noindent Kind: \texttt{inductive}.\par
+\noindent Type parameters: \texttt{(Problem, Item)}.\par
 \noindent Constructor \texttt{failure}: \texttt{(Problem)}.\par
 \noindent Constructor \texttt{success}: \texttt{(Item)}.\par
 \subsection*{\texttt{Located}}
 \noindent Kind: \texttt{structure}.\par
+\noindent Type parameters: \texttt{(Item)}.\par
 \noindent Field \texttt{value}: \texttt{Item}.\par
 \noindent Field \texttt{position}: \texttt{(Prod (Nat) (Nat))}.\par
 \end{document}

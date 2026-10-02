@@ -150,6 +150,7 @@ fn is_v1_2_file(path: &str) -> bool {
         || path.starts_with("language/std/bool-1.2/")
         || path == "language/bootstrap-1.2.toml"
         || path == "language/semantics-1.2.toml"
+        || path == "schemas/attestation-v2.schema.json"
         || path == "schemas/build-manifest-v2.schema.json"
         || path == "schemas/lexicon-v2.schema.json"
         || path == "schemas/lock-1.1.schema.json"

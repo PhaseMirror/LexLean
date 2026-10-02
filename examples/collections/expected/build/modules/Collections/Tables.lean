@@ -384,6 +384,9 @@ public instance {α β : Type} [Key α] [Key β] : Key (Prod α β) where
 @[expose] public def graphSuccessors {κ : Type} [Key κ] (graph : List (Prod κ (List κ))) (node : κ) : List κ :=
   (lookupEntry node graph).getD []
 
+@[expose] public def graphNodes {κ : Type} [Key κ] (graph : List (Prod κ (List κ))) : List κ :=
+  graph.foldl (fun acc entry => entry.2.foldl (fun inner node => insertElement node inner) (insertElement entry.1 acc)) []
+
 @[expose] public def reachableFrom {κ : Type} [Key κ] (graph : List (Prod κ (List κ))) : Nat -> List κ -> List κ -> List κ
   | 0, _, seen => seen
   | Nat.succ fuel, frontier, seen =>
@@ -395,7 +398,7 @@ public instance {α β : Type} [Key α] [Key β] : Key (Prod α β) where
     | _ => reachableFrom graph fuel next (next.foldl (fun acc key => insertElement key acc) seen)
 
 @[expose] public def graphReachable {κ : Type} [Key κ] (graph : List (Prod κ (List κ))) (start : κ) : List κ :=
-  reachableFrom graph (graph.length + 1) [start] [start]
+  reachableFrom graph ((graphNodes graph).length + 1) [start] [start]
 
 @[expose] public def topological {κ : Type} [Key κ] (graph : List (Prod κ (List κ))) : Nat -> List κ -> List κ -> Option (List κ)
   | 0, remaining, order => if remaining.isEmpty then some order.reverse else none
@@ -405,7 +408,8 @@ public instance {α β : Type} [Key α] [Key β] : Key (Prod α β) where
     | ready :: _ => topological graph fuel (removeElement ready remaining) (ready :: order)
 
 @[expose] public def graphTopological {κ : Type} [Key κ] (graph : List (Prod κ (List κ))) : Option (List κ) :=
-  topological graph (graph.length + 1) (graph.map Prod.fst) []
+  let nodes := graphNodes graph
+  topological graph (nodes.length + 1) nodes []
 @[expose] public def listFold {α σ : Type} (step : σ -> α -> σ) (initial : σ) (values : List α) : σ :=
   values.foldl step initial
 

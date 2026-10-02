@@ -171,7 +171,7 @@ pub(crate) fn run(id: &str) {
         // exactly the one prescribed diagnostic code.
         "EX-07" => {
             let root = support::repo_root();
-            let prescribed: [(&str, &str); 93] = [
+            let prescribed: [(&str, &str); 107] = [
                 ("unknown-word", "LLL1004"),
                 ("unknown-symbol", "LLL1004"),
                 ("unknown-control", "LLL1004"),
@@ -194,6 +194,8 @@ pub(crate) fn run(id: &str) {
                 ("lean-elaboration-failure", "LLV7002"),
                 ("leanchecker-failure", "LLV7003"),
                 ("malformed-axiom-output", "LLV7004"),
+                ("extraction-rejected", "LLV7011"),
+                ("extraction-authority-drift", "LLV7012"),
                 ("axiom-policy-excess", "LLV7005"),
                 ("path-symlink", "LLS8001"),
                 ("stale-lock", "LLC0102"),
@@ -220,6 +222,9 @@ pub(crate) fn run(id: &str) {
                 ("recursive-type-arguments", "LLT4001"),
                 ("recursive-constructor-mismatch", "LLT4001"),
                 ("recursive-type-forward", "LLT4001"),
+                ("recursive-mutual-uninhabited", "LLT4001"),
+                ("recursive-match-foreign-constructor", "LLT4001"),
+                ("binder-capture", "LLT4001"),
                 // §17.12: higher-order code fails closed before any backend.
                 ("lambda-capture-missing", "LLT4001"),
                 ("lambda-capture-extra", "LLT4001"),
@@ -249,6 +254,11 @@ pub(crate) fn run(id: &str) {
                 ("mutual-label-shared", "LLT4001"),
                 ("recursion-member-under-lambda", "LLT4001"),
                 ("recursion-well-founded-reference", "LLT4001"),
+                ("recursion-mutual-member-without-call", "LLT4001"),
+                ("recursion-mutual-disconnected", "LLT4001"),
+                ("recursion-mutual-mixed", "LLT4001"),
+                ("recursion-mutual-cyclic-measure", "LLT4001"),
+                ("recursion-false-evidence", "LLV7002"),
                 // §17.12: collections fail closed before any backend.
                 ("collection-duplicate-key", "LLT4001"),
                 ("collection-unordered-key", "LLT4001"),
@@ -259,6 +269,7 @@ pub(crate) fn run(id: &str) {
                 ("graph-duplicate-edge", "LLT4001"),
                 ("collection-fold-type-mismatch", "LLT4001"),
                 ("collection-unbounded-iteration", "LLT4001"),
+                ("collection-literal-limit", "LLS8002"),
                 ("collection-under-1.1", "LLT4001"),
                 // §17.13: a production root fails closed before any backend.
                 ("production-hidden-dependency", "LLT4005"),
@@ -270,6 +281,9 @@ pub(crate) fn run(id: &str) {
                 ("production-literal-width", "LLT4005"),
                 ("production-root-not-executable", "LLT4005"),
                 ("production-polymorphic-root", "LLT4005"),
+                ("production-phantom-type-parameter", "LLT4005"),
+                ("production-universe-boundary", "LLT4005"),
+                ("production-named-type-boundary", "LLT4005"),
                 ("production-unknown-target", "LLT4001"),
             ];
             let negative_root = root.join("tests/negative");
@@ -343,9 +357,14 @@ pub(crate) fn run(id: &str) {
                         .find(|(name, _)| *name == class)
                         .map(|(_, code)| *code)
                         .expect("every negative class is prescribed");
-                    if observed.codes != [code.to_owned()] {
+                    // One defect may yield several diagnostics (Lean reports
+                    // a refused proof and the definition it was for); every
+                    // one must carry the prescribed code.
+                    if observed.codes.is_empty()
+                        || observed.codes.iter().any(|observed| observed != code)
+                    {
                         failures.push(format!(
-                            "tests/negative/{class}: prescribed exactly [{code}], observed {:?} (§28.5)",
+                            "tests/negative/{class}: prescribed only {code}, observed {:?} (§28.5)",
                             observed.codes
                         ));
                     }

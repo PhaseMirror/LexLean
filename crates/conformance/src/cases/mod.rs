@@ -7,6 +7,7 @@
 mod artifacts;
 mod calculus;
 mod cli_api;
+mod collections_model;
 mod configuration_lock;
 mod declarations;
 mod examples;
