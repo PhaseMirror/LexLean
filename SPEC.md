@@ -3984,7 +3984,14 @@ Tests MUST establish that LexLean rejects, at minimum:
 - a stale lock;
 - a toolchain mismatch;
 - a configured limit overrun;
-- a PDF executable hash mismatch.
+- a PDF executable hash mismatch;
+- a language-1.2 construct under language 1.1;
+- a `lexlean/semantic-module/1` module under language 1.2;
+- a `lexlean/semantic-module/2` module under language 1.1;
+- an unsupported language version;
+- a malformed language version;
+- a lock schema that does not match its language;
+- a builtin glossary reference with another language's version.
 
 ### 28.6 Example verification
 

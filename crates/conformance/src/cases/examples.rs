@@ -171,7 +171,7 @@ pub(crate) fn run(id: &str) {
         // exactly the one prescribed diagnostic code.
         "EX-07" => {
             let root = support::repo_root();
-            let prescribed: [(&str, &str); 28] = [
+            let prescribed: [(&str, &str); 35] = [
                 ("unknown-word", "LLL1004"),
                 ("unknown-symbol", "LLL1004"),
                 ("unknown-control", "LLL1004"),
@@ -200,6 +200,14 @@ pub(crate) fn run(id: &str) {
                 ("toolchain-mismatch", "LLV7001"),
                 ("limit-overrun", "LLS8002"),
                 ("pdf-hash-mismatch", "LLS8004"),
+                // §17.12: version routing fails closed before any backend.
+                ("language-1.2-construct-under-1.1", "LLT4001"),
+                ("semantic-module-v1-under-1.2", "LLT4001"),
+                ("semantic-module-v2-under-1.1", "LLT4001"),
+                ("unsupported-language-version", "LLC0103"),
+                ("malformed-language-version", "LLC0103"),
+                ("lock-schema-language-mismatch", "LLC0103"),
+                ("cross-version-glossary", "LLR3001"),
             ];
             let negative_root = root.join("tests/negative");
             let mut classes: Vec<String> = std::fs::read_dir(negative_root.as_std_path())
