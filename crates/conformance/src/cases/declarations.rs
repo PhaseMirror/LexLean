@@ -1012,13 +1012,16 @@ pub(crate) fn run(id: &str) {
             let rendered = support::rendered(&project);
             let main = support::lean_text(&rendered, "Main");
             for expected in [
-                "@[expose, semireducible] public def countdown (number : Nat) (steps : Nat) : Nat := (match (generalizing := false) _decrease0 : (Nat.blt (number) (2)) with | true => steps | false => countdown ((LexLeanRuntime.subtract (number) (2) : Nat)) ((steps + 1)))\ntermination_by number\ndecreasing_by all_goals first | (have _evidence := countdown_decreases (number) (steps) (_decrease0); subst_vars; exact _evidence)\n",
-                "decreasing_by all_goals first | (have _evidence := search_decreases (target) (low) (high) (_decrease0) (_decrease1); subst_vars; exact _evidence)\n",
+                "@[expose, semireducible] public def countdown (number : Nat) (steps : Nat) : Nat := (match (generalizing := false) __decrease0 : (Nat.blt (number) (2)) with | true => steps | false => countdown ((LexLeanRuntime.subtract (number) (2) : Nat)) ((steps + 1)))\ntermination_by number\ndecreasing_by all_goals first | (have __evidence := countdown_decreases (number) (steps) (__decrease0); subst_vars; exact __evidence)\n",
+                "decreasing_by all_goals first | (have __evidence := search_decreases (target) (low) (high) (__decrease0) (__decrease1); subst_vars; exact __evidence)\n",
                 "public theorem countdown_decreases (number : Nat) (_steps : Nat) :",
-                "public def reassociate (term : Recursion.Syntax.Term) : Recursion.Syntax.Term := (match (generalizing := false) _decrease0 : term with ",
-                "(match (generalizing := false) _decrease1 : left with ",
-                "decreasing_by all_goals first | (have _evidence := reassociate_literal (term) (left) (right) (value) (_decrease0) (_decrease1); subst_vars; exact _evidence) | (have _evidence := reassociate_plus (term) (left) (right) (inner) (rest) (_decrease0) (_decrease1); subst_vars; exact _evidence)\n",
-            ] {
+                "public def reassociate (term : Recursion.Syntax.Term) : Recursion.Syntax.Term := (match (generalizing := false) __decrease0 : term with ",
+                "(match (generalizing := false) __decrease1 : left with ",
+                // Enclosing match binders are solved from the hypotheses, so
+                // a binder the branch ignores is `_` and never a lint.
+                "decreasing_by all_goals first | (have __evidence := reassociate_literal (term) _ _ _ (__decrease0) (__decrease1); subst_vars; exact __evidence) | (have __evidence := reassociate_plus (term) _ _ _ _ (__decrease0) (__decrease1); subst_vars; exact __evidence)\n",
+                "| Recursion.Syntax.Term.literal _ => prune (right) | Recursion.Syntax.Term.plus inner _ => prune (Recursion.Syntax.Term.plus (inner) (right))",
+                        ] {
                 assert!(main.contains(expected), "missing {expected:?} in:\n{main}");
             }
             let tex = support::tex_text(&rendered, "Main");

@@ -6,6 +6,9 @@
 'Recursion.Main.forestSize' does not depend on any axioms
 'Recursion.Main.isEven' does not depend on any axioms
 'Recursion.Main.isOdd' does not depend on any axioms
+'Recursion.Main.prune' depends on axioms: [propext, Quot.sound]
+'Recursion.Main.prune_plus' depends on axioms: [propext, Quot.sound]
+'Recursion.Main.prune_result' depends on axioms: [propext, Quot.sound]
 'Recursion.Main.reassociate' depends on axioms: [propext, Quot.sound]
 'Recursion.Main.reassociate_literal' depends on axioms: [propext, Quot.sound]
 'Recursion.Main.reassociate_plus' depends on axioms: [propext, Quot.sound]

@@ -126,4 +126,19 @@
 \noindent Kind: \texttt{theorem}.\par
 \noindent Statement: \texttt{(weight (reassociate (Recursion.Syntax.Term.plus (Recursion.Syntax.Term.plus (Recursion.Syntax.Term.literal (1)) (Recursion.Syntax.Term.literal (2))) (Recursion.Syntax.Term.literal (3)))) = 7)}.\par
 \noindent Axiom policy: \texttt{exact [Quot.sound, propext]}.\par
+\subsection*{\texttt{prune\_plus}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{((term = Recursion.Syntax.Term.plus (left) (right)) -> ((left = Recursion.Syntax.Term.plus (inner) (rest)) -> (weight (Recursion.Syntax.Term.plus (inner) (right)) < weight (term))))}.\par
+\noindent Axiom policy: \texttt{exact [Quot.sound, propext]}.\par
+\subsection*{\texttt{prune}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Well-founded measure: \texttt{weight (term)}; decrease evidence per call: \texttt{reassociate\_literal, prune\_plus}.\par
+\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Type: \texttt{Recursion.Syntax.Term}.\par
+\noindent Definition: \texttt{(match term with | Recursion.Syntax.Term.literal value => Recursion.Syntax.Term.literal (value) | Recursion.Syntax.Term.plus left right => (match left with | Recursion.Syntax.Term.literal \_ => prune (right) | Recursion.Syntax.Term.plus inner \_ => prune (Recursion.Syntax.Term.plus (inner) (right))))}.\par
+\noindent Axiom policy: \texttt{exact [Quot.sound, propext]}.\par
+\subsection*{\texttt{prune\_result}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(weight (prune (Recursion.Syntax.Term.plus (Recursion.Syntax.Term.plus (Recursion.Syntax.Term.literal (1)) (Recursion.Syntax.Term.literal (2))) (Recursion.Syntax.Term.literal (3)))) = 1)}.\par
+\noindent Axiom policy: \texttt{exact [Quot.sound, propext]}.\par
 \end{document}

@@ -413,12 +413,14 @@ Removed: the test was restored; `conformance_df_16` passes and the
 
 Planted: a numbered `match` lowered without `(generalizing := false)`, so
 Lean refined the earlier hypotheses and the evidence of `reassociate` no
-longer applied. The oracle is Lean itself. Command: `lexlean build &&
+longer applied to them (one rejection per evidence application of
+`reassociate` and `prune`). The oracle is Lean itself. Command: `lexlean build &&
 lexlean verify` in `examples/recursion`.
 
 ```text
-error[LLV7002]: Lean rejected `Recursion.Main` (error lean.unknownIdentifier): Unknown identifier `inner`
-error[LLV7002]: Lean rejected `Recursion.Main` (error lean.unknownIdentifier): Unknown identifier `rest`
+error[LLV7002]: Lean rejected `Recursion.Main` (error): Application type mismatch: The argument
+error[LLV7002]: Lean rejected `Recursion.Main` (error): Application type mismatch: The argument
+error[LLV7002]: Lean rejected `Recursion.Main` (error): Application type mismatch: The argument
 error[LLV7002]: Lean rejected `Recursion.Main` (error): Application type mismatch: The argument
 ```
 

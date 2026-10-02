@@ -24,9 +24,10 @@ struct Render<'a> {
 }
 
 /// The generated name of well-founded hypothesis `index`. Semantic names
-/// begin with an ASCII letter, so no source local can capture it.
+/// begin with an ASCII letter and an unused binder lowers as `_name`, so no
+/// source binder can capture a name beginning with two underscores.
 fn hypothesis(index: usize) -> String {
-    format!("_decrease{index}")
+    format!("__decrease{index}")
 }
 
 // Semantic names are validated data, not Lean tokens. Quoting a reserved
@@ -963,30 +964,39 @@ fn well_founded_definition(
             .map(|(index, address)| (*address, index))
             .collect(),
     };
+    // A parameter the measure alone mentions is used: `termination_by`
+    // references it.
+    let used = |local: &str| term_uses(body, local) || term_uses(&termination.measure, local);
     let mut text = format!(
         "@[expose, semireducible] public def {}{}{} : {} := {}\ntermination_by {}\ndecreasing_by all_goals first",
         identifier(name),
         render.type_parameters(type_parameters),
-        render.parameters(parameters),
+        render.scoped_parameters(parameters, used),
         render.ty(result),
         render.term(body),
         render.term(&termination.measure)
     );
     for (site, evidence) in plan.sites.iter().zip(&termination.evidence) {
-        let mut application = format!(" | (have _evidence := {}", render.member(evidence));
+        let mut application = format!(" | (have __evidence := {}", render.member(evidence));
         for parameter in type_parameters {
             application.push_str(&format!(" ({})", identifier(parameter)));
         }
         for parameter in parameters {
-            application.push_str(&format!(" ({})", identifier(&parameter.name)));
+            application.push_str(&format!(
+                " ({})",
+                bound_name(&parameter.name, used(&parameter.name))
+            ));
         }
-        for binder in plan.binders(site) {
-            application.push_str(&format!(" ({})", identifier(&binder)));
+        // An enclosing match binder appears in its match's hypothesis, so
+        // Lean solves it by unification; naming it would make a binder the
+        // branch body ignores a use the linter cannot see.
+        for _ in plan.binders(site) {
+            application.push_str(" _");
         }
         for step in &site.path {
             application.push_str(&format!(" ({})", hypothesis(step.node())));
         }
-        application.push_str("; subst_vars; exact _evidence)");
+        application.push_str("; subst_vars; exact __evidence)");
         text.push_str(&application);
     }
     text.push('\n');
@@ -1542,22 +1552,12 @@ pub fn render_lean(
             } => {
                 let name = identifier(name);
                 // A parameter neither the statement nor the proof mentions
-                // (as a termination-evidence theorem's may be) is bound
-                // anonymously, so Lean's unused-variable linter stays quiet;
+                // (as a termination-evidence theorem's may be) is bound as
+                // `_name`, so Lean's unused-variable linter stays quiet;
                 // every other binder keeps its exact name.
-                let binders = parameters
-                    .iter()
-                    .map(|parameter| {
-                        let used = term_uses(statement, &parameter.name)
-                            || proof_uses(proof, &parameter.name);
-                        format!(
-                            " ({}{} : {})",
-                            if used { "" } else { "_" },
-                            identifier(&parameter.name),
-                            render.ty(&parameter.r#type)
-                        )
-                    })
-                    .collect::<String>();
+                let binders = render.scoped_parameters(parameters, |local| {
+                    term_uses(statement, local) || proof_uses(proof, local)
+                });
                 text.push_str(&format!(
                     "public theorem {name}{}{binders} : {} := by\n{}",
                     render.type_parameters(type_parameters),

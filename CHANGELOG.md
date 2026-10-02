@@ -64,9 +64,10 @@ versions, and the entries below say what each tag does and does not claim.
   theorem per call site, checked in linking and proved under Lean. A
   well-founded call may sit under `if` and `match`: its obligation is
   quantified over the enclosing match binders and hypotheses, and lowers
-  through `match (generalizing := false) _decreaseN : s` with the evidence
-  substituted by `subst_vars` (`examples/recursion` reassociates a syntax
-  tree by a weight measure). The new `linear_arithmetic` proof form
+  through `match (generalizing := false) __decreaseN : s` with the evidence
+  applied to `_` for each enclosing binder and substituted by `subst_vars`
+  (`examples/recursion` reassociates and prunes a syntax tree by a weight
+  measure, the pruning under binders its branches ignore). The new `linear_arithmetic` proof form
   discharges linear obligations and may unfold named prior definitions.
   Recursion that escapes its check (a group member called inside a lambda or
   referenced as a value, a mutual label shared by an inductive and a

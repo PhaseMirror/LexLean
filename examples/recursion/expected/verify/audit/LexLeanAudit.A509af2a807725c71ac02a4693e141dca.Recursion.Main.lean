@@ -8,6 +8,9 @@ import Recursion.Main
 #print axioms Recursion.Main.forestSize
 #print axioms Recursion.Main.isEven
 #print axioms Recursion.Main.isOdd
+#print axioms Recursion.Main.prune
+#print axioms Recursion.Main.prune_plus
+#print axioms Recursion.Main.prune_result
 #print axioms Recursion.Main.reassociate
 #print axioms Recursion.Main.reassociate_literal
 #print axioms Recursion.Main.reassociate_plus

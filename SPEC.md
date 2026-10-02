@@ -2604,18 +2604,23 @@ Termination evidence is semantic data, never tactic or backend text; no
    not proved is therefore never verified.
 4. **Well-founded lowering.** The definition lowers to
    `@[expose, semireducible] public def`, each `if` to
-   `match (generalizing := false) _decreaseN : c with | true => ... | false => ...`,
-   each `match` to `match (generalizing := false) _decreaseN : s with ...`,
+   `match (generalizing := false) __decreaseN : c with | true => ... | false => ...`,
+   each `match` to `match (generalizing := false) __decreaseN : s with ...`,
    then `termination_by measure` and `decreasing_by all_goals first` with one
-   `| (have _evidence := evidence T... p... b... _decreaseI...; subst_vars; exact _evidence)`
-   per call site, passing the enclosing match binders `b` and the hypotheses
-   of its enclosing nodes. `generalizing := false` keeps every earlier
-   hypothesis stated over the parameters, exactly as the evidence states it;
-   Lean still refines the decreasing goal by each match on a variable, and
-   `subst_vars` applies the same substitutions to the evidence, so the
-   evidence closes the goal it was stated for and no other. Semireducibility
-   lets closed instances reduce in proofs; the evidence's observed axioms
-   flow into the definition's exact policy.
+   `| (have __evidence := evidence T... p... _... __decreaseI...; subst_vars; exact __evidence)`
+   per call site, passing the parameters, one `_` per enclosing match binder,
+   and the hypotheses of its enclosing nodes. `generalizing := false` keeps
+   every earlier hypothesis stated over the parameters, exactly as the
+   evidence states it; each binder appears in its match's hypothesis, so Lean
+   solves the `_` by unification and a binder the branch ignores stays
+   `_`; Lean still refines the decreasing goal by each match on a variable,
+   and `subst_vars` applies the same substitutions to the evidence, so the
+   evidence closes the goal it was stated for and no other. A parameter
+   neither the body nor the measure mentions lowers as `_name` and is passed
+   as `_name`; generated names begin with two underscores, which no lowered
+   source binder does. Semireducibility lets closed instances reduce in
+   proofs; the evidence's observed axioms flow into the definition's exact
+   policy.
 5. **Theorem binders** that neither the statement nor the proof mentions
    are bound as `_name`, so an evidence theorem may take every parameter of
    its definition without a Lean linter warning.
