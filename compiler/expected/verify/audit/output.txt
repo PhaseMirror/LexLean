@@ -18,6 +18,9 @@
 'Compiler.TargetFixtures.bytesAndTextOutcome' depends on axioms: [propext, Classical.choice, Quot.sound]
 'Compiler.TargetFixtures.bytesAndTextProgram' does not depend on any axioms
 'Compiler.TargetFixtures.bytesAndTextRun' depends on axioms: [propext, Classical.choice, Quot.sound]
+'Compiler.TargetFixtures.closureCapturesOutcome' depends on axioms: [propext, Classical.choice, Quot.sound]
+'Compiler.TargetFixtures.closureCapturesProgram' does not depend on any axioms
+'Compiler.TargetFixtures.closureCapturesRun' depends on axioms: [propext, Classical.choice, Quot.sound]
 'Compiler.TargetFixtures.closureValueOutcome' depends on axioms: [propext, Classical.choice, Quot.sound]
 'Compiler.TargetFixtures.closureValueProgram' does not depend on any axioms
 'Compiler.TargetFixtures.closureValueRun' depends on axioms: [propext, Classical.choice, Quot.sound]
@@ -29,6 +32,8 @@
 'Compiler.TargetFixtures.convertRun' depends on axioms: [propext, Classical.choice, Quot.sound]
 'Compiler.TargetFixtures.decimalOverflowProgram' does not depend on any axioms
 'Compiler.TargetFixtures.decimalOverflowRun' depends on axioms: [propext, Classical.choice, Quot.sound]
+'Compiler.TargetFixtures.decimalOverflowWideProgram' does not depend on any axioms
+'Compiler.TargetFixtures.decimalOverflowWideRun' depends on axioms: [propext, Classical.choice, Quot.sound]
 'Compiler.TargetFixtures.decimalProgram' does not depend on any axioms
 'Compiler.TargetFixtures.decimalRun' depends on axioms: [propext, Classical.choice, Quot.sound]
 'Compiler.TargetFixtures.equalityOutcome' depends on axioms: [propext, Classical.choice, Quot.sound]
@@ -222,6 +227,9 @@
 'Compiler.TargetFixtures.pairAndListMatchOutcome' depends on axioms: [propext, Classical.choice, Quot.sound]
 'Compiler.TargetFixtures.pairAndListMatchProgram' does not depend on any axioms
 'Compiler.TargetFixtures.pairAndListMatchRun' depends on axioms: [propext, Classical.choice, Quot.sound]
+'Compiler.TargetFixtures.recordFieldsOutcome' depends on axioms: [propext, Classical.choice, Quot.sound]
+'Compiler.TargetFixtures.recordFieldsProgram' does not depend on any axioms
+'Compiler.TargetFixtures.recordFieldsRun' depends on axioms: [propext, Classical.choice, Quot.sound]
 'Compiler.TargetFixtures.setContainsAbsentAgrees' depends on axioms: [propext, Classical.choice, Quot.sound]
 'Compiler.TargetFixtures.setContainsAbsentOutcome' depends on axioms: [propext, Classical.choice, Quot.sound]
 'Compiler.TargetFixtures.setContainsAbsentProgram' does not depend on any axioms

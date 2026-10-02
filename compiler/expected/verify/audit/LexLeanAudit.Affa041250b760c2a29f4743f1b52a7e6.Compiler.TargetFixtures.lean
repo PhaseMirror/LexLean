@@ -19,6 +19,9 @@ import Compiler.TargetFixtures
 #print axioms Compiler.TargetFixtures.bytesAndTextOutcome
 #print axioms Compiler.TargetFixtures.bytesAndTextProgram
 #print axioms Compiler.TargetFixtures.bytesAndTextRun
+#print axioms Compiler.TargetFixtures.closureCapturesOutcome
+#print axioms Compiler.TargetFixtures.closureCapturesProgram
+#print axioms Compiler.TargetFixtures.closureCapturesRun
 #print axioms Compiler.TargetFixtures.closureValueOutcome
 #print axioms Compiler.TargetFixtures.closureValueProgram
 #print axioms Compiler.TargetFixtures.closureValueRun
@@ -30,6 +33,8 @@ import Compiler.TargetFixtures
 #print axioms Compiler.TargetFixtures.convertRun
 #print axioms Compiler.TargetFixtures.decimalOverflowProgram
 #print axioms Compiler.TargetFixtures.decimalOverflowRun
+#print axioms Compiler.TargetFixtures.decimalOverflowWideProgram
+#print axioms Compiler.TargetFixtures.decimalOverflowWideRun
 #print axioms Compiler.TargetFixtures.decimalProgram
 #print axioms Compiler.TargetFixtures.decimalRun
 #print axioms Compiler.TargetFixtures.equalityOutcome
@@ -223,6 +228,9 @@ import Compiler.TargetFixtures
 #print axioms Compiler.TargetFixtures.pairAndListMatchOutcome
 #print axioms Compiler.TargetFixtures.pairAndListMatchProgram
 #print axioms Compiler.TargetFixtures.pairAndListMatchRun
+#print axioms Compiler.TargetFixtures.recordFieldsOutcome
+#print axioms Compiler.TargetFixtures.recordFieldsProgram
+#print axioms Compiler.TargetFixtures.recordFieldsRun
 #print axioms Compiler.TargetFixtures.setContainsAbsentAgrees
 #print axioms Compiler.TargetFixtures.setContainsAbsentOutcome
 #print axioms Compiler.TargetFixtures.setContainsAbsentProgram

@@ -267,69 +267,11 @@ decimal!(u32, format_u32, parse_u32); decimal!(u64, format_u64, parse_u64);
 decimal!(i8, format_i8, parse_i8); decimal!(i16, format_i16, parse_i16);
 decimal!(i32, format_i32, parse_i32); decimal!(i64, format_i64, parse_i64);
 
-pub fn f0() -> R<List<i64>> {
-    Ok(List::cons({
-        let a1 = -5i64;
-        let a2 = 3i64;
-        int_add(a1, a2)?
-    }, List::cons({
-        let a3 = -5i64;
-        let a4 = 3i64;
-        int_sub(a3, a4)?
-    }, List::cons({
-        let a5 = -4i64;
-        let a6 = 6i64;
-        int_mul(a5, a6)?
-    }, List::cons({
-        let a7 = 7i64;
-        int_neg(a7)?
-    }, List::cons({
-        let a8 = -7i64;
-        let a9 = 2i64;
-        let a10 = 0i64;
-        int_quot(a8, a9, a10)?
-    }, List::cons({
-        let a11 = -7i64;
-        let a12 = 2i64;
-        let a13 = 0i64;
-        int_rem(a11, a12, a13)
-    }, List::cons({
-        let a14 = 7i64;
-        let a15 = -2i64;
-        let a16 = 0i64;
-        int_quot(a14, a15, a16)?
-    }, List::cons({
-        let a17 = 7i64;
-        let a18 = -2i64;
-        let a19 = 0i64;
-        int_rem(a17, a18, a19)
-    }, List::cons({
-        let a20 = 5i64;
-        let a21 = 0i64;
-        let a22 = -9i64;
-        int_quot(a20, a21, a22)?
-    }, List::cons({
-        let a23 = 5i64;
-        let a24 = 0i64;
-        let a25 = 4i64;
-        int_rem(a23, a24, a25)
-    }, List::cons({
-        let a26 = i64::MIN;
-        let a27 = 1i64;
-        let a28 = 5i64;
-        int_quot(a26, a27, a28)?
-    }, List::cons({
-        let a29 = i64::MIN;
-        let a30 = -1i64;
-        let a31 = 7i64;
-        int_rem(a29, a30, a31)
-    }, List::cons({
-        let a32 = 9223372036854775807i64;
-        let a33 = i64::MIN;
-        int_add(a32, a33)?
-    }, List::<i64>::nil()))))))))))))))
+pub fn f0() -> R<Option<i64>> {
+    let a1 = Str::lit("10000000000000000000000000000000000000000");
+    parse_int(a1)
 }
 
-pub fn run() -> R<List<i64>> {
+pub fn run() -> R<Option<i64>> {
     f0()
 }

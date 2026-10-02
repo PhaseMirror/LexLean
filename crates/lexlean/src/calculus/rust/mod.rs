@@ -283,15 +283,66 @@ pub fn render_caller(
     arguments: &[Value],
     caller: &Caller<'_>,
 ) -> Result<String, String> {
-    super::check::check_arguments(program, entry, arguments)?;
+    render_calls(
+        program,
+        profile,
+        caller.library,
+        &[Calls {
+            entry,
+            function: caller.function,
+            passing: caller.passing,
+            arguments: &[arguments.to_vec()],
+        }],
+    )
+}
+
+/// A Rust tuple of `items`: `()` when there are none.
+fn tuple(items: &[String]) -> String {
+    if items.is_empty() {
+        "()".to_owned()
+    } else {
+        format!("({},)", items.join(", "))
+    }
+}
+
+/// One function a harness runs, and every argument list it runs it on.
+pub struct Calls<'a> {
+    pub entry: u64,
+    pub function: &'a str,
+    pub passing: &'a [package::Passing],
+    pub arguments: &'a [Vec<Value>],
+}
+
+/// A binary crate that runs each of `calls` through the library crate
+/// `library` on each of its argument lists, in order, and prints one
+/// observable outcome per run, as [`render_harness`], then the work the
+/// runtime counted.
+///
+/// # Errors
+///
+/// As [`render_harness`], for any call.
+pub fn render_calls(
+    program: &Program,
+    profile: Profile,
+    library: &str,
+    calls: &[Calls<'_>],
+) -> Result<String, String> {
     let mut renderer = Lowering::new(program, profile)?;
-    let function = program
-        .functions
-        .get(index(entry)?)
-        .ok_or_else(|| format!("function {entry} is not declared"))?;
-    let mut out = format!("#![forbid(unsafe_code)]\nuse {}::*;\n", caller.library);
+    // An ordering argument is written with the core type, which the
+    // library uses but does not export.
+    let mut out = format!(
+        "#![forbid(unsafe_code)]\n#[allow(unused_imports)]\nuse core::cmp::Ordering;\nuse {library}::*;\n"
+    );
     let mut adts = BTreeSet::new();
-    if shown(program, &function.result, &mut adts) {
+    let mut quoted = false;
+    for call in calls {
+        let function = program
+            .functions
+            .get(index(call.entry)?)
+            .ok_or_else(|| format!("function {} is not declared", call.entry))?;
+        quoted |= shown(program, &function.result, &mut adts);
+    }
+    if quoted {
         out.push_str(QUOTE);
     }
     for adt in adts {
@@ -332,50 +383,72 @@ pub fn render_caller(
         }
         out.push_str("} }\n");
     }
-    let rendered = arguments
-        .iter()
-        .zip(&function.types)
-        .zip(
-            caller
-                .passing
+    out.push_str("\nfn main() {\n");
+    for call in calls {
+        let function = program
+            .functions
+            .get(index(call.entry)?)
+            .ok_or_else(|| format!("function {} is not declared", call.entry))?;
+        let mut rows = Vec::new();
+        for arguments in call.arguments {
+            super::check::check_arguments(program, call.entry, arguments)?;
+            let rendered = arguments
                 .iter()
-                .chain(std::iter::repeat(&package::Passing::Own)),
-        )
-        .map(|((argument, ty), passing)| {
-            renderer.value(argument, ty).map(|value| {
-                let text = ast::print_expr(&value);
+                .zip(&function.types)
+                .map(|(argument, ty)| {
+                    renderer
+                        .value(argument, ty)
+                        .map(|value| ast::print_expr(&value))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            rows.push(tuple(&rendered));
+        }
+        let names: Vec<String> = (0..function.types.len())
+            .map(|position| format!("a{position}"))
+            .collect();
+        let passed: Vec<String> = names
+            .iter()
+            .zip(
+                call.passing
+                    .iter()
+                    .chain(std::iter::repeat(&package::Passing::Own)),
+            )
+            .map(|(name, passing)| {
                 if *passing == package::Passing::Borrow {
-                    format!("&{text}")
+                    format!("&{name}")
                 } else {
-                    text
+                    name.clone()
                 }
             })
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let result_show = show(&function.result, "value")?;
-    // An entry that cannot overflow returns its value directly.
-    let fallible = renderer
-        .fallible
-        .get(index(entry)?)
-        .copied()
-        .unwrap_or(false);
-    let run = if fallible {
-        format!(
-            "    match {}({}) {{\n        Ok(value) => println!(\"{{}}\", {result_show}),\n        Err(Overflow) => println!(\"{{{{\\\"kind\\\":\\\"overflow\\\"}}}}\"),\n    }}\n",
-            caller.function,
-            rendered.join(", ")
-        )
-    } else {
-        format!(
-            "    let value = {}({});\n    println!(\"{{}}\", {result_show});\n",
-            caller.function,
-            rendered.join(", ")
-        )
-    };
-    let _ = write!(
-        out,
-        "\nfn main() {{\n{run}    println!(\"work {{}}\", work());\n}}\n"
-    );
+            .collect();
+        let result_show = show(&function.result, "value")?;
+        // An entry that cannot overflow returns its value directly.
+        let fallible = renderer
+            .fallible
+            .get(index(call.entry)?)
+            .copied()
+            .unwrap_or(false);
+        let run = if fallible {
+            format!(
+                "        match {}({}) {{\n            Ok(value) => println!(\"{{}}\", {result_show}),\n            Err(Overflow) => println!(\"{{{{\\\"kind\\\":\\\"overflow\\\"}}}}\"),\n        }}\n",
+                call.function,
+                passed.join(", ")
+            )
+        } else {
+            format!(
+                "        let value = {}({});\n        println!(\"{{}}\", {result_show});\n",
+                call.function,
+                passed.join(", ")
+            )
+        };
+        let _ = write!(
+            out,
+            "    for {} in [{}] {{\n{run}    }}\n",
+            tuple(&names),
+            rows.join(", ")
+        );
+    }
+    out.push_str("    println!(\"work {}\", work());\n}\n");
     Ok(out)
 }
 

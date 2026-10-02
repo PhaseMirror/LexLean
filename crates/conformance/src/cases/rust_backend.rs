@@ -4,13 +4,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use lexlean::calculus::rust::ast::{Block, Callee, Crate, Expr, ItemDef, Let, Pat, Type};
-use lexlean::calculus::rust::package::{self, Manifest};
+use lexlean::calculus::rust::package::{self, Manifest, Passing};
 use lexlean::calculus::rust::runtime::Item;
-use lexlean::calculus::rust::{self, validate, Caller, Profile};
+use lexlean::calculus::rust::{self, validate, Caller, Calls, Profile};
 use lexlean::calculus::{self as target, realization, Outcome};
 use serde_json::Value as Json;
 
 use crate::calculus::cases;
+use crate::rust_differential;
 use crate::rust_packages::{self, Committed};
 use crate::support::{self, repo_root};
 
@@ -468,6 +469,51 @@ pub fn run(id: &str) {
                 expected.insert(committed.manifest.name.clone(), observed);
             }
             assert!(built.len() > 100, "{} packages run", built.len());
+            // The primitive differential: every primitive instance each
+            // profile admits, on its boundary values and seeded inputs.
+            let mut differentials = BTreeMap::new();
+            for profile in Profile::ALL {
+                let differential = rust_differential::differential(profile);
+                let manifest = rust_differential::manifest(&differential, profile);
+                let package = target::package(&manifest.to_file_bytes())
+                    .unwrap_or_else(|failure| panic!("{}: {failure:?}", manifest.name));
+                let owned: Vec<Vec<Passing>> = differential
+                    .program
+                    .functions
+                    .iter()
+                    .map(|function| vec![Passing::Own; function.types.len()])
+                    .collect();
+                let calls: Vec<Calls<'_>> = differential
+                    .arguments
+                    .iter()
+                    .enumerate()
+                    .map(|(function, arguments)| Calls {
+                        entry: function as u64,
+                        function: &differential.names[function],
+                        passing: &owned[function],
+                        arguments,
+                    })
+                    .collect();
+                let harness =
+                    rust::render_calls(&differential.program, profile, &manifest.name, &calls)
+                        .expect("differential harness");
+                let runs: usize = differential.arguments.iter().map(Vec::len).sum();
+                assert!(
+                    differential.names.len() > 60 && runs > 5_000,
+                    "{}: {} functions, {runs} runs",
+                    manifest.name,
+                    differential.names.len()
+                );
+                differentials.insert(
+                    manifest.name.clone(),
+                    rust_differential::expected(&differential),
+                );
+                built.push(Built {
+                    name: manifest.name.clone(),
+                    files: package.files,
+                    harness,
+                });
+            }
             workspace(dir.path(), &built);
             let build = cargo_in(
                 dir.path(),
@@ -514,6 +560,44 @@ pub fn run(id: &str) {
                 assert_eq!(
                     &printed, observed,
                     "{name}: the export and the denotation disagree"
+                );
+            }
+            for (name, outcomes) in &differentials {
+                let binary = dir
+                    .path()
+                    .join("target/debug")
+                    .join(format!("run_{name}{}", std::env::consts::EXE_SUFFIX));
+                let ran = std::process::Command::new(&binary)
+                    .output()
+                    .expect("the differential runs");
+                assert!(
+                    ran.status.success(),
+                    "{name}: {}",
+                    String::from_utf8_lossy(&ran.stderr)
+                );
+                let stdout = String::from_utf8(ran.stdout).expect("utf8");
+                let printed: Vec<Json> = stdout
+                    .lines()
+                    .filter(|line| !line.starts_with("work "))
+                    .map(|line| {
+                        serde_json::from_str(line)
+                            .unwrap_or_else(|error| panic!("{name}: {error}: {line}"))
+                    })
+                    .collect();
+                assert_eq!(printed.len(), outcomes.len(), "{name}: one outcome per run");
+                let disagreements: Vec<String> = printed
+                    .iter()
+                    .zip(outcomes)
+                    .enumerate()
+                    .filter(|(_, (printed, expected))| printed != expected)
+                    .map(|(run, (printed, expected))| format!("run {run}: {printed} != {expected}"))
+                    .collect();
+                assert!(
+                    disagreements.is_empty(),
+                    "{name}: the rendering and the denotation disagree on {} of {} runs: {:?}",
+                    disagreements.len(),
+                    outcomes.len(),
+                    &disagreements[..disagreements.len().min(8)]
                 );
             }
             // The lint gate and the differential are real: a clone of a

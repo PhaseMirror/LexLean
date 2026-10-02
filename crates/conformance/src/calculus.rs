@@ -452,8 +452,10 @@ fn core_cases() -> Vec<Case> {
                     p(Prim::IntRem, vec![int(7), int(-2), int(0)]),
                     p(Prim::IntQuot, vec![int(5), int(0), int(-9)]),
                     p(Prim::IntRem, vec![int(5), int(0), int(4)]),
-                    p(Prim::IntQuot, vec![int(min), int(1), int(0)]),
-                    p(Prim::IntRem, vec![int(min), int(-1), int(0)]),
+                    // The defaults differ from the answers, so a realization
+                    // that returns the default for a nonzero divisor is seen.
+                    p(Prim::IntQuot, vec![int(min), int(1), int(5)]),
+                    p(Prim::IntRem, vec![int(min), int(-1), int(7)]),
                     p(Prim::IntAdd, vec![int(i64::MAX), int(min)]),
                 ],
             ),
@@ -1307,6 +1309,21 @@ fn core_cases() -> Vec<Case> {
         Vec::new(),
         100,
     ));
+    // A canonical decimal beyond every machine integer a realization may
+    // parse through is still an overflow.
+    out.push(case(
+        "decimal-overflow-wide",
+        constant(
+            opt_t(Ty::Int),
+            p(
+                Prim::ParseDecimal { target: Ty::Int },
+                vec![string(&format!("1{}", "0".repeat(40)))],
+            ),
+        ),
+        0,
+        Vec::new(),
+        100,
+    ));
 
     // Conversions, gathered in a record so every target width is a field.
     let converted = vec![
@@ -1490,6 +1507,36 @@ fn core_cases() -> Vec<Case> {
         Vec::new(),
         400,
     ));
+    // A record of three fields read in an order no permutation of the
+    // indices preserves.
+    out.push(case(
+        "record-fields",
+        program(
+            vec![vec![vec![nat_t(), nat_t(), nat_t()]]],
+            vec![function(
+                vec![Ty::Adt { index: 0 }],
+                pair_t(nat_t(), pair_t(nat_t(), nat_t())),
+                build(
+                    Shape::Pair,
+                    pair_t(nat_t(), pair_t(nat_t(), nat_t())),
+                    vec![
+                        p(Prim::NatSub, vec![field(v(0), 0), field(v(0), 2)]),
+                        build(
+                            Shape::Pair,
+                            pair_t(nat_t(), nat_t()),
+                            vec![field(v(0), 1), field(v(0), 2)],
+                        ),
+                    ],
+                ),
+            )],
+        ),
+        0,
+        vec![Value::Adt {
+            constructor: 0,
+            fields: vec![natv(20), natv(5), natv(3)],
+        }],
+        100,
+    ));
 
     // Higher-order: a closure capturing an offset, applied by a map over a
     // list, and a closure returned as a value.
@@ -1557,6 +1604,34 @@ fn core_cases() -> Vec<Case> {
         ),
         0,
         vec![natv(6)],
+        100,
+    ));
+    // A closure of two captures, applied twice through a function value,
+    // computing `x * k0 - k1`: exchanging the captures changes the result.
+    out.push(case(
+        "closure-captures",
+        program(
+            Vec::new(),
+            vec![
+                function(
+                    vec![nat_t(), nat_t(), nat_t()],
+                    nat_t(),
+                    call(1, vec![closure(2, vec![v(0), v(1)]), v(2)]),
+                ),
+                function(
+                    vec![fn_t(vec![nat_t()], nat_t()), nat_t()],
+                    nat_t(),
+                    apply(v(0), vec![apply(v(0), vec![v(1)])]),
+                ),
+                function(
+                    vec![nat_t(), nat_t(), nat_t()],
+                    nat_t(),
+                    p(Prim::NatSub, vec![p(Prim::NatMul, vec![v(2), v(0)]), v(1)]),
+                ),
+            ],
+        ),
+        0,
+        vec![natv(10), natv(3), natv(2)],
         100,
     ));
 
