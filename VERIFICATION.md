@@ -12,7 +12,7 @@ How this repository's claims are checked, which recipe enforces which rule, and 
 | `model` | `cargo xtask validate-model` | R1 (model is the single source; every model file parsed with unknown-field rejection), R2 (honesty levels and vocabulary, via the meta-gate), R3 (register/scenario/test bijection, Gherkin subset), R4 (`audit-deferral`), R5 (`audit-errors`), R6 (`audit-shipped`, including the shipped crate's normative links), R8 (`audit-generated`, `audit-language-closure`), RP-09 (`audit-no-unsafe`), §27.5 (CONFORMANCE.md and ERRORS.md equal regeneration) |
 | `spec-links` | `cargo xtask validate-spec-links` | RP-07, §27.6: the §31 table and `model/ids.toml` are bijective and byte-consistent |
 | `lint` | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | no tolerated warnings |
-| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 223 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
+| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 228 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
 | `features` | `cargo check --workspace --all-features --all-targets` | every target compiles |
 | `bdd` | `cargo test -p repo-conformance` | R3, §27.7, §27.8: register ↔ scenario ↔ test bijection, the meta-gate, and its own falsifiability test |
 | `examples` | `cargo xtask verify-examples` | §28.6, EX-01: every example directory formats, locks, checks, builds, and verifies with real Lean 4.32.1; when an example commits `expected/verify/`, its normalized verification records must equal it (§29.5) |
@@ -210,6 +210,77 @@ test result: FAILED. 0 passed; 1 failed
 Removed: the lowering was restored to conjunction from immutable implementation
 commit `b52d47148fd30bb667daab244233851ca5029215`; `conformance_sm_16`
 passes and its generated theorems have the exact empty observed axiom set.
+
+### specification total can fail
+
+Planted: the §31 total left at its pre-1.2 value (`**Total required
+capability IDs:** 223.`) while the table carries 228 rows --- the state this
+branch was first pushed in. Command: `cargo xtask validate-spec-links`.
+
+```text
+gate failed: RP-07: §31 states 223 required capability IDs but its table has 228 rows
+```
+
+### language-1.2 version routing can fail
+
+Planted: the language-1.2 construct gate in `SemanticModule::validate` was
+routed to the wrong language (`language == crate::LANGUAGE_1_2` instead of
+`crate::LANGUAGE_1_1`), so language 1.1 admitted the 1.2-only `let` term and
+language 1.2 refused it. Commands: `cargo test -p repo-conformance --test
+conformance -- conformance_sm_23` and `cargo xtask check-fixtures`.
+Expected: the committed language-1.2 example no longer checks, and the
+negative fixture of a `let` under language 1.1 is accepted.
+
+```text
+thread 'conformance_sm_23' panicked at crates/conformance/src/support.rs:269:14:
+check succeeds: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLT4001"), message: "phase link: `let` is a language-1.2 construct; language 1.1 rejects it", ... }] }
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 227 filtered out
+gate failed: tests/negative/language-1.2-construct-under-1.1: step 1 `check ` exited 0, case.toml expects 1
+```
+
+Planted: `"1.3"` appended to `LANGUAGE_VERSIONS`. Command: `cargo test -p
+repo-conformance --test conformance -- conformance_cf_17`.
+
+```text
+thread 'conformance_cf_17' panicked at crates/conformance/src/cases/configuration_lock.rs:1097:40:
+`1.3` is not a supported language
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 227 filtered out
+```
+
+Planted: `Lock::canonical_bytes` emitted `lexlean/lock/1` for language 1.2.
+Command: `cargo test -p repo-conformance --test conformance --
+conformance_cf_18`. The migrated copy of the 1.1 example is the first lock
+written for language 1.2.
+
+```text
+thread 'conformance_cf_18' panicked at crates/conformance/src/cases/configuration_lock.rs:1221:13:
+assertion failed: migrated_lock.starts_with("spec = \"lexlean/lock/2\"\nlanguage = \"1.2\"\n")
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 227 filtered out
+```
+
+Planted: `schemas/project-v2.schema.json` dropped from the 1.2-only partition
+in `is_v1_2_file`, so the frozen 1.1 identity silently absorbed a 1.2 file.
+Command: `cargo test -p repo-conformance --test conformance --
+conformance_rp_10`. The test recomputes the 1.1 ID from the exclusion list in
+§21.2, not from the compiler.
+
+```text
+thread 'conformance_rp_10' panicked at crates/conformance/src/cases/repository.rs:626:13:
+assertion `left == right` failed: RP-10: the 1.1 ID
+```
+
+Planted: `"opt-11pt"` removed from the backend tokens of
+`language/bootstrap-1.2.toml` only. Command: `cargo xtask validate-model`.
+`audit-language-closure` had compared only the 1.0 and 1.1 bootstraps; it now
+discovers every bootstrap.
+
+```text
+gate failed: R8: language/bootstrap-1.2.toml declares a different fixed backend token set
+```
+
+Removed: each mutation was reverted; `conformance_sm_23`,
+`conformance_cf_17`, `conformance_cf_18`, `conformance_rp_10`,
+`cargo xtask validate-model`, and `cargo xtask check-fixtures` pass.
 
 ### fmt-check can fail
 

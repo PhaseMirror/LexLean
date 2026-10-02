@@ -177,6 +177,18 @@ suite = "configuration-lock"
 statement = "Language 1.1 has a parallel exact builtin closure and rejects a language-1.0 lock or package without altering language-1.0 identities."
 
 [[id]]
+id = "CF-17"
+level = "build"
+suite = "configuration-lock"
+statement = "Language 1.2 declaration support accepts language 1.2 and rejects unsupported or malformed language versions."
+
+[[id]]
+id = "CF-18"
+level = "build"
+suite = "configuration-lock"
+statement = "Lockfile v2 schema migration validates 1.2 locks while preserving exact byte-stability for language 1.0 and 1.1 projects."
+
+[[id]]
 id = "LX-01"
 level = "build"
 suite = "lexical-closure"
@@ -355,6 +367,18 @@ id = "GL-16"
 level = "build"
 suite = "lexicon"
 statement = "Package and entry bytes participate in lock and semantic closure hashes exactly as specified."
+
+[[id]]
+id = "GL-17"
+level = "build"
+suite = "lexicon"
+statement = "Language 1.2 resolves the exact 1.2 builtin package closure and enforces 1.2 lexicon semantics."
+
+[[id]]
+id = "GL-18"
+level = "build"
+suite = "lexicon"
+statement = "Cross-version package, lexicon, and lock combinations fail closed before backend execution."
 
 [[id]]
 id = "GR-01"
@@ -583,6 +607,12 @@ id = "SM-22"
 level = "build"
 suite = "semantic-ir"
 statement = "The public owned snapshot DTO and schemas cover every portable type, literal, primitive, and explicit definition axiom policy without backend text."
+
+[[id]]
+id = "SM-23"
+level = "build"
+suite = "semantic-ir"
+statement = "Language 1.2 semantic modules use the versioned module and snapshot schemas and accept the typed nonrecursive let term, which language 1.1 rejects before either backend runs."
 
 [[id]]
 id = "DF-01"

@@ -84,6 +84,8 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `CF-14` | `build` | Language 1.0 accepts only leanprover/lean4:v4.32.1 for verification. |
 | `CF-15` | `build` | Duplicate logical modules and case-folded path or module collisions are rejected. |
 | `CF-16` | `build` | Language 1.1 has a parallel exact builtin closure and rejects a language-1.0 lock or package without altering language-1.0 identities. |
+| `CF-17` | `build` | Language 1.2 declaration support accepts language 1.2 and rejects unsupported or malformed language versions. |
+| `CF-18` | `build` | Lockfile v2 schema migration validates 1.2 locks while preserving exact byte-stability for language 1.0 and 1.1 projects. |
 
 ## declarations
 
@@ -208,6 +210,8 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `GL-14` | `build` | Cases and induction are available only through a complete validated eliminator descriptor. |
 | `GL-15` | `build` | Glossary files reject free description, documentation, note, meaning, and unknown prose fields. |
 | `GL-16` | `build` | Package and entry bytes participate in lock and semantic closure hashes exactly as specified. |
+| `GL-17` | `build` | Language 1.2 resolves the exact 1.2 builtin package closure and enforces 1.2 lexicon semantics. |
+| `GL-18` | `build` | Cross-version package, lexicon, and lock combinations fail closed before backend execution. |
 
 ## proofs
 
@@ -292,6 +296,7 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `SM-20` | `build` | Noncanonical, out-of-range, invalid-byte, ill-typed, and unbounded fixed-width values fail before either backend runs. |
 | `SM-21` | `build` | Structural recursion admits byte/list values and closed Option and Result inductives while preserving termination and exhaustiveness checks. |
 | `SM-22` | `build` | The public owned snapshot DTO and schemas cover every portable type, literal, primitive, and explicit definition axiom policy without backend text. |
+| `SM-23` | `build` | Language 1.2 semantic modules use the versioned module and snapshot schemas and accept the typed nonrecursive let term, which language 1.1 rejects before either backend runs. |
 
 ## verification
 

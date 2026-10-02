@@ -1,4 +1,4 @@
-//! The `semantic-ir` suite: SM-01..SM-22.
+//! The `semantic-ir` suite: SM-01..SM-23.
 
 use std::collections::BTreeSet;
 use std::process::Command;
@@ -926,8 +926,7 @@ pub(crate) fn run(id: &str) {
                         .expect("language-1.1 attestation"),
                 )
                 .expect("attestation JSON");
-                let expected =
-                    lexlean::compiler_semantics_id_for(lexlean::LATEST_LANGUAGE_VERSION).to_hex();
+                let expected = lexlean::compiler_semantics_id_for(lexlean::LANGUAGE_1_1).to_hex();
                 assert_eq!(
                     attestation["lexlean"]["compiler_semantics"].as_str(),
                     Some(expected.as_str()),
@@ -1349,6 +1348,155 @@ pub(crate) fn run(id: &str) {
             assert!(!bytes.contains("public def"));
             assert!(!bytes.contains("generated Rust"));
             assert!(bytes.contains("\"axioms\":[\"Quot.sound\",\"propext\"]"));
+        }
+        "SM-23" => {
+            let snapshot_of = |project: &P| {
+                let snapshot = project
+                    .engine()
+                    .snapshot(lexlean::CheckRequest {
+                        selection: lexlean::Selection::Entrypoints,
+                    })
+                    .expect("snapshot");
+                let value: serde_json::Value =
+                    serde_json::from_slice(&snapshot.canonical_bytes()).expect("snapshot JSON");
+                (snapshot.spec().to_owned(), value)
+            };
+            let no_backend = |project: &P| {
+                // `.lexlean/.lock` is the §21.8 mutation lock, not output.
+                for output in [".lexlean/build", ".lexlean/verified"] {
+                    assert!(
+                        !project.root.join(output).exists(),
+                        "§17.12: a version failure occurs before any backend writes {output}"
+                    );
+                }
+            };
+
+            // Accepted under language 1.2: the let term is typed, snapshotted
+            // under the versioned envelope, and lowered to a Lean let.
+            let twelve = P::language_1_2_example();
+            twelve.check_ok();
+            let (spec, value) = snapshot_of(&twelve);
+            assert_eq!(spec, "lexlean/semantic-snapshot/2");
+            support::assert_schema("semantic-snapshot-v2", "the 1.2 snapshot", &value);
+            support::assert_schema(
+                "semantic-module-v2",
+                "the 1.2 semantic module",
+                &value["modules"][0]["semantic"],
+            );
+            let mut tags = BTreeSet::new();
+            collect_tags(&value["modules"][0]["semantic"], "kind", &mut tags);
+            assert!(tags.contains("let"), "the snapshot carries the let term");
+            assert!(
+                !crate::schema::validate(&support::schema("semantic-snapshot"), &value).is_empty(),
+                "the 1.2 snapshot is not admitted by the 1.1 envelope schema"
+            );
+            let rendered = support::rendered(&twelve);
+            let lean = support::lean_text(&rendered, "Main");
+            assert!(
+                lean.contains(
+                    "public def doubledSuccessor (n : Nat) : Nat := (let doubled : Nat := (n + n); (doubled + 1))"
+                ),
+                "fixed Lean lowering of let:\n{lean}"
+            );
+            let _ = support::verify_ok_backed("SM-23", &twelve);
+
+            // Rejected under language 1.1: the same construct, with the 1.1
+            // discriminator and builtin versions, fails in linking.
+            let eleven = P::language_1_2_example();
+            eleven.edit("lexlean.toml", "language = \"1.2\"", "language = \"1.1\"");
+            eleven.edit("src/Main.lex.tex", "@1.2.0", "@1.1.0");
+            eleven.edit(
+                "src/Main.lex.tex",
+                "lexlean/semantic-module/2",
+                "lexlean/semantic-module/1",
+            );
+            eleven.relock();
+            let error = eleven.check_fails_with("LLT4001");
+            assert!(
+                error
+                    .to_string()
+                    .contains("`let` is a language-1.2 construct"),
+                "the diagnostic names the construct: {error}"
+            );
+            no_backend(&eleven);
+            let (exit, _, stderr) = eleven.cli(&["build"]);
+            assert_eq!(exit, 1, "build refuses the 1.2 construct: {stderr}");
+            no_backend(&eleven);
+
+            // The discriminator is routed by the project language in both
+            // directions: /1 under 1.2 and /2 under 1.1 are rejected.
+            let v1_under_12 = P::language_1_2_example();
+            v1_under_12.edit(
+                "src/Main.lex.tex",
+                "lexlean/semantic-module/2",
+                "lexlean/semantic-module/1",
+            );
+            let error = v1_under_12.check_fails_with("LLT4001");
+            assert!(error
+                .to_string()
+                .contains("requires `lexlean/semantic-module/2`"));
+            let v2_under_11 = P::semantic_example();
+            v2_under_11.edit(
+                "src/Support.lex.tex",
+                "lexlean/semantic-module/1",
+                "lexlean/semantic-module/2",
+            );
+            let error = v2_under_11.check_fails_with("LLT4001");
+            assert!(error
+                .to_string()
+                .contains("requires `lexlean/semantic-module/1`"));
+
+            // The let binder is typed and lexically closed.
+            let mistyped = P::language_1_2_example();
+            mistyped.edit(
+                "src/Main.lex.tex",
+                r#""binder":{"name":"doubled","type":{"kind":"nat"}}"#,
+                r#""binder":{"name":"doubled","type":{"kind":"bool"}}"#,
+            );
+            let error = mistyped.check_fails_with("LLT4001");
+            assert!(
+                error
+                    .to_string()
+                    .contains("let binder `doubled` has type Nat, expected Bool"),
+                "{error}"
+            );
+            // A language-1.0 document has no semantic module at all.
+            let ten = P::language_1_2_example();
+            ten.edit("lexlean.toml", "language = \"1.2\"", "language = \"1.0\"");
+            ten.edit("src/Main.lex.tex", "@1.2.0", "@1.0.0");
+            ten.relock();
+            let error = ten.check_fails_with("LLP2003");
+            assert_eq!(
+                error.to_string(),
+                "LLP2003: semanticmodule requires language 1.1 or 1.2"
+            );
+            let shadowing = P::language_1_2_example();
+            shadowing.edit(
+                "src/Main.lex.tex",
+                r#""binder":{"name":"doubled","#,
+                r#""binder":{"name":"n","#,
+            );
+            let error = shadowing.check_fails_with("LLT4001");
+            assert!(
+                error.to_string().contains("shadowed let binder `n`"),
+                "{error}"
+            );
+            let escaping = P::language_1_2_example();
+            escaping.edit(
+                "src/Main.lex.tex",
+                r#""value":{"kind":"add","left":{"kind":"var","name":"n"}"#,
+                r#""value":{"kind":"add","left":{"kind":"var","name":"doubled"}"#,
+            );
+            let error = escaping.check_fails_with("LLT4001");
+            assert!(
+                error.to_string().contains("unbound local `doubled`"),
+                "{error}"
+            );
+
+            // Language 1.1 keeps its historical envelope byte for byte.
+            let (spec, value) = snapshot_of(&P::semantic_example());
+            assert_eq!(spec, "lexlean/semantic-snapshot/1");
+            support::assert_schema("semantic-snapshot", "the 1.1 snapshot", &value);
         }
         other => panic!("no semantic-ir case is wired for {other}"),
     }

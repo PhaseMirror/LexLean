@@ -61,8 +61,23 @@ fn parse_table(spec: &str) -> Result<Vec<TableRow>, Fail> {
 pub fn validate(root: &Path) -> Result<(), Fail> {
     let spec = std::fs::read_to_string(root.join("SPEC.md"))?;
     let rows = parse_table(&spec)?;
-    if rows.len() != 223 {
-        return Err(format!("RP-07: the §31 table has {} rows, not 223", rows.len()).into());
+    if rows.len() != 228 {
+        return Err(format!("RP-07: the §31 table has {} rows, not 228", rows.len()).into());
+    }
+    // The prose total under the table is part of the contract a reader
+    // relies on; a row added without it would leave §31 contradicting itself.
+    let marker = "**Total required capability IDs:** ";
+    let stated = spec
+        .lines()
+        .find_map(|line| line.strip_prefix(marker))
+        .and_then(|rest| rest.strip_suffix('.'))
+        .ok_or("RP-07: §31 does not state its total required capability IDs")?;
+    if stated != rows.len().to_string() {
+        return Err(format!(
+            "RP-07: §31 states {stated} required capability IDs but its table has {} rows",
+            rows.len()
+        )
+        .into());
     }
     let mut seen: BTreeSet<&str> = BTreeSet::new();
     for row in &rows {

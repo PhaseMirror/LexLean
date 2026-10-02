@@ -147,6 +147,11 @@ fn term_uses(term: &SemanticTerm, local: &str) -> bool {
                 || branches.iter().any(|branch| term_uses(&branch.body, local))
         }
         SemanticTerm::Forall { binder, body } => binder.name != local && term_uses(body, local),
+        SemanticTerm::Let {
+            binder,
+            value,
+            body,
+        } => term_uses(value, local) || (binder.name != local && term_uses(body, local)),
     }
 }
 
@@ -567,6 +572,17 @@ impl Render<'_> {
                 "(forall ({} : {}), {})",
                 identifier(&binder.name),
                 self.ty(&binder.r#type),
+                self.term(body)
+            ),
+            SemanticTerm::Let {
+                binder,
+                value,
+                body,
+            } => format!(
+                "(let {} : {} := {}; {})",
+                identifier(&binder.name),
+                self.ty(&binder.r#type),
+                self.term(value),
                 self.term(body)
             ),
         }

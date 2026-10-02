@@ -98,6 +98,18 @@ pub struct SnapshotAxiomPolicy {
     axioms: Vec<String>,
 }
 
+/// The snapshot envelope a project language selects (§17.12). Languages 1.0
+/// and 1.1 keep the historical envelope byte for byte; language 1.2 carries
+/// `lexlean/semantic-module/2` values and so has its own closed schema.
+#[must_use]
+pub fn snapshot_spec(language: &str) -> &'static str {
+    if language == crate::LANGUAGE_1_2 {
+        "lexlean/semantic-snapshot/2"
+    } else {
+        "lexlean/semantic-snapshot/1"
+    }
+}
+
 fn range((start, end): (usize, usize)) -> SnapshotRange {
     SnapshotRange { start, end }
 }
@@ -219,7 +231,7 @@ impl SemanticSnapshot {
         modules.sort_by(|left, right| left.name.as_bytes().cmp(right.name.as_bytes()));
         let closure = checked.closure.closure_json("", &checked.visible_union);
         Self {
-            spec: "lexlean/semantic-snapshot/1".to_owned(),
+            spec: snapshot_spec(language).to_owned(),
             source_id: checked.source_id,
             semantic_id: checked.semantic_id,
             compiler_semantics_id,

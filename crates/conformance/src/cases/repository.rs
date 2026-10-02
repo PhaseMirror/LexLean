@@ -407,7 +407,7 @@ pub(crate) fn run(id: &str) {
             let model = repo_model::Model::load(&root.join("model").into_std_path_buf())
                 .expect("the model loads");
             let table = spec_table();
-            assert_eq!(table.len(), 223, "§31 has 223 rows");
+            assert_eq!(table.len(), 228, "§31 has 228 rows");
             assert_eq!(model.ids.id.len(), table.len(), "register row count");
             for ((spec_id, spec_suite, spec_statement), row) in
                 table.iter().zip(model.ids.id.iter())
@@ -560,6 +560,103 @@ pub(crate) fn run(id: &str) {
                 lexlean::compiler_semantics_id_for(lexlean::LATEST_LANGUAGE_VERSION),
                 "RP-10: the embedded semantics ID differs from the disk recomputation"
             );
+
+            // §21.2: the older languages' IDs are the same digest over the
+            // tree minus the files SPEC.md lists as introduced later. The
+            // lists are read from the specification, not from the compiler.
+            let spec = support::spec_text();
+            let section = spec
+                .split("### 21.2 Compiler-semantics ID")
+                .nth(1)
+                .and_then(|rest| rest.split("### 21.3").next())
+                .expect("§21.2");
+            let listed = |start: &str, end: &str| -> Vec<String> {
+                let text = section
+                    .split(start)
+                    .nth(1)
+                    .and_then(|rest| rest.split(end).next())
+                    .unwrap_or_else(|| panic!("§21.2 states `{start}`"));
+                let mut out = Vec::new();
+                for item in text.split('`').skip(1).step_by(2) {
+                    match (item.find('{'), item.find('}')) {
+                        (Some(open), Some(close)) => {
+                            for choice in item[open + 1..close].split(',') {
+                                out.push(format!(
+                                    "{}{choice}{}",
+                                    &item[..open],
+                                    &item[close + 1..]
+                                ));
+                            }
+                        }
+                        _ => out.push(item.to_owned()),
+                    }
+                }
+                assert!(!out.is_empty(), "§21.2 lists the files after `{start}`");
+                out
+            };
+            let only_1_2 = listed(
+                "The language-1.1 ID excludes the files introduced solely for 1.2:",
+                "The language-1.0 ID",
+            );
+            let only_1_1 = listed(
+                "excludes the files introduced solely for 1.1:",
+                "Adding a file",
+            );
+            let excluded = |path: &str, lists: &[&Vec<String>]| {
+                lists.iter().any(|list| {
+                    list.iter().any(|item| {
+                        if item.ends_with('/') {
+                            path.starts_with(item.as_str())
+                        } else {
+                            path == item
+                        }
+                    })
+                })
+            };
+            let filtered = |lists: &[&Vec<String>]| {
+                let kept: Vec<(&str, &[u8])> = borrowed
+                    .iter()
+                    .copied()
+                    .filter(|(path, _)| !excluded(path, lists))
+                    .collect();
+                lexlean::artifact::content_id::tree_digest(&kept)
+            };
+            let eleven = filtered(&[&only_1_2]);
+            let ten = filtered(&[&only_1_2, &only_1_1]);
+            assert_eq!(
+                eleven,
+                lexlean::compiler_semantics_id_for("1.1"),
+                "RP-10: the 1.1 ID"
+            );
+            assert_eq!(
+                ten,
+                lexlean::compiler_semantics_id_for("1.0"),
+                "RP-10: the 1.0 ID"
+            );
+            // Every listed path exists, so a renamed file cannot silently
+            // drop out of a list.
+            for item in only_1_2.iter().chain(&only_1_1) {
+                assert!(
+                    borrowed
+                        .iter()
+                        .any(|(path, _)| path.starts_with(item.as_str())),
+                    "§21.2 lists `{item}`, which is not in the embedded tree"
+                );
+            }
+            // The frozen identities are the ones the committed examples were
+            // locked with.
+            for (example, language, id) in [
+                ("examples/nat-add-zero/lexlean.lock", "1.0", ten),
+                ("examples/semantic-1.1/lexlean.lock", "1.1", eleven),
+            ] {
+                let bytes = std::fs::read(root.join(example).as_std_path()).expect("lock");
+                let lock = lexlean::api::parse_lock_bytes(example, &bytes).expect("lock parses");
+                assert_eq!(lock.language, language);
+                assert_eq!(
+                    lock.compiler_semantics, id,
+                    "{example} pins the {language} ID"
+                );
+            }
         }
         // §30.4: every README capability claim ties to registered IDs at
         // their registered level, the claimed ranges are exactly the

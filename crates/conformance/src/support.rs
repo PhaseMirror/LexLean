@@ -100,6 +100,7 @@ fn term(value: &SnapshotTerm) -> usize {
         | SnapshotTerm::Or { left, right } | SnapshotTerm::Iff { left, right } => term(left) + term(right),
         SnapshotTerm::Implies { premise, conclusion } => term(premise) + term(conclusion),
         SnapshotTerm::Forall { binder, body } => ty(&binder.r#type) + term(body),
+        SnapshotTerm::Let { binder, value, body } => ty(&binder.r#type) + term(value) + term(body),
     }
 }
 
@@ -203,6 +204,19 @@ impl P {
             .tempdir()
             .expect("tempdir");
         let source = repo_root().join("examples/semantic-1.1");
+        copy_tree(source.as_std_path(), temp.path(), &[".lexlean", "expected"]);
+        let root = Utf8PathBuf::from_path_buf(temp.path().to_path_buf()).expect("utf8 tempdir");
+        Self { temp, root }
+    }
+
+    /// A fresh copy of the committed language-1.2 example (§17.12).
+    #[must_use]
+    pub fn language_1_2_example() -> Self {
+        let temp = tempfile::Builder::new()
+            .prefix("lexlean-language-1-2-case-")
+            .tempdir()
+            .expect("tempdir");
+        let source = repo_root().join("examples/language-1.2");
         copy_tree(source.as_std_path(), temp.path(), &[".lexlean", "expected"]);
         let root = Utf8PathBuf::from_path_buf(temp.path().to_path_buf()).expect("utf8 tempdir");
         Self { temp, root }
@@ -2068,6 +2082,41 @@ pub fn assert_toml_file_schema(name: &str, path: &Utf8Path) {
         .unwrap_or_else(|error| panic!("{path}: {error}"));
     let json = serde_json::to_value(&value).expect("toml converts to json");
     assert_schema(name, path.as_str(), &json);
+}
+
+/// The committed schemas a language's documents validate against (§17.12):
+/// `(project, lock, lexicon manifest, build manifest)`.
+#[must_use]
+pub fn language_schemas(
+    language: &str,
+) -> (&'static str, &'static str, &'static str, &'static str) {
+    match language {
+        "1.0" => ("project", "lock", "lexicon", "build-manifest"),
+        "1.1" => ("project-v2", "lock-1.1", "lexicon-v2", "build-manifest-v2"),
+        "1.2" => ("project-v2", "lock-v2", "lexicon-v2", "build-manifest-v2"),
+        other => panic!("no schemas for language `{other}`"),
+    }
+}
+
+/// Validate a project's `lexlean.toml`, `lexlean.lock`, and (when committed)
+/// its expected build manifest against the schemas of its declared language,
+/// returning that language.
+pub fn assert_language_documents(root: &Utf8Path) -> String {
+    let text = std::fs::read_to_string(root.join("lexlean.toml").as_std_path()).expect("config");
+    let value: toml::Value = text.parse().expect("config TOML");
+    let language = value
+        .get("language")
+        .and_then(toml::Value::as_str)
+        .expect("a declared language")
+        .to_owned();
+    let (project, lock, _, manifest) = language_schemas(&language);
+    assert_toml_file_schema(project, &root.join("lexlean.toml"));
+    assert_toml_file_schema(lock, &root.join("lexlean.lock"));
+    let committed = root.join("expected/build/manifest.json");
+    if committed.as_std_path().exists() {
+        assert_json_file_schema(manifest, &committed);
+    }
+    language
 }
 
 /// A `lake` wrapper script that behaves as the pinned lake except that,

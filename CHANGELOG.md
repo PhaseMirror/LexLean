@@ -3,7 +3,7 @@
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 the version axes are the ones SPEC.md §30.1 separates: the compiler crate and
 binary carry the SemVer below, each project selects the supported language
-identifier (`1.0` or `1.1`), and each language's compiler-semantics ID is a
+identifier (`1.0`, `1.1`, or `1.2`), and each language's compiler-semantics ID is a
 digest over its normative language data, schemas, and pinned golden fixtures.
 
 SPEC.md §2.3 fixes `0.1.0` as the initial implementation version and `1.0.0` as
@@ -12,6 +12,37 @@ is therefore a §30 release: `cargo xtask release-check` reads the complete
 §30.3 artifact set and §30.4 completion criterion and refuses, naming every
 criterion that does not hold. That refusal is the accurate answer at these
 versions, and the entries below say what each tag does and does not claim.
+
+## Unreleased
+
+- Language 1.2 (SPEC.md §17.12): a strict extension of language 1.1 selected
+  by `language = "1.2"`, with builtin packages at `1.2.0`, the lock schema
+  `lexlean/lock/2`, the semantic-module schema `lexlean/semantic-module/2`,
+  and the snapshot envelope `lexlean/semantic-snapshot/2`. Routing is fixed
+  by the project language: a `/1` module under 1.2, a `/2` module under 1.1,
+  a mismatched lock schema, and a cross-version package or glossary are
+  rejected before either backend runs.
+- The first 1.2-only construct is the typed, nonrecursive `let` term. It
+  lowers to a Lean `let`, and language 1.1 rejects it in linking (`SM-23`).
+- The compiler-semantics IDs of languages 1.0 and 1.1 are unchanged: each
+  language digests a fixed nested partition of the embedded tree, and every
+  committed 1.0 and 1.1 artifact keeps its bytes. Migration from 1.1 to 1.2 is
+  explicit and never implicit.
+- The public snapshot DTO `SnapshotTerm` gains the `Let` variant; downstream
+  exhaustive matches must add it.
+- New conformance IDs `CF-17`, `CF-18`, `GL-17`, `GL-18`, and `SM-23`; new
+  example `examples/language-1.2`, verified with real Lean; ten new negative
+  fixtures for version mismatches in both directions, a package of another
+  language, and malformed versions.
+- Schemas for the later languages, in the 1.2-only partition so the frozen
+  1.0 and 1.1 identities are untouched: `project-v2`, `lexicon-v2`, and
+  `build-manifest-v2` admit languages 1.1 and 1.2, and `lock-1.1` describes
+  the language-1.1 lock. The v1 project, lexicon, manifest, and lock schemas
+  had pinned `language` to `1.0`, so every committed 1.1 document violated
+  them; every example's documents are now validated against its language's
+  schemas.
+- `SnapshotSemanticModule::parse` takes the project language, which routes
+  the `semanticdata` discriminator; a downstream caller must pass it.
 
 ## 0.3.0
 
