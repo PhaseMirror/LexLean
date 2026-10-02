@@ -973,6 +973,10 @@ pub(crate) fn run(id: &str) {
                 .expect("snapshots");
             assert_eq!(snapshot.language(), "1.1");
             if support::lean_backed("CL-20") {
+                // Toolchain resolution reads `ELAN_HOME`, which other cases
+                // override under `env_lock`; resolve under the same lock so
+                // a concurrent override cannot redirect this verification.
+                let _guard = support::env_lock();
                 let (exit, _, stderr) = support::cli_in(root, &["verify"]);
                 assert_eq!(exit, 0, "source-free generated module verifies: {stderr}");
             }
