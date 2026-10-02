@@ -243,7 +243,8 @@ versions, and the entries below say what each tag does and does not claim.
     renders exactly the programs that need no heap. `rust-std` shares strings,
     byte strings, and persistent list cells behind `Rc`, so `cons` and its
     match are constant work and a use clones a handle. Both are library
-    crates without lint exceptions, committed under `compiler/rust/`. A work
+    crates, committed as packages under `compiler/rust/` with the lint gate
+    of §17.16. A work
     counter in the runtime never exceeds the denotation's steps on any
     fixture, and a quadratic append is detected.
   - Every runtime row's `allocation` in `language/production-1.2.toml` now
@@ -297,7 +298,12 @@ versions, and the entries below say what each tag does and does not claim.
   for identifier collisions, ownership mismatch, unsupported boundary and
   uninhabited types, hidden allocation, arithmetic mismatch, and
   noncanonical versions and sources (`RB-01`..`RB-07`). The harnesses that
-  run packages live in the conformance crate.
+  run packages live in the conformance crate. `language/semantics-1.2.toml`
+  also records the digest of the renderer's sources (`rust_renderer`), so
+  no rendering can change without changing LexLean's identity.
+  - A harness runs its calls on a thread with a fixed 64 MiB stack, one Rust
+    function per called export: the primitive differential's single `main`
+    overflowed the 1 MiB main-thread stack of the Windows runner.
 - GNAF requests over the calculus (§17.15), after UOR-GNAF
   `uor-gnaf/1-draft.2`, cited by revision and SHA-256 as the authority
   `UOR-GNAF-1-DRAFT-2`. The module `Gnaf` of `compiler/` fixes, before any

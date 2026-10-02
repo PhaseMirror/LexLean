@@ -286,7 +286,17 @@ impl Checker<'_> {
                 | Lit::Ordering(_) => Ok(()),
             },
             Expr::Move(ident, _) => self.consume(ident),
-            Expr::Not(inner, _) => self.expr(inner, false),
+            Expr::Not(inner, _) => {
+                if matches!(
+                    inner.as_ref(),
+                    Expr::IsZero(..) | Expr::NonZero(..) | Expr::Predecessor(_)
+                ) {
+                    return fail(
+                        "a negated zero test or predecessor: a zero test is negated as its complement, and a predecessor is not a Boolean",
+                    );
+                }
+                self.expr(inner, false)
+            }
             Expr::Clone(ident, _)
             | Expr::Copy(ident, _)
             | Expr::Deref(ident, _)

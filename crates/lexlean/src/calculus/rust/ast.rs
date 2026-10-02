@@ -545,7 +545,14 @@ impl Printer {
             Expr::Move(ident, _) | Expr::Copy(ident, _) => ident.text(),
             Expr::Clone(ident, _) => format!("{}.clone()", ident.text()),
             Expr::Deref(ident, _) => format!("*{}", ident.text()),
-            Expr::Not(inner, _) => format!("!{}", self.expr(inner, depth)),
+            // A comparison or subtraction under `!` is parenthesized, so the
+            // negation never binds to its left operand alone.
+            Expr::Not(inner, _) => match inner.as_ref() {
+                Expr::IsZero(..) | Expr::NonZero(..) | Expr::Predecessor(_) => {
+                    format!("!({})", self.expr(inner, depth))
+                }
+                _ => format!("!{}", self.expr(inner, depth)),
+            },
             Expr::Unbox(ident, _) => format!("(*{}).clone()", ident.text()),
             Expr::Box(inner, _) => format!("std::rc::Rc::new({})", self.expr(inner, depth)),
             Expr::Call {

@@ -20,12 +20,16 @@ fn index(number: u64) -> Result<usize, String> {
     usize::try_from(number).map_err(|error| error.to_string())
 }
 
-/// Whether `name` is a plain lowercase Rust identifier a harness may write.
+/// Whether `name` is a plain lowercase Rust identifier a harness may write:
+/// not one of the harness's own names (`harness_*`, `show_adt*`, `quote`).
 fn identifier(name: &str) -> Result<(), String> {
     let mut characters = name.chars();
-    if characters
-        .next()
-        .is_some_and(|first| first.is_ascii_lowercase())
+    if !name.starts_with("harness_")
+        && !name.starts_with("show_adt")
+        && name != "quote"
+        && characters
+            .next()
+            .is_some_and(|first| first.is_ascii_lowercase())
         && characters.all(|character| {
             character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_'
         })
@@ -299,8 +303,13 @@ pub fn render_calls(
         }
         out.push_str("} }\n");
     }
-    out.push_str("\nfn main() {\n");
-    for call in calls {
+    // Each function's runs are their own Rust function, so no frame holds
+    // the argument lists of more than one, and they run on a thread with a
+    // fixed 64 MiB stack: an unoptimized frame holding one long list literal
+    // still overflows a 1 MiB main-thread stack (the Windows default), and
+    // the platform's default must not decide whether a harness runs.
+    let mut groups = Vec::new();
+    for (group, call) in calls.iter().enumerate() {
         let function = program
             .functions
             .get(index(call.entry)?)
@@ -346,11 +355,15 @@ pub fn render_calls(
         };
         let _ = write!(
             out,
-            "    for {} in [{}] {{\n{run}    }}\n",
+            "\n#[inline(never)]\nfn harness_group{group}() {{\n    for {} in [{}] {{\n{run}    }}\n}}\n",
             tuple(&names),
             rows.join(", ")
         );
+        groups.push(format!("    harness_group{group}();\n"));
     }
+    out.push_str("\nfn harness_runs() {\n");
+    out.push_str(&groups.concat());
     out.push_str("    println!(\"work {}\", work());\n}\n");
+    out.push_str("\nfn main() {\n    let runner = std::thread::Builder::new().stack_size(64 << 20).spawn(harness_runs).expect(\"the harness thread starts\");\n    if runner.join().is_err() {\n        std::process::exit(101);\n    }\n}\n");
     Ok(out)
 }

@@ -462,16 +462,22 @@ fn tree(root: &Path) -> BTreeMap<String, Vec<u8>> {
         .collect()
 }
 
-/// The SHA-256 of each profile's runtime that LexLean's compiler semantics
-/// records (`language/semantics-1.2.toml`).
-fn runtime_digests() -> BTreeMap<Profile, String> {
-    let text = std::fs::read_to_string(
+/// LexLean's language-1.2 compiler semantics (`language/semantics-1.2.toml`).
+fn semantics_table() -> toml::Value {
+    std::fs::read_to_string(
         repo_root()
             .join("language/semantics-1.2.toml")
             .as_std_path(),
     )
-    .expect("semantics");
-    let table: toml::Value = text.parse().expect("TOML");
+    .expect("semantics")
+    .parse()
+    .expect("TOML")
+}
+
+/// The SHA-256 of each profile's runtime that LexLean's compiler semantics
+/// records (`language/semantics-1.2.toml`).
+fn runtime_digests() -> BTreeMap<Profile, String> {
+    let table = semantics_table();
     Profile::ALL
         .into_iter()
         .map(|profile| {
@@ -501,10 +507,9 @@ pub fn run(id: &str) {
             for case in cases() {
                 for profile in Profile::ALL {
                     match rust::lower(&case.fixture.program, profile) {
-                        Ok(krate) => {
-                            emitted.extend(validate::constructs(&krate));
-                            lowered_count += 1;
-                        }
+                        // Every rendering is checked; coverage is counted
+                        // below, from the packages RB-06 runs.
+                        Ok(_) => lowered_count += 1,
                         // Only rust-core refuses, and only for the heap.
                         Err(reason) => assert!(
                             profile == Profile::Core && reason.contains("requires heap allocation"),
@@ -515,15 +520,15 @@ pub fn run(id: &str) {
                     }
                 }
             }
-            // Every node of the closed AST, every capture read, and a
-            // dispatch of several closures of mixed failure are emitted by a
-            // package that RB-06 runs.
+            // Every correspondence row, every node of the closed AST, every
+            // capture read, and a dispatch of several closures of mixed
+            // failure are emitted by a package that RB-06 runs.
             let mut shapes = BTreeSet::new();
             for committed in rust_packages::packages() {
                 let (krate, _, _) = package::lower(&committed.manifest).expect("package lowers");
-                emitted.extend(validate::constructs(&krate));
                 let (outcome, _, _) = expected_outcome(&committed.fixture);
                 if runs(&outcome) {
+                    emitted.extend(validate::constructs(&krate));
                     ast_shapes(&krate, &mut shapes);
                 }
             }
@@ -544,7 +549,7 @@ pub fn run(id: &str) {
             let unexercised: Vec<&String> = table.difference(&emitted).collect();
             assert!(
                 unexercised.is_empty(),
-                "correspondence rows no rendering exercises: {unexercised:?}"
+                "correspondence rows no run package exercises: {unexercised:?}"
             );
             // A construct whose element the program does not use is refused.
             let program = |name: &str| {
@@ -629,6 +634,21 @@ pub fn run(id: &str) {
             });
             let error = validate::correspond(&extended, &elements).expect_err("no export");
             assert!(error.contains("`type:ref`"), "{error}");
+            // A negated zero test is refused: it is written as its
+            // complement, and `!m == 0` would negate `m` alone.
+            let mut krate = rust::lower(&program("boolean-shapes"), Profile::Core).expect("lowers");
+            let planted = edit_first(&mut krate, &mut |expr| {
+                if let Expr::NonZero(ident, origin) = expr {
+                    *expr = Expr::Not(
+                        Box::new(Expr::IsZero(ident.clone(), origin.clone())),
+                        origin.clone(),
+                    );
+                    return true;
+                }
+                false
+            });
+            assert!(planted, "the plant site exists");
+            refused(&krate, "a negated zero test or predecessor");
         }
         // §17.16: identifiers are hygienic and an exported name never
         // collides.
@@ -1068,6 +1088,31 @@ pub fn run(id: &str) {
             let program_schema = schema("target-program.schema.json");
             let semantics = lexlean::compiler_semantics_id_for(lexlean::LANGUAGE_1_2).to_hex();
             let runtimes = runtime_digests();
+            // The renderer's sources are the ones LexLean's semantics records.
+            let renderer: Vec<(&str, Vec<u8>)> = rust::RENDERER_FILES
+                .into_iter()
+                .map(|name| {
+                    (
+                        name,
+                        std::fs::read(
+                            repo_root()
+                                .join("crates/lexlean/src/calculus/rust")
+                                .join(name)
+                                .as_std_path(),
+                        )
+                        .expect("renderer source"),
+                    )
+                })
+                .collect();
+            let framed: Vec<(&str, &[u8])> = renderer
+                .iter()
+                .map(|(name, bytes)| (*name, bytes.as_slice()))
+                .collect();
+            assert_eq!(
+                Some(rust::renderer_digest(&framed).to_hex().as_str()),
+                semantics_table()["rust_renderer"].as_str(),
+                "the renderer changed without its record `rust_renderer` in language/semantics-1.2.toml"
+            );
             // Two renderers, each a separate process with its own working
             // directory, temporary directory, home, locale, and time zone,
             // render every package; their bytes are compared with each other

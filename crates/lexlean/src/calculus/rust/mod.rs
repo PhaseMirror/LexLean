@@ -190,9 +190,63 @@ pub fn observable(outcome: &super::Outcome) -> Option<serde_json::Value> {
     }
 }
 
+/// The source files of the renderer, by name in `calculus/rust/`, in the
+/// order [`renderer_digest`] frames them.
+pub const RENDERER_FILES: [&str; 6] = [
+    "ast.rs",
+    "lower.rs",
+    "mod.rs",
+    "package.rs",
+    "runtime.rs",
+    "validate.rs",
+];
+
+/// The digest LexLean's compiler semantics records of the renderer
+/// (`rust_renderer` in `language/semantics-1.2.toml`, §17.16): one frame
+/// (§21.1) per source file of [`RENDERER_FILES`], labeled by its name, so a
+/// change to any rendering is a change to LexLean's identity.
+#[must_use]
+pub fn renderer_digest(files: &[(&str, &[u8])]) -> crate::artifact::content_id::Sha256Digest {
+    let mut hasher = crate::artifact::content_id::FramedHasher::new("lexlean-rust-renderer-v1");
+    for (name, bytes) in files {
+        hasher.frame(name, bytes);
+    }
+    hasher.finish()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::Profile;
+    use super::{renderer_digest, Profile, RENDERER_FILES};
+
+    /// The renderer cannot change without its record in the language-1.2
+    /// semantics, so a change to any rendering changes LexLean's
+    /// compiler-semantics ID.
+    #[test]
+    fn the_compiler_semantics_records_the_renderer() {
+        let sources: [&[u8]; 6] = [
+            include_bytes!("ast.rs"),
+            include_bytes!("lower.rs"),
+            include_bytes!("mod.rs"),
+            include_bytes!("package.rs"),
+            include_bytes!("runtime.rs"),
+            include_bytes!("validate.rs"),
+        ];
+        let files: Vec<(&str, &[u8])> = RENDERER_FILES.into_iter().zip(sources).collect();
+        let (_, semantics) = crate::embedded::FILES
+            .iter()
+            .find(|(path, _)| *path == "language/semantics-1.2.toml")
+            .expect("the language-1.2 semantics");
+        let table: toml::Value = std::str::from_utf8(semantics)
+            .expect("UTF-8")
+            .parse()
+            .expect("TOML");
+        let digest = renderer_digest(&files).to_hex();
+        assert_eq!(
+            table.get("rust_renderer").and_then(toml::Value::as_str),
+            Some(digest.as_str()),
+            "the renderer changed without its record `rust_renderer` in language/semantics-1.2.toml"
+        );
+    }
 
     #[test]
     fn targets_name_their_profiles() {

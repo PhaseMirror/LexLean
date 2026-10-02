@@ -937,7 +937,7 @@ every rendering that adds naturals emits a construct with no
 target-semantics correspondence.
 
 ```text
-thread 'conformance_rb_01' (22507) panicked at crates/conformance/src/cases/rust_backend.rs:509:40:
+thread 'conformance_rb_01' (22507) panicked at crates/conformance/src/cases/rust_backend.rs:514:40:
 adt-evaluation (rust-std): the construct `call:runtime:nat_add` has no target-semantics correspondence
 ```
 
@@ -952,14 +952,14 @@ it. Command: `cargo test -p repo-conformance --test conformance -- conformance_r
 is `prim:nat_add`.
 
 ```text
-thread 'conformance_rb_01' (11292) panicked at crates/conformance/src/cases/rust_backend.rs:509:40:
+thread 'conformance_rb_01' (11292) panicked at crates/conformance/src/cases/rust_backend.rs:514:40:
 adt-evaluation (rust-std): the construct `call:runtime:nat_mul` does not realize `prim:nat_add`, the element it was lowered from
 ```
 
 A second plant chose the `u16` checked addition for every `u8` one:
 
 ```text
-thread 'conformance_rb_01' (12208) panicked at crates/conformance/src/cases/rust_backend.rs:509:40:
+thread 'conformance_rb_01' (12208) panicked at crates/conformance/src/cases/rust_backend.rs:514:40:
 fixed-checked-narrow (rust-std): the construct `call:runtime:checked_add` works at width Some(U16), but `prim:checked_add` is at Some(U8)
 ```
 
@@ -974,7 +974,7 @@ unjustified. Command: `cargo test -p repo-conformance --test conformance -- conf
 are stated nowhere are refused.
 
 ```text
-thread 'conformance_rb_01' (29092) panicked at crates/conformance/src/cases/rust_backend.rs:509:40:
+thread 'conformance_rb_01' (29092) panicked at crates/conformance/src/cases/rust_backend.rs:514:40:
 closure-captures (rust-core): the construct `enum:closures` does not realize `expr:closure`, the element it was lowered from
 ```
 
@@ -1079,7 +1079,7 @@ and the packages were regenerated. Command: `cargo test -p repo-conformance --te
 with a planted clone of a `Copy` value passes Clippy.
 
 ```text
-thread 'conformance_rb_06' (10515) panicked at crates/conformance/src/cases/rust_backend.rs:1015:13:
+thread 'conformance_rb_06' (10515) panicked at crates/conformance/src/cases/rust_backend.rs:1035:13:
 the planted lint is refused
 ```
 
@@ -1123,14 +1123,14 @@ first lint or build error of each:
 | rebuilding match kept | `this match expression is unnecessary` |
 | binding returned by its block kept | ``returning the result of a `let` binding from a block`` |
 | computed record matched in place | ``in a `match` scrutinee, avoid complex blocks`` |
-| zero test negated as `!m == 0` | `RB-01`: no run package emits a nonzero test; `RB-06`: an export and the denotation disagree |
+| zero test negated as `Not(m == 0)` | `RB-01`: `a negated zero test or predecessor` (before that refusal: no run package emitted a nonzero test, and an export and the denotation disagreed on `!m == 0`) |
 | uninhabited parameter's body rendered | `unreachable definition` |
 | uninhabited arm rendered | `unreachable definition` |
 
 The transcripts are of the form:
 
 ```text
-thread 'conformance_rb_06' (18145) panicked at crates/conformance/src/cases/rust_backend.rs:885:13:
+thread 'conformance_rb_06' (18145) panicked at crates/conformance/src/cases/rust_backend.rs:905:13:
 a package fails its lint gate:
 error: very complex type used. Consider factoring parts into `type` definitions
 ```
@@ -1146,7 +1146,7 @@ primitive differential, which runs every primitive instance on its
 boundary and seeded inputs, finds the inputs whose denotation overflows.
 
 ```text
-thread 'conformance_rb_06' (2037) panicked at crates/conformance/src/cases/rust_backend.rs:942:17:
+thread 'conformance_rb_06' (2037) panicked at crates/conformance/src/cases/rust_backend.rs:962:17:
 primitives_std: the rendering and the denotation disagree on 3 of 51441 runs: ["run 38634: {\"kind\":\"none\"} != {\"kind\":\"overflow\"}", "run 38650: {\"kind\":\"none\"} != {\"kind\":\"overflow\"}", "run 38656: {\"kind\":\"none\"} != {\"kind\":\"overflow\"}"]
 ```
 
@@ -1154,7 +1154,7 @@ A second plant computed `int_rem` as `a.checked_rem(b).unwrap_or(z)`, so
 `i64::MIN rem -1` returned the default:
 
 ```text
-thread 'conformance_rb_06' (17475) panicked at crates/conformance/src/cases/rust_backend.rs:942:17:
+thread 'conformance_rb_06' (17475) panicked at crates/conformance/src/cases/rust_backend.rs:962:17:
 primitives_core: the rendering and the denotation disagree on 1 of 39092 runs: ["run 8393: {\"kind\":\"int\",\"value\":\"-9223372036854775807\"} != {\"kind\":\"int\",\"value\":\"0\"}"]
 ```
 
@@ -1174,7 +1174,7 @@ and project from records of mixed types, so the same mutations no longer
 type check and the build refuses them first:
 
 ```text
-thread 'conformance_rb_06' (3563) panicked at crates/conformance/src/cases/rust_backend.rs:869:13:
+thread 'conformance_rb_06' (3563) panicked at crates/conformance/src/cases/rust_backend.rs:889:13:
 a package does not build:
 error[E0308]: arguments to this function are incorrect
 ```
@@ -1182,7 +1182,7 @@ error[E0308]: arguments to this function are incorrect
 and for the projection:
 
 ```text
-thread 'conformance_rb_06' (6453) panicked at crates/conformance/src/cases/rust_backend.rs:869:13:
+thread 'conformance_rb_06' (6453) panicked at crates/conformance/src/cases/rust_backend.rs:889:13:
 a package does not build:
 error[E0614]: type `u64` cannot be dereferenced
 ```
@@ -1198,7 +1198,7 @@ package's provenance no longer records the runtime LexLean's semantics
 records.
 
 ```text
-thread 'conformance_rb_07' (28593) panicked at crates/conformance/src/cases/rust_backend.rs:1134:17:
+thread 'conformance_rb_07' (28593) panicked at crates/conformance/src/cases/rust_backend.rs:1179:17:
 assertion `left == right` failed: compiler/rust/rust-std/adt-evaluation: the runtime is the one LexLean's semantics records
 ```
 
@@ -1213,7 +1213,7 @@ processes, each run with its own working directory and environment, write
 different bytes.
 
 ```text
-thread 'conformance_rb_07' (13568) panicked at crates/conformance/src/cases/rust_backend.rs:1084:17:
+thread 'conformance_rb_07' (13568) panicked at crates/conformance/src/cases/rust_backend.rs:1129:17:
 assertion `left == right` failed: rust-core/boolean-shapes/provenance.json: the renderers of two roots disagree
 ```
 
@@ -1227,7 +1227,7 @@ Planted: the package generator wrote the zero identity as every package's
 package binds the verified build that states its program.
 
 ```text
-thread 'conformance_rb_07' (30490) panicked at crates/conformance/src/cases/rust_backend.rs:1141:46:
+thread 'conformance_rb_07' (30490) panicked at crates/conformance/src/cases/rust_backend.rs:1186:46:
 compiler/rust/rust-std/adt-evaluation: sources ["0000000000000000000000000000000000000000000000000000000000000000"] are not the semantic ID cd690f0a5afba87d8ddeebfb51773d2d833d2d9b0f897cc9c5702224d8b1994d of the verified compiler build
 ```
 
@@ -1235,7 +1235,7 @@ A second plant made the binding check accept any single source
 (`sources.len() != 1`); the forged-identity check refused it:
 
 ```text
-thread 'conformance_rb_07' (19913) panicked at crates/conformance/src/cases/rust_backend.rs:1154:69:
+thread 'conformance_rb_07' (19913) panicked at crates/conformance/src/cases/rust_backend.rs:1199:69:
 forged: ()
 ```
 
@@ -1257,6 +1257,31 @@ assertion `left == right` failed: the runtime changed without its record `rust_r
 ```
 
 Removed: the runtime was restored; the test passes.
+
+### rust renderer identity record can fail
+
+Planted: `negate` lost its zero-test arm in
+`crates/lexlean/src/calculus/rust/lower.rs`, without updating
+`rust_renderer` in `language/semantics-1.2.toml`. Command: `cargo test -p
+lexlean --lib the_compiler_semantics_records_the_renderer`. Expected: the
+renderer's sources no longer have the digest LexLean's compiler semantics
+records, so the change cannot keep LexLean's identity.
+
+```text
+thread 'calculus::rust::tests::the_compiler_semantics_records_the_renderer' (9715) panicked at crates/lexlean/src/calculus/rust/mod.rs:244:9:
+assertion `left == right` failed: the renderer changed without its record `rust_renderer` in language/semantics-1.2.toml
+```
+
+The same plant shows the negated zero test is refused before any package is
+built (command `cargo test -p repo-conformance --test conformance --
+conformance_rb_01`):
+
+```text
+thread 'conformance_rb_01' (10406) panicked at crates/conformance/src/cases/rust_backend.rs:514:40:
+boolean-shapes (rust-core): a negated zero test or predecessor: a zero test is negated as its complement, and a predecessor is not a Boolean
+```
+
+Removed: `negate` was restored; both tests pass.
 
 ### GNAF kernel oracle can fail
 

@@ -351,6 +351,11 @@ fn parse_regex(pattern: &str) -> Result<Vec<Node>, String> {
     if position != end {
         return Err("unbalanced group".to_owned());
     }
+    // ECMA-262 reads `^a|b$` as `(^a)|(b$)`, not as an anchored choice, so
+    // an alternation outside a group is refused rather than misread.
+    if alternatives.len() > 1 {
+        return Err("an alternation outside a group is unsupported".to_owned());
+    }
     Ok(vec![Node {
         atom: Atom::Group(alternatives),
         min: 1,
@@ -587,7 +592,6 @@ mod tests {
             ("^(0|[1-9][0-9]*)$", "107", true),
             ("^(0|[1-9][0-9]*)$", "01", false),
             ("^(0|[1-9][0-9]*)$", "", false),
-            ("^a|b$", "b", true),
             ("^(ab|a)(c|bc)$", "abc", true),
         ];
         for (pattern, text, expected) in cases {
@@ -600,6 +604,10 @@ mod tests {
         assert!(
             regex_matches("a+", "aa").is_err(),
             "unanchored patterns are refused"
+        );
+        assert!(
+            regex_matches("^a|b$", "b").is_err(),
+            "an alternation outside a group is refused"
         );
     }
 

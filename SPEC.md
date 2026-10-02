@@ -3165,9 +3165,10 @@ the printed value or `overflow`; steps, fuel, and the work count are not
 observable. The claim covers exactly programs of this calculus rendered this
 way: no other Rust construct (unsafe code, foreign functions, threads,
 asynchronous code, floating point, interior mutability, input and output
-beyond the harness) is within it. Every fixture's rendering in each profile
-that admits it is committed under `compiler/rust/<target>/` and compared with
-the renderer by `cargo xtask check-calculus`. Every fixture with an
+beyond the harness) is within it. Every fixture whose entry takes and
+returns first-order data is committed as a package in each profile that
+admits it, under its lint gate (§17.16), and compared with the renderer by
+`cargo xtask check-calculus`. Every fixture with an
 observable outcome is rendered, compiled by the pinned `rustc` 1.97.1
 (`RUSTC-1-97-1`, an authority this repository cites) with warnings denied,
 linked with a harness, and run; its output must equal the denotation's, its
@@ -3384,9 +3385,13 @@ manifest declares. Every called function is a program function or a runtime
 item of the closed table `rust::runtime::Item`; every type is a calculus type
 or one of the representation types `Rc<T>` (a field or capture whose type
 holds its owner), `R<T>` (a fallible result), and `&T` (a borrowed export
-parameter). Every expression, binding, and item carries its *origin*: the
-calculus element (§17.14) of the term, shape, or literal it was lowered from,
-or the structural realization it is, and the width of a fixed-width element.
+parameter). Every construct carries its *origin*: the calculus element
+(§17.14) of the term, shape, or literal it was lowered from, or the
+structural realization it is, and the width of a fixed-width element. The
+constructs are every item, every binding, and every expression other than a
+block, a list's `uncons`, and a predecessor, which are parts of the
+construct around them; a pattern is checked through the match that carries
+it.
 The printer lays out every item, block, and arm in one fixed way, so the
 rendering's bytes are canonical without a formatter. A string literal is
 written by LexLean's own escaper: printable ASCII other than `"` and `\` as
@@ -3458,9 +3463,12 @@ and no call to it propagates. The length of a sequence cannot exceed
    term, or a `u16` addition lowered from a `u8` one, is refused even in a
    program that uses both. Types are checked against the program's elements
    as a whole. That the parts of a construct are composed faithfully (which
-   arm is which, the order of captures and fields) is not a check of the
-   AST: it is established by the conformance differential below, against
-   which planted lowering mutations are recorded.
+   arm is which, which function a call names, the order of captures and
+   fields) is not a check of the AST: it is established by the conformance
+   differential below, against which planted lowering mutations are
+   recorded. A negated zero test or predecessor is refused as well: a zero
+   test is negated as its complement, and the printer parenthesizes any
+   comparison under `!`.
 
 **Packages.** A package manifest (`lexlean/rust-package/1`,
 `schemas/rust-package.schema.json`) names a crate and its version (three
@@ -3505,16 +3513,19 @@ denied, and every Clippy lint of the default set denied except the ten of
 `package::ALLOWED_LINTS`, each because its advice would make the rendering
 depart from the calculus:
 
-| Lint | Its advice, and why the rendering does not follow it |
-| --- | --- |
-| `type_complexity` | a type alias: a generated type is exactly its calculus type, and an alias is a name with no calculus counterpart |
-| `too_many_arguments` | a struct of parameters: a function takes exactly its calculus parameters, and the struct is a type with no calculus counterpart |
-| `large_enum_variant` | a boxed variant: boxing changes the representation and allocates, which `rust-core` cannot and the calculus does not |
-| `result_large_err` | a boxed error: likewise |
-| `result_unit_err` | an error type in place of unit: a function returns exactly its calculus result type |
-| `single_match` | `if let` or `if` in place of a match with an empty arm: every calculus match states an arm for every shape |
-| `manual_map` | `Option::map` and a Rust closure: a calculus closure is defunctionalized, never a Rust closure |
-| `manual_unwrap_or`, `manual_unwrap_or_default`, `manual_ok_err` | a library combinator in place of the program's own match: the combinator is outside the closed runtime |
+| Lint | Clippy group | Its advice, and why the rendering does not follow it |
+| --- | --- | --- |
+| `type_complexity` | complexity | a type alias: a generated type is exactly its calculus type, and an alias is a name with no calculus counterpart |
+| `too_many_arguments` | complexity | a struct of parameters: a function takes exactly its calculus parameters, and the struct is a type with no calculus counterpart |
+| `large_enum_variant` | perf | a boxed variant: boxing changes the representation and allocates, which `rust-core` cannot and the calculus does not |
+| `result_large_err` | perf | a boxed error: likewise |
+| `result_unit_err` | style | an error type in place of unit: a function returns exactly its calculus result type |
+| `single_match` | style | `if let` or `if` in place of a match with an empty arm: every calculus match states an arm for every shape |
+| `manual_map` | style | `Option::map` and a Rust closure: a calculus closure is defunctionalized, never a Rust closure |
+| `manual_unwrap_or`, `manual_ok_err` | complexity | a library combinator in place of the program's own match: the combinator is outside the closed runtime |
+| `manual_unwrap_or_default` | suspicious | likewise; its advice is a rewrite that preserves the match's meaning, so allowing it masks no defect |
+
+No allowed lint is in Clippy's `correctness` group.
 
 Every committed package passes this gate, and the fixtures exercise every
 shape of **Lowering** and every exception above: removing any one rule or
@@ -3524,11 +3535,15 @@ profile, the program's identity, the language-1.2 compiler-semantics ID
 (§21.2), the SHA-256 of the runtime the profile carries, the sources, the
 exports, and the SHA-256 of `Cargo.toml` and `src/lib.rs`.
 `language/semantics-1.2.toml` records the SHA-256 of each profile's runtime
-(`rust_runtime_core`, `rust_runtime_std`), which a unit test of the runtime
-checks, so the runtime cannot change without changing LexLean's
-compiler-semantics ID; it also versions the lowering (`rust_backend`). A
-change to the lowering changes the committed packages, which the
-generated-file gate refuses until they are regenerated and reviewed.
+(`rust_runtime_core`, `rust_runtime_std`) and the digest of the renderer's
+sources (`rust_renderer`: one §21.1 frame per file of
+`rust::RENDERER_FILES`, the six files of `calculus/rust/`, labeled by its
+name, under the domain `lexlean-rust-renderer-v1`). Unit tests of the runtime
+and the renderer and the conformance suite check both records, so neither
+the runtime nor any rendering can change without changing LexLean's
+compiler-semantics ID, and two different renderings never claim one
+compiler identity. `rust_backend` is a version label for humans that no gate
+checks.
 
 **Harnesses.** The harnesses that call a package's exports and print their
 outcomes are test text, not renderings: they live in the conformance crate
@@ -3553,8 +3568,8 @@ suite builds every committed package offline in one workspace under its lint
 gate; calls each export whose fixture has an observable outcome from a
 separate crate and compares the printed outcome with the denotation's; runs
 a differential of every primitive instance each profile admits on its
-boundary values and seeded inputs; checks that the packages' constructs
-cover every correspondence row and every node of the AST; renders every
+boundary values and seeded inputs; checks that the packages it runs emit
+every correspondence row and every node of the AST; renders every
 package in two separate processes with different working directories and
 environments and compares the bytes with each other and with the committed
 packages; validates every manifest and provenance against its schema; and
@@ -3562,7 +3577,12 @@ checks every package's `sources` against the published, verified build: the
 semantic ID of `compiler/expected/build/manifest.json`, named by the
 committed verification records, whose `TargetFixtures` source map binds the
 committed module source, which states the package's program as the
-declaration `<fixture>Program`.
+declaration `<fixture>Program`. The binding is to the whole build, the
+smallest object LexLean gives a semantic ID; the declaration is found by the
+fixture's name, which provenance does not record. That the build verifies is
+established by `cargo xtask verify-examples` and `cargo xtask check-golden`,
+which reverify and compare those committed records; the suite checks only
+that a record of the build is committed under its name.
 
 ## 18. Lean backend
 

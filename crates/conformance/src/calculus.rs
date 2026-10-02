@@ -3519,7 +3519,8 @@ pub fn files() -> BTreeMap<String, Vec<u8>> {
 const GENERATED_DIRECTORIES: [&str; 3] = ["compiler/fixtures", "compiler/gnaf", "compiler/rust"];
 
 /// Compare (or, with `write`, rewrite) the generated files of the calculus
-/// (§17.14) and of the GNAF model and requests over it (§17.15).
+/// (§17.14), of the GNAF model and requests over it (§17.15), and of the
+/// fixtures' Rust packages and the negative package manifests (§17.16).
 ///
 /// # Errors
 ///
