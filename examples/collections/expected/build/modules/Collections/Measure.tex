@@ -1,0 +1,15 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\begin{document}
+\section*{Semantic declarations}
+\subsection*{\texttt{distinctNames}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(LexLeanCollections.mapSize (Collections.Tables.buildTable (("a" :: ("b" :: ("a" :: ([] : List (String))))))) : Nat)}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{distinct\_names}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(distinctNames = 2)}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\end{document}

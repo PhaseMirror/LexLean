@@ -73,6 +73,20 @@ versions, and the entries below say what each tag does and does not claim.
   referenced as a value, a mutual label shared by an inductive and a
   definition group) is rejected; eleven new negative fixtures cover these
   and the decrease and evidence rules (`DF-16`, `DF-17`, `PF-19`, `SM-27`).
+- Language-1.2 ordered collections (§17.12): `map` and `set` types over
+  closed ordered key types, canonical map/set/graph literals (reordered
+  source links to identical semantic data), insertion/lookup/set-algebra
+  operations, ordered folds, bounded iteration, and graph successors,
+  reachability, and topological order, all over the fixed
+  `LexLeanCollections` runtime, which every module applying a collection
+  primitive emits (`SM-28`, `SM-29`, `SM-30`, `DF-18`). Literal keys are
+  checked as terms before they are ordered. `examples/collections` proves
+  each of the 24 operations under Lean and, for every key type (negative and
+  fixed-width integers, Booleans, non-ASCII strings, pairs), that linking's
+  canonical order equals Lean's own insertion order. Ten new negative
+  fixtures cover duplicate, unordered, non-literal, noncanonical, and
+  out-of-range keys, graph references and duplicate edges, fold typing,
+  unbounded iteration, and collections under language 1.1.
 - Every semantic-module member must survive into the typed value: an extra
   member of a unit variant (for example `{"kind":"reflexivity","tactic":...}`)
   was silently ignored and is now rejected in every language.
@@ -83,13 +97,16 @@ versions, and the entries below say what each tag does and does not claim.
   checked and built but failed verification with `LLV7006` on pinned Lean's
   unused-variable warning; only Lean text that never verified changes
   (`SM-08`).
-- The public snapshot DTO `SnapshotTerm` gains the `Let`, `Pair`, `First`,
-  `Second`, `Lambda`, `Apply`, and `FunctionRef` variants and call type
-  arguments, `SnapshotType` gains `Product` and `Function`, declarations gain
-  optional `mutual`, `type_parameters`, and `executable` fields, and
-  `SnapshotProof` gains `Apply` type arguments and `LinearArithmetic`, and
-  definitions gain optional `mutual` and `termination` members; downstream exhaustive
-  matches must add them.
+- The public snapshot DTO grows with language 1.2. `SnapshotTerm` gains
+  `Let`, `Pair`, `First`, `Second`, `Lambda`, `Apply`, `FunctionRef`,
+  `MapLiteral`, `SetLiteral`, and `GraphLiteral` (with `SnapshotMapEntry` and
+  `SnapshotEdge`) and call type arguments; `SnapshotType` gains `Product`,
+  `Function`, `Map`, and `Set`; `SnapshotPrimitive` gains the collection
+  operations; inductives gain `mutual`; definitions gain `type_parameters`,
+  `executable`, `mutual`, and `termination` (`SnapshotTermination`);
+  theorems gain `type_parameters`; `SnapshotProof` gains `Apply` type
+  arguments and `LinearArithmetic`. Downstream exhaustive matches must add
+  them.
 - New conformance IDs `CF-17`, `CF-18`, `GL-17`, `GL-18`, and `SM-23`; new
   example `examples/language-1.2`, verified with real Lean; ten new negative
   fixtures for version mismatches in both directions, a package of another

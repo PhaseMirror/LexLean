@@ -12,7 +12,7 @@ How this repository's claims are checked, which recipe enforces which rule, and 
 | `model` | `cargo xtask validate-model` | R1 (model is the single source; every model file parsed with unknown-field rejection), R2 (honesty levels and vocabulary, via the meta-gate), R3 (register/scenario/test bijection, Gherkin subset), R4 (`audit-deferral`), R5 (`audit-errors`), R6 (`audit-shipped`, including the shipped crate's normative links), R8 (`audit-generated`, `audit-language-closure`), RP-09 (`audit-no-unsafe`), §27.5 (CONFORMANCE.md and ERRORS.md equal regeneration) |
 | `spec-links` | `cargo xtask validate-spec-links` | RP-07, §27.6: the §31 table and `model/ids.toml` are bijective and byte-consistent |
 | `lint` | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | no tolerated warnings |
-| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 239 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
+| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 243 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
 | `features` | `cargo check --workspace --all-features --all-targets` | every target compiles |
 | `bdd` | `cargo test -p repo-conformance` | R3, §27.7, §27.8: register ↔ scenario ↔ test bijection, the meta-gate, and its own falsifiability test |
 | `examples` | `cargo xtask verify-examples` | §28.6, EX-01: every example directory formats, locks, checks, builds, and verifies with real Lean 4.32.1; when an example commits `expected/verify/`, its normalized verification records must equal it (§29.5) |
@@ -426,6 +426,59 @@ error[LLV7002]: Lean rejected `Recursion.Main` (error): Application type mismatc
 
 Removed: the lowering was restored; the recursion example verifies and its
 normalized verification records match `cargo xtask verify-examples`.
+
+### collection ordering determinism can fail
+
+Planted: the canonical normalization of map, set, and graph literals was
+skipped (`if false && language == crate::LANGUAGE_1_2`), so a literal kept its
+source order. Command: `cargo test -p repo-conformance --test conformance --
+conformance_sm_29`. Expected: reordered equivalent graph literals no longer
+link to one semantic identity.
+
+```text
+thread 'conformance_sm_29' panicked at crates/conformance/src/cases/semantic_ir.rs:2017:13:
+assertion `left == right` failed: the semantics do not
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
+```
+
+Removed: normalization was restored; `conformance_sm_29` passes.
+
+### collection literal key checking can fail
+
+Planted: a map literal's keys were ordered without first being checked as
+terms (the `check_term(&entry.key, ...)` call removed), so a noncanonical
+key such as `02` took a position in the canonical order. Command: `cargo
+test -p repo-conformance --test conformance -- conformance_sm_29`.
+Expected: the `02` mutation links.
+
+```text
+thread 'conformance_sm_29' panicked at crates/conformance/src/support.rs:360:14:
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
+```
+
+Removed: the check was restored; `conformance_sm_29` passes and the
+`collection-noncanonical-key` and `collection-out-of-range-key` fixtures fail
+with `LLT4001`.
+
+### collection runtime emission can fail
+
+Planted: a collection primitive no longer required the runtime
+(`Some("primitive") => false && ...` in `uses_collections`), so a module
+that only measures an imported table emitted none. Commands: `cargo test -p
+repo-conformance --test conformance -- conformance_sm_28`, then `lexlean
+build && lexlean verify` in `examples/collections`, where pinned Lean is the
+oracle.
+
+```text
+thread 'conformance_sm_28' panicked at crates/conformance/src/cases/semantic_ir.rs:1938:17:
+missing "namespace LexLeanCollections" in:
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
+error[LLV7002]: Lean rejected `Collections.Measure` (error lean.unknownIdentifier): Unknown identifier `LexLeanCollections.mapSize`
+error[LLV7002]: Lean rejected `Collections.Measure` (error): Tactic `decide` failed for proposition
+```
+
+Removed: the primitive case was restored; `conformance_sm_28` passes and the
+collections example verifies.
 
 ### fmt-check can fail
 

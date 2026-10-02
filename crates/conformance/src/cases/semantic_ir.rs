@@ -1,4 +1,4 @@
-//! The `semantic-ir` suite: SM-01..SM-27.
+//! The `semantic-ir` suite: SM-01..SM-30.
 
 use std::collections::BTreeSet;
 use std::process::Command;
@@ -1929,6 +1929,186 @@ pub(crate) fn run(id: &str) {
                 support::checked_project(&rebound).semantic_id
             );
             assert_eq!(alpha(&unbound, "reduce"), alpha(&second, "reduce"));
+        }
+        "SM-28" => {
+            let project = P::copy_example("collections");
+            project.check_ok();
+            let rendered = support::rendered(&project);
+            let tables = support::lean_text(&rendered, "Tables");
+            for expected in [
+                "public def declare (table : List (Prod (String) (Nat))) (name : String) (slot : Nat) : List (Prod (String) (Nat)) := (LexLeanCollections.mapInsert (table) (name) (slot) : List (Prod (String) (Nat)))",
+                "namespace LexLeanCollections",
+                "public class Key (α : Type) where",
+            ] {
+                assert!(tables.contains(expected), "missing {expected:?} in:\n{tables}");
+            }
+            // A module that only measures an imported table writes no
+            // collection type or literal, yet calls the runtime: it emits its
+            // own copy, and pinned Lean verifies it.
+            let measure = support::lean_text(&rendered, "Measure");
+            for expected in [
+                "namespace LexLeanCollections",
+                "(LexLeanCollections.mapSize (Collections.Tables.buildTable (",
+            ] {
+                assert!(
+                    measure.contains(expected),
+                    "missing {expected:?} in:\n{measure}"
+                );
+            }
+            let _ = support::verify_ok_backed("SM-28", &project);
+            let reject = |file: &str, from: &str, to: &str, message: &str| {
+                P::assert_mutation_rejected("collections", file, from, to, message);
+            };
+            // Operations are typed against their collection.
+            reject(
+                "src/Tables.lex.tex",
+                r#""operation":"map_insert","result":{"key":{"kind":"string"},"kind":"map","value":{"kind":"nat"}}"#,
+                r#""operation":"map_insert","result":{"key":{"kind":"string"},"kind":"map","value":{"kind":"bool"}}"#,
+                "primitive MapInsert result",
+            );
+            reject(
+                "src/Tables.lex.tex",
+                r#"{"arguments":[{"kind":"var","name":"table"}],"kind":"primitive","operation":"map_size""#,
+                r#"{"arguments":[{"kind":"var","name":"name"}],"kind":"primitive","operation":"map_size""#,
+                "primitive MapSize requires a map",
+            );
+            // Language 1.1 has no collections.
+            let eleven = P::semantic_example();
+            let support_source = eleven.read("src/Support.lex.tex");
+            eleven.write(
+                "src/Support.lex.tex",
+                &support_source.replacen(
+                    r#""body":{"kind":"bool","value":true},"kind":"definition","name":"remoteEnabled","parameters":[],"result":{"kind":"bool"}"#,
+                    r#""body":{"element":{"kind":"nat"},"elements":[],"kind":"set_literal"},"kind":"definition","name":"remoteEnabled","parameters":[],"result":{"element":{"kind":"nat"},"kind":"set"}"#,
+                    1,
+                ),
+            );
+            let error = eleven.check_fails_with("LLT4001");
+            assert!(
+                error.to_string().contains("is a language-1.2 construct"),
+                "{error}"
+            );
+        }
+        "SM-29" => {
+            // Reordered equivalent literals denote byte-identical linked data
+            // and generated artifacts.
+            let original = P::copy_example("collections");
+            let reordered = P::copy_example("collections");
+            let source = reordered.read("src/Tables.lex.tex");
+            let shuffled = source
+                .replacen(
+                    r#"{"kind":"string","value":"main"},{"kind":"string","value":"parse"}"#,
+                    r#"{"kind":"string","value":"parse"},{"kind":"string","value":"main"}"#,
+                    1,
+                )
+                .replacen(
+                    r#"{"source":{"kind":"string","value":"main"},"target":{"kind":"string","value":"parse"}},{"source":{"kind":"string","value":"main"},"target":{"kind":"string","value":"emit"}}"#,
+                    r#"{"source":{"kind":"string","value":"main"},"target":{"kind":"string","value":"emit"}},{"source":{"kind":"string","value":"main"},"target":{"kind":"string","value":"parse"}}"#,
+                    1,
+                );
+            assert_ne!(shuffled, source, "the reordering applies");
+            reordered.write("src/Tables.lex.tex", &shuffled);
+            // Map and set literals reorder the same way.
+            let main_source = reordered.read("src/Main.lex.tex");
+            let main_shuffled = main_source
+                .replacen(
+                    r#"{"key":{"kind":"string","value":"b"},"value":{"kind":"nat","value":"2"}},{"key":{"kind":"string","value":"a"},"value":{"kind":"nat","value":"1"}}"#,
+                    r#"{"key":{"kind":"string","value":"a"},"value":{"kind":"nat","value":"1"}},{"key":{"kind":"string","value":"b"},"value":{"kind":"nat","value":"2"}}"#,
+                    1,
+                )
+                .replacen(
+                    r#"{"kind":"nat","value":"3"},{"kind":"nat","value":"1"},{"kind":"nat","value":"2"}"#,
+                    r#"{"kind":"nat","value":"2"},{"kind":"nat","value":"3"},{"kind":"nat","value":"1"}"#,
+                    1,
+                );
+            assert_ne!(
+                main_shuffled, main_source,
+                "the map and set reordering applies"
+            );
+            reordered.write("src/Main.lex.tex", &main_shuffled);
+            let first = support::checked_project(&original);
+            let second = support::checked_project(&reordered);
+            assert_ne!(first.source_id, second.source_id, "the sources differ");
+            assert_eq!(
+                first.semantic_id, second.semantic_id,
+                "the semantics do not"
+            );
+            let left = support::rendered(&original);
+            let right = support::rendered(&reordered);
+            for module in ["Tables", "Measure", "Main"] {
+                assert_eq!(
+                    support::lean_text(&left, module),
+                    support::lean_text(&right, module)
+                );
+                assert_eq!(
+                    support::tex_text(&left, module),
+                    support::tex_text(&right, module)
+                );
+            }
+            let reject = |from: &str, to: &str, message: &str| {
+                P::assert_mutation_rejected("collections", "src/Main.lex.tex", from, to, message);
+            };
+            // A duplicate key, a non-literal key, and an unordered key type.
+            reject(
+                r#"{"key":{"kind":"nat","value":"2"},"value":{"kind":"bool","value":false}}"#,
+                r#"{"key":{"kind":"nat","value":"1"},"value":{"kind":"bool","value":false}}"#,
+                "duplicate map key in a map literal",
+            );
+            reject(
+                r#"{"key":{"kind":"nat","value":"2"},"value":{"kind":"bool","value":false}}"#,
+                r#"{"key":{"arguments":[],"function":{"module":"Tables","name":"callOrder"},"kind":"call"},"value":{"kind":"bool","value":false}}"#,
+                "must be a literal value",
+            );
+            reject(
+                r#""key":{"kind":"nat"},"kind":"map_literal","value":{"kind":"bool"}"#,
+                r#""key":{"kind":"unit"},"kind":"map_literal","value":{"kind":"bool"}"#,
+                "has no canonical order",
+            );
+            // A literal key is checked as a term before it is ordered: a
+            // noncanonical spelling or an out-of-range fixed-width value has
+            // no position in the canonical order.
+            reject(
+                r#"{"key":{"kind":"nat","value":"2"},"value":{"kind":"bool","value":false}}"#,
+                r#"{"key":{"kind":"nat","value":"02"},"value":{"kind":"bool","value":false}}"#,
+                "noncanonical natural literal `02`",
+            );
+            reject(
+                r#"{"kind":"integer","representation":"uint8","value":"255"}"#,
+                r#"{"kind":"integer","representation":"uint8","value":"256"}"#,
+                "integer literal `256` is outside UInt8 [0, 255]",
+            );
+        }
+        "SM-30" => {
+            let project = P::copy_example("collections");
+            project.check_ok();
+            let tables = support::lean_text(&support::rendered(&project), "Tables");
+            assert!(tables.contains(
+                r#"public def callGraph : List (Prod (String) (List (String))) := ([("emit", ["report"]), ("lex", []), ("main", ["emit", "parse"]), ("parse", ["lex"]), ("report", ["lex"])] : List (Prod (String) (List (String))))"#
+            ), "{tables}");
+            let _ = support::verify_ok_backed("SM-30", &project);
+            let reject = |from: &str, to: &str, message: &str| {
+                P::assert_mutation_rejected("collections", "src/Tables.lex.tex", from, to, message);
+            };
+            reject(
+                r#""target":{"kind":"string","value":"report"}"#,
+                r#""target":{"kind":"string","value":"render"}"#,
+                "graph edge target is not a declared node",
+            );
+            reject(
+                r#"{"source":{"kind":"string","value":"main"},"target":{"kind":"string","value":"emit"}}"#,
+                r#"{"source":{"kind":"string","value":"main"},"target":{"kind":"string","value":"parse"}}"#,
+                "duplicate edge in a graph literal",
+            );
+            reject(
+                r#"{"kind":"string","value":"lex"},{"kind":"string","value":"emit"}"#,
+                r#"{"kind":"string","value":"lex"},{"kind":"string","value":"lex"}"#,
+                "duplicate node in a graph literal",
+            );
+            reject(
+                r#""operation":"graph_reachable","result":{"element":{"kind":"string"},"kind":"set"}"#,
+                r#""operation":"graph_reachable","result":{"element":{"kind":"nat"},"kind":"set"}"#,
+                "primitive GraphReachable result",
+            );
         }
         other => panic!("no semantic-ir case is wired for {other}"),
     }

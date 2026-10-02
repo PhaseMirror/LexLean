@@ -1,4 +1,4 @@
-//! The `declarations` suite: DF-01..DF-17.
+//! The `declarations` suite: DF-01..DF-18.
 
 use lexlean::ir::declaration::{DeclBody, DeclKind};
 
@@ -1111,6 +1111,39 @@ pub(crate) fn run(id: &str) {
             assert!(
                 error.to_string().contains("is a language-1.2 construct"),
                 "{error}"
+            );
+        }
+        // §17.12: explicit state threading through ordered folds and
+        // bounded iteration is executable with direct closures.
+        "DF-18" => {
+            let project = P::copy_example("collections");
+            project.check_ok();
+            let main = support::lean_text(&support::rendered(&project), "Main");
+            assert!(
+                main.contains(
+                    "(LexLeanCollections.iterateUntil ((fun (state : List ((Prod (Nat) (Nat)))) =>"
+                ),
+                "{main}"
+            );
+            let _ = support::verify_ok_backed("DF-18", &project);
+            let reject = |file: &str, from: &str, to: &str, message: &str| {
+                P::assert_mutation_rejected("collections", file, from, to, message);
+            };
+            // Iteration is always bounded: the fuel argument is required.
+            reject(
+                "src/Main.lex.tex",
+                r#"{"kind":"nat","value":"8"},{"kind":"var","name":"parents"}"#,
+                r#"{"kind":"var","name":"parents"}"#,
+                "primitive IterateUntil expects 3 argument(s) (step, natural-number bound, initial state), received 2",
+            );
+            // A fold step must take the state first and return it: the
+            // swapped step below is well typed on its own, so the only
+            // error is that it does not thread the state.
+            reject(
+                "src/Main.lex.tex",
+                r#""parameters":[{"name":"visited","type":{"element":{"kind":"nat"},"kind":"list"}},{"name":"element","type":{"kind":"nat"}}]},{"element":{"kind":"nat"},"kind":"nil"},{"head":{"kind":"nat","value":"5"}"#,
+                r#""parameters":[{"name":"element","type":{"kind":"nat"}},{"name":"visited","type":{"element":{"kind":"nat"},"kind":"list"}}]},{"element":{"kind":"nat"},"kind":"nil"},{"head":{"kind":"nat","value":"5"}"#,
+                "primitive ListFold argument 0 has type Function { parameters: [Nat, List { element: Nat }], result: List { element: Nat } }, expected Function { parameters: [List { element: Nat }, Nat], result: List { element: Nat } }",
             );
         }
         other => panic!("no declarations case is wired for {other}"),

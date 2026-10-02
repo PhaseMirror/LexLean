@@ -76,6 +76,78 @@ pub enum SemanticPrimitive {
     Join,
     ParseDecimal,
     FormatDecimal,
+    /// Language 1.2 ordered collections, folds, bounded iteration, and
+    /// graphs (§17.12).
+    MapInsert,
+    MapRemove,
+    MapLookup,
+    MapContains,
+    MapSize,
+    MapKeys,
+    MapValues,
+    MapEntries,
+    MapFold,
+    SetInsert,
+    SetRemove,
+    SetContains,
+    SetSize,
+    SetElements,
+    SetUnion,
+    SetIntersection,
+    SetDifference,
+    SetFold,
+    ListFold,
+    Iterate,
+    IterateUntil,
+    GraphSuccessors,
+    GraphReachable,
+    GraphTopological,
+}
+
+impl SemanticPrimitive {
+    /// Whether the operation exists only in language 1.2.
+    #[must_use]
+    pub const fn language_1_2(self) -> bool {
+        matches!(
+            self,
+            Self::MapInsert
+                | Self::MapRemove
+                | Self::MapLookup
+                | Self::MapContains
+                | Self::MapSize
+                | Self::MapKeys
+                | Self::MapValues
+                | Self::MapEntries
+                | Self::MapFold
+                | Self::SetInsert
+                | Self::SetRemove
+                | Self::SetContains
+                | Self::SetSize
+                | Self::SetElements
+                | Self::SetUnion
+                | Self::SetIntersection
+                | Self::SetDifference
+                | Self::SetFold
+                | Self::ListFold
+                | Self::Iterate
+                | Self::IterateUntil
+                | Self::GraphSuccessors
+                | Self::GraphReachable
+                | Self::GraphTopological
+        )
+    }
+
+    /// The argument position holding a function, for the collection
+    /// combinators that take one.
+    #[must_use]
+    pub const fn function_argument(self) -> Option<usize> {
+        match self {
+            Self::MapFold | Self::SetFold | Self::ListFold | Self::Iterate | Self::IterateUntil => {
+                Some(0)
+            }
+            _ => None,
+        }
+    }
 }
 
 impl SemanticInteger {
@@ -201,6 +273,12 @@ pub enum SemanticType {
         parameters: Vec<Self>,
         result: Box<Self>,
     },
+    /// Language 1.2: a finite map over an ordered key type, iterated in
+    /// ascending key order.
+    Map { key: Box<Self>, value: Box<Self> },
+    /// Language 1.2: a finite set over an ordered element type, iterated in
+    /// ascending order.
+    Set { element: Box<Self> },
 }
 
 /// One explicit declaration parameter.
@@ -417,6 +495,42 @@ pub enum SemanticTerm {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         type_arguments: Vec<SemanticType>,
     },
+    /// Language 1.2: a finite map of literal keys; linking sorts the entries
+    /// into canonical key order and rejects a duplicate key.
+    MapLiteral {
+        key: SemanticType,
+        value: SemanticType,
+        entries: Vec<SemanticMapEntry>,
+    },
+    /// Language 1.2: a finite set of literal elements, canonicalized like a
+    /// map literal.
+    SetLiteral {
+        element: SemanticType,
+        elements: Vec<Self>,
+    },
+    /// Language 1.2: a directed graph `Map node (Set node)` of declared
+    /// literal nodes and edges between them.
+    GraphLiteral {
+        node: SemanticType,
+        nodes: Vec<Self>,
+        edges: Vec<SemanticEdge>,
+    },
+}
+
+/// One literal map entry.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SemanticMapEntry {
+    pub key: SemanticTerm,
+    pub value: SemanticTerm,
+}
+
+/// One literal directed edge.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SemanticEdge {
+    pub source: SemanticTerm,
+    pub target: SemanticTerm,
 }
 
 /// One proof branch for a fixed cases/induction lowering.
@@ -913,6 +1027,8 @@ fn type_node_count(ty: &SemanticType) -> u64 {
         SemanticType::Function { parameters, result } => {
             parameters.iter().map(type_node_count).sum::<u64>() + type_node_count(result)
         }
+        SemanticType::Map { key, value } => type_node_count(key) + type_node_count(value),
+        SemanticType::Set { element } => type_node_count(element),
         _ => 0,
     }
 }
@@ -1027,6 +1143,29 @@ fn term_node_count(term: &SemanticTerm) -> u64 {
         } => term_node_count(function) + terms(arguments),
         SemanticTerm::FunctionRef { type_arguments, .. } => {
             type_arguments.iter().map(type_node_count).sum()
+        }
+        SemanticTerm::MapLiteral {
+            key,
+            value,
+            entries,
+        } => {
+            type_node_count(key)
+                + type_node_count(value)
+                + entries
+                    .iter()
+                    .map(|entry| term_node_count(&entry.key) + term_node_count(&entry.value))
+                    .sum::<u64>()
+        }
+        SemanticTerm::SetLiteral { element, elements } => {
+            type_node_count(element) + terms(elements)
+        }
+        SemanticTerm::GraphLiteral { node, nodes, edges } => {
+            type_node_count(node)
+                + terms(nodes)
+                + edges
+                    .iter()
+                    .map(|edge| term_node_count(&edge.source) + term_node_count(&edge.target))
+                    .sum::<u64>()
         }
         SemanticTerm::If {
             condition,
@@ -1209,6 +1348,12 @@ fn language_1_2_construct(term: &SemanticTerm) -> Option<&'static str> {
         SemanticTerm::Lambda { .. } => Some("lambda"),
         SemanticTerm::Apply { .. } => Some("apply"),
         SemanticTerm::FunctionRef { .. } => Some("function_ref"),
+        SemanticTerm::MapLiteral { .. } => Some("map_literal"),
+        SemanticTerm::SetLiteral { .. } => Some("set_literal"),
+        SemanticTerm::GraphLiteral { .. } => Some("graph_literal"),
+        SemanticTerm::Primitive { operation, .. } if operation.language_1_2() => {
+            Some("collection primitive")
+        }
         SemanticTerm::Call { type_arguments, .. } if !type_arguments.is_empty() => {
             Some("call type arguments")
         }
@@ -1367,6 +1512,26 @@ fn visit_terms(term: &SemanticTerm, visit: &mut impl FnMut(&SemanticTerm)) {
             }
         }
         SemanticTerm::FunctionRef { .. } => {}
+        SemanticTerm::MapLiteral { entries, .. } => {
+            for entry in entries {
+                visit_terms(&entry.key, visit);
+                visit_terms(&entry.value, visit);
+            }
+        }
+        SemanticTerm::SetLiteral { elements, .. } => {
+            for element in elements {
+                visit_terms(element, visit);
+            }
+        }
+        SemanticTerm::GraphLiteral { nodes, edges, .. } => {
+            for node in nodes {
+                visit_terms(node, visit);
+            }
+            for edge in edges {
+                visit_terms(&edge.source, visit);
+                visit_terms(&edge.target, visit);
+            }
+        }
     }
 }
 
@@ -1375,6 +1540,8 @@ fn language_1_2_type(ty: &SemanticType) -> Option<&'static str> {
     match ty {
         SemanticType::Product { .. } => Some("product type"),
         SemanticType::Function { .. } => Some("function type"),
+        SemanticType::Map { .. } => Some("map type"),
+        SemanticType::Set { .. } => Some("set type"),
         SemanticType::Option { value: inner } | SemanticType::List { element: inner } => {
             language_1_2_type(inner)
         }
@@ -1425,6 +1592,12 @@ fn term_types(term: &SemanticTerm, visit: &mut impl FnMut(&SemanticType)) {
                 visit(&parameter.r#type);
             }
         }
+        SemanticTerm::MapLiteral { key, value, .. } => {
+            visit(key);
+            visit(value);
+        }
+        SemanticTerm::SetLiteral { element, .. } => visit(element),
+        SemanticTerm::GraphLiteral { node, .. } => visit(node),
         SemanticTerm::Var { .. }
         | SemanticTerm::Nat { .. }
         | SemanticTerm::Integer { .. }
@@ -1678,6 +1851,13 @@ fn qualify_type(ty: &SemanticType, module: &str) -> SemanticType {
                 .collect(),
             result: Box::new(qualify_type(result, module)),
         },
+        SemanticType::Map { key, value } => SemanticType::Map {
+            key: Box::new(qualify_type(key, module)),
+            value: Box::new(qualify_type(value, module)),
+        },
+        SemanticType::Set { element } => SemanticType::Set {
+            element: Box::new(qualify_type(element, module)),
+        },
         SemanticType::Type
         | SemanticType::Parameter { .. }
         | SemanticType::Nat
@@ -1818,6 +1998,17 @@ fn check_type(ty: &SemanticType, env: &Environment<'_>) -> Result<(), String> {
             }
             check_type(result, env)
         }
+        SemanticType::Map { key, value } => {
+            require_language_1_2(env, "map type")?;
+            check_ordered_key(key)?;
+            check_type(key, env)?;
+            check_type(value, env)
+        }
+        SemanticType::Set { element } => {
+            require_language_1_2(env, "set type")?;
+            check_ordered_key(element)?;
+            check_type(element, env)
+        }
         SemanticType::Named { member, arguments } => {
             check_member(member, env)?;
             for argument in arguments {
@@ -1865,6 +2056,11 @@ fn check_type_parameters(ty: &SemanticType, allowed: &BTreeSet<String>) -> Resul
             }
             check_type_parameters(result, allowed)
         }
+        SemanticType::Map { key, value } => {
+            check_type_parameters(key, allowed)?;
+            check_type_parameters(value, allowed)
+        }
+        SemanticType::Set { element } => check_type_parameters(element, allowed),
         SemanticType::Named { arguments, .. } => {
             for argument in arguments {
                 check_type_parameters(argument, allowed)?;
@@ -1997,6 +2193,8 @@ fn mentions_universe(ty: &SemanticType) -> bool {
         SemanticType::Function { parameters, result } => {
             parameters.iter().any(mentions_universe) || mentions_universe(result)
         }
+        SemanticType::Map { key, value } => mentions_universe(key) || mentions_universe(value),
+        SemanticType::Set { element } => mentions_universe(element),
         SemanticType::Parameter { .. }
         | SemanticType::Nat
         | SemanticType::Bool
@@ -2168,6 +2366,10 @@ fn mentions_group(ty: &SemanticType, group: &BTreeSet<String>) -> bool {
                 .any(|parameter| mentions_group(parameter, group))
                 || mentions_group(result, group)
         }
+        SemanticType::Map { key, value } => {
+            mentions_group(key, group) || mentions_group(value, group)
+        }
+        SemanticType::Set { element } => mentions_group(element, group),
         SemanticType::Type
         | SemanticType::Parameter { .. }
         | SemanticType::Nat
@@ -2229,10 +2431,10 @@ fn classify_occurrence(
             }
             Ok(Occurrence::Absent)
         }
-        SemanticType::Function { .. } => {
+        SemanticType::Function { .. } | SemanticType::Map { .. } | SemanticType::Set { .. } => {
             if mentions_group(ty, group) {
                 return Err(format!(
-                    "positivity violation in `{owner}`: a recursive occurrence under a function type is not permitted"
+                    "positivity violation in `{owner}`: a recursive occurrence under a function, map, or set type is not permitted"
                 ));
             }
             Ok(Occurrence::Absent)
@@ -2301,6 +2503,7 @@ fn constructible(
             constructible(left, group, inhabited) && constructible(right, group, inhabited)
         }
         SemanticType::Function { result, .. } => constructible(result, group, inhabited),
+        SemanticType::Map { .. } | SemanticType::Set { .. } => true,
         SemanticType::List { .. }
         | SemanticType::Option { .. }
         | SemanticType::Named { .. }
@@ -2651,6 +2854,15 @@ fn immediate_subterms(term: &SemanticTerm) -> Vec<&SemanticTerm> {
         } => std::iter::once(scrutinee.as_ref())
             .chain(branches.iter().map(|branch| &branch.body))
             .collect(),
+        SemanticTerm::MapLiteral { entries, .. } => entries
+            .iter()
+            .flat_map(|entry| [&entry.key, &entry.value])
+            .collect(),
+        SemanticTerm::SetLiteral { elements, .. } => elements.iter().collect(),
+        SemanticTerm::GraphLiteral { nodes, edges, .. } => nodes
+            .iter()
+            .chain(edges.iter().flat_map(|edge| [&edge.source, &edge.target]))
+            .collect(),
     }
 }
 
@@ -2693,6 +2905,10 @@ fn holds_function(
                     .any(|field| holds_function(field, env, visiting))
             })
         }
+        SemanticType::Map { key, value } => {
+            holds_function(key, env, visiting) || holds_function(value, env, visiting)
+        }
+        SemanticType::Set { element } => holds_function(element, env, visiting),
         SemanticType::Type
         | SemanticType::Parameter { .. }
         | SemanticType::Nat
@@ -2876,6 +3092,21 @@ fn check_executable_term(
                 let function_parameter =
                     matches!(callee.get(index), Some(SemanticType::Function { .. }));
                 check_executable_term(scope, argument, function_parameter, env)?;
+            }
+            Ok(())
+        }
+        SemanticTerm::Primitive {
+            operation,
+            arguments,
+            ..
+        } => {
+            for (index, argument) in arguments.iter().enumerate() {
+                check_executable_term(
+                    scope,
+                    argument,
+                    operation.function_argument() == Some(index),
+                    env,
+                )?;
             }
             Ok(())
         }
@@ -3690,6 +3921,162 @@ fn recursive_name(
         || env.well_founded_self.as_deref() == Some(name)
 }
 
+/// §17.12: the closed key types with one total canonical order, and so one
+/// deterministic iteration order.
+fn check_ordered_key(ty: &SemanticType) -> Result<(), String> {
+    match ty {
+        SemanticType::Nat
+        | SemanticType::Int
+        | SemanticType::Int8
+        | SemanticType::Int16
+        | SemanticType::Int32
+        | SemanticType::Int64
+        | SemanticType::UInt8
+        | SemanticType::UInt16
+        | SemanticType::UInt32
+        | SemanticType::UInt64
+        | SemanticType::Bool
+        | SemanticType::String => Ok(()),
+        SemanticType::Product { left, right } => {
+            check_ordered_key(left)?;
+            check_ordered_key(right)
+        }
+        other => Err(format!(
+            "type {other:?} has no canonical order and cannot key a map, set, or graph: its iteration order would be unspecified"
+        )),
+    }
+}
+
+/// The map type of a graph over `node`: each node maps to its successors.
+fn graph_type(node: &SemanticType) -> SemanticType {
+    SemanticType::Map {
+        key: Box::new(node.clone()),
+        value: Box::new(SemanticType::Set {
+            element: Box::new(node.clone()),
+        }),
+    }
+}
+
+/// A literal key's position in the canonical key order, which is the order
+/// of the fixed Lean `Key` instances: integers numerically, `false` before
+/// `true`, strings by Unicode scalar sequence, and pairs lexicographically.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum KeyOrder {
+    Integer(bool, String),
+    Bool(bool),
+    Text(String),
+    Pair(Box<KeyOrder>, Box<KeyOrder>),
+}
+
+impl Ord for KeyOrder {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        use std::cmp::Ordering;
+        match (self, other) {
+            (Self::Integer(left_negative, left), Self::Integer(right_negative, right)) => {
+                let magnitude = left.len().cmp(&right.len()).then_with(|| left.cmp(right));
+                match (left_negative, right_negative) {
+                    (false, false) => magnitude,
+                    (true, true) => magnitude.reverse(),
+                    (true, false) => Ordering::Less,
+                    (false, true) => Ordering::Greater,
+                }
+            }
+            (Self::Bool(left), Self::Bool(right)) => left.cmp(right),
+            (Self::Text(left), Self::Text(right)) => left.cmp(right),
+            (Self::Pair(left_first, left_second), Self::Pair(right_first, right_second)) => {
+                left_first
+                    .cmp(right_first)
+                    .then_with(|| left_second.cmp(right_second))
+            }
+            // Values of one checked key type never mix variants; the rank
+            // only makes the order total.
+            _ => self.rank().cmp(&other.rank()),
+        }
+    }
+}
+
+impl PartialOrd for KeyOrder {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl KeyOrder {
+    const fn rank(&self) -> u8 {
+        match self {
+            Self::Integer(..) => 0,
+            Self::Bool(_) => 1,
+            Self::Text(_) => 2,
+            Self::Pair(..) => 3,
+        }
+    }
+}
+
+/// The canonical order of a literal key; a map, set, or graph literal is
+/// keyed only by literals, so linking can sort and deduplicate it.
+fn literal_key(term: &SemanticTerm) -> Result<KeyOrder, String> {
+    match term {
+        SemanticTerm::Nat { value } => Ok(KeyOrder::Integer(false, value.clone())),
+        SemanticTerm::Integer { value, .. } => Ok(match value.strip_prefix('-') {
+            Some(magnitude) => KeyOrder::Integer(true, magnitude.to_owned()),
+            None => KeyOrder::Integer(false, value.clone()),
+        }),
+        SemanticTerm::Bool { value } => Ok(KeyOrder::Bool(*value)),
+        SemanticTerm::String { value } => Ok(KeyOrder::Text(value.clone())),
+        SemanticTerm::Pair { left, right } => Ok(KeyOrder::Pair(
+            Box::new(literal_key(left)?),
+            Box::new(literal_key(right)?),
+        )),
+        _ => Err(
+            "a map, set, or graph literal key must be a literal value; build other keys with insert"
+                .to_owned(),
+        ),
+    }
+}
+
+/// Sort every map, set, and graph literal into canonical key order, so
+/// reordered equivalent source denotes byte-identical linked data.
+fn normalize_collections(term: &mut SemanticTerm) {
+    let order = |term: &SemanticTerm| literal_key(term).expect("validated literal key");
+    match term {
+        SemanticTerm::MapLiteral { entries, .. } => {
+            entries.sort_by_key(|entry| order(&entry.key));
+            for entry in entries {
+                normalize_collections(&mut entry.value);
+            }
+        }
+        SemanticTerm::SetLiteral { elements, .. } => elements.sort_by_key(order),
+        SemanticTerm::GraphLiteral { nodes, edges, .. } => {
+            nodes.sort_by_key(order);
+            edges.sort_by_key(|edge| (order(&edge.source), order(&edge.target)));
+        }
+        _ => {
+            let mut value = serde_json::to_value(&*term).expect("semantic term serializes");
+            normalize_value(&mut value);
+            *term = serde_json::from_value(value).expect("normalized term deserializes");
+        }
+    }
+}
+
+fn normalize_value(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Array(items) => items.iter_mut().for_each(normalize_value),
+        serde_json::Value::Object(object) => {
+            let kind = object.get("kind").and_then(serde_json::Value::as_str);
+            if matches!(kind, Some("map_literal" | "set_literal" | "graph_literal")) {
+                // Linking validated this literal, so it is a typed term.
+                let mut term = serde_json::from_value::<SemanticTerm>(value.clone())
+                    .expect("validated collection literal deserializes");
+                normalize_collections(&mut term);
+                *value = serde_json::to_value(term).expect("term serializes");
+                return;
+            }
+            object.values_mut().for_each(normalize_value);
+        }
+        _ => {}
+    }
+}
+
 /// Reject a language-1.2-only construct in a language-1.1 module.
 fn require_language_1_2(env: &Environment<'_>, construct: &str) -> Result<(), String> {
     if env.language_1_2 {
@@ -3779,8 +4166,13 @@ fn check_term(
         }
         SemanticTerm::Bool { .. } | SemanticTerm::Unit => Ok(()),
         SemanticTerm::Primitive {
-            arguments, result, ..
+            operation,
+            arguments,
+            result,
         } => {
+            if operation.language_1_2() {
+                require_language_1_2(env, "collection primitive")?;
+            }
             check_type(result, env)?;
             for argument in arguments {
                 check_term(argument, locals, env, recursion, smaller)?;
@@ -4280,6 +4672,71 @@ fn check_term(
             }
             Ok(())
         }
+        SemanticTerm::MapLiteral {
+            key,
+            value,
+            entries,
+        } => {
+            require_language_1_2(env, "map_literal")?;
+            check_ordered_key(key)?;
+            check_type(key, env)?;
+            check_type(value, env)?;
+            let mut seen = BTreeSet::new();
+            for entry in entries {
+                // A key is checked as a term first: its canonical spelling
+                // and range are what make the literal order total.
+                check_term(&entry.key, locals, env, recursion, smaller)?;
+                let order = literal_key(&entry.key)?;
+                if !seen.insert(order) {
+                    return Err("duplicate map key in a map literal".to_owned());
+                }
+                check_term(&entry.value, locals, env, recursion, smaller)?;
+            }
+            Ok(())
+        }
+        SemanticTerm::SetLiteral { element, elements } => {
+            require_language_1_2(env, "set_literal")?;
+            check_ordered_key(element)?;
+            check_type(element, env)?;
+            let mut seen = BTreeSet::new();
+            for item in elements {
+                check_term(item, locals, env, recursion, smaller)?;
+                if !seen.insert(literal_key(item)?) {
+                    return Err("duplicate element in a set literal".to_owned());
+                }
+            }
+            Ok(())
+        }
+        SemanticTerm::GraphLiteral { node, nodes, edges } => {
+            require_language_1_2(env, "graph_literal")?;
+            check_ordered_key(node)?;
+            check_type(node, env)?;
+            let mut declared = BTreeSet::new();
+            for item in nodes {
+                check_term(item, locals, env, recursion, smaller)?;
+                if !declared.insert(literal_key(item)?) {
+                    return Err("duplicate node in a graph literal".to_owned());
+                }
+            }
+            let mut seen = BTreeSet::new();
+            for edge in edges {
+                check_term(&edge.source, locals, env, recursion, smaller)?;
+                check_term(&edge.target, locals, env, recursion, smaller)?;
+                let source = literal_key(&edge.source)?;
+                let target = literal_key(&edge.target)?;
+                for (end, order) in [("source", &source), ("target", &target)] {
+                    if !declared.contains(order) {
+                        return Err(format!(
+                            "graph edge {end} is not a declared node of the graph literal"
+                        ));
+                    }
+                }
+                if !seen.insert((source, target)) {
+                    return Err("duplicate edge in a graph literal".to_owned());
+                }
+            }
+            Ok(())
+        }
     }
 }
 
@@ -4319,6 +4776,13 @@ fn substitute_type(
                 .map(|parameter| substitute_type(parameter, substitutions))
                 .collect(),
             result: Box::new(substitute_type(result, substitutions)),
+        },
+        SemanticType::Map { key, value } => SemanticType::Map {
+            key: Box::new(substitute_type(key, substitutions)),
+            value: Box::new(substitute_type(value, substitutions)),
+        },
+        SemanticType::Set { element } => SemanticType::Set {
+            element: Box::new(substitute_type(element, substitutions)),
         },
         SemanticType::Type
         | SemanticType::Nat
@@ -4617,6 +5081,198 @@ fn infer_primitive(
             }
             require_observed(arguments, core::slice::from_ref(&first), operation)?;
             exact_result(SemanticType::String)
+        }
+        P::MapInsert
+        | P::MapRemove
+        | P::MapLookup
+        | P::MapContains
+        | P::MapSize
+        | P::MapKeys
+        | P::MapValues
+        | P::MapEntries => {
+            let SemanticType::Map { key, value } = &first else {
+                return Err(format!("primitive {operation:?} requires a map"));
+            };
+            let (key, value) = (key.as_ref().clone(), value.as_ref().clone());
+            let list = |element: SemanticType| SemanticType::List {
+                element: Box::new(element),
+            };
+            match operation {
+                P::MapInsert => {
+                    require_observed(arguments, &[first.clone(), key, value], operation)?;
+                    exact_result(first)
+                }
+                P::MapRemove => {
+                    require_observed(arguments, &[first.clone(), key], operation)?;
+                    exact_result(first)
+                }
+                P::MapLookup => {
+                    require_observed(arguments, &[first.clone(), key], operation)?;
+                    exact_result(SemanticType::Option {
+                        value: Box::new(value),
+                    })
+                }
+                P::MapContains => {
+                    require_observed(arguments, &[first.clone(), key], operation)?;
+                    exact_result(SemanticType::Bool)
+                }
+                P::MapSize => {
+                    require_observed(arguments, core::slice::from_ref(&first), operation)?;
+                    exact_result(SemanticType::Nat)
+                }
+                P::MapKeys => {
+                    require_observed(arguments, core::slice::from_ref(&first), operation)?;
+                    exact_result(list(key))
+                }
+                P::MapValues => {
+                    require_observed(arguments, core::slice::from_ref(&first), operation)?;
+                    exact_result(list(value))
+                }
+                _ => {
+                    require_observed(arguments, core::slice::from_ref(&first), operation)?;
+                    exact_result(list(SemanticType::Product {
+                        left: Box::new(key),
+                        right: Box::new(value),
+                    }))
+                }
+            }
+        }
+        P::SetInsert
+        | P::SetRemove
+        | P::SetContains
+        | P::SetSize
+        | P::SetElements
+        | P::SetUnion
+        | P::SetIntersection
+        | P::SetDifference => {
+            let SemanticType::Set { element } = &first else {
+                return Err(format!("primitive {operation:?} requires a set"));
+            };
+            let element = element.as_ref().clone();
+            match operation {
+                P::SetInsert | P::SetRemove => {
+                    require_observed(arguments, &[first.clone(), element], operation)?;
+                    exact_result(first)
+                }
+                P::SetContains => {
+                    require_observed(arguments, &[first.clone(), element], operation)?;
+                    exact_result(SemanticType::Bool)
+                }
+                P::SetSize => {
+                    require_observed(arguments, core::slice::from_ref(&first), operation)?;
+                    exact_result(SemanticType::Nat)
+                }
+                P::SetElements => {
+                    require_observed(arguments, core::slice::from_ref(&first), operation)?;
+                    exact_result(SemanticType::List {
+                        element: Box::new(element),
+                    })
+                }
+                _ => {
+                    require_observed(arguments, &[first.clone(), first.clone()], operation)?;
+                    exact_result(first)
+                }
+            }
+        }
+        P::ListFold | P::MapFold | P::SetFold => {
+            if arguments.len() != 3 {
+                return Err(format!(
+                    "primitive {operation:?} expects 3 argument(s) (step, initial state, collection), received {}",
+                    arguments.len()
+                ));
+            }
+            let state =
+                arguments.get(1).cloned().flatten().ok_or_else(|| {
+                    format!("primitive {operation:?} requires a typed initial state")
+                })?;
+            let collection =
+                arguments.get(2).cloned().flatten().ok_or_else(|| {
+                    format!("primitive {operation:?} requires a typed collection")
+                })?;
+            let mut step_parameters = vec![state.clone()];
+            match (operation, &collection) {
+                (P::ListFold, SemanticType::List { element })
+                | (P::SetFold, SemanticType::Set { element }) => {
+                    step_parameters.push(element.as_ref().clone());
+                }
+                (P::MapFold, SemanticType::Map { key, value }) => {
+                    step_parameters.push(key.as_ref().clone());
+                    step_parameters.push(value.as_ref().clone());
+                }
+                _ => {
+                    return Err(format!(
+                        "primitive {operation:?} folds over the wrong collection type {collection:?}"
+                    ));
+                }
+            }
+            let step = SemanticType::Function {
+                parameters: step_parameters,
+                result: Box::new(state.clone()),
+            };
+            require_observed(arguments, &[step, state.clone(), collection], operation)?;
+            exact_result(state)
+        }
+        P::Iterate | P::IterateUntil => {
+            // The bound is part of the vocabulary: no iteration is unbounded.
+            if arguments.len() != 3 {
+                return Err(format!(
+                    "primitive {operation:?} expects 3 argument(s) (step, natural-number bound, initial state), received {}",
+                    arguments.len()
+                ));
+            }
+            let state =
+                arguments.get(2).cloned().flatten().ok_or_else(|| {
+                    format!("primitive {operation:?} requires a typed initial state")
+                })?;
+            let stepped = if operation == P::Iterate {
+                state.clone()
+            } else {
+                SemanticType::Option {
+                    value: Box::new(state.clone()),
+                }
+            };
+            let step = SemanticType::Function {
+                parameters: vec![state.clone()],
+                result: Box::new(stepped),
+            };
+            require_observed(
+                arguments,
+                &[step, SemanticType::Nat, state.clone()],
+                operation,
+            )?;
+            exact_result(if operation == P::Iterate {
+                state
+            } else {
+                SemanticType::Product {
+                    left: Box::new(state),
+                    right: Box::new(SemanticType::Bool),
+                }
+            })
+        }
+        P::GraphSuccessors | P::GraphReachable | P::GraphTopological => {
+            let node = match &first {
+                SemanticType::Map { key, value } if matches!(value.as_ref(), SemanticType::Set { element } if element == key) => {
+                    key.as_ref().clone()
+                }
+                _ => {
+                    return Err(format!(
+                        "primitive {operation:?} requires a graph `Map node (Set node)`"
+                    ));
+                }
+            };
+            if operation == P::GraphTopological {
+                require_observed(arguments, core::slice::from_ref(&first), operation)?;
+                exact_result(SemanticType::Option {
+                    value: Box::new(SemanticType::List {
+                        element: Box::new(node),
+                    }),
+                })
+            } else {
+                require_observed(arguments, &[first.clone(), node.clone()], operation)?;
+                exact_result(SemanticType::Set {
+                    element: Box::new(node),
+                })
+            }
         }
     }
 }
@@ -4995,6 +5651,38 @@ fn infer_term(
                 parameters,
                 result: Box::new(result),
             }))
+        }
+        SemanticTerm::MapLiteral {
+            key,
+            value,
+            entries,
+        } => {
+            for entry in entries {
+                require_type(infer(&entry.key)?, key, "map literal key")?;
+                require_type(infer(&entry.value)?, value, "map literal value")?;
+            }
+            Ok(Some(SemanticType::Map {
+                key: Box::new(key.clone()),
+                value: Box::new(value.clone()),
+            }))
+        }
+        SemanticTerm::SetLiteral { element, elements } => {
+            for item in elements {
+                require_type(infer(item)?, element, "set literal element")?;
+            }
+            Ok(Some(SemanticType::Set {
+                element: Box::new(element.clone()),
+            }))
+        }
+        SemanticTerm::GraphLiteral { node, nodes, edges } => {
+            for item in nodes {
+                require_type(infer(item)?, node, "graph literal node")?;
+            }
+            for edge in edges {
+                require_type(infer(&edge.source)?, node, "graph edge source")?;
+                require_type(infer(&edge.target)?, node, "graph edge target")?;
+            }
+            Ok(Some(graph_type(node)))
         }
         SemanticTerm::If {
             condition,
@@ -5568,6 +6256,12 @@ impl SemanticModule {
             ));
         }
         module.validate(language, imports, imported_modules)?;
+        let mut module = module;
+        if language == crate::LANGUAGE_1_2 {
+            let mut value = serde_json::to_value(&module).expect("semantic module serializes");
+            normalize_value(&mut value);
+            module = serde_json::from_value(value).expect("normalized module deserializes");
+        }
         Ok(module)
     }
 

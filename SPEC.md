@@ -2438,6 +2438,9 @@ backend runs.
 | `mutual` definition label | `lexlean/semantic-module/2` | `"mutual":"Label"` on a structurally recursive definition places it in a mutual definition group under the recursion rules below. |
 | `termination` evidence | `lexlean/semantic-module/2` | `{"measure":m,"evidence":[theorem...]}` on a definition declares well-founded recursion under the recursion rules below. |
 | `linear_arithmetic` proof | `lexlean/semantic-module/2` | `{"kind":"linear_arithmetic"}`, optionally with `definitions`, a strictly sorted list of prior document definitions and no other member. Without definitions it lowers to the fixed script `intros`, `try set_option linter.unusedSimpArgs false in simp only [← Bool.not_eq_true, Nat.beq_eq, Nat.blt_eq, Nat.ble_eq] at *` (adding `LexLeanRuntime.subtract, LexLeanRuntime.multiply` when the module emits the portable runtime), and `omega`; with definitions, `subst_vars` follows `intros` and the definitions lead the `simp only` list, so hypotheses equating a local with a constructor value are substituted and a measure over them unfolds to linear arithmetic. |
+| `map`, `set` types | `lexlean/semantic-module/2` | `{"kind":"map","key":K,"value":V}` and `{"kind":"set","element":K}` over an ordered key type, under the collection rules below. |
+| `map_literal`, `set_literal`, `graph_literal` terms | `lexlean/semantic-module/2` | Literal collections of literal keys, canonicalized in linking under the collection rules below. |
+| collection primitives | `lexlean/semantic-module/2` | The `primitive` operations `map_insert`, `map_remove`, `map_lookup`, `map_contains`, `map_size`, `map_keys`, `map_values`, `map_entries`, `map_fold`, `set_insert`, `set_remove`, `set_contains`, `set_size`, `set_elements`, `set_union`, `set_intersection`, `set_difference`, `set_fold`, `list_fold`, `iterate`, `iterate_until`, `graph_successors`, `graph_reachable`, and `graph_topological`, under the collection rules below. |
 
 #### Recursive data (language 1.2)
 
@@ -2630,6 +2633,64 @@ Termination evidence is semantic data, never tactic or backend text; no
    into the typed value: a member the closed schema does not define, such as
    an extra member of a unit variant, is rejected in linking in every
    language.
+
+#### Collections and state threading (language 1.2)
+
+1. **Ordered keys.** A map key, set element, or graph node type is one of
+   `Nat`, `Int`, the fixed-width integers, `Bool`, `String`, or a product of
+   such types. Each has one fixed total order: integers numerically,
+   `false` before `true`, strings by Unicode scalar sequence (equivalently
+   UTF-8 byte order), and products lexicographically. Any other key type is
+   rejected, because its iteration order would be unspecified. No host hash
+   or pointer order exists anywhere in the semantics. The generated Lean
+   `Key` instances realize the same orders, and `examples/collections`
+   states for every key type that a linked literal equals Lean's own
+   insertion of the source order, so pinned Lean checks linking's order.
+2. **Representation.** A map value is its strictly ascending entry list and
+   a set its strictly ascending element list, so equal maps and sets are
+   structurally equal and iterate identically. Generated Lean represents
+   `map K V` as `List (Prod K V)` and `set K` as `List K`; the closed
+   operations are the only producers, so the canonical invariant holds by
+   construction. Memory is one entry or element per member; every literal
+   entry, element, node, and edge is charged to `max_ir_nodes`.
+3. **Literals.** A `map_literal`, `set_literal`, or `graph_literal` is keyed
+   only by literal values (natural, integer, string, and Boolean literals
+   and pairs of them); other keys are inserted with `map_insert` or
+   `set_insert`. Each literal key is first checked as a term, so its
+   spelling is canonical and a fixed-width key is in range; only then does
+   it have a position in the order. Linking rejects a duplicate key,
+   element, node, or edge, and
+   a graph edge whose source or target is not a declared node, then sorts
+   every literal into canonical order. Reordered equivalent source therefore
+   links to identical semantic data, semantic identities, and generated
+   artifacts; only the source identity records the textual order.
+4. **Operations.** Each collection primitive has one explicit result type:
+   insertion replaces an existing key, removal of an absent key is the
+   identity, lookup returns `Option`, keys/values/entries/elements are
+   ascending lists, union inserts the right operand's elements into the
+   left, intersection and difference keep the left operand's order, and
+   `map_fold`, `set_fold`, and `list_fold` visit members in ascending (or
+   list) order with the state as the step's first argument. A graph is
+   `map node (set node)`; `graph_successors` of an absent node is empty;
+   `graph_reachable` is the breadth-first closure including the start node,
+   computed in at most node-count-plus-one rounds, each of which either adds
+   a node or ends the search, so the bound never truncates the closure;
+   `graph_topological` is Kahn's order taking the least ready node first,
+   removing one node per round within the same bound, or none when a cycle
+   remains.
+5. **State threading.** State is explicit and pure: `list_fold`, `map_fold`,
+   `set_fold`, `iterate` (exactly `n` steps), and `iterate_until` (until the
+   step returns none or the natural-number bound is exhausted, returning the
+   final state and whether a fixed point was reached) take the step as a
+   function argument. Every iteration has a bound; no ambient mutable state
+   exists. A lambda or function reference passed as a step is in a closure
+   position, so executable definitions may use these combinators.
+6. **Runtime.** A module that writes a collection type or literal, or
+   applies any collection primitive (including one applied only to a
+   collection imported from another module), emits the fixed
+   `LexLeanCollections` runtime in its own namespace:
+   the `Key` order instances and the operations above as exposed, total
+   Lean definitions over lists, with no comment tokens.
 
 Routing is fixed by the project language and is never inferred from module
 content, so no byte sequence has two meanings:
@@ -4259,7 +4320,17 @@ Tests MUST establish that LexLean rejects, at minimum:
 - a semantic-module member outside the closed schema;
 - a mutual label shared by an inductive group and a definition group;
 - a call to another member of a mutual group under a lambda;
-- a well-founded definition referring to itself as a value.
+- a well-founded definition referring to itself as a value;
+- a duplicate key in a map literal;
+- a map keyed by a type without a canonical order;
+- a map literal keyed by a non-literal value;
+- a map literal key with a noncanonical spelling;
+- a set literal element outside its fixed-width range;
+- a graph edge to an undeclared node;
+- a duplicate graph edge;
+- a fold step whose type does not thread the state;
+- an iteration without its bound;
+- a collection under language 1.1.
 
 ### 28.6 Example verification
 
@@ -4625,6 +4696,9 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `SM-25` | `semantic-ir` | Language 1.2 function types, lambdas with exact explicit captures, full applications, and definition references are typed, lowered to fixed Lean, and verified. | §17.12, §18 |
 | `SM-26` | `semantic-ir` | Language 1.2 snapshots carry a deterministic alpha identity per definition that alpha-equivalent definitions share and any other change alters. | §17.12, §21 |
 | `SM-27` | `semantic-ir` | Language 1.2 snapshots carry complete recursion evidence (mutual labels, decreasing arguments, measures, and evidence bindings), and changing an evidence binding changes the semantic and alpha identities. | §17.12, §21 |
+| `SM-28` | `semantic-ir` | Language 1.2 finite maps and sets over closed ordered key types, their literals, and their primitive operations are typed, lowered to the fixed ordered-collection runtime, and verified. | §17.12 |
+| `SM-29` | `semantic-ir` | Reordered equivalent map, set, and graph literals link to byte-identical semantic data and generated artifacts, while duplicate keys, non-literal literal keys, and key types without a canonical order are rejected. | §17.12, §21 |
+| `SM-30` | `semantic-ir` | Language 1.2 graph literals reference only declared nodes, and successor, reachability, and topological-order queries are deterministic, bounded by the node count, and report a cycle as none. | §17.12 |
 | `DF-01` | `declarations` | A valid type-definition sentence emits one nonrecursive sort-valued Lean def linked to its document entry. | §15.7, §18.6 |
 | `DF-02` | `declarations` | A valid term-definition sentence emits one nonrecursive explicitly typed Lean def. | §15.7, §18.6 |
 | `DF-03` | `declarations` | A valid predicate-definition sentence emits one nonrecursive Prop-valued Lean def. | §15.7, §18.6 |
@@ -4642,6 +4716,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `DF-15` | `declarations` | An executable language-1.2 definition forms only non-escaping closures and calls only executable definitions; every violation fails before either backend runs. | §17.12 |
 | `DF-16` | `declarations` | Language 1.2 mutual definition groups recurse structurally over one recursive family, including nested and mutual inductives, and every call between members passes a structurally smaller family binder. | §17.12 |
 | `DF-17` | `declarations` | Language 1.2 well-founded definitions carry a binder-free natural-number measure and, per recursive call site, a prior theorem stating exactly that call's decrease obligation; linking checks the statements and Lean checks the proofs. | §17.12 |
+| `DF-18` | `declarations` | Language 1.2 state threading is explicit: ordered folds and bounded iteration pass the state through a direct closure, executable definitions may use them, and every iteration carries a natural-number bound. | §17.12 |
 | `PF-01` | `proofs` | Assume and exact-style simple proof sentences create scoped introductions and exact proof nodes. | §16.2 |
 | `PF-02` | `proofs` | Simple Apply is accepted only when its declared signature yields exactly one residual premise. | §16.2 |
 | `PF-03` | `proofs` | Structured apply requires every numbered residual premise exactly once and in signature order. | §16.6 |
@@ -4760,7 +4835,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `EX-07` | `examples` | The negative fixture suite covers every required rejection class and prescribed diagnostic family. | §28.5 |
 | `EX-08` | `examples` | Every example directory is discovered automatically and must satisfy the full example gate. | §28.6 |
 
-**Total required capability IDs:** 239.
+**Total required capability IDs:** 243.
 
 No row may be downgraded to `some-true` or `open`. Upstream Lean facts are ledger/authority rows, not substitutions for these build behaviors.
 

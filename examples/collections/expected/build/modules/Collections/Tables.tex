@@ -1,0 +1,33 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\begin{document}
+\section*{Semantic declarations}
+\subsection*{\texttt{declare}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Type: \texttt{List (Prod (String) (Nat))}.\par
+\noindent Definition: \texttt{(LexLeanCollections.mapInsert (table) (name) (slot) : List (Prod (String) (Nat)))}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{buildTable}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Type: \texttt{List (Prod (String) (Nat))}.\par
+\noindent Definition: \texttt{(LexLeanCollections.listFold ((fun (table : List (Prod (String) (Nat))) (name : String) => declare (table) (name) ((LexLeanCollections.mapSize (table) : Nat)))) (([] : List (Prod (String) (Nat)))) (names) : List (Prod (String) (Nat)))}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{callGraph}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{List (Prod (String) (List (String)))}.\par
+\noindent Definition: \texttt{([("emit", ["report"]), ("lex", []), ("main", ["emit", "parse"]), ("parse", ["lex"]), ("report", ["lex"])] : List (Prod (String) (List (String))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{callOrder}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Option (List (String))}.\par
+\noindent Definition: \texttt{(LexLeanCollections.graphTopological (callGraph) : Option (List (String)))}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{reachableFromParse}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{List (String)}.\par
+\noindent Definition: \texttt{(LexLeanCollections.graphReachable (callGraph) ("parse") : List (String))}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\end{document}
