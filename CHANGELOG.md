@@ -35,6 +35,12 @@ versions, and the entries below say what each tag does and does not claim.
   recursion uses exactly the direct recursive fields, and induction binds one
   hypothesis per recursive field. Products, pairs, `first`, `second`, and
   `Prod.mk` matches are new (`DF-12`, `DF-13`, `SM-24`, `examples/recursive-data`).
+  A standalone recursive definition decreases only over a self-recursive
+  inductive, and no 1.2 declaration may take the name of a built-in
+  constructor owner (`Bool`, `List`, `Nat`, `Option`, `Prod`, `Result`).
+  Eight new negative fixtures cover positivity, non-uniformity, an
+  uninhabited cycle, a recursive structure, a non-contiguous group, bad type
+  arguments, a constructor mismatch, and a forward reference.
 - The public snapshot DTO `SnapshotTerm` gains the `Let`, `Pair`, `First`,
   and `Second` variants, `SnapshotType` gains `Product`, and the inductive
   declaration gains an optional `mutual` label; downstream exhaustive

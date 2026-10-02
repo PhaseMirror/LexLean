@@ -1276,6 +1276,22 @@ fn check_name(name: &str, what: &str) -> Result<(), String> {
     }
 }
 
+/// The owners of the built-in constructors (`Bool.true`, `Nat.succ`,
+/// `List.cons`, `Option.some`, `Result.ok`, `Prod.mk`). A local reference to
+/// such a constructor has no module, so in language 1.2 no declaration may
+/// take one of these names and make the reference ambiguous.
+const BUILTIN_CONSTRUCTOR_OWNERS: [&str; 6] = ["Bool", "List", "Nat", "Option", "Prod", "Result"];
+
+fn check_declaration_name(name: &str, env: &Environment<'_>) -> Result<(), String> {
+    check_name(name, "declaration")?;
+    if env.language_1_2 && BUILTIN_CONSTRUCTOR_OWNERS.contains(&name) {
+        return Err(format!(
+            "declaration name `{name}` is reserved for the built-in type whose constructors it would shadow"
+        ));
+    }
+    Ok(())
+}
+
 fn check_member(member: &MemberRef, env: &Environment<'_>) -> Result<(), String> {
     check_name(&member.name, "member")?;
     if let Some(module) = &member.module {
@@ -1508,7 +1524,6 @@ fn constructor_arity(member: &MemberRef, env: &Environment<'_>) -> Option<usize>
     })
 }
 
-#[allow(clippy::too_many_lines)]
 /// Where a constructor field mentions a member of the inductive group being
 /// declared (§17.12 positivity).
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1894,6 +1909,7 @@ fn structurally_smaller_positions(constructor: &MemberRef, env: &Environment<'_>
     Vec::new()
 }
 
+#[allow(clippy::too_many_lines)]
 fn check_term(
     term: &SemanticTerm,
     locals: &BTreeSet<String>,
@@ -3724,7 +3740,7 @@ impl SemanticModule {
                     continue;
                 }
             }
-            check_name(name, "declaration")?;
+            check_declaration_name(name, &env)?;
             if !generated_names.insert(name.to_owned()) {
                 return Err(format!("duplicate generated name `{name}`"));
             }
@@ -3828,7 +3844,7 @@ impl SemanticModule {
                     // Later members' own names are registered here so the
                     // whole group is admitted at once, before any use.
                     for row in rows.iter().skip(1) {
-                        check_name(row.name, "declaration")?;
+                        check_declaration_name(row.name, &env)?;
                         if !generated_names.insert(row.name.to_owned()) {
                             return Err(format!("duplicate generated name `{}`", row.name));
                         }
@@ -3969,6 +3985,18 @@ impl SemanticModule {
                             return Err(format!(
                                 "definition `{name}` decreasing argument `{argument}` is not Nat, List, or a document inductive"
                             ));
+                        }
+                        // §17.12: one standalone function recurses
+                        // structurally only over a self-recursive type; a
+                        // nested or mutual group has no single structural
+                        // eliminator for it, exactly as for induction.
+                        if let SemanticType::Named { member, .. } = &parameters[index].r#type {
+                            if type_info(member, &env).is_some_and(|info| info.nested_or_mutual) {
+                                return Err(format!(
+                                    "definition `{name}` decreases on `{argument}` of the nested or mutual type `{}`; standalone structural recursion requires a self-recursive inductive",
+                                    member_key(member)
+                                ));
+                            }
                         }
                         if !matches!(
                             body,

@@ -282,6 +282,19 @@ Removed: each mutation was reverted; `conformance_sm_23`,
 `conformance_cf_17`, `conformance_cf_18`, `conformance_rp_10`,
 `cargo xtask validate-model`, and `cargo xtask check-fixtures` pass.
 
+### standalone structural recursion can fail
+
+Planted: the rejection of a standalone `recursive_argument` over a nested or
+mutual inductive disabled (`info.nested_or_mutual && false`), so a single
+definition could claim structural recursion over `Rose`, which has no single
+structural eliminator. Command: `cargo test -p repo-conformance --test
+conformance -- conformance_df_13`.
+
+```text
+thread 'conformance_df_13' panicked at crates/conformance/src/support.rs:317:14:
+check fails
+```
+
 ### recursive data positivity can fail
 
 Planted: the positivity rule in `classify_occurrence` was bypassed (`if false

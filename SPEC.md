@@ -2434,7 +2434,9 @@ either backend runs; they do not defer to what Lean would accept.
    declaration order, there are at least two, they declare identical ordered
    type parameters, and each has at least one constructor and no value
    parameters. A member may mention any member of its group; every other
-   reference is to an earlier declaration.
+   reference is to an earlier declaration. No language-1.2 declaration is named `Bool`, `List`, `Nat`, `Option`,
+   `Prod`, or `Result`: a local reference to a built-in constructor carries no
+   module, so such a declaration would make it ambiguous.
 2. **Uniformity.** Every mention of a group member inside a constructor field
    applies it to exactly the declared type parameters, in order.
 3. **Strict positivity.** A group member occurs in a field only as the whole
@@ -2456,7 +2458,11 @@ either backend runs; they do not defer to what Lean would accept.
    document constructor that is a direct occurrence of the matched
    inductive itself. A nested occurrence, or a member of another type in a
    mutual group, is not smaller under this rule. Imported recursive
-   inductives keep the same smaller positions.
+   inductives keep the same smaller positions. A standalone recursive
+   definition decreases only on `Nat`, `List`, or a self-recursive inductive
+   with no nested occurrence and no mutual group, exactly the types
+   `induction` accepts: a nested or mutual type has no single structural
+   eliminator for one function.
 7. **Induction.** `induction` applies to a self-recursive inductive with no
    nested occurrence and no mutual group, and binds the constructor fields
    followed by one hypothesis per direct recursive field, in field order.

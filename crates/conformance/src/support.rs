@@ -229,9 +229,16 @@ impl P {
         Self { temp, root }
     }
 
-    /// Assert that a failure produced no backend output (§17.12): the
-    /// §21.8 mutation lock may exist, a build or verification root may not.
+    /// Assert that a link-time failure also refuses `build` and leaves no
+    /// backend output (§17.12). `check` alone never runs a backend, so the
+    /// assertion is made against the command that would: the §21.8 mutation
+    /// lock may exist, a build or verification root may not.
     pub fn assert_no_backend_output(&self) {
+        let built = self.engine().build(BuildRequest {
+            selection: Selection::Entrypoints,
+        });
+        let error = built.err().expect("a link-time failure refuses build");
+        expect_code(&error, "LLT4001");
         for output in [".lexlean/build", ".lexlean/verified"] {
             assert!(
                 !self.root.join(output).exists(),

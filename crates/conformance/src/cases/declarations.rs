@@ -672,8 +672,8 @@ pub(crate) fn run(id: &str) {
                 "",
                 "uninhabited recursive cycle: no constructor of inductive `Tree`",
             );
-            // A mutual group across a foreign declaration, a one-member
-            // group, and members with different type parameters.
+            // A one-member group, and members with different type
+            // parameters.
             mutate(
                 r#""mutual":"Syntax","name":"Stmt""#,
                 r#""mutual":"Other","name":"Stmt""#,
@@ -683,6 +683,20 @@ pub(crate) fn run(id: &str) {
                 r#""mutual":"Syntax","name":"Stmt","parameters":[],"type_parameters":[]"#,
                 r#""mutual":"Syntax","name":"Stmt","parameters":[],"type_parameters":["Item"]"#,
                 "members must declare identical type parameters",
+            );
+            // A later group member is admitted by the group, and still meets
+            // every naming rule: here it duplicates an earlier declaration.
+            mutate(
+                r#""mutual":"Syntax","name":"Stmt""#,
+                r#""mutual":"Syntax","name":"Tree""#,
+                "duplicate generated name `Tree`",
+            );
+            // A built-in constructor owner cannot be redeclared, or a local
+            // `Option.some` would be ambiguous.
+            mutate(
+                r#""kind":"inductive","name":"Outcome""#,
+                r#""kind":"inductive","name":"Option""#,
+                "declaration name `Option` is reserved for the built-in type",
             );
             // A self-referential structure.
             mutate(
@@ -703,7 +717,10 @@ pub(crate) fn run(id: &str) {
                 ),
             );
             let error = eleven.check_fails_with("LLT4001");
-            assert!(error.to_string().contains("RemoteFlag"), "{error}");
+            assert_eq!(
+                error.to_string(),
+                "LLT4001: phase link: forward or missing type `RemoteFlag`"
+            );
 
             // Resource accounting charges every recursive constructor field:
             // the data module alone is charged at least one node per
@@ -765,12 +782,21 @@ pub(crate) fn run(id: &str) {
                 r#""arguments":[{"kind":"var","name":"tree"}],"function":{"name":"treeSize"}"#,
                 "recursive call `treeSize` is not on a structurally smaller value",
             );
-            // A non-recursive field is not smaller even when the call would
-            // otherwise be typed: `mirror` on the stored label.
+            // A value rebuilt from the fields is not smaller than the match
+            // scrutinee: only a direct recursive field binder is. For a
+            // self-recursive inductive these are exactly the binders of the
+            // scrutinee's own type, so typing and this rule coincide.
             mutate(
                 r#""arguments":[{"kind":"var","name":"right"}],"function":{"name":"mirror"}"#,
-                r#""arguments":[{"kind":"var","name":"tree"}],"function":{"name":"mirror"}"#,
+                r#""arguments":[{"arguments":[{"kind":"var","name":"left"},{"kind":"var","name":"value"},{"kind":"var","name":"right"}],"constructor":{"module":"Types","name":"Tree.node"},"kind":"constructor","type_arguments":[{"kind":"nat"}]}],"function":{"name":"mirror"}"#,
                 "recursive call `mirror` is not on a structurally smaller value",
+            );
+            // A standalone definition cannot recurse over a nested type: it has
+            // no single structural eliminator.
+            mutate(
+                r#""name":"roseLabel","parameters":[{"name":"rose","type":{"arguments":[{"kind":"nat"}],"kind":"named","member":{"module":"Types","name":"Rose"}}}],"result""#,
+                r#""name":"roseLabel","parameters":[{"name":"rose","type":{"arguments":[{"kind":"nat"}],"kind":"named","member":{"module":"Types","name":"Rose"}}}],"recursive_argument":"rose","result""#,
+                "standalone structural recursion requires a self-recursive inductive",
             );
             // One hypothesis per direct recursive field.
             mutate(
