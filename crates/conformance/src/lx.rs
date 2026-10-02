@@ -217,6 +217,39 @@ pub fn encode_option(option: Json, wrap: impl FnOnce(Json) -> Json) -> Json {
     ]})
 }
 
+// --- polymorphism ----------------------------------------------------------
+
+/// A type parameter of the declaration being generated.
+pub fn parameter_t(name: &str) -> Json {
+    json!({"kind": "parameter", "name": name})
+}
+/// A function type.
+pub fn function_t(parameters: Vec<Json>, result: Json) -> Json {
+    json!({"kind": "function", "parameters": parameters, "result": result})
+}
+/// A call of a polymorphic definition at `type_arguments`.
+pub fn call_at(function: Json, type_arguments: Vec<Json>, arguments: Vec<Json>) -> Json {
+    json!({"kind": "call", "function": function, "arguments": arguments,
+           "type_arguments": type_arguments})
+}
+/// A definition generic in `type_parameters`.
+pub fn generic(type_parameters: &[&str], mut definition: Json) -> Json {
+    definition["type_parameters"] = json!(type_parameters);
+    definition
+}
+/// An application of a function-valued term.
+pub fn apply(function: Json, arguments: Vec<Json>) -> Json {
+    json!({"kind": "apply", "function": function, "arguments": arguments})
+}
+/// A definition as a value.
+pub fn function_ref(function: Json) -> Json {
+    json!({"kind": "function_ref", "function": function})
+}
+/// `∀ (name : ty), body`.
+pub fn forall(name: &str, ty: Json, body: Json) -> Json {
+    json!({"kind": "forall", "binder": parameter(name, ty), "body": body})
+}
+
 // --- proofs ----------------------------------------------------------------
 
 pub fn decide() -> Json {

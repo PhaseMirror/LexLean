@@ -1354,3 +1354,8 @@ fn conformance_gn_06() {
 fn conformance_gn_07() {
     repo_conformance::cases::run("GN-07");
 }
+
+#[test]
+fn conformance_gn_08() {
+    repo_conformance::cases::run("GN-08");
+}

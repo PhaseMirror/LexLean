@@ -296,7 +296,7 @@ public inductive ClaimClass where
   | canonical
   | representationMinimal
   | comparisonTheorem
-  | profileDefinedComparison
+  | profileDefinedComparison (_ : String) (_ : String) (_ : String)
   | inputTotal
   | globalOptimal
   | argminComplete
@@ -350,20 +350,40 @@ public inductive Boundary where
   | preparedState
   | preparedPlan
 
+public inductive OperandSize where
+  | weighted
+  | unit
+
+public structure Capacity where
+  fuel : Nat
+  domain : Nat
+  systems : Nat
+  charge : Nat
+
+public structure Prepared where
+  kind : ActionKind
+  artifact : String
+
 public structure Machine where
   fuel : Nat
+  capacity : Capacity
+  operandSize : OperandSize
   actions : List (Action)
   boundary : Boundary
-  preparationCommon : Bool
+  prepared : List (Prepared)
 
 public inductive Selector where
   | fixed (_ : Nat)
   | dispatch (_ : Nat) (_ : Nat) (_ : Nat)
 
+public structure Plan where
+  function : Compiler.TargetSyntax.Function
+  prepares : List (ActionKind)
+
 public structure Grammar where
   argument : Compiler.TargetSyntax.Ty
   result : Compiler.TargetSyntax.Ty
-  plans : List (Compiler.TargetSyntax.Function)
+  plans : List (Plan)
   thresholds : List (Nat)
 
 public inductive Carrier where
@@ -394,6 +414,7 @@ public structure Request where
   machine : Machine
   carrier : Carrier
   completeness : Completeness
+  «universe» : String
   objective : Objective
   claim : ClaimClass
   scope : Scope
@@ -407,11 +428,15 @@ public inductive Rejection where
   | missingCompleteness
   | selfReferentialCompleteness
   | optimizerCompleteness
+  | beyondCapacity
+  | unitCostOperands
   | duplicateAction (_ : ActionKind)
   | unaccountedAction (_ : ActionKind)
   | hiddenCost (_ : ActionKind)
   | unrealizableAction (_ : ActionKind)
-  | uncommonPreparation
+  | unboundPreparation (_ : ActionKind)
+  | strayPreparedArtifact (_ : ActionKind)
+  | claimAlias
   | scalarClaimOverPartialOrder
   | vectorClaimOverTotalOrder
   | uncoveredScope
@@ -451,49 +476,213 @@ public inductive Answer where
 
 @[expose] public def checkPerformed (machine : Machine) (wanted : ActionKind) : Option (Rejection) := (match findAction ((machine).actions) (wanted) with | Option.none => Option.some (Rejection.unaccountedAction (wanted)) | Option.some charge => (match charge with | Charge.steps => Option.none | Charge.constant _ => Option.some (Rejection.hiddenCost (wanted)) | Charge.free => Option.some (Rejection.hiddenCost (wanted)) | Charge.undeclared => Option.some (Rejection.hiddenCost (wanted))))
 
-@[expose] public def checkDeclared (machine : Machine) (action : Action) : Option (Rejection) := (let kind : ActionKind := (action).kind; (if performed (kind) then Option.none else (if preparation (kind) then (match (action).charge with | Charge.steps => Option.some (Rejection.hiddenCost (kind)) | Charge.constant amount => (if (Nat.beq (amount) (0)) then Option.some (Rejection.hiddenCost (kind)) else Option.none) | Charge.free => (match (machine).boundary with | Boundary.complete => Option.some (Rejection.uncommonPreparation) | Boundary.preparedState => (if (machine).preparationCommon then Option.none else Option.some (Rejection.uncommonPreparation)) | Boundary.preparedPlan => (if (machine).preparationCommon then Option.none else Option.some (Rejection.uncommonPreparation))) | Charge.undeclared => Option.some (Rejection.hiddenCost (kind))) else Option.some (Rejection.unrealizableAction (kind)))))
+@[expose] public def preparedFor : (prepared : List (Prepared)) -> (kind : ActionKind) -> Bool
+  | List.nil, _kind => false
+  | List.cons artifact rest, kind => (sameKind ((artifact).kind) (kind) || preparedFor (rest) (kind))
+
+@[expose] public def checkDeclared (machine : Machine) (action : Action) : Option (Rejection) := (let kind : ActionKind := (action).kind; (if performed (kind) then Option.none else (if preparation (kind) then (match (action).charge with | Charge.steps => Option.some (Rejection.hiddenCost (kind)) | Charge.constant amount => (if (Nat.beq (amount) (0)) then Option.some (Rejection.hiddenCost (kind)) else Option.none) | Charge.free => (match (machine).boundary with | Boundary.complete => Option.some (Rejection.unboundPreparation (kind)) | Boundary.preparedState => (if preparedFor ((machine).prepared) (kind) then Option.none else Option.some (Rejection.unboundPreparation (kind))) | Boundary.preparedPlan => (if preparedFor ((machine).prepared) (kind) then Option.none else Option.some (Rejection.unboundPreparation (kind)))) | Charge.undeclared => Option.some (Rejection.hiddenCost (kind))) else Option.some (Rejection.unrealizableAction (kind)))))
 
 @[expose] public def checkAllDeclared : (machine : Machine) -> (actions : List (Action)) -> Option (Rejection)
   | _machine, List.nil => Option.none
   | machine, List.cons action rest => (match checkDeclared (machine) (action) with | Option.none => checkAllDeclared (machine) (rest) | Option.some rejection => Option.some (rejection))
 
-@[expose] public def preparationCharge : (actions : List (Action)) -> Nat
-  | List.nil => 0
-  | List.cons action rest => ((if preparation ((action).kind) then (match (action).charge with | Charge.steps => 0 | Charge.constant amount => amount | Charge.free => 0 | Charge.undeclared => 0) else 0) + preparationCharge (rest))
+@[expose] public def checkPrepared : (machine : Machine) -> (prepared : List (Prepared)) -> Option (Rejection)
+  | _machine, List.nil => Option.none
+  | machine, List.cons artifact rest => (match findAction ((machine).actions) ((artifact).kind) with | Option.none => Option.some (Rejection.strayPreparedArtifact ((artifact).kind)) | Option.some charge => (match charge with | Charge.steps => Option.some (Rejection.strayPreparedArtifact ((artifact).kind)) | Charge.constant _ => Option.some (Rejection.strayPreparedArtifact ((artifact).kind)) | Charge.free => checkPrepared (machine) (rest) | Charge.undeclared => Option.some (Rejection.strayPreparedArtifact ((artifact).kind))))
 
-@[expose] public def checkClaim (request : Request) : Option (Rejection) := (match (request).claim with | ClaimClass.exact => Option.some (Rejection.unsupportedClaim) | ClaimClass.normalForm => Option.some (Rejection.unsupportedClaim) | ClaimClass.canonical => Option.some (Rejection.unsupportedClaim) | ClaimClass.representationMinimal => Option.some (Rejection.unsupportedClaim) | ClaimClass.comparisonTheorem => Option.some (Rejection.unsupportedClaim) | ClaimClass.profileDefinedComparison => Option.some (Rejection.unsupportedClaim) | ClaimClass.inputTotal => Option.some (Rejection.unsupportedClaim) | ClaimClass.globalOptimal => (match (request).objective with | Objective.scalar => Option.none | Objective.vector => Option.some (Rejection.scalarClaimOverPartialOrder)) | ClaimClass.argminComplete => (match (request).objective with | Objective.scalar => Option.none | Objective.vector => Option.some (Rejection.scalarClaimOverPartialOrder)) | ClaimClass.paretoOptimal => (match (request).objective with | Objective.scalar => Option.some (Rejection.vectorClaimOverTotalOrder) | Objective.vector => Option.none) | ClaimClass.frontierComplete => (match (request).objective with | Objective.scalar => Option.some (Rejection.vectorClaimOverTotalOrder) | Objective.vector => Option.none) | ClaimClass.pointwiseEnvelopeComplete => Option.some (Rejection.unsupportedClaim) | ClaimClass.queryFamilyAnswerComplete => Option.some (Rejection.unsupportedClaim) | ClaimClass.useCaseGlobalOptimal => Option.some (Rejection.unsupportedClaim) | ClaimClass.workloadArgminComplete => Option.some (Rejection.unsupportedClaim) | ClaimClass.workloadParetoOptimal => Option.some (Rejection.unsupportedClaim) | ClaimClass.workloadFrontierComplete => Option.some (Rejection.unsupportedClaim) | ClaimClass.familyOptimal => Option.some (Rejection.unsupportedClaim) | ClaimClass.competitiveBound => Option.some (Rejection.unsupportedClaim) | ClaimClass.competitiveOptimal => Option.some (Rejection.unsupportedClaim) | ClaimClass.asymptoticBound => Option.some (Rejection.unsupportedClaim) | ClaimClass.asymptoticOptimal => Option.some (Rejection.unsupportedClaim) | ClaimClass.useCaseClassComplete => Option.some (Rejection.unsupportedClaim) | ClaimClass.useCaseClassAnswerComplete => Option.some (Rejection.unsupportedClaim) | ClaimClass.maintainedUseCaseClass => Option.some (Rejection.unsupportedClaim) | ClaimClass.restrictedUniverseOptimal => (match (request).objective with | Objective.scalar => Option.none | Objective.vector => Option.some (Rejection.scalarClaimOverPartialOrder)) | ClaimClass.revisionPreserved => Option.some (Rejection.unsupportedClaim) | ClaimClass.bestKnown => Option.some (Rejection.unsupportedClaim) | ClaimClass.measuredBestAmongTested => Option.some (Rejection.unsupportedClaim) | ClaimClass.heuristicSelected => Option.some (Rejection.unsupportedClaim) | ClaimClass.instanceOptimal _ _ => Option.some (Rejection.unsupportedClaim))
+@[expose] public def unitCharge (actions : List (Action)) (kind : ActionKind) : Nat := (match findAction (actions) (kind) with | Option.none => 0 | Option.some charge => (match charge with | Charge.steps => 0 | Charge.constant amount => amount | Charge.free => 0 | Charge.undeclared => 0))
 
-@[expose] public def validate (request : Request) : Option (Rejection) := (match (match (request).domain with | List.nil => Option.some (Rejection.emptyDomain) | List.cons _ _ => Option.none) with | Option.none => (match (match (request).carrier with | Carrier.grammar _ => Option.none | Carrier.internalPlans => Option.some (Rejection.internalPlanUniverse) | Carrier.optimizerOutput => Option.some (Rejection.optimizerDefinedUniverse) | Carrier.discovered _ => Option.some (Rejection.discoveredUniverse) | Carrier.cached => Option.some (Rejection.cachedUniverse)) with | Option.none => (match (match (request).completeness with | Completeness.grammarEquality => Option.none | Completeness.missing => Option.some (Rejection.missingCompleteness) | Completeness.citesUniverseId => Option.some (Rejection.selfReferentialCompleteness) | Completeness.citesOptimizer => Option.some (Rejection.optimizerCompleteness)) with | Option.none => (match checkDistinct (((request).machine).actions) (((request).machine).actions) with | Option.none => (match checkPerformed ((request).machine) (ActionKind.observation) with | Option.none => (match checkPerformed ((request).machine) (ActionKind.dispatch) with | Option.none => (match checkPerformed ((request).machine) (ActionKind.fallback) with | Option.none => (match checkPerformed ((request).machine) (ActionKind.execution) with | Option.none => (match checkAllDeclared ((request).machine) (((request).machine).actions) with | Option.none => (match checkClaim (request) with | Option.none => (match (match (request).scope with | Scope.grammarUniverse => Option.none | Scope.calculusPrograms => Option.some (Rejection.uncoveredScope) | Scope.rustPrograms => Option.some (Rejection.uncoveredScope)) with | Option.none => Option.none | Option.some rejection18 => Option.some (rejection18)) | Option.some rejection17 => Option.some (rejection17)) | Option.some rejection16 => Option.some (rejection16)) | Option.some rejection15 => Option.some (rejection15)) | Option.some rejection14 => Option.some (rejection14)) | Option.some rejection13 => Option.some (rejection13)) | Option.some rejection12 => Option.some (rejection12)) | Option.some rejection11 => Option.some (rejection11)) | Option.some rejection10 => Option.some (rejection10)) | Option.some rejection9 => Option.some (rejection9)) | Option.some rejection8 => Option.some (rejection8))
+@[expose] public def planCharge : (actions : List (Action)) -> (kinds : List (ActionKind)) -> Nat
+  | _actions, List.nil => 0
+  | actions, List.cons kind rest => (unitCharge (actions) (kind) + planCharge (actions) (rest))
 
-@[expose] public def fixedSelectors : (count : Nat) -> (next : Nat) -> List (Selector)
-  | Nat.zero, _next => ([] : List (Selector))
-  | Nat.succ remaining, next => (Selector.fixed (next) :: fixedSelectors (remaining) ((next + 1)))
+@[expose] public def checkKindsAccounted : (actions : List (Action)) -> (kinds : List (ActionKind)) -> Option (Rejection)
+  | _actions, List.nil => Option.none
+  | actions, List.cons kind rest => (match findAction (actions) (kind) with | Option.none => Option.some (Rejection.unaccountedAction (kind)) | Option.some _ => checkKindsAccounted (actions) (rest))
 
-@[expose] public def pairsFrom : (small : Nat) -> (candidates : List (Nat)) -> List ((Prod (Nat) (Nat)))
-  | _small, List.nil => ([] : List ((Prod (Nat) (Nat))))
-  | small, List.cons large rest => (if (Nat.beq (small) (large)) then pairsFrom (small) (rest) else ((small, large) :: pairsFrom (small) (rest)))
+@[expose] public def checkPlanPreparation : (actions : List (Action)) -> (plans : List (Plan)) -> Option (Rejection)
+  | _actions, List.nil => Option.none
+  | actions, List.cons plan rest => (match checkKindsAccounted (actions) ((plan).prepares) with | Option.none => checkPlanPreparation (actions) (rest) | Option.some rejection => Option.some (rejection))
 
-@[expose] public def orderedPairs : (smalls : List (Nat)) -> (all : List (Nat)) -> List ((Prod (Nat) (Nat)))
-  | List.nil, _all => ([] : List ((Prod (Nat) (Nat))))
-  | List.cons small rest, all => (LexLeanRuntime.append (pairsFrom (small) (all)) (orderedPairs (rest) (all)) : List ((Prod (Nat) (Nat))))
+@[expose] public def chargeBeyond : (actions : List (Action)) -> (bound : Nat) -> Bool
+  | List.nil, _bound => false
+  | List.cons action rest, bound => ((match (action).charge with | Charge.steps => false | Charge.constant amount => (Nat.blt (bound) (amount)) | Charge.free => false | Charge.undeclared => false) || chargeBeyond (rest) (bound))
 
-@[expose] public def indices : (count : Nat) -> (next : Nat) -> List (Nat)
-  | Nat.zero, _next => ([] : List (Nat))
-  | Nat.succ remaining, next => (next :: indices (remaining) ((next + 1)))
+@[expose] public def appendAll (Item : Type) : (front : List (Item)) -> (back : List (Item)) -> List (Item)
+  | List.nil, back => back
+  | List.cons head rest, back => (head :: appendAll (Item) (rest) (back))
 
-@[expose] public def dispatchFor : (threshold : Nat) -> (pairs : List ((Prod (Nat) (Nat)))) -> List (Selector)
-  | _threshold, List.nil => ([] : List (Selector))
-  | threshold, List.cons chosen rest => (Selector.dispatch (threshold) ((chosen).1) ((chosen).2) :: dispatchFor (threshold) (rest))
+@[expose] public def range : (count : Nat) -> List (Nat)
+  | Nat.zero => ([] : List (Nat))
+  | Nat.succ remaining => appendAll (Nat) (range (remaining)) ((remaining :: ([] : List (Nat))))
 
-@[expose] public def dispatchSelectors : (thresholds : List (Nat)) -> (pairs : List ((Prod (Nat) (Nat)))) -> List (Selector)
-  | List.nil, _pairs => ([] : List (Selector))
-  | List.cons threshold rest, pairs => (LexLeanRuntime.append (dispatchFor (threshold) (pairs)) (dispatchSelectors (rest) (pairs)) : List (Selector))
+@[expose] public def natIn : (item : Nat) -> (items : List (Nat)) -> Bool
+  | _item, List.nil => false
+  | item, List.cons head rest => ((Nat.beq (item) (head)) || natIn (item) (rest))
 
-@[expose] public def expand (grammar : Grammar) : List (Selector) := (let count : Nat := (LexLeanRuntime.length ((grammar).plans) : Nat); (let all : List (Nat) := indices (count) (0); (LexLeanRuntime.append (fixedSelectors (count) (0)) (dispatchSelectors ((grammar).thresholds) (orderedPairs (all) (all))) : List (Selector))))
+@[expose] public def selectorEq (left : Selector) (right : Selector) : Bool := (match left with | Selector.fixed plan => (match right with | Selector.fixed other => (Nat.beq (plan) (other)) | Selector.dispatch _ _ _ => false) | Selector.dispatch threshold small large => (match right with | Selector.fixed _ => false | Selector.dispatch otherThreshold otherSmall otherLarge => ((Nat.beq (threshold) (otherThreshold)) && ((Nat.beq (small) (otherSmall)) && (Nat.beq (large) (otherLarge))))))
+
+@[expose] public def selectorIn : (selector : Selector) -> (selectors : List (Selector)) -> Bool
+  | _selector, List.nil => false
+  | selector, List.cons head rest => (selectorEq (selector) (head) || selectorIn (selector) (rest))
+
+@[expose] public def fixedOver : (plans : List (Nat)) -> List (Selector)
+  | List.nil => ([] : List (Selector))
+  | List.cons plan rest => (Selector.fixed (plan) :: fixedOver (rest))
+
+@[expose] public def dispatchOver : (threshold : Nat) -> (small : Nat) -> (larges : List (Nat)) -> List (Selector)
+  | _threshold, _small, List.nil => ([] : List (Selector))
+  | threshold, small, List.cons large rest => (Selector.dispatch (threshold) (small) (large) :: dispatchOver (threshold) (small) (rest))
+
+@[expose] public def dispatchSmalls : (threshold : Nat) -> (smalls : List (Nat)) -> (larges : List (Nat)) -> List (Selector)
+  | _threshold, List.nil, _larges => ([] : List (Selector))
+  | threshold, List.cons small rest, larges => appendAll (Selector) (dispatchOver (threshold) (small) (larges)) (dispatchSmalls (threshold) (rest) (larges))
+
+@[expose] public def dispatchThresholds : (thresholds : List (Nat)) -> (plans : List (Nat)) -> List (Selector)
+  | List.nil, _plans => ([] : List (Selector))
+  | List.cons threshold rest, plans => appendAll (Selector) (dispatchSmalls (threshold) (plans) (plans)) (dispatchThresholds (rest) (plans))
+
+@[expose] public def expand (grammar : Grammar) : List (Selector) := (let all : List (Nat) := range ((LexLeanRuntime.length ((grammar).plans) : Nat)); appendAll (Selector) (fixedOver (all)) (dispatchThresholds ((grammar).thresholds) (all)))
+
+@[expose] public def wellFormed (grammar : Grammar) (selector : Selector) : Bool := (let count : Nat := (LexLeanRuntime.length ((grammar).plans) : Nat); (match selector with | Selector.fixed plan => (Nat.blt (plan) (count)) | Selector.dispatch threshold small large => (natIn (threshold) ((grammar).thresholds) && ((Nat.blt (small) (count)) && (Nat.blt (large) (count))))))
+
+public theorem orAssociative : (forall (a : Bool), (forall (b : Bool), (forall (c : Bool), (((a || b) || c) = (a || (b || c)))))) := by
+  decide
+
+public theorem orFalse : (forall (a : Bool), ((a || false) = a)) := by
+  decide
+
+public theorem falseOr : (forall (a : Bool), ((false || a) = a)) := by
+  decide
+
+public theorem andFalse : (forall (a : Bool), ((a && false) = false)) := by
+  decide
+
+public theorem falseAnd : (forall (a : Bool), ((false && a) = false)) := by
+  decide
+
+public theorem andOverOr : (forall (a : Bool), (forall (b : Bool), (forall (c : Bool), (((a && b) || (a && c)) = (a && (b || c)))))) := by
+  decide
+
+public theorem orUnderAnd : (forall (a : Bool), (forall (b : Bool), (forall (c : Bool), (((a && c) || (b && c)) = ((a || b) && c))))) := by
+  decide
+
+public theorem bltNext (left : Nat) (right : Nat) : ((Nat.blt ((left + 1)) ((right + 1))) = (Nat.blt (left) (right))) := by
+  rfl
+
+public theorem beqNext (left : Nat) (right : Nat) : ((Nat.beq ((left + 1)) ((right + 1))) = (Nat.beq (left) (right))) := by
+  rfl
+
+public theorem bltSucc (item : Nat) (bound : Nat) : ((Nat.blt (item) ((bound + 1))) = ((Nat.blt (item) (bound)) || (Nat.beq (item) (bound)))) := by
+  induction item generalizing bound with
+  | zero =>
+    cases bound with
+    | zero =>
+      rfl
+    | succ smaller =>
+      rfl
+  | succ previous hypothesis =>
+    cases bound with
+    | zero =>
+      rfl
+    | succ smaller =>
+      simp only [beqNext, bltNext, hypothesis]
+
+public theorem natInAppend (item : Nat) (front : List (Nat)) (back : List (Nat)) : (natIn (item) (appendAll (Nat) (front) (back)) = (natIn (item) (front) || natIn (item) (back))) := by
+  induction front with
+  | nil =>
+    rfl
+  | cons head rest hypothesis =>
+    simp only [appendAll, hypothesis, natIn, orAssociative]
+
+public theorem selectorInAppend (selector : Selector) (front : List (Selector)) (back : List (Selector)) : (selectorIn (selector) (appendAll (Selector) (front) (back)) = (selectorIn (selector) (front) || selectorIn (selector) (back))) := by
+  induction front with
+  | nil =>
+    rfl
+  | cons head rest hypothesis =>
+    simp only [appendAll, hypothesis, orAssociative, selectorIn]
+
+public theorem natInRange (item : Nat) (count : Nat) : (natIn (item) (range (count)) = (Nat.blt (item) (count))) := by
+  induction count with
+  | zero =>
+    rfl
+  | succ smaller hypothesis =>
+    simp only [bltSucc, hypothesis, natIn, natInAppend, orFalse, range]
+
+public theorem fixedInFixed (plan : Nat) (plans : List (Nat)) : (selectorIn (Selector.fixed (plan)) (fixedOver (plans)) = natIn (plan) (plans)) := by
+  induction plans with
+  | nil =>
+    rfl
+  | cons head rest hypothesis =>
+    simp only [fixedOver, hypothesis, natIn, selectorEq, selectorIn]
+
+public theorem dispatchInFixed (threshold : Nat) (small : Nat) (large : Nat) (plans : List (Nat)) : (selectorIn (Selector.dispatch (threshold) (small) (large)) (fixedOver (plans)) = false) := by
+  induction plans with
+  | nil =>
+    rfl
+  | cons head rest hypothesis =>
+    simp only [falseOr, fixedOver, hypothesis, selectorEq, selectorIn]
+
+public theorem fixedInOver (plan : Nat) (level : Nat) (origin : Nat) (larges : List (Nat)) : (selectorIn (Selector.fixed (plan)) (dispatchOver (level) (origin) (larges)) = false) := by
+  induction larges with
+  | nil =>
+    rfl
+  | cons head rest hypothesis =>
+    simp only [dispatchOver, falseOr, hypothesis, selectorEq, selectorIn]
+
+public theorem fixedInSmalls (plan : Nat) (level : Nat) (smalls : List (Nat)) (larges : List (Nat)) : (selectorIn (Selector.fixed (plan)) (dispatchSmalls (level) (smalls) (larges)) = false) := by
+  induction smalls with
+  | nil =>
+    rfl
+  | cons head rest hypothesis =>
+    simp only [dispatchSmalls, falseOr, fixedInOver, hypothesis, selectorInAppend]
+
+public theorem fixedInDispatch (plan : Nat) (thresholds : List (Nat)) (plans : List (Nat)) : (selectorIn (Selector.fixed (plan)) (dispatchThresholds (thresholds) (plans)) = false) := by
+  induction thresholds with
+  | nil =>
+    rfl
+  | cons head rest hypothesis =>
+    simp only [dispatchThresholds, falseOr, fixedInSmalls, hypothesis, selectorInAppend]
+
+public theorem dispatchInOver (threshold : Nat) (small : Nat) (large : Nat) (level : Nat) (origin : Nat) (larges : List (Nat)) : (selectorIn (Selector.dispatch (threshold) (small) (large)) (dispatchOver (level) (origin) (larges)) = ((Nat.beq (threshold) (level)) && ((Nat.beq (small) (origin)) && natIn (large) (larges)))) := by
+  induction larges with
+  | nil =>
+    simp only [andFalse, dispatchOver, natIn, selectorIn]
+  | cons head rest hypothesis =>
+    simp only [andOverOr, dispatchOver, hypothesis, natIn, selectorEq, selectorIn]
+
+public theorem dispatchInSmalls (threshold : Nat) (small : Nat) (large : Nat) (level : Nat) (smalls : List (Nat)) (larges : List (Nat)) : (selectorIn (Selector.dispatch (threshold) (small) (large)) (dispatchSmalls (level) (smalls) (larges)) = ((Nat.beq (threshold) (level)) && (natIn (small) (smalls) && natIn (large) (larges)))) := by
+  induction smalls with
+  | nil =>
+    simp only [andFalse, dispatchSmalls, falseAnd, natIn, selectorIn]
+  | cons head rest hypothesis =>
+    simp only [andOverOr, dispatchInOver, dispatchSmalls, hypothesis, natIn, orUnderAnd, selectorInAppend]
+
+public theorem dispatchInThresholds (threshold : Nat) (small : Nat) (large : Nat) (thresholds : List (Nat)) (plans : List (Nat)) : (selectorIn (Selector.dispatch (threshold) (small) (large)) (dispatchThresholds (thresholds) (plans)) = (natIn (threshold) (thresholds) && (natIn (small) (plans) && natIn (large) (plans)))) := by
+  induction thresholds with
+  | nil =>
+    rfl
+  | cons head rest hypothesis =>
+    simp only [dispatchInSmalls, dispatchThresholds, hypothesis, natIn, orUnderAnd, selectorInAppend]
+
+public theorem expandComplete (grammar : Grammar) (selector : Selector) : (selectorIn (selector) (expand (grammar)) = wellFormed (grammar) (selector)) := by
+  cases selector with
+  | fixed plan =>
+    simp only [expand, fixedInDispatch, fixedInFixed, natInRange, orFalse, selectorInAppend, wellFormed]
+  | dispatch threshold small large =>
+    simp only [dispatchInFixed, dispatchInThresholds, expand, falseOr, natInRange, selectorInAppend, wellFormed]
+
+@[expose] public def checkClaim (request : Request) : Option (Rejection) := (match (request).claim with | ClaimClass.exact => Option.some (Rejection.unsupportedClaim) | ClaimClass.normalForm => Option.some (Rejection.unsupportedClaim) | ClaimClass.canonical => Option.some (Rejection.unsupportedClaim) | ClaimClass.representationMinimal => Option.some (Rejection.unsupportedClaim) | ClaimClass.comparisonTheorem => Option.some (Rejection.unsupportedClaim) | ClaimClass.profileDefinedComparison _ _ _ => Option.some (Rejection.unsupportedClaim) | ClaimClass.inputTotal => Option.some (Rejection.unsupportedClaim) | ClaimClass.globalOptimal => (match (request).objective with | Objective.scalar => Option.none | Objective.vector => Option.some (Rejection.scalarClaimOverPartialOrder)) | ClaimClass.argminComplete => (match (request).objective with | Objective.scalar => Option.none | Objective.vector => Option.some (Rejection.scalarClaimOverPartialOrder)) | ClaimClass.paretoOptimal => (match (request).objective with | Objective.scalar => Option.some (Rejection.vectorClaimOverTotalOrder) | Objective.vector => Option.none) | ClaimClass.frontierComplete => (match (request).objective with | Objective.scalar => Option.some (Rejection.vectorClaimOverTotalOrder) | Objective.vector => Option.none) | ClaimClass.pointwiseEnvelopeComplete => Option.some (Rejection.unsupportedClaim) | ClaimClass.queryFamilyAnswerComplete => Option.some (Rejection.unsupportedClaim) | ClaimClass.useCaseGlobalOptimal => Option.some (Rejection.unsupportedClaim) | ClaimClass.workloadArgminComplete => Option.some (Rejection.unsupportedClaim) | ClaimClass.workloadParetoOptimal => Option.some (Rejection.unsupportedClaim) | ClaimClass.workloadFrontierComplete => Option.some (Rejection.unsupportedClaim) | ClaimClass.familyOptimal => Option.some (Rejection.unsupportedClaim) | ClaimClass.competitiveBound => Option.some (Rejection.unsupportedClaim) | ClaimClass.competitiveOptimal => Option.some (Rejection.unsupportedClaim) | ClaimClass.asymptoticBound => Option.some (Rejection.unsupportedClaim) | ClaimClass.asymptoticOptimal => Option.some (Rejection.unsupportedClaim) | ClaimClass.useCaseClassComplete => Option.some (Rejection.unsupportedClaim) | ClaimClass.useCaseClassAnswerComplete => Option.some (Rejection.unsupportedClaim) | ClaimClass.maintainedUseCaseClass => Option.some (Rejection.unsupportedClaim) | ClaimClass.restrictedUniverseOptimal => Option.some (Rejection.claimAlias) | ClaimClass.revisionPreserved => Option.some (Rejection.unsupportedClaim) | ClaimClass.bestKnown => Option.some (Rejection.unsupportedClaim) | ClaimClass.measuredBestAmongTested => Option.some (Rejection.unsupportedClaim) | ClaimClass.heuristicSelected => Option.some (Rejection.unsupportedClaim) | ClaimClass.instanceOptimal _ _ => Option.some (Rejection.unsupportedClaim))
+
+@[expose] public def validate (request : Request) : Option (Rejection) := (match (match (request).domain with | List.nil => Option.some (Rejection.emptyDomain) | List.cons _ _ => Option.none) with | Option.none => (match (match (request).carrier with | Carrier.grammar _ => Option.none | Carrier.internalPlans => Option.some (Rejection.internalPlanUniverse) | Carrier.optimizerOutput => Option.some (Rejection.optimizerDefinedUniverse) | Carrier.discovered _ => Option.some (Rejection.discoveredUniverse) | Carrier.cached => Option.some (Rejection.cachedUniverse)) with | Option.none => (match (match (request).completeness with | Completeness.grammarEquality => Option.none | Completeness.missing => Option.some (Rejection.missingCompleteness) | Completeness.citesUniverseId => Option.some (Rejection.selfReferentialCompleteness) | Completeness.citesOptimizer => Option.some (Rejection.optimizerCompleteness)) with | Option.none => (match (match (request).carrier with | Carrier.grammar grammar => (if (((Nat.blt ((((request).machine).capacity).fuel) (((request).machine).fuel)) || (Nat.blt ((((request).machine).capacity).domain) ((LexLeanRuntime.length ((request).domain) : Nat)))) || ((Nat.blt ((((request).machine).capacity).systems) ((LexLeanRuntime.length (expand (grammar)) : Nat))) || chargeBeyond (((request).machine).actions) ((((request).machine).capacity).charge))) then Option.some (Rejection.beyondCapacity) else Option.none) | Carrier.internalPlans => Option.none | Carrier.optimizerOutput => Option.none | Carrier.discovered _ => Option.none | Carrier.cached => Option.none) with | Option.none => (match (match ((request).machine).operandSize with | OperandSize.weighted => Option.none | OperandSize.unit => Option.some (Rejection.unitCostOperands)) with | Option.none => (match checkDistinct (((request).machine).actions) (((request).machine).actions) with | Option.none => (match checkPerformed ((request).machine) (ActionKind.observation) with | Option.none => (match checkPerformed ((request).machine) (ActionKind.dispatch) with | Option.none => (match checkPerformed ((request).machine) (ActionKind.fallback) with | Option.none => (match checkPerformed ((request).machine) (ActionKind.execution) with | Option.none => (match checkAllDeclared ((request).machine) (((request).machine).actions) with | Option.none => (match checkPrepared ((request).machine) (((request).machine).prepared) with | Option.none => (match (match (request).carrier with | Carrier.grammar grammar => checkPlanPreparation (((request).machine).actions) ((grammar).plans) | Carrier.internalPlans => Option.none | Carrier.optimizerOutput => Option.none | Carrier.discovered _ => Option.none | Carrier.cached => Option.none) with | Option.none => (match checkClaim (request) with | Option.none => (match (match (request).scope with | Scope.grammarUniverse => Option.none | Scope.calculusPrograms => Option.some (Rejection.uncoveredScope) | Scope.rustPrograms => Option.some (Rejection.uncoveredScope)) with | Option.none => Option.none | Option.some rejection29 => Option.some (rejection29)) | Option.some rejection28 => Option.some (rejection28)) | Option.some rejection27 => Option.some (rejection27)) | Option.some rejection26 => Option.some (rejection26)) | Option.some rejection25 => Option.some (rejection25)) | Option.some rejection24 => Option.some (rejection24)) | Option.some rejection23 => Option.some (rejection23)) | Option.some rejection22 => Option.some (rejection22)) | Option.some rejection21 => Option.some (rejection21)) | Option.some rejection20 => Option.some (rejection20)) | Option.some rejection19 => Option.some (rejection19)) | Option.some rejection18 => Option.some (rejection18)) | Option.some rejection17 => Option.some (rejection17)) | Option.some rejection16 => Option.some (rejection16)) | Option.some rejection15 => Option.some (rejection15))
 
 @[expose] public def entryBody (selector : Selector) : Compiler.TargetSyntax.Expr := (match selector with | Selector.fixed plan => Compiler.TargetSyntax.Expr.call ((plan + 1)) ((Compiler.TargetSyntax.Expr.var (0) :: ([] : List (Compiler.TargetSyntax.Expr)))) | Selector.dispatch threshold small large => Compiler.TargetSyntax.Expr.cond (Compiler.TargetSyntax.Expr.prim (Compiler.TargetSyntax.Prim.natLt) ((Compiler.TargetSyntax.Expr.prim (Compiler.TargetSyntax.Prim.length) ((Compiler.TargetSyntax.Expr.var (0) :: ([] : List (Compiler.TargetSyntax.Expr)))) :: (Compiler.TargetSyntax.Expr.value (Compiler.TargetSyntax.Ty.nat) (Compiler.TargetSyntax.Value.nat (threshold)) :: ([] : List (Compiler.TargetSyntax.Expr)))))) (Compiler.TargetSyntax.Expr.call ((small + 1)) ((Compiler.TargetSyntax.Expr.var (0) :: ([] : List (Compiler.TargetSyntax.Expr))))) (Compiler.TargetSyntax.Expr.call ((large + 1)) ((Compiler.TargetSyntax.Expr.var (0) :: ([] : List (Compiler.TargetSyntax.Expr))))))
 
-@[expose] public def realize (grammar : Grammar) (selector : Selector) : Compiler.TargetSyntax.Program := ({ adts := ([] : List (Compiler.TargetSyntax.Adt)), functions := (({ parameters := (0 :: ([] : List (Nat))), types := ((grammar).argument :: ([] : List (Compiler.TargetSyntax.Ty))), result := (grammar).result, body := entryBody (selector) } : Compiler.TargetSyntax.Function) :: (grammar).plans) } : Compiler.TargetSyntax.Program)
+@[expose] public def planFunctions : (plans : List (Plan)) -> List (Compiler.TargetSyntax.Function)
+  | List.nil => ([] : List (Compiler.TargetSyntax.Function))
+  | List.cons plan rest => ((plan).function :: planFunctions (rest))
+
+@[expose] public def realize (grammar : Grammar) (selector : Selector) : Compiler.TargetSyntax.Program := ({ adts := ([] : List (Compiler.TargetSyntax.Adt)), functions := (({ parameters := (0 :: ([] : List (Nat))), types := ((grammar).argument :: ([] : List (Compiler.TargetSyntax.Ty))), result := (grammar).result, body := entryBody (selector) } : Compiler.TargetSyntax.Function) :: planFunctions ((grammar).plans)) } : Compiler.TargetSyntax.Program)
 
 mutual
 @[expose] public def valueEq : (left : Compiler.TargetSyntax.Value) -> (right : Compiler.TargetSyntax.Value) -> Bool
@@ -560,15 +749,131 @@ termination_by structural arms => arms
 termination_by structural arm => arm
 end
 
-@[expose] public def functionsSize : (functions : List (Compiler.TargetSyntax.Function)) -> Nat
-  | List.nil => 0
-  | List.cons head rest => (exprSize ((head).body) + functionsSize (rest))
+mutual
+@[expose] public def exprCallees : (expression : Compiler.TargetSyntax.Expr) -> List (Nat)
+  | Compiler.TargetSyntax.Expr.value _ _ => ([] : List (Nat))
+  | Compiler.TargetSyntax.Expr.var _ => ([] : List (Nat))
+  | Compiler.TargetSyntax.Expr.«let» _ _ bound body => appendAll (Nat) (([] : List (Nat))) (appendAll (Nat) (exprCallees (bound)) (exprCallees (body)))
+  | Compiler.TargetSyntax.Expr.cond condition thenBranch elseBranch => appendAll (Nat) (([] : List (Nat))) (appendAll (Nat) (exprCallees (condition)) (appendAll (Nat) (exprCallees (thenBranch)) (exprCallees (elseBranch))))
+  | Compiler.TargetSyntax.Expr.«match» _ scrutinee arms => appendAll (Nat) (([] : List (Nat))) (appendAll (Nat) (exprCallees (scrutinee)) (armsCallees (arms)))
+  | Compiler.TargetSyntax.Expr.build _ _ operands => appendAll (Nat) (([] : List (Nat))) (exprsCallees (operands))
+  | Compiler.TargetSyntax.Expr.call function operands => appendAll (Nat) ((function :: ([] : List (Nat)))) (exprsCallees (operands))
+  | Compiler.TargetSyntax.Expr.closure function operands => appendAll (Nat) ((function :: ([] : List (Nat)))) (exprsCallees (operands))
+  | Compiler.TargetSyntax.Expr.apply target operands => appendAll (Nat) (([] : List (Nat))) (appendAll (Nat) (exprCallees (target)) (exprsCallees (operands)))
+  | Compiler.TargetSyntax.Expr.prim _ operands => appendAll (Nat) (([] : List (Nat))) (exprsCallees (operands))
+  | Compiler.TargetSyntax.Expr.first inner => appendAll (Nat) (([] : List (Nat))) (exprCallees (inner))
+  | Compiler.TargetSyntax.Expr.second inner => appendAll (Nat) (([] : List (Nat))) (exprCallees (inner))
+  | Compiler.TargetSyntax.Expr.field inner _ => appendAll (Nat) (([] : List (Nat))) (exprCallees (inner))
+termination_by structural expression => expression
+
+@[expose] public def exprsCallees : (expressions : List (Compiler.TargetSyntax.Expr)) -> List (Nat)
+  | List.nil => ([] : List (Nat))
+  | List.cons head rest => appendAll (Nat) (exprCallees (head)) (exprsCallees (rest))
+termination_by structural expressions => expressions
+
+@[expose] public def armsCallees : (arms : List (Compiler.TargetSyntax.Arm)) -> List (Nat)
+  | List.nil => ([] : List (Nat))
+  | List.cons head rest => appendAll (Nat) (armCallees (head)) (armsCallees (rest))
+termination_by structural arms => arms
+
+@[expose] public def armCallees : (arm : Compiler.TargetSyntax.Arm) -> List (Nat)
+  | Compiler.TargetSyntax.Arm.arm _ _ body => appendAll (Nat) (([] : List (Nat))) (exprCallees (body))
+termination_by structural arm => arm
+end
+
+@[expose] public def functionAt : (items : List (Compiler.TargetSyntax.Function)) -> (index : Nat) -> Option (Compiler.TargetSyntax.Function)
+  | List.nil, _index => Option.none
+  | List.cons head rest, index => (match index with | Nat.zero => Option.some (head) | Nat.succ remaining => functionAt (rest) (remaining))
+
+@[expose] public def planAt : (items : List (Plan)) -> (index : Nat) -> Option (Plan)
+  | List.nil, _index => Option.none
+  | List.cons head rest, index => (match index with | Nat.zero => Option.some (head) | Nat.succ remaining => planAt (rest) (remaining))
+
+@[expose] public def calleesOf : (functions : List (Compiler.TargetSyntax.Function)) -> (known : List (Nat)) -> List (Nat)
+  | _functions, List.nil => ([] : List (Nat))
+  | functions, List.cons index rest => appendAll (Nat) ((match functionAt (functions) (index) with | Option.none => ([] : List (Nat)) | Option.some function => exprCallees ((function).body))) (calleesOf (functions) (rest))
+
+@[expose] public def addNew : (known : List (Nat)) -> (found : List (Nat)) -> List (Nat)
+  | known, List.nil => known
+  | known, List.cons index rest => (if natIn (index) (known) then addNew (known) (rest) else addNew (appendAll (Nat) (known) ((index :: ([] : List (Nat))))) (rest))
+
+@[expose] public def closeOver : (rounds : Nat) -> (functions : List (Compiler.TargetSyntax.Function)) -> (known : List (Nat)) -> List (Nat)
+  | Nat.zero, _functions, known => known
+  | Nat.succ remaining, functions, known => closeOver (remaining) (functions) (addNew (known) (calleesOf (functions) (known)))
+
+@[expose] public def reachable (functions : List (Compiler.TargetSyntax.Function)) : List (Nat) := closeOver ((LexLeanRuntime.length (functions) : Nat)) (functions) ((0 :: ([] : List (Nat))))
+
+@[expose] public def reachableSize : (functions : List (Compiler.TargetSyntax.Function)) -> (indices : List (Nat)) -> Nat
+  | _functions, List.nil => 0
+  | functions, List.cons index rest => ((match functionAt (functions) (index) with | Option.none => 0 | Option.some function => exprSize ((function).body)) + reachableSize (functions) (rest))
+
+@[expose] public def reachableCharge : (actions : List (Action)) -> (plans : List (Plan)) -> (indices : List (Nat)) -> Nat
+  | _actions, _plans, List.nil => 0
+  | actions, plans, List.cons index rest => ((match index with | Nat.zero => 0 | Nat.succ remaining => (match planAt (plans) (remaining) with | Option.none => 0 | Option.some plan => planCharge (actions) ((plan).prepares))) + reachableCharge (actions) (plans) (rest))
+
+@[expose] public def weaklyBelow : (left : List (Nat)) -> (right : List (Nat)) -> Bool
+  | List.nil, right => (match right with | List.nil => true | List.cons _ _ => false)
+  | List.cons leftHead leftRest, right => (match right with | List.nil => false | List.cons rightHead rightRest => ((Nat.ble (leftHead) (rightHead)) && weaklyBelow (leftRest) (rightRest)))
+
+@[expose] public def dominates (left : List (Nat)) (right : List (Nat)) : Bool := (weaklyBelow (left) (right) && (!weaklyBelow (right) (left)))
+
+@[expose] public def dominatedIn (Id : Type) : (cost : List (Nat)) -> (rows : List ((Prod (Id) (List (Nat))))) -> Bool
+  | _cost, List.nil => false
+  | cost, List.cons row rest => (dominates ((row).2) (cost) || dominatedIn (Id) (cost) (rest))
+
+@[expose] public def frontierFrom (Id : Type) : (candidates : List ((Prod (Id) (List (Nat))))) -> (rows : List ((Prod (Id) (List (Nat))))) -> List (Id)
+  | List.nil, _rows => ([] : List (Id))
+  | List.cons row rest, rows => (if dominatedIn (Id) ((row).2) (rows) then frontierFrom (Id) (rest) (rows) else ((row).1 :: frontierFrom (Id) (rest) (rows)))
+
+@[expose] public def frontier (Id : Type) (rows : List ((Prod (Id) (List (Nat))))) : List (Id) := frontierFrom (Id) (rows) (rows)
+
+@[expose] public def scalarMinimum (Id : Type) : (rows : List ((Prod (Id) (Nat)))) -> (best : Nat) -> Nat
+  | List.nil, best => best
+  | List.cons row rest, best => scalarMinimum (Id) (rest) ((if (Nat.blt ((row).2) (best)) then (row).2 else best))
+
+@[expose] public def attaining (Id : Type) : (rows : List ((Prod (Id) (Nat)))) -> (value : Nat) -> List (Id)
+  | List.nil, _value => ([] : List (Id))
+  | List.cons row rest, value => (if (Nat.beq ((row).2) (value)) then ((row).1 :: attaining (Id) (rest) (value)) else attaining (Id) (rest) (value))
+
+@[expose] public def argmin (Id : Type) (rows : List ((Prod (Id) (Nat)))) : Option ((Prod (List (Id)) (Nat))) := (match rows with | List.nil => Option.none | List.cons head _ => (let best : Nat := scalarMinimum (Id) (rows) ((head).2); Option.some ((attaining (Id) (rows) (best), best))))
+
+@[expose] public def anyBy (Id : Type) : (same : ((Id) -> (Id) -> (Bool))) -> (item : Id) -> (items : List (Id)) -> Bool
+  | _same, _item, List.nil => false
+  | same, item, List.cons head rest => ((same (item) (head)) || anyBy (Id) (same) (item) (rest))
+
+@[expose] public def allIn (Id : Type) : (same : ((Id) -> (Id) -> (Bool))) -> (items : List (Id)) -> (others : List (Id)) -> Bool
+  | _same, List.nil, _others => true
+  | same, List.cons head rest, others => (anyBy (Id) (same) (head) (others) && allIn (Id) (same) (rest) (others))
+
+@[expose] public def sameIdsBy (Id : Type) (same : ((Id) -> (Id) -> (Bool))) (left : List (Id)) (right : List (Id)) : Bool := (allIn (Id) (same) (left) (right) && allIn (Id) (same) (right) (left))
+
+@[expose] public def certifiesArgmin (Id : Type) (same : ((Id) -> (Id) -> (Bool))) (rows : List ((Prod (Id) (Nat)))) (claimed : List (Id)) (cost : Nat) : Bool := (match argmin (Id) (rows) with | Option.none => false | Option.some found => ((Nat.beq ((found).2) (cost)) && sameIdsBy (Id) (same) ((found).1) (claimed)))
+
+@[expose] public def certifiesFrontier (Id : Type) (same : ((Id) -> (Id) -> (Bool))) (rows : List ((Prod (Id) (List (Nat))))) (claimed : List (Id)) : Bool := sameIdsBy (Id) (same) (frontier (Id) (rows)) (claimed)
+
+@[expose] public def vectorEq (left : List (Nat)) (right : List (Nat)) : Bool := (weaklyBelow (left) (right) && weaklyBelow (right) (left))
+
+@[expose] public def attains (Id : Type) : (rows : List ((Prod (Id) (List (Nat))))) -> (cost : List (Nat)) -> Bool
+  | List.nil, _cost => false
+  | List.cons row rest, cost => (vectorEq ((row).2) (cost) || attains (Id) (rest) (cost))
+
+@[expose] public def pointwiseMinimum : (left : List (Nat)) -> (right : List (Nat)) -> List (Nat)
+  | List.nil, _right => ([] : List (Nat))
+  | List.cons leftHead leftRest, right => (match right with | List.nil => ([] : List (Nat)) | List.cons rightHead rightRest => ((if (Nat.blt (rightHead) (leftHead)) then rightHead else leftHead) :: pointwiseMinimum (leftRest) (rightRest)))
+
+@[expose] public def minimumFrom (Id : Type) : (rows : List ((Prod (Id) (List (Nat))))) -> (minimum : List (Nat)) -> List (Nat)
+  | List.nil, minimum => minimum
+  | List.cons row rest, minimum => minimumFrom (Id) (rest) (pointwiseMinimum (minimum) ((row).2))
+
+@[expose] public def componentwiseMinimum (Id : Type) (rows : List ((Prod (Id) (List (Nat))))) : List (Nat) := (match rows with | List.nil => ([] : List (Nat)) | List.cons head _ => minimumFrom (Id) (rows) ((head).2))
+
+@[expose] public def natSame (left : Nat) (right : Nat) : Bool := (Nat.beq (left) (right))
 
 @[expose] public def statusOn : (system : Compiler.TargetSyntax.Program) -> (reference : Compiler.TargetSyntax.Program) -> (fuel : Nat) -> (domain : List (Compiler.TargetSyntax.Value)) -> Status
   | _system, _reference, _fuel, List.nil => Status.admitted (0) (0)
   | system, reference, fuel, List.cons argument rest => (match Compiler.TargetSemantics.run (fuel) (system) (0) ((argument :: ([] : List (Compiler.TargetSyntax.Value)))) with | Compiler.TargetSemantics.Outcome.value produced steps => (match Compiler.TargetSemantics.run (fuel) (reference) (0) ((argument :: ([] : List (Compiler.TargetSyntax.Value)))) with | Compiler.TargetSemantics.Outcome.value expected _ => (if valueEq (produced) (expected) then (match statusOn (system) (reference) (fuel) (rest) with | Status.admitted restSteps size => Status.admitted ((steps + restSteps)) (size) | Status.inadmissible => Status.inadmissible | Status.unresolved => Status.unresolved) else Status.inadmissible) | Compiler.TargetSemantics.Outcome.overflow _ => Status.unresolved | Compiler.TargetSemantics.Outcome.stuck => Status.unresolved | Compiler.TargetSemantics.Outcome.exhausted => Status.unresolved) | Compiler.TargetSemantics.Outcome.overflow _ => Status.inadmissible | Compiler.TargetSemantics.Outcome.stuck => Status.inadmissible | Compiler.TargetSemantics.Outcome.exhausted => Status.unresolved)
 
-@[expose] public def status (request : Request) (grammar : Grammar) (selector : Selector) : Status := (let system : Compiler.TargetSyntax.Program := realize (grammar) (selector); (match statusOn (system) ((request).reference) (((request).machine).fuel) ((request).domain) with | Status.admitted steps _ => Status.admitted ((steps + (LexLeanRuntime.multiply ((LexLeanRuntime.length ((request).domain) : Nat)) (preparationCharge (((request).machine).actions)) : Nat))) (functionsSize ((system).functions)) | Status.inadmissible => Status.inadmissible | Status.unresolved => Status.unresolved))
+@[expose] public def status (request : Request) (grammar : Grammar) (selector : Selector) : Status := (let system : Compiler.TargetSyntax.Program := realize (grammar) (selector); (let indices : List (Nat) := reachable ((system).functions); (match statusOn (system) ((request).reference) (((request).machine).fuel) ((request).domain) with | Status.admitted steps _ => Status.admitted ((steps + (LexLeanRuntime.multiply ((LexLeanRuntime.length ((request).domain) : Nat)) (reachableCharge (((request).machine).actions) ((grammar).plans) (indices)) : Nat))) (reachableSize ((system).functions) (indices)) | Status.inadmissible => Status.inadmissible | Status.unresolved => Status.unresolved)))
 
 @[expose] public def statuses : (request : Request) -> (grammar : Grammar) -> (selectors : List (Selector)) -> (next : Nat) -> List ((Prod (Nat) (Status)))
   | _request, _grammar, List.nil, _next => ([] : List ((Prod (Nat) (Status))))
@@ -578,59 +883,41 @@ end
   | List.nil => false
   | List.cons entry rest => (match (entry).2 with | Status.unresolved => true | Status.admitted _ _ => anyUnresolved (rest) | Status.inadmissible => anyUnresolved (rest))
 
-@[expose] public def admitted : (entries : List ((Prod (Nat) (Status)))) -> List ((Prod (Nat) ((Prod (Nat) (Nat)))))
-  | List.nil => ([] : List ((Prod (Nat) ((Prod (Nat) (Nat))))))
-  | List.cons entry rest => (match (entry).2 with | Status.admitted steps size => (((entry).1, (steps, size)) :: admitted (rest)) | Status.inadmissible => admitted (rest) | Status.unresolved => admitted (rest))
+@[expose] public def admittedRows : (entries : List ((Prod (Nat) (Status)))) -> List ((Prod (Nat) (List (Nat))))
+  | List.nil => ([] : List ((Prod (Nat) (List (Nat)))))
+  | List.cons entry rest => (match (entry).2 with | Status.admitted steps size => (((entry).1, (steps :: (size :: ([] : List (Nat))))) :: admittedRows (rest)) | Status.inadmissible => admittedRows (rest) | Status.unresolved => admittedRows (rest))
 
-@[expose] public def minimumSteps : (costed : List ((Prod (Nat) ((Prod (Nat) (Nat)))))) -> (best : Nat) -> Nat
-  | List.nil, best => best
-  | List.cons entry rest, best => minimumSteps (rest) ((if (Nat.blt (((entry).2).1) (best)) then ((entry).2).1 else best))
+@[expose] public def scalarRows : (rows : List ((Prod (Nat) (List (Nat))))) -> List ((Prod (Nat) (Nat)))
+  | List.nil => ([] : List ((Prod (Nat) (Nat))))
+  | List.cons row rest => (((row).1, (match (row).2 with | List.nil => 0 | List.cons steps _ => steps)) :: scalarRows (rest))
 
-@[expose] public def withSteps : (costed : List ((Prod (Nat) ((Prod (Nat) (Nat)))))) -> (value : Nat) -> List (Nat)
-  | List.nil, _value => ([] : List (Nat))
-  | List.cons entry rest, value => (if (Nat.beq (((entry).2).1) (value)) then ((entry).1 :: withSteps (rest) (value)) else withSteps (rest) (value))
-
-@[expose] public def dominates (left : (Prod (Nat) (Nat))) (right : (Prod (Nat) (Nat))) : Bool := (((Nat.ble ((left).1) ((right).1)) && (Nat.ble ((left).2) ((right).2))) && ((Nat.blt ((left).1) ((right).1)) || (Nat.blt ((left).2) ((right).2))))
-
-@[expose] public def dominated : (cost : (Prod (Nat) (Nat))) -> (others : List ((Prod (Nat) ((Prod (Nat) (Nat)))))) -> Bool
-  | _cost, List.nil => false
-  | cost, List.cons other rest => (dominates ((other).2) (cost) || dominated (cost) (rest))
-
-@[expose] public def nondominated : (candidates : List ((Prod (Nat) ((Prod (Nat) (Nat)))))) -> (all : List ((Prod (Nat) ((Prod (Nat) (Nat)))))) -> List (Nat)
-  | List.nil, _all => ([] : List (Nat))
-  | List.cons entry rest, all => (if dominated ((entry).2) (all) then nondominated (rest) (all) else ((entry).1 :: nondominated (rest) (all)))
-
-@[expose] public def evaluate (request : Request) (grammar : Grammar) : Answer := (let entries : List ((Prod (Nat) (Status))) := statuses (request) (grammar) (expand (grammar)) (0); (if anyUnresolved (entries) then Answer.incomplete else (let costed : List ((Prod (Nat) ((Prod (Nat) (Nat))))) := admitted (entries); (match costed with | List.nil => Answer.infeasible | List.cons head _ => (match (request).objective with | Objective.scalar => (let best : Nat := minimumSteps (costed) (((head).2).1); Answer.argmin (withSteps (costed) (best)) (best)) | Objective.vector => Answer.frontier (nondominated (costed) (costed)))))))
+@[expose] public def evaluate (request : Request) (grammar : Grammar) : Answer := (let entries : List ((Prod (Nat) (Status))) := statuses (request) (grammar) (expand (grammar)) (0); (if anyUnresolved (entries) then Answer.incomplete else (let rows : List ((Prod (Nat) (List (Nat)))) := admittedRows (entries); (match (request).objective with | Objective.scalar => (match argmin (Nat) (scalarRows (rows)) with | Option.none => Answer.infeasible | Option.some found => Answer.argmin ((found).1) ((found).2)) | Objective.vector => (match rows with | List.nil => Answer.infeasible | List.cons _ _ => Answer.frontier (frontier (Nat) (rows)))))))
 
 @[expose] public def answer (request : Request) : Answer := (match validate (request) with | Option.none => (match (request).carrier with | Carrier.grammar grammar => evaluate (request) (grammar) | Carrier.internalPlans => Answer.incomplete | Carrier.optimizerOutput => Answer.incomplete | Carrier.discovered _ => Answer.incomplete | Carrier.cached => Answer.incomplete) | Option.some rejection => Answer.rejected (rejection))
 
-@[expose] public def weaklyBelow : (left : List (Nat)) -> (right : List (Nat)) -> Bool
-  | List.nil, _right => true
-  | List.cons leftHead leftRest, right => (match right with | List.nil => false | List.cons rightHead rightRest => ((Nat.ble (leftHead) (rightHead)) && weaklyBelow (leftRest) (rightRest)))
+@[expose] public def certifies (request : Request) (claimed : Answer) : Bool := (match answer (request) with | Answer.rejected _ => false | Answer.argmin members steps => (match claimed with | Answer.rejected _ => false | Answer.argmin claimedMembers claimedSteps => ((Nat.beq (steps) (claimedSteps)) && sameIdsBy (Nat) ((natSame)) (members) (claimedMembers)) | Answer.frontier _ => false | Answer.infeasible => false | Answer.incomplete => false) | Answer.frontier members => (match claimed with | Answer.rejected _ => false | Answer.argmin _ _ => false | Answer.frontier claimedMembers => sameIdsBy (Nat) ((natSame)) (members) (claimedMembers) | Answer.infeasible => false | Answer.incomplete => false) | Answer.infeasible => false | Answer.incomplete => false)
 
-@[expose] public def strictlyBelow (left : List (Nat)) (right : List (Nat)) : Bool := (weaklyBelow (left) (right) && (!weaklyBelow (right) (left)))
+@[expose] public def minimaAttained (request : Request) : Bool := (match (request).carrier with | Carrier.grammar grammar => (let rows : List ((Prod (Nat) (List (Nat)))) := admittedRows (statuses (request) (grammar) (expand (grammar)) (0)); attains (Nat) (rows) (componentwiseMinimum (Nat) (rows))) | Carrier.internalPlans => false | Carrier.optimizerOutput => false | Carrier.discovered _ => false | Carrier.cached => false)
 
-@[expose] public def tableDominated : (cost : List (Nat)) -> (table : List ((Prod (Nat) (List (Nat))))) -> Bool
-  | _cost, List.nil => false
-  | cost, List.cons row rest => (strictlyBelow ((row).2) (cost) || tableDominated (cost) (rest))
+@[expose] public def universeOf (request : Request) : List (Selector) := (match (request).carrier with | Carrier.grammar grammar => expand (grammar) | Carrier.internalPlans => ([] : List (Selector)) | Carrier.optimizerOutput => ([] : List (Selector)) | Carrier.discovered _ => ([] : List (Selector)) | Carrier.cached => ([] : List (Selector)))
 
-@[expose] public def tableFrontierFrom : (rows : List ((Prod (Nat) (List (Nat))))) -> (table : List ((Prod (Nat) (List (Nat))))) -> List (Nat)
-  | List.nil, _table => ([] : List (Nat))
-  | List.cons row rest, table => (if tableDominated ((row).2) (table) then tableFrontierFrom (rest) (table) else ((row).1 :: tableFrontierFrom (rest) (table)))
+@[expose] public def statusesOf (request : Request) : List ((Prod (Nat) (Status))) := (match (request).carrier with | Carrier.grammar grammar => statuses (request) (grammar) (expand (grammar)) (0) | Carrier.internalPlans => ([] : List ((Prod (Nat) (Status)))) | Carrier.optimizerOutput => ([] : List ((Prod (Nat) (Status)))) | Carrier.discovered _ => ([] : List ((Prod (Nat) (Status)))) | Carrier.cached => ([] : List ((Prod (Nat) (Status)))))
 
-@[expose] public def tableFrontier (table : List ((Prod (Nat) (List (Nat))))) : List (Nat) := tableFrontierFrom (table) (table)
+@[expose] public def extendWalk : (operations : List ((Prod (Nat) ((Prod (Nat) ((Prod (Nat) (Nat)))))))) -> (walk : (Prod (List (Nat)) ((Prod (Nat) (Nat))))) -> List ((Prod (List (Nat)) ((Prod (Nat) (Nat)))))
+  | List.nil, _walk => ([] : List ((Prod (List (Nat)) ((Prod (Nat) (Nat))))))
+  | List.cons operation rest, walk => (if (Nat.beq (((operation).2).1) (((walk).2).1)) then ((appendAll (Nat) ((walk).1) (((operation).1 :: ([] : List (Nat)))), ((((operation).2).2).1, (((walk).2).2 + (((operation).2).2).2))) :: extendWalk (rest) (walk)) else extendWalk (rest) (walk))
 
-@[expose] public def sameIds : (left : List (Nat)) -> (right : List (Nat)) -> Bool
-  | List.nil, right => (match right with | List.nil => true | List.cons _ _ => false)
-  | List.cons leftHead leftRest, right => (match right with | List.nil => false | List.cons rightHead rightRest => ((Nat.beq (leftHead) (rightHead)) && sameIds (leftRest) (rightRest)))
+@[expose] public def extendAll : (operations : List ((Prod (Nat) ((Prod (Nat) ((Prod (Nat) (Nat)))))))) -> (walks : List ((Prod (List (Nat)) ((Prod (Nat) (Nat)))))) -> List ((Prod (List (Nat)) ((Prod (Nat) (Nat)))))
+  | _operations, List.nil => ([] : List ((Prod (List (Nat)) ((Prod (Nat) (Nat))))))
+  | operations, List.cons walk rest => appendAll ((Prod (List (Nat)) ((Prod (Nat) (Nat))))) (extendWalk (operations) (walk)) (extendAll (operations) (rest))
 
-@[expose] public def tableAttains : (table : List ((Prod (Nat) (List (Nat))))) -> (cost : List (Nat)) -> Bool
-  | List.nil, _cost => false
-  | List.cons row rest, cost => ((weaklyBelow ((row).2) (cost) && weaklyBelow (cost) ((row).2)) || tableAttains (rest) (cost))
+@[expose] public def arrivals : (target : Nat) -> (walks : List ((Prod (List (Nat)) ((Prod (Nat) (Nat)))))) -> List ((Prod (List (Nat)) (Nat)))
+  | _target, List.nil => ([] : List ((Prod (List (Nat)) (Nat))))
+  | target, List.cons walk rest => (if (Nat.beq (((walk).2).1) (target)) then (((walk).1, ((walk).2).2) :: arrivals (target) (rest)) else arrivals (target) (rest))
 
-@[expose] public def rowMinimum : (table : List ((Prod (Nat) (List (Nat))))) -> (best : Nat) -> Nat
-  | List.nil, best => best
-  | List.cons row rest, best => rowMinimum (rest) ((match (row).2 with | List.nil => best | List.cons cost _ => (if (Nat.blt (cost) (best)) then cost else best)))
+@[expose] public def compositions : (depth : Nat) -> (operations : List ((Prod (Nat) ((Prod (Nat) ((Prod (Nat) (Nat)))))))) -> (target : Nat) -> (layer : List ((Prod (List (Nat)) ((Prod (Nat) (Nat)))))) -> List ((Prod (List (Nat)) (Nat)))
+  | Nat.zero, _operations, _target, _layer => ([] : List ((Prod (List (Nat)) (Nat))))
+  | Nat.succ remaining, operations, target, layer => appendAll ((Prod (List (Nat)) (Nat))) (arrivals (target) (layer)) (compositions (remaining) (operations) (target) (extendAll (operations) (layer)))
 
 @[expose] public def rewriteOnce : (rules : List ((Prod (Nat) (Nat)))) -> (item : Nat) -> Option (Nat)
   | List.nil, _item => Option.none
@@ -640,42 +927,65 @@ end
   | Nat.zero, _rules, item => item
   | Nat.succ remaining, rules, item => (match rewriteOnce (rules) (item) with | Option.none => item | Option.some next => normalize (remaining) (rules) (next))
 
-@[expose] public def listMax : (costs : List (Nat)) -> (worst : Nat) -> Nat
-  | List.nil, worst => worst
-  | List.cons cost rest, worst => listMax (rest) ((if (Nat.blt (worst) (cost)) then cost else worst))
+@[expose] public def hiddenBitCost (system : Nat) (hidden : Nat) : Nat := (if (Nat.beq (system) (hidden)) then 0 else 10)
 
-@[expose] public def uniformWorst : (table : List ((Prod (Nat) (List (Nat))))) -> (best : Nat) -> Nat
-  | List.nil, best => best
-  | List.cons row rest, best => uniformWorst (rest) ((let worst : Nat := listMax ((row).2) (0); (if (Nat.blt (worst) (best)) then worst else best)))
+@[expose] public def environmentRows (hidden : Nat) : List ((Prod (Nat) (Nat))) := ((0, hiddenBitCost (0) (hidden)) :: ((1, hiddenBitCost (1) (hidden)) :: ([] : List ((Prod (Nat) (Nat))))))
 
-public theorem vec02Frontier : (tableFrontier (((0, (1 :: (3 :: ([] : List (Nat))))) :: ((1, (2 :: (2 :: ([] : List (Nat))))) :: ((2, (3 :: (1 :: ([] : List (Nat))))) :: ((3, (3 :: (3 :: ([] : List (Nat))))) :: ([] : List ((Prod (Nat) (List (Nat)))))))))) = (0 :: (1 :: (2 :: ([] : List (Nat)))))) := by
-  decide
+@[expose] public def worstCase (system : Nat) : Nat := (let atZero : Nat := hiddenBitCost (system) (0); (let atOne : Nat := hiddenBitCost (system) (1); (if (Nat.blt (atZero) (atOne)) then atOne else atZero)))
 
-public theorem rej14ComponentwiseMinimaUnattained : (tableAttains (((0, (1 :: (3 :: ([] : List (Nat))))) :: ((1, (2 :: (2 :: ([] : List (Nat))))) :: ((2, (3 :: (1 :: ([] : List (Nat))))) :: ((3, (3 :: (3 :: ([] : List (Nat))))) :: ([] : List ((Prod (Nat) (List (Nat)))))))))) ((1 :: (1 :: ([] : List (Nat))))) = false) := by
-  decide
+@[expose] public def uniformRows : List ((Prod (Nat) (Nat))) := ((0, worstCase (0)) :: ((1, worstCase (1)) :: ([] : List ((Prod (Nat) (Nat))))))
 
-public theorem rej29FrontierOmission : (sameIds (tableFrontier (((0, (1 :: (3 :: ([] : List (Nat))))) :: ((1, (2 :: (2 :: ([] : List (Nat))))) :: ((2, (3 :: (1 :: ([] : List (Nat))))) :: ((3, (3 :: (3 :: ([] : List (Nat))))) :: ([] : List ((Prod (Nat) (List (Nat))))))))))) ((0 :: (1 :: ([] : List (Nat))))) = false) := by
-  decide
+@[expose] public def fairExpectation (hidden : Nat) : Nat := (LexLeanRuntime.quotient ((hiddenBitCost (0) (hidden) + hiddenBitCost (1) (hidden))) (2) (0) : Nat)
 
-public theorem vec01Optimum : (rowMinimum (((0, (5 :: ([] : List (Nat)))) :: ((1, (6 :: ([] : List (Nat)))) :: ([] : List ((Prod (Nat) (List (Nat)))))))) (1000) = 5) := by
-  decide
+public theorem vec01Optimum : (argmin (List (Nat)) (compositions (4) (((0, (0, (1, 2))) :: ((1, (1, (2, 3))) :: ((2, (0, (2, 6))) :: ([] : List ((Prod (Nat) ((Prod (Nat) ((Prod (Nat) (Nat)))))))))))) (2) (((([] : List (Nat)), (0, 0)) :: ([] : List ((Prod (List (Nat)) ((Prod (Nat) (Nat))))))))) = Option.some ((((0 :: (1 :: ([] : List (Nat)))) :: ([] : List (List (Nat)))), 5))) := by
+  rfl
 
-public theorem vec01Extension : (rowMinimum (((0, (5 :: ([] : List (Nat)))) :: ((1, (6 :: ([] : List (Nat)))) :: ((2, (4 :: ([] : List (Nat)))) :: ([] : List ((Prod (Nat) (List (Nat))))))))) (1000) = 4) := by
-  decide
+public theorem vec01Extension : (argmin (List (Nat)) (compositions (5) (((0, (0, (1, 2))) :: ((1, (1, (2, 3))) :: ((2, (0, (2, 6))) :: ((3, (0, (2, 4))) :: ([] : List ((Prod (Nat) ((Prod (Nat) ((Prod (Nat) (Nat))))))))))))) (2) (((([] : List (Nat)), (0, 0)) :: ([] : List ((Prod (List (Nat)) ((Prod (Nat) (Nat))))))))) = Option.some ((((3 :: ([] : List (Nat))) :: ([] : List (List (Nat)))), 4))) := by
+  rfl
+
+public theorem vec01CertificateHolds : (certifiesArgmin (List (Nat)) ((vectorEq)) (compositions (4) (((0, (0, (1, 2))) :: ((1, (1, (2, 3))) :: ((2, (0, (2, 6))) :: ([] : List ((Prod (Nat) ((Prod (Nat) ((Prod (Nat) (Nat)))))))))))) (2) (((([] : List (Nat)), (0, 0)) :: ([] : List ((Prod (List (Nat)) ((Prod (Nat) (Nat))))))))) (((0 :: (1 :: ([] : List (Nat)))) :: ([] : List (List (Nat))))) (5) = true) := by
+  rfl
+
+public theorem vec01CertificateInvalidated : (certifiesArgmin (List (Nat)) ((vectorEq)) (compositions (5) (((0, (0, (1, 2))) :: ((1, (1, (2, 3))) :: ((2, (0, (2, 6))) :: ((3, (0, (2, 4))) :: ([] : List ((Prod (Nat) ((Prod (Nat) ((Prod (Nat) (Nat))))))))))))) (2) (((([] : List (Nat)), (0, 0)) :: ([] : List ((Prod (List (Nat)) ((Prod (Nat) (Nat))))))))) (((0 :: (1 :: ([] : List (Nat)))) :: ([] : List (List (Nat))))) (5) = false) := by
+  rfl
+
+public theorem vec02Frontier : (frontier (Nat) (((0, (1 :: (3 :: ([] : List (Nat))))) :: ((1, (2 :: (2 :: ([] : List (Nat))))) :: ((2, (3 :: (1 :: ([] : List (Nat))))) :: ((3, (3 :: (3 :: ([] : List (Nat))))) :: ([] : List ((Prod (Nat) (List (Nat)))))))))) = (0 :: (1 :: (2 :: ([] : List (Nat)))))) := by
+  rfl
+
+public theorem rej29FrontierOmission : (certifiesFrontier (Nat) ((natSame)) (((0, (1 :: (3 :: ([] : List (Nat))))) :: ((1, (2 :: (2 :: ([] : List (Nat))))) :: ((2, (3 :: (1 :: ([] : List (Nat))))) :: ((3, (3 :: (3 :: ([] : List (Nat))))) :: ([] : List ((Prod (Nat) (List (Nat)))))))))) ((0 :: (1 :: ([] : List (Nat))))) = false) := by
+  rfl
+
+public theorem rej14ComponentwiseMinima : (componentwiseMinimum (Nat) (((0, (1 :: (3 :: ([] : List (Nat))))) :: ((1, (2 :: (2 :: ([] : List (Nat))))) :: ((2, (3 :: (1 :: ([] : List (Nat))))) :: ((3, (3 :: (3 :: ([] : List (Nat))))) :: ([] : List ((Prod (Nat) (List (Nat)))))))))) = (1 :: (1 :: ([] : List (Nat))))) := by
+  rfl
+
+public theorem rej14MinimaUnattained : (attains (Nat) (((0, (1 :: (3 :: ([] : List (Nat))))) :: ((1, (2 :: (2 :: ([] : List (Nat))))) :: ((2, (3 :: (1 :: ([] : List (Nat))))) :: ((3, (3 :: (3 :: ([] : List (Nat))))) :: ([] : List ((Prod (Nat) (List (Nat)))))))))) (componentwiseMinimum (Nat) (((0, (1 :: (3 :: ([] : List (Nat))))) :: ((1, (2 :: (2 :: ([] : List (Nat))))) :: ((2, (3 :: (1 :: ([] : List (Nat))))) :: ((3, (3 :: (3 :: ([] : List (Nat))))) :: ([] : List ((Prod (Nat) (List (Nat))))))))))) = false) := by
+  rfl
 
 public theorem vec04NormalFormIsB : (normalize (10) (((0, 1) :: ([] : List ((Prod (Nat) (Nat)))))) (0) = 1) := by
-  decide
+  rfl
 
-public theorem vec04GlobalMinimumIsC : (tableFrontier (((0, (2 :: ([] : List (Nat)))) :: ((1, (1 :: ([] : List (Nat)))) :: ((2, (0 :: ([] : List (Nat)))) :: ([] : List ((Prod (Nat) (List (Nat))))))))) = (2 :: ([] : List (Nat)))) := by
-  decide
+public theorem vec04GlobalMinimumIsC : (argmin (Nat) (((0, 2) :: ((1, 1) :: ((2, 0) :: ([] : List ((Prod (Nat) (Nat)))))))) = Option.some (((2 :: ([] : List (Nat))), 0))) := by
+  rfl
 
-public theorem vec17EnvelopeAtZero : (rowMinimum (((0, (0 :: ([] : List (Nat)))) :: ((1, (10 :: ([] : List (Nat)))) :: ([] : List ((Prod (Nat) (List (Nat)))))))) (1000) = 0) := by
-  decide
+public theorem vec04NormalFormRefused : (certifiesArgmin (Nat) ((natSame)) (((0, 2) :: ((1, 1) :: ((2, 0) :: ([] : List ((Prod (Nat) (Nat)))))))) ((normalize (10) (((0, 1) :: ([] : List ((Prod (Nat) (Nat)))))) (0) :: ([] : List (Nat)))) (1) = false) := by
+  rfl
 
-public theorem vec17EnvelopeAtOne : (rowMinimum (((0, (10 :: ([] : List (Nat)))) :: ((1, (0 :: ([] : List (Nat)))) :: ([] : List ((Prod (Nat) (List (Nat)))))))) (1000) = 0) := by
-  decide
+public theorem vec17EnvelopeAtZero : (argmin (Nat) (environmentRows (0)) = Option.some (((0 :: ([] : List (Nat))), 0))) := by
+  rfl
 
-public theorem vec17UniformWorstCase : (uniformWorst (((0, (0 :: (10 :: ([] : List (Nat))))) :: ((1, (10 :: (0 :: ([] : List (Nat))))) :: ([] : List ((Prod (Nat) (List (Nat)))))))) (1000) = 10) := by
-  decide
+public theorem vec17EnvelopeAtOne : (argmin (Nat) (environmentRows (1)) = Option.some (((1 :: ([] : List (Nat))), 0))) := by
+  rfl
+
+public theorem vec17UniformWorstCase : (argmin (Nat) (uniformRows) = Option.some (((0 :: (1 :: ([] : List (Nat)))), 10))) := by
+  rfl
+
+public theorem vec17FairExpectationAtZero : (fairExpectation (0) = 5) := by
+  rfl
+
+public theorem vec17FairExpectationAtOne : (fairExpectation (1) = 5) := by
+  rfl
+
+public theorem vec17PointwiseValueRefused : (certifiesArgmin (Nat) ((natSame)) (uniformRows) ((0 :: ([] : List (Nat)))) (0) = false) := by
+  rfl
 
 end Compiler.Gnaf

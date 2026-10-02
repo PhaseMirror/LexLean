@@ -19,13 +19,13 @@ use std::cell::Cell;
 
 use lexlean::calculus::term::{self, SEMANTICS, SYNTAX};
 use lexlean::gnaf::MODEL;
-use serde_json::Value as Json;
+use serde_json::{json, Value as Json};
 
 use crate::lx::{
-    self, add, and, axioms, beq, ble, blt, boolean, call, cons, decide, definition, eq, first,
-    inductive, ite, let_in, list, list_t, local_t, mutual, nat, nat_t, nil, none, not, option_t,
-    or, pair, parameter, prim, product_t, project, recursive, second, some, structure, theorem,
-    var,
+    self, add, and, axioms, beq, ble, blt, boolean, call, call_at, cons, decide, definition, eq,
+    first, forall, function_ref, function_t, generic, inductive, ite, let_in, list, list_t,
+    local_t, mutual, nat, nat_t, nil, none, not, option_t, or, pair, parameter, parameter_t, prim,
+    product_t, project, recursive, second, some, structure, theorem, var,
 };
 
 /// The path of the generated module, relative to the repository root.
@@ -34,9 +34,14 @@ pub const PATH: &str = "compiler/src/Gnaf.lex.tex";
 /// The axioms Lean reports for a declaration that reaches
 /// `TargetSemantics.run`: the evaluator's well-founded and quotient
 /// machinery. Exactly the declarations that evaluate a realization carry
-/// them; the authority vectors are decided over plain tables and carry
-/// none.
-const RUN_AXIOMS: [&str; 3] = ["Classical.choice", "Quot.sound", "propext"];
+/// them.
+pub const RUN_AXIOMS: [&str; 3] = ["Classical.choice", "Quot.sound", "propext"];
+
+/// The axiom `simp` rewriting with an equation lemma introduces.
+const SIMP_AXIOMS: [&str; 1] = ["propext"];
+
+/// The identity type parameter of the generic order.
+const ID: &str = "Id";
 
 /// Names for binders the branch body never reads; see the module comment.
 struct Unused {
@@ -68,48 +73,54 @@ macro_rules! binders {
 
 // --- vocabulary ------------------------------------------------------------
 
-/// §12.4 claim classes without constants; `instanceOptimal`, which carries
-/// two, closes the inductive.
-const CLAIMS: [&str; 30] = [
-    "exact",
-    "normalForm",
-    "canonical",
-    "representationMinimal",
-    "comparisonTheorem",
-    "profileDefinedComparison",
-    "inputTotal",
-    "globalOptimal",
-    "argminComplete",
-    "paretoOptimal",
-    "frontierComplete",
-    "pointwiseEnvelopeComplete",
-    "queryFamilyAnswerComplete",
-    "useCaseGlobalOptimal",
-    "workloadArgminComplete",
-    "workloadParetoOptimal",
-    "workloadFrontierComplete",
-    "familyOptimal",
-    "competitiveBound",
-    "competitiveOptimal",
-    "asymptoticBound",
-    "asymptoticOptimal",
-    "useCaseClassComplete",
-    "useCaseClassAnswerComplete",
-    "maintainedUseCaseClass",
-    "restrictedUniverseOptimal",
-    "revisionPreserved",
-    "bestKnown",
-    "measuredBestAmongTested",
-    "heuristicSelected",
-];
+/// §12.4 claim classes in the authority's order: each with the types of
+/// the constants it carries.
+fn claims() -> Vec<(&'static str, Vec<Json>)> {
+    let string_t = lx::string_t;
+    let named = |name: &'static str| (name, Vec::new());
+    vec![
+        named("exact"),
+        named("normalForm"),
+        named("canonical"),
+        named("representationMinimal"),
+        named("comparisonTheorem"),
+        (
+            "profileDefinedComparison",
+            vec![string_t(), string_t(), string_t()],
+        ),
+        named("inputTotal"),
+        named("globalOptimal"),
+        named("argminComplete"),
+        named("paretoOptimal"),
+        named("frontierComplete"),
+        named("pointwiseEnvelopeComplete"),
+        named("queryFamilyAnswerComplete"),
+        named("useCaseGlobalOptimal"),
+        named("workloadArgminComplete"),
+        named("workloadParetoOptimal"),
+        named("workloadFrontierComplete"),
+        named("familyOptimal"),
+        named("competitiveBound"),
+        named("competitiveOptimal"),
+        named("asymptoticBound"),
+        named("asymptoticOptimal"),
+        named("useCaseClassComplete"),
+        named("useCaseClassAnswerComplete"),
+        named("maintainedUseCaseClass"),
+        named("restrictedUniverseOptimal"),
+        named("revisionPreserved"),
+        named("bestKnown"),
+        named("measuredBestAmongTested"),
+        named("heuristicSelected"),
+        ("instanceOptimal", vec![nat_t(), nat_t()]),
+    ]
+}
 /// The claims the scalar (total) order answers.
-const SCALAR_CLAIMS: [&str; 3] = [
-    "globalOptimal",
-    "argminComplete",
-    "restrictedUniverseOptimal",
-];
+const SCALAR_CLAIMS: [&str; 2] = ["globalOptimal", "argminComplete"];
 /// The claims the componentwise (partial) order answers.
 const VECTOR_CLAIMS: [&str; 2] = ["paretoOptimal", "frontierComplete"];
+/// §12.4: the legacy alias a conforming answer never emits as a base class.
+const ALIAS_CLAIM: &str = "restrictedUniverseOptimal";
 
 /// §8.2, §9.1: the kinds of action a system may take inside the machine
 /// boundary.
@@ -181,6 +192,16 @@ fn selector_t() -> Json {
 fn status_t() -> Json {
     local_t("Status")
 }
+fn nats_t() -> Json {
+    list_t(nat_t())
+}
+fn id_t() -> Json {
+    parameter_t(ID)
+}
+/// A row of the generic order: an identity and its cost.
+fn row_t(cost: Json) -> Json {
+    product_t(id_t(), cost)
+}
 
 /// A constructor of this module.
 fn local(constructor: &str, arguments: Vec<Json>) -> Json {
@@ -193,6 +214,11 @@ fn syntax(constructor: &str, arguments: Vec<Json>) -> Json {
 /// A call of a definition of this module.
 fn local_call(function: &str, arguments: Vec<Json>) -> Json {
     call(lx::member(function), arguments)
+}
+/// A call of a generic definition of this module at the identity type
+/// `id`.
+fn generic_call(function: &str, id: Json, arguments: Vec<Json>) -> Json {
+    call_at(lx::member(function), vec![id], arguments)
 }
 /// A call of a definition of `TargetSemantics`.
 fn semantics_call(function: &str, arguments: Vec<Json>) -> Json {
@@ -307,6 +333,50 @@ fn status(constructor: &str, arguments: Vec<Json>) -> Json {
     local(&format!("Status.{constructor}"), arguments)
 }
 
+// --- proofs ----------------------------------------------------------------
+
+/// `simp only` with these definitions and theorems, sorted as the proof
+/// language requires.
+fn simplify(names: &[&str]) -> Json {
+    let mut names: Vec<&str> = names.to_vec();
+    names.sort_unstable();
+    names.dedup();
+    json!({"kind": "simplify",
+           "definitions": names.iter().map(|name| lx::member(name)).collect::<Vec<_>>()})
+}
+fn reflexivity() -> Json {
+    json!({"kind": "reflexivity"})
+}
+fn proof_branch(constructor: &str, binders: &[&str], proof: Json) -> Json {
+    json!({"constructor": constructor, "binders": binders, "proof": proof})
+}
+fn cases(scrutinee: &str, branches: Vec<Json>) -> Json {
+    json!({"kind": "cases", "scrutinee": scrutinee, "branches": branches})
+}
+fn induction(scrutinee: &str, generalizing: &[&str], branches: Vec<Json>) -> Json {
+    let mut out = json!({"kind": "induction", "scrutinee": scrutinee, "branches": branches});
+    if !generalizing.is_empty() {
+        out["generalizing"] = json!(generalizing);
+    }
+    out
+}
+/// A theorem over `parameters`.
+fn lemma(name: &str, parameters: Vec<(&str, Json)>, statement: Json, proof: Json) -> Json {
+    let mut out = theorem(name, statement, proof);
+    out["parameters"] = parameters
+        .into_iter()
+        .map(|(name, ty)| parameter(name, ty))
+        .collect();
+    out
+}
+/// A theorem about every combination of Boolean values, decided.
+fn boolean_law(name: &str, variables: &[&str], statement: Json) -> Json {
+    let statement = variables.iter().rev().fold(statement, |body, variable| {
+        forall(variable, lx::bool_t(), body)
+    });
+    theorem(name, statement, decide())
+}
+
 // --- the request -----------------------------------------------------------
 
 /// Constructors without fields.
@@ -315,10 +385,8 @@ fn none_of(names: &[&'static str]) -> Vec<(&'static str, Vec<Json>)> {
 }
 
 fn request_types() -> Vec<Json> {
-    let mut claims = none_of(&CLAIMS);
-    claims.push(("instanceOptimal", vec![nat_t(), nat_t()]));
     vec![
-        inductive("ClaimClass", claims),
+        inductive("ClaimClass", claims()),
         // §8.2, §9.1: how each admitted action is accounted.
         inductive("ActionKind", none_of(&ACTION_KINDS)),
         inductive(
@@ -339,13 +407,33 @@ fn request_types() -> Vec<Json> {
             "Boundary",
             none_of(&["complete", "preparedState", "preparedPlan"]),
         ),
+        // §8.2, §9.1: the cost model's operand-size treatment.
+        inductive("OperandSize", none_of(&["weighted", "unit"])),
+        // §8.2: the machine's hard capacity.
+        structure(
+            "Capacity",
+            vec![
+                ("fuel", nat_t()),
+                ("domain", nat_t()),
+                ("systems", nat_t()),
+                ("charge", nat_t()),
+            ],
+        ),
+        // §10.8: a prepared artifact bound in the common initial state, by
+        // the action that prepared it and the SHA-256 of its bytes.
+        structure(
+            "Prepared",
+            vec![("kind", kind_t()), ("artifact", lx::string_t())],
+        ),
         structure(
             "Machine",
             vec![
                 ("fuel", nat_t()),
+                ("capacity", local_t("Capacity")),
+                ("operandSize", local_t("OperandSize")),
                 ("actions", list_t(local_t("Action"))),
                 ("boundary", local_t("Boundary")),
-                ("preparationCommon", lx::bool_t()),
+                ("prepared", list_t(local_t("Prepared"))),
             ],
         ),
         // The complete-system grammar: every system is a selector over the
@@ -358,13 +446,21 @@ fn request_types() -> Vec<Json> {
                 ("dispatch", vec![nat_t(), nat_t(), nat_t()]),
             ],
         ),
+        // A shared plan and the preparation actions it needs.
+        structure(
+            "Plan",
+            vec![
+                ("function", syntax_t("Function")),
+                ("prepares", list_t(kind_t())),
+            ],
+        ),
         structure(
             "Grammar",
             vec![
                 ("argument", syntax_t("Ty")),
                 ("result", syntax_t("Ty")),
-                ("plans", list_t(syntax_t("Function"))),
-                ("thresholds", list_t(nat_t())),
+                ("plans", list_t(local_t("Plan"))),
+                ("thresholds", nats_t()),
             ],
         ),
         // §8.3: the universe carrier and its completeness evidence.
@@ -374,7 +470,7 @@ fn request_types() -> Vec<Json> {
                 ("grammar", vec![local_t("Grammar")]),
                 ("internalPlans", Vec::new()),
                 ("optimizerOutput", Vec::new()),
-                ("discovered", vec![list_t(nat_t())]),
+                ("discovered", vec![nats_t()]),
                 ("cached", Vec::new()),
             ],
         ),
@@ -394,6 +490,9 @@ fn request_types() -> Vec<Json> {
         // §9.2, §9.3: a scalar objective is total steps; a vector objective
         // is (steps, size), ordered componentwise.
         inductive("Objective", none_of(&["scalar", "vector"])),
+        // `universe` is the SystemUniverseId the host computes from the
+        // problem, machine, and carrier before evaluation; the model
+        // carries it as bound data.
         structure(
             "Request",
             vec![
@@ -402,6 +501,7 @@ fn request_types() -> Vec<Json> {
                 ("machine", local_t("Machine")),
                 ("carrier", local_t("Carrier")),
                 ("completeness", local_t("Completeness")),
+                ("universe", lx::string_t()),
                 ("objective", local_t("Objective")),
                 ("claim", local_t("ClaimClass")),
                 ("scope", local_t("Scope")),
@@ -418,11 +518,15 @@ fn request_types() -> Vec<Json> {
                 ("missingCompleteness", Vec::new()),
                 ("selfReferentialCompleteness", Vec::new()),
                 ("optimizerCompleteness", Vec::new()),
+                ("beyondCapacity", Vec::new()),
+                ("unitCostOperands", Vec::new()),
                 ("duplicateAction", vec![kind_t()]),
                 ("unaccountedAction", vec![kind_t()]),
                 ("hiddenCost", vec![kind_t()]),
                 ("unrealizableAction", vec![kind_t()]),
-                ("uncommonPreparation", Vec::new()),
+                ("unboundPreparation", vec![kind_t()]),
+                ("strayPreparedArtifact", vec![kind_t()]),
+                ("claimAlias", Vec::new()),
                 ("scalarClaimOverPartialOrder", Vec::new()),
                 ("vectorClaimOverTotalOrder", Vec::new()),
                 ("uncoveredScope", Vec::new()),
@@ -441,8 +545,8 @@ fn request_types() -> Vec<Json> {
             "Answer",
             vec![
                 ("rejected", vec![rejection_t()]),
-                ("argmin", vec![list_t(nat_t()), nat_t()]),
-                ("frontier", vec![list_t(nat_t())]),
+                ("argmin", vec![nats_t(), nat_t()]),
+                ("frontier", vec![nats_t()]),
                 ("infeasible", Vec::new()),
                 ("incomplete", Vec::new()),
             ],
@@ -467,33 +571,35 @@ fn on_kind(body: impl Fn(usize, &str) -> Json) -> Json {
 fn kind_in(kinds: &[&str]) -> Json {
     on_kind(|_, kind| boolean(kinds.contains(&kind)))
 }
-/// A free preparation action is admitted only as state every competitor
-/// shares at a prepared boundary (§10.8).
-fn prepared_common() -> Json {
-    let common = || {
+fn hidden_cost() -> Json {
+    reject("hiddenCost", vec![var("kind")])
+}
+/// A free preparation action is excluded from every system's cost only on
+/// a prepared boundary whose common initial state binds an artifact it
+/// prepared (§10.8).
+fn prepared_bound() -> Json {
+    let unbound = || reject("unboundPreparation", vec![var("kind")]);
+    let bound = || {
         ite(
-            project(var("machine"), "preparationCommon"),
+            local_call(
+                "preparedFor",
+                vec![project(var("machine"), "prepared"), var("kind")],
+            ),
             pass(),
-            reject("uncommonPreparation", Vec::new()),
+            unbound(),
         )
     };
     matching(
         project(var("machine"), "boundary"),
         vec![
-            arm(
-                "Boundary.complete",
-                Vec::new(),
-                reject("uncommonPreparation", Vec::new()),
-            ),
-            arm("Boundary.preparedState", Vec::new(), common()),
-            arm("Boundary.preparedPlan", Vec::new(), common()),
+            arm("Boundary.complete", Vec::new(), unbound()),
+            arm("Boundary.preparedState", Vec::new(), bound()),
+            arm("Boundary.preparedPlan", Vec::new(), bound()),
         ],
     )
 }
-fn hidden_cost() -> Json {
-    reject("hiddenCost", vec![var("kind")])
-}
 
+#[allow(clippy::too_many_lines)]
 fn machine_contract(unused: &Unused) -> Vec<Json> {
     let actions_t = || list_t(local_t("Action"));
     let action_kind = || project(var("action"), "kind");
@@ -523,7 +629,8 @@ fn machine_contract(unused: &Unused) -> Vec<Json> {
             kind_in(&PERFORMED),
         ),
         // Actions before the invocation; the calculus has no such phase, so
-        // their cost is a declared constant or a common prepared boundary.
+        // their cost is a declared constant per plan that needs them, or a
+        // bound prepared artifact.
         definition(
             "preparation",
             vec![parameter("kind", kind_t())],
@@ -640,11 +747,38 @@ fn machine_contract(unused: &Unused) -> Vec<Json> {
                 ),
             ),
         ),
+        // Whether the common initial state binds an artifact `kind`
+        // prepared.
+        recursive(
+            "prepared",
+            definition(
+                "preparedFor",
+                vec![
+                    parameter("prepared", list_t(local_t("Prepared"))),
+                    parameter("kind", kind_t()),
+                ],
+                lx::bool_t(),
+                on_list(
+                    var("prepared"),
+                    no(),
+                    "artifact",
+                    "rest",
+                    or(
+                        local_call(
+                            "sameKind",
+                            vec![project(var("artifact"), "kind"), var("kind")],
+                        ),
+                        local_call("preparedFor", vec![var("rest"), var("kind")]),
+                    ),
+                ),
+            ),
+        ),
         // An admitted preparation action costs a positive constant per
-        // invocation, or is free only as common prepared state of every
-        // competitor (§10.8). Communication, randomness and scheduling are
-        // not actions of the sequential deterministic calculus machine, so a
-        // universe admitting them is not the one the grammar generates.
+        // invocation of every plan that needs it, or is free only through a
+        // prepared artifact bound in the common initial state (§10.8).
+        // Communication, randomness and scheduling are not actions of the
+        // sequential deterministic calculus machine, so a universe
+        // admitting them is not the one the grammar generates.
         definition(
             "checkDeclared",
             vec![
@@ -670,7 +804,7 @@ fn machine_contract(unused: &Unused) -> Vec<Json> {
                                     binders!["amount"],
                                     ite(beq(var("amount"), nat(0)), hidden_cost(), pass()),
                                 ),
-                                arm("Charge.free", Vec::new(), prepared_common()),
+                                arm("Charge.free", Vec::new(), prepared_bound()),
                                 arm("Charge.undeclared", Vec::new(), hidden_cost()),
                             ],
                         ),
@@ -702,35 +836,971 @@ fn machine_contract(unused: &Unused) -> Vec<Json> {
                 ),
             ),
         ),
-        // The per-invocation charge of the admitted preparation actions.
+        // A prepared artifact leaves every system's cost only as the product
+        // of an action admitted free; bound for any other action it would
+        // exclude work that is charged.
+        recursive(
+            "prepared",
+            definition(
+                "checkPrepared",
+                vec![
+                    parameter("machine", local_t("Machine")),
+                    parameter("prepared", list_t(local_t("Prepared"))),
+                ],
+                option_t(rejection_t()),
+                on_list(var("prepared"), pass(), "artifact", "rest", {
+                    let stray = || {
+                        reject(
+                            "strayPreparedArtifact",
+                            vec![project(var("artifact"), "kind")],
+                        )
+                    };
+                    on_option(
+                        local_call(
+                            "findAction",
+                            vec![
+                                project(var("machine"), "actions"),
+                                project(var("artifact"), "kind"),
+                            ],
+                        ),
+                        stray(),
+                        "charge",
+                        matching(
+                            var("charge"),
+                            vec![
+                                arm("Charge.steps", Vec::new(), stray()),
+                                arm("Charge.constant", binders![unused.next()], stray()),
+                                arm(
+                                    "Charge.free",
+                                    Vec::new(),
+                                    local_call("checkPrepared", vec![var("machine"), var("rest")]),
+                                ),
+                                arm("Charge.undeclared", Vec::new(), stray()),
+                            ],
+                        ),
+                    )
+                }),
+            ),
+        ),
+        // What one plan's need of `kind` costs per invocation: the declared
+        // constant, or nothing when the action is free.
+        definition(
+            "unitCharge",
+            vec![
+                parameter("actions", actions_t()),
+                parameter("kind", kind_t()),
+            ],
+            nat_t(),
+            on_option(
+                local_call("findAction", vec![var("actions"), var("kind")]),
+                nat(0),
+                "charge",
+                matching(
+                    var("charge"),
+                    vec![
+                        arm("Charge.steps", Vec::new(), nat(0)),
+                        arm("Charge.constant", binders!["amount"], var("amount")),
+                        arm("Charge.free", Vec::new(), nat(0)),
+                        arm("Charge.undeclared", Vec::new(), nat(0)),
+                    ],
+                ),
+            ),
+        ),
+        recursive(
+            "kinds",
+            definition(
+                "planCharge",
+                vec![
+                    parameter("actions", actions_t()),
+                    parameter("kinds", list_t(kind_t())),
+                ],
+                nat_t(),
+                on_list(
+                    var("kinds"),
+                    nat(0),
+                    "kind",
+                    "rest",
+                    add(
+                        local_call("unitCharge", vec![var("actions"), var("kind")]),
+                        local_call("planCharge", vec![var("actions"), var("rest")]),
+                    ),
+                ),
+            ),
+        ),
+        // Every preparation a plan needs is an action the machine accounts.
+        recursive(
+            "kinds",
+            definition(
+                "checkKindsAccounted",
+                vec![
+                    parameter("actions", actions_t()),
+                    parameter("kinds", list_t(kind_t())),
+                ],
+                option_t(rejection_t()),
+                on_list(
+                    var("kinds"),
+                    pass(),
+                    "kind",
+                    "rest",
+                    on_option(
+                        local_call("findAction", vec![var("actions"), var("kind")]),
+                        reject("unaccountedAction", vec![var("kind")]),
+                        unused.next(),
+                        local_call("checkKindsAccounted", vec![var("actions"), var("rest")]),
+                    ),
+                ),
+            ),
+        ),
+        recursive(
+            "plans",
+            definition(
+                "checkPlanPreparation",
+                vec![
+                    parameter("actions", actions_t()),
+                    parameter("plans", list_t(local_t("Plan"))),
+                ],
+                option_t(rejection_t()),
+                on_list(
+                    var("plans"),
+                    pass(),
+                    "plan",
+                    "rest",
+                    on_option(
+                        local_call(
+                            "checkKindsAccounted",
+                            vec![var("actions"), project(var("plan"), "prepares")],
+                        ),
+                        local_call("checkPlanPreparation", vec![var("actions"), var("rest")]),
+                        "rejection",
+                        some(rejection_t(), var("rejection")),
+                    ),
+                ),
+            ),
+        ),
+        // Whether some declared constant exceeds the capacity's charge.
         recursive(
             "actions",
             definition(
-                "preparationCharge",
-                vec![parameter("actions", actions_t())],
-                nat_t(),
+                "chargeBeyond",
+                vec![
+                    parameter("actions", actions_t()),
+                    parameter("bound", nat_t()),
+                ],
+                lx::bool_t(),
                 on_list(
                     var("actions"),
-                    nat(0),
+                    no(),
                     "action",
                     "rest",
-                    add(
-                        ite(
-                            local_call("preparation", vec![action_kind()]),
-                            matching(
-                                project(var("action"), "charge"),
-                                vec![
-                                    arm("Charge.steps", Vec::new(), nat(0)),
-                                    arm("Charge.constant", binders!["amount"], var("amount")),
-                                    arm("Charge.free", Vec::new(), nat(0)),
-                                    arm("Charge.undeclared", Vec::new(), nat(0)),
-                                ],
-                            ),
-                            nat(0),
+                    or(
+                        matching(
+                            project(var("action"), "charge"),
+                            vec![
+                                arm("Charge.steps", Vec::new(), no()),
+                                arm(
+                                    "Charge.constant",
+                                    binders!["amount"],
+                                    blt(var("bound"), var("amount")),
+                                ),
+                                arm("Charge.free", Vec::new(), no()),
+                                arm("Charge.undeclared", Vec::new(), no()),
+                            ],
                         ),
-                        local_call("preparationCharge", vec![var("rest")]),
+                        local_call("chargeBeyond", vec![var("rest"), var("bound")]),
                     ),
                 ),
+            ),
+        ),
+    ]
+}
+
+// --- the universe ----------------------------------------------------------
+
+/// `front ++ back`, written out so the membership proofs can unfold it.
+fn append_all(item: Json, front: Json, back: Json) -> Json {
+    call_at(lx::member("appendAll"), vec![item], vec![front, back])
+}
+
+/// The grammar's systems, independently of any evaluation: every fixed
+/// plan, then for every threshold every dispatch from a small plan to a
+/// large plan, both ranging over every plan.
+#[allow(clippy::too_many_lines)]
+fn universe() -> Vec<Json> {
+    let item_t = || parameter_t("Item");
+    let selector = |name: &str, arguments: Vec<Json>| local(&format!("Selector.{name}"), arguments);
+    let selectors_in =
+        |selector: Json, selectors: Json| local_call("selectorIn", vec![selector, selectors]);
+    let nat_in = |item: Json, items: Json| local_call("natIn", vec![item, items]);
+    let plan_count = || prim("length", vec![project(var("grammar"), "plans")], nat_t());
+    vec![
+        generic(
+            &["Item"],
+            recursive(
+                "front",
+                definition(
+                    "appendAll",
+                    vec![
+                        parameter("front", list_t(item_t())),
+                        parameter("back", list_t(item_t())),
+                    ],
+                    list_t(item_t()),
+                    on_list(
+                        var("front"),
+                        var("back"),
+                        "head",
+                        "rest",
+                        cons(var("head"), append_all(item_t(), var("rest"), var("back"))),
+                    ),
+                ),
+            ),
+        ),
+        // The plan indices `0, 1, .., count - 1`.
+        recursive(
+            "count",
+            definition(
+                "range",
+                vec![parameter("count", nat_t())],
+                nats_t(),
+                on_nat(
+                    var("count"),
+                    nil(nat_t()),
+                    append_all(
+                        nat_t(),
+                        local_call("range", vec![var("remaining")]),
+                        list(nat_t(), vec![var("remaining")]),
+                    ),
+                ),
+            ),
+        ),
+        recursive(
+            "items",
+            definition(
+                "natIn",
+                vec![parameter("item", nat_t()), parameter("items", nats_t())],
+                lx::bool_t(),
+                on_list(
+                    var("items"),
+                    no(),
+                    "head",
+                    "rest",
+                    or(
+                        beq(var("item"), var("head")),
+                        nat_in(var("item"), var("rest")),
+                    ),
+                ),
+            ),
+        ),
+        // Selector identity: the same constructor with the same fields.
+        definition(
+            "selectorEq",
+            vec![
+                parameter("left", selector_t()),
+                parameter("right", selector_t()),
+            ],
+            lx::bool_t(),
+            matching(
+                var("left"),
+                vec![
+                    arm(
+                        "Selector.fixed",
+                        binders!["plan"],
+                        matching(
+                            var("right"),
+                            vec![
+                                arm(
+                                    "Selector.fixed",
+                                    binders!["other"],
+                                    beq(var("plan"), var("other")),
+                                ),
+                                arm(
+                                    "Selector.dispatch",
+                                    binders!["ignoredThreshold", "ignoredSmall", "ignoredLarge"],
+                                    no(),
+                                ),
+                            ],
+                        ),
+                    ),
+                    arm(
+                        "Selector.dispatch",
+                        binders!["threshold", "small", "large"],
+                        matching(
+                            var("right"),
+                            vec![
+                                arm("Selector.fixed", binders!["ignoredPlan"], no()),
+                                arm(
+                                    "Selector.dispatch",
+                                    binders!["otherThreshold", "otherSmall", "otherLarge"],
+                                    and(
+                                        beq(var("threshold"), var("otherThreshold")),
+                                        and(
+                                            beq(var("small"), var("otherSmall")),
+                                            beq(var("large"), var("otherLarge")),
+                                        ),
+                                    ),
+                                ),
+                            ],
+                        ),
+                    ),
+                ],
+            ),
+        ),
+        recursive(
+            "selectors",
+            definition(
+                "selectorIn",
+                vec![
+                    parameter("selector", selector_t()),
+                    parameter("selectors", list_t(selector_t())),
+                ],
+                lx::bool_t(),
+                on_list(
+                    var("selectors"),
+                    no(),
+                    "head",
+                    "rest",
+                    or(
+                        local_call("selectorEq", vec![var("selector"), var("head")]),
+                        selectors_in(var("selector"), var("rest")),
+                    ),
+                ),
+            ),
+        ),
+        recursive(
+            "plans",
+            definition(
+                "fixedOver",
+                vec![parameter("plans", nats_t())],
+                list_t(selector_t()),
+                on_list(
+                    var("plans"),
+                    nil(selector_t()),
+                    "plan",
+                    "rest",
+                    cons(
+                        selector("fixed", vec![var("plan")]),
+                        local_call("fixedOver", vec![var("rest")]),
+                    ),
+                ),
+            ),
+        ),
+        recursive(
+            "larges",
+            definition(
+                "dispatchOver",
+                vec![
+                    parameter("threshold", nat_t()),
+                    parameter("small", nat_t()),
+                    parameter("larges", nats_t()),
+                ],
+                list_t(selector_t()),
+                on_list(
+                    var("larges"),
+                    nil(selector_t()),
+                    "large",
+                    "rest",
+                    cons(
+                        selector(
+                            "dispatch",
+                            vec![var("threshold"), var("small"), var("large")],
+                        ),
+                        local_call(
+                            "dispatchOver",
+                            vec![var("threshold"), var("small"), var("rest")],
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        recursive(
+            "smalls",
+            definition(
+                "dispatchSmalls",
+                vec![
+                    parameter("threshold", nat_t()),
+                    parameter("smalls", nats_t()),
+                    parameter("larges", nats_t()),
+                ],
+                list_t(selector_t()),
+                on_list(
+                    var("smalls"),
+                    nil(selector_t()),
+                    "small",
+                    "rest",
+                    append_all(
+                        selector_t(),
+                        local_call(
+                            "dispatchOver",
+                            vec![var("threshold"), var("small"), var("larges")],
+                        ),
+                        local_call(
+                            "dispatchSmalls",
+                            vec![var("threshold"), var("rest"), var("larges")],
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        recursive(
+            "thresholds",
+            definition(
+                "dispatchThresholds",
+                vec![
+                    parameter("thresholds", nats_t()),
+                    parameter("plans", nats_t()),
+                ],
+                list_t(selector_t()),
+                on_list(
+                    var("thresholds"),
+                    nil(selector_t()),
+                    "threshold",
+                    "rest",
+                    append_all(
+                        selector_t(),
+                        local_call(
+                            "dispatchSmalls",
+                            vec![var("threshold"), var("plans"), var("plans")],
+                        ),
+                        local_call("dispatchThresholds", vec![var("rest"), var("plans")]),
+                    ),
+                ),
+            ),
+        ),
+        // §8.3 GenerationGrammar: the universe in expansion order.
+        definition(
+            "expand",
+            vec![parameter("grammar", local_t("Grammar"))],
+            list_t(selector_t()),
+            let_in(
+                "all",
+                nats_t(),
+                local_call("range", vec![plan_count()]),
+                append_all(
+                    selector_t(),
+                    local_call("fixedOver", vec![var("all")]),
+                    local_call(
+                        "dispatchThresholds",
+                        vec![project(var("grammar"), "thresholds"), var("all")],
+                    ),
+                ),
+            ),
+        ),
+        // §8.3 MembershipSemantics, stated without the expansion: a fixed
+        // system runs an existing plan; a dispatch runs existing plans at a
+        // declared threshold.
+        definition(
+            "wellFormed",
+            vec![
+                parameter("grammar", local_t("Grammar")),
+                parameter("selector", selector_t()),
+            ],
+            lx::bool_t(),
+            let_in(
+                "count",
+                nat_t(),
+                plan_count(),
+                matching(
+                    var("selector"),
+                    vec![
+                        arm(
+                            "Selector.fixed",
+                            binders!["plan"],
+                            blt(var("plan"), var("count")),
+                        ),
+                        arm(
+                            "Selector.dispatch",
+                            binders!["threshold", "small", "large"],
+                            and(
+                                nat_in(var("threshold"), project(var("grammar"), "thresholds")),
+                                and(
+                                    blt(var("small"), var("count")),
+                                    blt(var("large"), var("count")),
+                                ),
+                            ),
+                        ),
+                    ],
+                ),
+            ),
+        ),
+    ]
+}
+
+/// §8.3 CompletenessProposition: `Gnaf.expandComplete` proves, for every
+/// grammar and every selector, that the selector is a member of the
+/// expansion exactly when it is well formed, so the universe is the
+/// grammar's by theorem rather than by the expansion's say-so. The lemmas
+/// before it are the Boolean and arithmetic facts it rewrites with.
+#[allow(clippy::too_many_lines)]
+fn completeness() -> Vec<Json> {
+    let a = || var("a");
+    let b = || var("b");
+    let c = || var("c");
+    let selector = |name: &str, arguments: Vec<Json>| local(&format!("Selector.{name}"), arguments);
+    let selector_in =
+        |selector: Json, selectors: Json| local_call("selectorIn", vec![selector, selectors]);
+    let nat_in = |item: Json, items: Json| local_call("natIn", vec![item, items]);
+    let fixed = || selector("fixed", vec![var("plan")]);
+    let dispatch = || {
+        selector(
+            "dispatch",
+            vec![var("threshold"), var("small"), var("large")],
+        )
+    };
+    let next = |value: &str| add(var(value), nat(1));
+    let list_induction =
+        |scrutinee: &str, generalizing: &[&str], nil_proof: Json, cons_proof: Json| {
+            induction(
+                scrutinee,
+                generalizing,
+                vec![
+                    proof_branch("nil", &[], nil_proof),
+                    proof_branch("cons", &["head", "rest", "hypothesis"], cons_proof),
+                ],
+            )
+        };
+    let simp_lemma = |name: &str, parameters: Vec<(&str, Json)>, statement: Json, proof: Json| {
+        axioms(&SIMP_AXIOMS, lemma(name, parameters, statement, proof))
+    };
+    let nats = || nats_t();
+    vec![
+        boolean_law(
+            "orAssociative",
+            &["a", "b", "c"],
+            eq(or(or(a(), b()), c()), or(a(), or(b(), c()))),
+        ),
+        boolean_law("orFalse", &["a"], eq(or(a(), no()), a())),
+        boolean_law("falseOr", &["a"], eq(or(no(), a()), a())),
+        boolean_law("andFalse", &["a"], eq(and(a(), no()), no())),
+        boolean_law("falseAnd", &["a"], eq(and(no(), a()), no())),
+        boolean_law(
+            "andOverOr",
+            &["a", "b", "c"],
+            eq(or(and(a(), b()), and(a(), c())), and(a(), or(b(), c()))),
+        ),
+        boolean_law(
+            "orUnderAnd",
+            &["a", "b", "c"],
+            eq(or(and(a(), c()), and(b(), c())), and(or(a(), b()), c())),
+        ),
+        lemma(
+            "bltNext",
+            vec![("left", nat_t()), ("right", nat_t())],
+            eq(
+                blt(next("left"), next("right")),
+                blt(var("left"), var("right")),
+            ),
+            reflexivity(),
+        ),
+        lemma(
+            "beqNext",
+            vec![("left", nat_t()), ("right", nat_t())],
+            eq(
+                beq(next("left"), next("right")),
+                beq(var("left"), var("right")),
+            ),
+            reflexivity(),
+        ),
+        // Below `bound + 1` is below `bound` or `bound` itself.
+        simp_lemma(
+            "bltSucc",
+            vec![("item", nat_t()), ("bound", nat_t())],
+            eq(
+                blt(var("item"), next("bound")),
+                or(
+                    blt(var("item"), var("bound")),
+                    beq(var("item"), var("bound")),
+                ),
+            ),
+            induction(
+                "item",
+                &["bound"],
+                vec![
+                    proof_branch(
+                        "zero",
+                        &[],
+                        cases(
+                            "bound",
+                            vec![
+                                proof_branch("zero", &[], reflexivity()),
+                                proof_branch("succ", &["smaller"], reflexivity()),
+                            ],
+                        ),
+                    ),
+                    proof_branch(
+                        "succ",
+                        &["previous", "hypothesis"],
+                        cases(
+                            "bound",
+                            vec![
+                                proof_branch("zero", &[], reflexivity()),
+                                proof_branch(
+                                    "succ",
+                                    &["smaller"],
+                                    simplify(&["beqNext", "bltNext", "hypothesis"]),
+                                ),
+                            ],
+                        ),
+                    ),
+                ],
+            ),
+        ),
+        simp_lemma(
+            "natInAppend",
+            vec![("item", nat_t()), ("front", nats()), ("back", nats())],
+            eq(
+                nat_in(var("item"), append_all(nat_t(), var("front"), var("back"))),
+                or(
+                    nat_in(var("item"), var("front")),
+                    nat_in(var("item"), var("back")),
+                ),
+            ),
+            list_induction(
+                "front",
+                &[],
+                reflexivity(),
+                simplify(&["appendAll", "hypothesis", "natIn", "orAssociative"]),
+            ),
+        ),
+        simp_lemma(
+            "selectorInAppend",
+            vec![
+                ("selector", selector_t()),
+                ("front", list_t(selector_t())),
+                ("back", list_t(selector_t())),
+            ],
+            eq(
+                selector_in(
+                    var("selector"),
+                    append_all(selector_t(), var("front"), var("back")),
+                ),
+                or(
+                    selector_in(var("selector"), var("front")),
+                    selector_in(var("selector"), var("back")),
+                ),
+            ),
+            list_induction(
+                "front",
+                &[],
+                reflexivity(),
+                simplify(&["appendAll", "hypothesis", "orAssociative", "selectorIn"]),
+            ),
+        ),
+        simp_lemma(
+            "natInRange",
+            vec![("item", nat_t()), ("count", nat_t())],
+            eq(
+                nat_in(var("item"), local_call("range", vec![var("count")])),
+                blt(var("item"), var("count")),
+            ),
+            induction(
+                "count",
+                &[],
+                vec![
+                    proof_branch("zero", &[], reflexivity()),
+                    proof_branch(
+                        "succ",
+                        &["smaller", "hypothesis"],
+                        simplify(&[
+                            "bltSucc",
+                            "hypothesis",
+                            "natIn",
+                            "natInAppend",
+                            "orFalse",
+                            "range",
+                        ]),
+                    ),
+                ],
+            ),
+        ),
+        simp_lemma(
+            "fixedInFixed",
+            vec![("plan", nat_t()), ("plans", nats())],
+            eq(
+                selector_in(fixed(), local_call("fixedOver", vec![var("plans")])),
+                nat_in(var("plan"), var("plans")),
+            ),
+            list_induction(
+                "plans",
+                &[],
+                reflexivity(),
+                simplify(&[
+                    "fixedOver",
+                    "hypothesis",
+                    "natIn",
+                    "selectorEq",
+                    "selectorIn",
+                ]),
+            ),
+        ),
+        simp_lemma(
+            "dispatchInFixed",
+            vec![
+                ("threshold", nat_t()),
+                ("small", nat_t()),
+                ("large", nat_t()),
+                ("plans", nats()),
+            ],
+            eq(
+                selector_in(dispatch(), local_call("fixedOver", vec![var("plans")])),
+                no(),
+            ),
+            list_induction(
+                "plans",
+                &[],
+                reflexivity(),
+                simplify(&[
+                    "falseOr",
+                    "fixedOver",
+                    "hypothesis",
+                    "selectorEq",
+                    "selectorIn",
+                ]),
+            ),
+        ),
+        simp_lemma(
+            "fixedInOver",
+            vec![
+                ("plan", nat_t()),
+                ("level", nat_t()),
+                ("origin", nat_t()),
+                ("larges", nats()),
+            ],
+            eq(
+                selector_in(
+                    fixed(),
+                    local_call(
+                        "dispatchOver",
+                        vec![var("level"), var("origin"), var("larges")],
+                    ),
+                ),
+                no(),
+            ),
+            list_induction(
+                "larges",
+                &[],
+                reflexivity(),
+                simplify(&[
+                    "dispatchOver",
+                    "falseOr",
+                    "hypothesis",
+                    "selectorEq",
+                    "selectorIn",
+                ]),
+            ),
+        ),
+        simp_lemma(
+            "fixedInSmalls",
+            vec![
+                ("plan", nat_t()),
+                ("level", nat_t()),
+                ("smalls", nats()),
+                ("larges", nats()),
+            ],
+            eq(
+                selector_in(
+                    fixed(),
+                    local_call(
+                        "dispatchSmalls",
+                        vec![var("level"), var("smalls"), var("larges")],
+                    ),
+                ),
+                no(),
+            ),
+            list_induction(
+                "smalls",
+                &[],
+                reflexivity(),
+                simplify(&[
+                    "dispatchSmalls",
+                    "falseOr",
+                    "fixedInOver",
+                    "hypothesis",
+                    "selectorInAppend",
+                ]),
+            ),
+        ),
+        simp_lemma(
+            "fixedInDispatch",
+            vec![("plan", nat_t()), ("thresholds", nats()), ("plans", nats())],
+            eq(
+                selector_in(
+                    fixed(),
+                    local_call("dispatchThresholds", vec![var("thresholds"), var("plans")]),
+                ),
+                no(),
+            ),
+            list_induction(
+                "thresholds",
+                &[],
+                reflexivity(),
+                simplify(&[
+                    "dispatchThresholds",
+                    "falseOr",
+                    "fixedInSmalls",
+                    "hypothesis",
+                    "selectorInAppend",
+                ]),
+            ),
+        ),
+        simp_lemma(
+            "dispatchInOver",
+            vec![
+                ("threshold", nat_t()),
+                ("small", nat_t()),
+                ("large", nat_t()),
+                ("level", nat_t()),
+                ("origin", nat_t()),
+                ("larges", nats()),
+            ],
+            eq(
+                selector_in(
+                    dispatch(),
+                    local_call(
+                        "dispatchOver",
+                        vec![var("level"), var("origin"), var("larges")],
+                    ),
+                ),
+                and(
+                    beq(var("threshold"), var("level")),
+                    and(
+                        beq(var("small"), var("origin")),
+                        nat_in(var("large"), var("larges")),
+                    ),
+                ),
+            ),
+            list_induction(
+                "larges",
+                &[],
+                simplify(&["andFalse", "dispatchOver", "natIn", "selectorIn"]),
+                simplify(&[
+                    "andOverOr",
+                    "dispatchOver",
+                    "hypothesis",
+                    "natIn",
+                    "selectorEq",
+                    "selectorIn",
+                ]),
+            ),
+        ),
+        simp_lemma(
+            "dispatchInSmalls",
+            vec![
+                ("threshold", nat_t()),
+                ("small", nat_t()),
+                ("large", nat_t()),
+                ("level", nat_t()),
+                ("smalls", nats()),
+                ("larges", nats()),
+            ],
+            eq(
+                selector_in(
+                    dispatch(),
+                    local_call(
+                        "dispatchSmalls",
+                        vec![var("level"), var("smalls"), var("larges")],
+                    ),
+                ),
+                and(
+                    beq(var("threshold"), var("level")),
+                    and(
+                        nat_in(var("small"), var("smalls")),
+                        nat_in(var("large"), var("larges")),
+                    ),
+                ),
+            ),
+            list_induction(
+                "smalls",
+                &[],
+                simplify(&[
+                    "andFalse",
+                    "dispatchSmalls",
+                    "falseAnd",
+                    "natIn",
+                    "selectorIn",
+                ]),
+                simplify(&[
+                    "andOverOr",
+                    "dispatchInOver",
+                    "dispatchSmalls",
+                    "hypothesis",
+                    "natIn",
+                    "orUnderAnd",
+                    "selectorInAppend",
+                ]),
+            ),
+        ),
+        simp_lemma(
+            "dispatchInThresholds",
+            vec![
+                ("threshold", nat_t()),
+                ("small", nat_t()),
+                ("large", nat_t()),
+                ("thresholds", nats()),
+                ("plans", nats()),
+            ],
+            eq(
+                selector_in(
+                    dispatch(),
+                    local_call("dispatchThresholds", vec![var("thresholds"), var("plans")]),
+                ),
+                and(
+                    nat_in(var("threshold"), var("thresholds")),
+                    and(
+                        nat_in(var("small"), var("plans")),
+                        nat_in(var("large"), var("plans")),
+                    ),
+                ),
+            ),
+            list_induction(
+                "thresholds",
+                &[],
+                reflexivity(),
+                simplify(&[
+                    "dispatchInSmalls",
+                    "dispatchThresholds",
+                    "hypothesis",
+                    "natIn",
+                    "orUnderAnd",
+                    "selectorInAppend",
+                ]),
+            ),
+        ),
+        simp_lemma(
+            "expandComplete",
+            vec![("grammar", local_t("Grammar")), ("selector", selector_t())],
+            eq(
+                selector_in(var("selector"), local_call("expand", vec![var("grammar")])),
+                local_call("wellFormed", vec![var("grammar"), var("selector")]),
+            ),
+            cases(
+                "selector",
+                vec![
+                    proof_branch(
+                        "fixed",
+                        &["plan"],
+                        simplify(&[
+                            "expand",
+                            "fixedInDispatch",
+                            "fixedInFixed",
+                            "natInRange",
+                            "orFalse",
+                            "selectorInAppend",
+                            "wellFormed",
+                        ]),
+                    ),
+                    proof_branch(
+                        "dispatch",
+                        &["threshold", "small", "large"],
+                        simplify(&[
+                            "dispatchInFixed",
+                            "dispatchInThresholds",
+                            "expand",
+                            "falseOr",
+                            "natInRange",
+                            "selectorInAppend",
+                            "wellFormed",
+                        ]),
+                    ),
+                ],
             ),
         ),
     ]
@@ -739,8 +1809,9 @@ fn machine_contract(unused: &Unused) -> Vec<Json> {
 // --- validation ------------------------------------------------------------
 
 /// The claim must be answerable by the request's order: a scalar claim
-/// over the total order, a vector claim over the componentwise one, and no
-/// other claim at all.
+/// over the total order, a vector claim over the componentwise one; the
+/// §12.4 alias is refused for its base class with a displayed scope, and no
+/// other claim is decided.
 fn check_claim(unused: &Unused) -> Json {
     let objective = |scalar: Json, vector: Json| {
         matching(
@@ -751,25 +1822,60 @@ fn check_claim(unused: &Unused) -> Json {
             ],
         )
     };
-    let mut branches: Vec<Json> = CLAIMS
-        .iter()
-        .map(|claim| {
-            let body = if SCALAR_CLAIMS.contains(claim) {
+    let branches: Vec<Json> = claims()
+        .into_iter()
+        .map(|(claim, constants)| {
+            let body = if SCALAR_CLAIMS.contains(&claim) {
                 objective(pass(), reject("scalarClaimOverPartialOrder", Vec::new()))
-            } else if VECTOR_CLAIMS.contains(claim) {
+            } else if VECTOR_CLAIMS.contains(&claim) {
                 objective(reject("vectorClaimOverTotalOrder", Vec::new()), pass())
+            } else if claim == ALIAS_CLAIM {
+                reject("claimAlias", Vec::new())
             } else {
                 reject("unsupportedClaim", Vec::new())
             };
-            arm(&format!("ClaimClass.{claim}"), Vec::new(), body)
+            arm(
+                &format!("ClaimClass.{claim}"),
+                constants.iter().map(|_| unused.next()).collect(),
+                body,
+            )
         })
         .collect();
-    branches.push(arm(
-        "ClaimClass.instanceOptimal",
-        binders![unused.next(), unused.next()],
-        reject("unsupportedClaim", Vec::new()),
-    ));
     matching(project(var("request"), "claim"), branches)
+}
+
+/// The request's use of the machine fits the capacity the machine binds:
+/// its fuel, its domain, its universe, and every declared charge.
+fn check_capacity() -> Json {
+    let machine = || project(var("request"), "machine");
+    let capacity = |field: &str| project(project(machine(), "capacity"), field);
+    ite(
+        or(
+            or(
+                blt(capacity("fuel"), project(machine(), "fuel")),
+                blt(
+                    capacity("domain"),
+                    prim("length", vec![project(var("request"), "domain")], nat_t()),
+                ),
+            ),
+            or(
+                blt(
+                    capacity("systems"),
+                    prim(
+                        "length",
+                        vec![local_call("expand", vec![var("grammar")])],
+                        nat_t(),
+                    ),
+                ),
+                local_call(
+                    "chargeBeyond",
+                    vec![project(machine(), "actions"), capacity("charge")],
+                ),
+            ),
+        ),
+        reject("beyondCapacity", Vec::new()),
+        pass(),
+    )
 }
 
 fn validation(unused: &Unused) -> Vec<Json> {
@@ -779,6 +1885,18 @@ fn validation(unused: &Unused) -> Vec<Json> {
     // `checkClaim` precedes `validate` in the module, so it draws its
     // unused names first.
     let claim = check_claim(unused);
+    let on_grammar = |unused: &Unused, check: Json| {
+        matching(
+            field("carrier"),
+            vec![
+                arm("Carrier.grammar", binders!["grammar"], check),
+                arm("Carrier.internalPlans", Vec::new(), pass()),
+                arm("Carrier.optimizerOutput", Vec::new(), pass()),
+                arm("Carrier.discovered", binders![unused.next()], pass()),
+                arm("Carrier.cached", Vec::new(), pass()),
+            ],
+        )
+    };
     let mut checks = vec![
         // §8.1: vacuous truth never establishes exactness or optimality.
         on_list(
@@ -814,6 +1932,8 @@ fn validation(unused: &Unused) -> Vec<Json> {
                 ),
             ],
         ),
+        // `grammarEquality` cites `expandComplete`, which the kernel proves
+        // for every grammar; any other evidence is refused.
         matching(
             field("completeness"),
             vec![
@@ -835,6 +1955,20 @@ fn validation(unused: &Unused) -> Vec<Json> {
                 ),
             ],
         ),
+        on_grammar(unused, check_capacity()),
+        // §8.2: a unit charge for a primitive whose work grows with its
+        // operands is an unbounded action at unit cost.
+        matching(
+            project(field("machine"), "operandSize"),
+            vec![
+                arm("OperandSize.weighted", Vec::new(), pass()),
+                arm(
+                    "OperandSize.unit",
+                    Vec::new(),
+                    reject("unitCostOperands", Vec::new()),
+                ),
+            ],
+        ),
         local_call("checkDistinct", vec![actions(), actions()]),
     ];
     checks.extend(PERFORMED.iter().map(|kind| {
@@ -848,6 +1982,17 @@ fn validation(unused: &Unused) -> Vec<Json> {
     }));
     checks.extend([
         local_call("checkAllDeclared", vec![field("machine"), actions()]),
+        local_call(
+            "checkPrepared",
+            vec![field("machine"), project(field("machine"), "prepared")],
+        ),
+        on_grammar(
+            unused,
+            local_call(
+                "checkPlanPreparation",
+                vec![actions(), project(var("grammar"), "plans")],
+            ),
+        ),
         local_call("checkClaim", vec![var("request")]),
         matching(
             field("scope"),
@@ -879,181 +2024,6 @@ fn validation(unused: &Unused) -> Vec<Json> {
             vec![parameter("request", request_t())],
             option_t(rejection_t()),
             first_rejection(unused, checks),
-        ),
-    ]
-}
-
-// --- the universe ----------------------------------------------------------
-
-/// The grammar's systems, independently of any optimizer: every fixed plan,
-/// then every dispatch at every threshold between two distinct plans.
-fn universe() -> Vec<Json> {
-    let index_pair_t = || product_t(nat_t(), nat_t());
-    let next_index = || add(var("next"), nat(1));
-    vec![
-        recursive(
-            "count",
-            definition(
-                "fixedSelectors",
-                vec![parameter("count", nat_t()), parameter("next", nat_t())],
-                list_t(selector_t()),
-                on_nat(
-                    var("count"),
-                    nil(selector_t()),
-                    cons(
-                        local("Selector.fixed", vec![var("next")]),
-                        local_call("fixedSelectors", vec![var("remaining"), next_index()]),
-                    ),
-                ),
-            ),
-        ),
-        recursive(
-            "candidates",
-            definition(
-                "pairsFrom",
-                vec![
-                    parameter("small", nat_t()),
-                    parameter("candidates", list_t(nat_t())),
-                ],
-                list_t(index_pair_t()),
-                on_list(
-                    var("candidates"),
-                    nil(index_pair_t()),
-                    "large",
-                    "rest",
-                    ite(
-                        beq(var("small"), var("large")),
-                        local_call("pairsFrom", vec![var("small"), var("rest")]),
-                        cons(
-                            pair(var("small"), var("large")),
-                            local_call("pairsFrom", vec![var("small"), var("rest")]),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-        recursive(
-            "smalls",
-            definition(
-                "orderedPairs",
-                vec![
-                    parameter("smalls", list_t(nat_t())),
-                    parameter("all", list_t(nat_t())),
-                ],
-                list_t(index_pair_t()),
-                on_list(
-                    var("smalls"),
-                    nil(index_pair_t()),
-                    "small",
-                    "rest",
-                    prim(
-                        "append",
-                        vec![
-                            local_call("pairsFrom", vec![var("small"), var("all")]),
-                            local_call("orderedPairs", vec![var("rest"), var("all")]),
-                        ],
-                        list_t(index_pair_t()),
-                    ),
-                ),
-            ),
-        ),
-        recursive(
-            "count",
-            definition(
-                "indices",
-                vec![parameter("count", nat_t()), parameter("next", nat_t())],
-                list_t(nat_t()),
-                on_nat(
-                    var("count"),
-                    nil(nat_t()),
-                    cons(
-                        var("next"),
-                        local_call("indices", vec![var("remaining"), next_index()]),
-                    ),
-                ),
-            ),
-        ),
-        recursive(
-            "pairs",
-            definition(
-                "dispatchFor",
-                vec![
-                    parameter("threshold", nat_t()),
-                    parameter("pairs", list_t(index_pair_t())),
-                ],
-                list_t(selector_t()),
-                on_list(
-                    var("pairs"),
-                    nil(selector_t()),
-                    "chosen",
-                    "rest",
-                    cons(
-                        local(
-                            "Selector.dispatch",
-                            vec![
-                                var("threshold"),
-                                first(var("chosen")),
-                                second(var("chosen")),
-                            ],
-                        ),
-                        local_call("dispatchFor", vec![var("threshold"), var("rest")]),
-                    ),
-                ),
-            ),
-        ),
-        recursive(
-            "thresholds",
-            definition(
-                "dispatchSelectors",
-                vec![
-                    parameter("thresholds", list_t(nat_t())),
-                    parameter("pairs", list_t(index_pair_t())),
-                ],
-                list_t(selector_t()),
-                on_list(
-                    var("thresholds"),
-                    nil(selector_t()),
-                    "threshold",
-                    "rest",
-                    prim(
-                        "append",
-                        vec![
-                            local_call("dispatchFor", vec![var("threshold"), var("pairs")]),
-                            local_call("dispatchSelectors", vec![var("rest"), var("pairs")]),
-                        ],
-                        list_t(selector_t()),
-                    ),
-                ),
-            ),
-        ),
-        definition(
-            "expand",
-            vec![parameter("grammar", local_t("Grammar"))],
-            list_t(selector_t()),
-            let_in(
-                "count",
-                nat_t(),
-                prim("length", vec![project(var("grammar"), "plans")], nat_t()),
-                let_in(
-                    "all",
-                    list_t(nat_t()),
-                    local_call("indices", vec![var("count"), nat(0)]),
-                    prim(
-                        "append",
-                        vec![
-                            local_call("fixedSelectors", vec![var("count"), nat(0)]),
-                            local_call(
-                                "dispatchSelectors",
-                                vec![
-                                    project(var("grammar"), "thresholds"),
-                                    local_call("orderedPairs", vec![var("all"), var("all")]),
-                                ],
-                            ),
-                        ],
-                        list_t(selector_t()),
-                    ),
-                ),
-            ),
         ),
     ]
 }
@@ -1108,9 +2078,9 @@ fn realization() -> Vec<Json> {
         ],
     );
     vec![
-        // A system is the entry selector over the shared plans at indices
-        // 1.., so every system of one grammar shares their code and differs
-        // only in its entry.
+        // A system is the complete selector-plus-executor (§8.5): the entry
+        // selector over the shared plans at indices 1.., so every system of
+        // one grammar shares their code and differs only in its entry.
         definition(
             "entryBody",
             vec![parameter("selector", selector_t())],
@@ -1138,6 +2108,24 @@ fn realization() -> Vec<Json> {
                 ],
             ),
         ),
+        recursive(
+            "plans",
+            definition(
+                "planFunctions",
+                vec![parameter("plans", list_t(local_t("Plan")))],
+                list_t(syntax_t("Function")),
+                on_list(
+                    var("plans"),
+                    nil(syntax_t("Function")),
+                    "plan",
+                    "rest",
+                    cons(
+                        project(var("plan"), "function"),
+                        local_call("planFunctions", vec![var("rest")]),
+                    ),
+                ),
+            ),
+        ),
         definition(
             "realize",
             vec![
@@ -1149,7 +2137,13 @@ fn realization() -> Vec<Json> {
                 term::member(SYNTAX, "Program"),
                 vec![
                     ("adts", nil(syntax_t("Adt"))),
-                    ("functions", cons(entry, project(var("grammar"), "plans"))),
+                    (
+                        "functions",
+                        cons(
+                            entry,
+                            local_call("planFunctions", vec![project(var("grammar"), "plans")]),
+                        ),
+                    ),
                 ],
             ),
         ),
@@ -1292,153 +2286,866 @@ fn binders_of(names: &[&str]) -> Vec<String> {
     names.iter().map(|name| (*name).to_owned()).collect()
 }
 
-// --- program size ----------------------------------------------------------
+// --- the code a system can run ---------------------------------------------
 
-/// Program size: one per expression node and per arm, structurally.
-fn program_size(unused: &Unused) -> Vec<Json> {
-    let one = || nat(1);
-    let size = |name: &str| local_call("exprSize", vec![var(name)]);
-    let operands = || add(one(), local_call("exprsSize", vec![var("operands")]));
-    let inner = || add(one(), size("inner"));
-    let over_list = |function: &str, element: &str, list_name: &str, item_size: Json| {
+/// A structural fold over `TargetSyntax.Expr` in the mutual group `group`:
+/// `leaf` for a node without subexpressions, `node` for one with, and
+/// `reference` for the function a call or closure names.
+struct ExprFold<'a> {
+    group: &'a str,
+    expr: &'a str,
+    exprs: &'a str,
+    arms: &'a str,
+    arm: &'a str,
+    result: Json,
+    empty: Json,
+    /// Combine a node's own contribution with its children's.
+    combine: fn(Json, Json) -> Json,
+    /// A node's own contribution.
+    own: Json,
+    /// The contribution of a call or closure of `function`.
+    reference: fn(Json) -> Json,
+}
+
+impl ExprFold<'_> {
+    fn of(&self, name: &str) -> Json {
+        local_call(self.expr, vec![var(name)])
+    }
+    #[allow(clippy::too_many_lines)]
+    fn declarations(&self, unused: &Unused) -> Vec<Json> {
+        let combine = self.combine;
+        let own = || self.own.clone();
+        let operands = |head: Json| combine(head, local_call(self.exprs, vec![var("operands")]));
+        let expression = matching(
+            var("expression"),
+            vec![
+                syntax_arm("Expr.value", binders![unused.next(), unused.next()], own()),
+                syntax_arm("Expr.var", binders![unused.next()], own()),
+                syntax_arm(
+                    "Expr.let",
+                    binders![unused.next(), unused.next(), "bound", "body"],
+                    combine(own(), combine(self.of("bound"), self.of("body"))),
+                ),
+                syntax_arm(
+                    "Expr.cond",
+                    binders!["condition", "thenBranch", "elseBranch"],
+                    combine(
+                        own(),
+                        combine(
+                            self.of("condition"),
+                            combine(self.of("thenBranch"), self.of("elseBranch")),
+                        ),
+                    ),
+                ),
+                syntax_arm(
+                    "Expr.match",
+                    binders![unused.next(), "scrutinee", "arms"],
+                    combine(
+                        own(),
+                        combine(
+                            self.of("scrutinee"),
+                            local_call(self.arms, vec![var("arms")]),
+                        ),
+                    ),
+                ),
+                syntax_arm(
+                    "Expr.build",
+                    binders![unused.next(), unused.next(), "operands"],
+                    operands(own()),
+                ),
+                syntax_arm(
+                    "Expr.call",
+                    binders!["function", "operands"],
+                    operands((self.reference)(var("function"))),
+                ),
+                syntax_arm(
+                    "Expr.closure",
+                    binders!["function", "operands"],
+                    operands((self.reference)(var("function"))),
+                ),
+                syntax_arm(
+                    "Expr.apply",
+                    binders!["target", "operands"],
+                    combine(
+                        own(),
+                        combine(
+                            self.of("target"),
+                            local_call(self.exprs, vec![var("operands")]),
+                        ),
+                    ),
+                ),
+                syntax_arm(
+                    "Expr.prim",
+                    binders![unused.next(), "operands"],
+                    operands(own()),
+                ),
+                syntax_arm(
+                    "Expr.first",
+                    binders!["inner"],
+                    combine(own(), self.of("inner")),
+                ),
+                syntax_arm(
+                    "Expr.second",
+                    binders!["inner"],
+                    combine(own(), self.of("inner")),
+                ),
+                syntax_arm(
+                    "Expr.field",
+                    binders!["inner", unused.next()],
+                    combine(own(), self.of("inner")),
+                ),
+            ],
+        );
+        let arm_body = matching(
+            var("arm"),
+            vec![syntax_arm(
+                "Arm.arm",
+                binders![unused.next(), unused.next(), "body"],
+                combine(own(), self.of("body")),
+            )],
+        );
+        let over_list = |function: &str, element: &str, list_name: &str, item: Json| {
+            recursive(
+                list_name,
+                mutual(
+                    self.group,
+                    definition(
+                        function,
+                        vec![parameter(list_name, list_t(syntax_t(element)))],
+                        self.result.clone(),
+                        on_list(
+                            var(list_name),
+                            self.empty.clone(),
+                            "head",
+                            "rest",
+                            combine(item, local_call(function, vec![var("rest")])),
+                        ),
+                    ),
+                ),
+            )
+        };
+        vec![
+            recursive(
+                "expression",
+                mutual(
+                    self.group,
+                    definition(
+                        self.expr,
+                        vec![parameter("expression", expr_t())],
+                        self.result.clone(),
+                        expression,
+                    ),
+                ),
+            ),
+            over_list(
+                self.exprs,
+                "Expr",
+                "expressions",
+                local_call(self.expr, vec![var("head")]),
+            ),
+            over_list(
+                self.arms,
+                "Arm",
+                "arms",
+                local_call(self.arm, vec![var("head")]),
+            ),
+            recursive(
+                "arm",
+                mutual(
+                    self.group,
+                    definition(
+                        self.arm,
+                        vec![parameter("arm", syntax_t("Arm"))],
+                        self.result.clone(),
+                        arm_body,
+                    ),
+                ),
+            ),
+        ]
+    }
+}
+
+fn plus(left: Json, right: Json) -> Json {
+    add(left, right)
+}
+fn concatenated(left: Json, right: Json) -> Json {
+    append_all(nat_t(), left, right)
+}
+fn no_reference(_function: Json) -> Json {
+    nat(1)
+}
+fn names_function(function: Json) -> Json {
+    list(nat_t(), vec![function])
+}
+
+/// The size of the code a system can run, and the preparation of the plans
+/// it can run: both range over the functions reachable from the entry, so
+/// a plan no system of the selector can call is neither its size nor its
+/// charge.
+#[allow(clippy::too_many_lines)]
+fn reachable_code(unused: &Unused) -> Vec<Json> {
+    let functions_t = || list_t(syntax_t("Function"));
+    let mut out = ExprFold {
+        group: "ExpressionSize",
+        expr: "exprSize",
+        exprs: "exprsSize",
+        arms: "armsSize",
+        arm: "armSize",
+        result: nat_t(),
+        empty: nat(0),
+        combine: plus,
+        own: nat(1),
+        reference: no_reference,
+    }
+    .declarations(unused);
+    out.extend(
+        ExprFold {
+            group: "ExpressionCallees",
+            expr: "exprCallees",
+            exprs: "exprsCallees",
+            arms: "armsCallees",
+            arm: "armCallees",
+            result: nats_t(),
+            empty: nil(nat_t()),
+            combine: concatenated,
+            own: nil(nat_t()),
+            reference: names_function,
+        }
+        .declarations(unused),
+    );
+    let at = |name: &str, element: Json| {
         recursive(
-            list_name,
-            mutual(
-                "ExpressionSize",
-                definition(
-                    function,
-                    vec![parameter(list_name, list_t(syntax_t(element)))],
-                    nat_t(),
-                    on_list(
-                        var(list_name),
-                        nat(0),
-                        "head",
-                        "rest",
-                        add(item_size, local_call(function, vec![var("rest")])),
+            "items",
+            definition(
+                name,
+                vec![
+                    parameter("items", list_t(element.clone())),
+                    parameter("index", nat_t()),
+                ],
+                option_t(element.clone()),
+                on_list(
+                    var("items"),
+                    none(element.clone()),
+                    "head",
+                    "rest",
+                    on_nat(
+                        var("index"),
+                        some(element, var("head")),
+                        local_call(name, vec![var("rest"), var("remaining")]),
                     ),
                 ),
             ),
         )
     };
-    let expr_size = matching(
-        var("expression"),
-        vec![
-            syntax_arm("Expr.value", binders![unused.next(), unused.next()], one()),
-            syntax_arm("Expr.var", binders![unused.next()], one()),
-            syntax_arm(
-                "Expr.let",
-                binders![unused.next(), unused.next(), "bound", "body"],
-                add(one(), add(size("bound"), size("body"))),
-            ),
-            syntax_arm(
-                "Expr.cond",
-                binders!["condition", "thenBranch", "elseBranch"],
-                add(
-                    one(),
-                    add(
-                        size("condition"),
-                        add(size("thenBranch"), size("elseBranch")),
-                    ),
-                ),
-            ),
-            syntax_arm(
-                "Expr.match",
-                binders![unused.next(), "scrutinee", "arms"],
-                add(
-                    one(),
-                    add(size("scrutinee"), local_call("armsSize", vec![var("arms")])),
-                ),
-            ),
-            syntax_arm(
-                "Expr.build",
-                binders![unused.next(), unused.next(), "operands"],
-                operands(),
-            ),
-            syntax_arm("Expr.call", binders![unused.next(), "operands"], operands()),
-            syntax_arm(
-                "Expr.closure",
-                binders![unused.next(), "operands"],
-                operands(),
-            ),
-            syntax_arm(
-                "Expr.apply",
-                binders!["target", "operands"],
-                add(
-                    one(),
-                    add(
-                        size("target"),
-                        local_call("exprsSize", vec![var("operands")]),
-                    ),
-                ),
-            ),
-            syntax_arm("Expr.prim", binders![unused.next(), "operands"], operands()),
-            syntax_arm("Expr.first", binders!["inner"], inner()),
-            syntax_arm("Expr.second", binders!["inner"], inner()),
-            syntax_arm("Expr.field", binders!["inner", unused.next()], inner()),
-        ],
-    );
-    let arm_size = matching(
-        var("arm"),
-        vec![syntax_arm(
-            "Arm.arm",
-            binders![unused.next(), unused.next(), "body"],
-            add(one(), size("body")),
-        )],
-    );
-    vec![
+    out.extend([
+        at("functionAt", syntax_t("Function")),
+        at("planAt", local_t("Plan")),
+        // The functions the known ones call or close over.
         recursive(
-            "expression",
-            mutual(
-                "ExpressionSize",
-                definition(
-                    "exprSize",
-                    vec![parameter("expression", expr_t())],
-                    nat_t(),
-                    expr_size,
-                ),
-            ),
-        ),
-        over_list(
-            "exprsSize",
-            "Expr",
-            "expressions",
-            local_call("exprSize", vec![var("head")]),
-        ),
-        over_list(
-            "armsSize",
-            "Arm",
-            "arms",
-            local_call("armSize", vec![var("head")]),
-        ),
-        recursive(
-            "arm",
-            mutual(
-                "ExpressionSize",
-                definition(
-                    "armSize",
-                    vec![parameter("arm", syntax_t("Arm"))],
-                    nat_t(),
-                    arm_size,
-                ),
-            ),
-        ),
-        recursive(
-            "functions",
+            "known",
             definition(
-                "functionsSize",
-                vec![parameter("functions", list_t(syntax_t("Function")))],
+                "calleesOf",
+                vec![
+                    parameter("functions", functions_t()),
+                    parameter("known", nats_t()),
+                ],
+                nats_t(),
+                on_list(
+                    var("known"),
+                    nil(nat_t()),
+                    "index",
+                    "rest",
+                    append_all(
+                        nat_t(),
+                        on_option(
+                            local_call("functionAt", vec![var("functions"), var("index")]),
+                            nil(nat_t()),
+                            "function",
+                            local_call("exprCallees", vec![project(var("function"), "body")]),
+                        ),
+                        local_call("calleesOf", vec![var("functions"), var("rest")]),
+                    ),
+                ),
+            ),
+        ),
+        // `known` followed by every member of `found` it lacks, in order.
+        recursive(
+            "found",
+            definition(
+                "addNew",
+                vec![parameter("known", nats_t()), parameter("found", nats_t())],
+                nats_t(),
+                on_list(
+                    var("found"),
+                    var("known"),
+                    "index",
+                    "rest",
+                    ite(
+                        local_call("natIn", vec![var("index"), var("known")]),
+                        local_call("addNew", vec![var("known"), var("rest")]),
+                        local_call(
+                            "addNew",
+                            vec![
+                                append_all(
+                                    nat_t(),
+                                    var("known"),
+                                    list(nat_t(), vec![var("index")]),
+                                ),
+                                var("rest"),
+                            ],
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        recursive(
+            "rounds",
+            definition(
+                "closeOver",
+                vec![
+                    parameter("rounds", nat_t()),
+                    parameter("functions", functions_t()),
+                    parameter("known", nats_t()),
+                ],
+                nats_t(),
+                on_nat(
+                    var("rounds"),
+                    var("known"),
+                    local_call(
+                        "closeOver",
+                        vec![
+                            var("remaining"),
+                            var("functions"),
+                            local_call(
+                                "addNew",
+                                vec![
+                                    var("known"),
+                                    local_call("calleesOf", vec![var("functions"), var("known")]),
+                                ],
+                            ),
+                        ],
+                    ),
+                ),
+            ),
+        ),
+        // Every function the entry can reach, in discovery order: each
+        // round adds at least one function or changes nothing, so as many
+        // rounds as functions reach the fixed point.
+        definition(
+            "reachable",
+            vec![parameter("functions", functions_t())],
+            nats_t(),
+            local_call(
+                "closeOver",
+                vec![
+                    prim("length", vec![var("functions")], nat_t()),
+                    var("functions"),
+                    list(nat_t(), vec![nat(0)]),
+                ],
+            ),
+        ),
+        // One per expression node and per arm of every reachable function.
+        recursive(
+            "indices",
+            definition(
+                "reachableSize",
+                vec![
+                    parameter("functions", functions_t()),
+                    parameter("indices", nats_t()),
+                ],
                 nat_t(),
                 on_list(
-                    var("functions"),
+                    var("indices"),
                     nat(0),
-                    "head",
+                    "index",
                     "rest",
                     add(
-                        local_call("exprSize", vec![project(var("head"), "body")]),
-                        local_call("functionsSize", vec![var("rest")]),
+                        on_option(
+                            local_call("functionAt", vec![var("functions"), var("index")]),
+                            nat(0),
+                            "function",
+                            local_call("exprSize", vec![project(var("function"), "body")]),
+                        ),
+                        local_call("reachableSize", vec![var("functions"), var("rest")]),
                     ),
                 ),
             ),
+        ),
+        // The per-invocation preparation of every reachable plan; index 0
+        // is the entry, plan `k` is function `k + 1`.
+        recursive(
+            "indices",
+            definition(
+                "reachableCharge",
+                vec![
+                    parameter("actions", list_t(local_t("Action"))),
+                    parameter("plans", list_t(local_t("Plan"))),
+                    parameter("indices", nats_t()),
+                ],
+                nat_t(),
+                on_list(
+                    var("indices"),
+                    nat(0),
+                    "index",
+                    "rest",
+                    add(
+                        on_nat(
+                            var("index"),
+                            nat(0),
+                            on_option(
+                                local_call("planAt", vec![var("plans"), var("remaining")]),
+                                nat(0),
+                                "plan",
+                                local_call(
+                                    "planCharge",
+                                    vec![var("actions"), project(var("plan"), "prepares")],
+                                ),
+                            ),
+                        ),
+                        local_call(
+                            "reachableCharge",
+                            vec![var("actions"), var("plans"), var("rest")],
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    ]);
+    out
+}
+
+// --- the order -------------------------------------------------------------
+
+/// The generic order every answer and every authority vector is computed
+/// by: rows pair an identity with its cost, a scalar cost is one natural,
+/// a vector cost a list of them.
+#[allow(clippy::too_many_lines)]
+fn order() -> Vec<Json> {
+    let scalar_rows_t = || list_t(row_t(nat_t()));
+    let vector_rows_t = || list_t(row_t(nats_t()));
+    let ids_t = || list_t(id_t());
+    let same_t = || function_t(vec![id_t(), id_t()], lx::bool_t());
+    let at_id = |function: &str, arguments: Vec<Json>| generic_call(function, id_t(), arguments);
+    let cost_of = |row: &str| second(var(row));
+    let id_of = |row: &str| first(var(row));
+    let found_t = || product_t(ids_t(), nat_t());
+    vec![
+        // Componentwise at most, over vectors of one length; vectors of
+        // different lengths are incomparable.
+        recursive(
+            "left",
+            definition(
+                "weaklyBelow",
+                vec![parameter("left", nats_t()), parameter("right", nats_t())],
+                lx::bool_t(),
+                on_list(
+                    var("left"),
+                    on_list(var("right"), yes(), "ignoredHead", "ignoredRest", no()),
+                    "leftHead",
+                    "leftRest",
+                    on_list(
+                        var("right"),
+                        no(),
+                        "rightHead",
+                        "rightRest",
+                        and(
+                            ble(var("leftHead"), var("rightHead")),
+                            local_call("weaklyBelow", vec![var("leftRest"), var("rightRest")]),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        // §9.3: strict dominance, at most in every component and below in
+        // one. Equal costs dominate neither way.
+        definition(
+            "dominates",
+            vec![parameter("left", nats_t()), parameter("right", nats_t())],
+            lx::bool_t(),
+            and(
+                local_call("weaklyBelow", vec![var("left"), var("right")]),
+                not(local_call("weaklyBelow", vec![var("right"), var("left")])),
+            ),
+        ),
+        generic(
+            &[ID],
+            recursive(
+                "rows",
+                definition(
+                    "dominatedIn",
+                    vec![
+                        parameter("cost", nats_t()),
+                        parameter("rows", vector_rows_t()),
+                    ],
+                    lx::bool_t(),
+                    on_list(
+                        var("rows"),
+                        no(),
+                        "row",
+                        "rest",
+                        or(
+                            local_call("dominates", vec![cost_of("row"), var("cost")]),
+                            at_id("dominatedIn", vec![var("cost"), var("rest")]),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        generic(
+            &[ID],
+            recursive(
+                "candidates",
+                definition(
+                    "frontierFrom",
+                    vec![
+                        parameter("candidates", vector_rows_t()),
+                        parameter("rows", vector_rows_t()),
+                    ],
+                    ids_t(),
+                    on_list(
+                        var("candidates"),
+                        nil(id_t()),
+                        "row",
+                        "rest",
+                        ite(
+                            at_id("dominatedIn", vec![cost_of("row"), var("rows")]),
+                            at_id("frontierFrom", vec![var("rest"), var("rows")]),
+                            cons(
+                                id_of("row"),
+                                at_id("frontierFrom", vec![var("rest"), var("rows")]),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        // §10.2: every identity no row strictly dominates, in row order.
+        generic(
+            &[ID],
+            definition(
+                "frontier",
+                vec![parameter("rows", vector_rows_t())],
+                ids_t(),
+                at_id("frontierFrom", vec![var("rows"), var("rows")]),
+            ),
+        ),
+        generic(
+            &[ID],
+            recursive(
+                "rows",
+                definition(
+                    "scalarMinimum",
+                    vec![
+                        parameter("rows", scalar_rows_t()),
+                        parameter("best", nat_t()),
+                    ],
+                    nat_t(),
+                    on_list(
+                        var("rows"),
+                        var("best"),
+                        "row",
+                        "rest",
+                        at_id(
+                            "scalarMinimum",
+                            vec![
+                                var("rest"),
+                                ite(
+                                    blt(cost_of("row"), var("best")),
+                                    cost_of("row"),
+                                    var("best"),
+                                ),
+                            ],
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        generic(
+            &[ID],
+            recursive(
+                "rows",
+                definition(
+                    "attaining",
+                    vec![
+                        parameter("rows", scalar_rows_t()),
+                        parameter("value", nat_t()),
+                    ],
+                    ids_t(),
+                    on_list(
+                        var("rows"),
+                        nil(id_t()),
+                        "row",
+                        "rest",
+                        ite(
+                            beq(cost_of("row"), var("value")),
+                            cons(
+                                id_of("row"),
+                                at_id("attaining", vec![var("rest"), var("value")]),
+                            ),
+                            at_id("attaining", vec![var("rest"), var("value")]),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        // §10.1: every identity attaining the least cost, in row order,
+        // and that cost; nothing for no rows.
+        generic(
+            &[ID],
+            definition(
+                "argmin",
+                vec![parameter("rows", scalar_rows_t())],
+                option_t(found_t()),
+                on_list(
+                    var("rows"),
+                    none(found_t()),
+                    "head",
+                    "ignoredRest",
+                    let_in(
+                        "best",
+                        nat_t(),
+                        at_id("scalarMinimum", vec![var("rows"), cost_of("head")]),
+                        some(
+                            found_t(),
+                            pair(
+                                at_id("attaining", vec![var("rows"), var("best")]),
+                                var("best"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        generic(
+            &[ID],
+            recursive(
+                "items",
+                definition(
+                    "anyBy",
+                    vec![
+                        parameter("same", same_t()),
+                        parameter("item", id_t()),
+                        parameter("items", ids_t()),
+                    ],
+                    lx::bool_t(),
+                    on_list(
+                        var("items"),
+                        no(),
+                        "head",
+                        "rest",
+                        or(
+                            lx::apply(var("same"), vec![var("item"), var("head")]),
+                            at_id("anyBy", vec![var("same"), var("item"), var("rest")]),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        generic(
+            &[ID],
+            recursive(
+                "items",
+                definition(
+                    "allIn",
+                    vec![
+                        parameter("same", same_t()),
+                        parameter("items", ids_t()),
+                        parameter("others", ids_t()),
+                    ],
+                    lx::bool_t(),
+                    on_list(
+                        var("items"),
+                        yes(),
+                        "head",
+                        "rest",
+                        and(
+                            at_id("anyBy", vec![var("same"), var("head"), var("others")]),
+                            at_id("allIn", vec![var("same"), var("rest"), var("others")]),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        // The same identity set: an answer is identity-complete only with
+        // every member and no other (GNAF-REJ-21, GNAF-REJ-29).
+        generic(
+            &[ID],
+            definition(
+                "sameIdsBy",
+                vec![
+                    parameter("same", same_t()),
+                    parameter("left", ids_t()),
+                    parameter("right", ids_t()),
+                ],
+                lx::bool_t(),
+                and(
+                    at_id("allIn", vec![var("same"), var("left"), var("right")]),
+                    at_id("allIn", vec![var("same"), var("right"), var("left")]),
+                ),
+            ),
+        ),
+        // §12.7: a claimed argmin is certified exactly when it is the
+        // complete argmin at its cost.
+        generic(
+            &[ID],
+            definition(
+                "certifiesArgmin",
+                vec![
+                    parameter("same", same_t()),
+                    parameter("rows", scalar_rows_t()),
+                    parameter("claimed", ids_t()),
+                    parameter("cost", nat_t()),
+                ],
+                lx::bool_t(),
+                on_option(
+                    at_id("argmin", vec![var("rows")]),
+                    no(),
+                    "found",
+                    and(
+                        beq(second(var("found")), var("cost")),
+                        at_id(
+                            "sameIdsBy",
+                            vec![var("same"), first(var("found")), var("claimed")],
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        generic(
+            &[ID],
+            definition(
+                "certifiesFrontier",
+                vec![
+                    parameter("same", same_t()),
+                    parameter("rows", vector_rows_t()),
+                    parameter("claimed", ids_t()),
+                ],
+                lx::bool_t(),
+                at_id(
+                    "sameIdsBy",
+                    vec![
+                        var("same"),
+                        at_id("frontier", vec![var("rows")]),
+                        var("claimed"),
+                    ],
+                ),
+            ),
+        ),
+        definition(
+            "vectorEq",
+            vec![parameter("left", nats_t()), parameter("right", nats_t())],
+            lx::bool_t(),
+            and(
+                local_call("weaklyBelow", vec![var("left"), var("right")]),
+                local_call("weaklyBelow", vec![var("right"), var("left")]),
+            ),
+        ),
+        // Some row costs exactly `cost`.
+        generic(
+            &[ID],
+            recursive(
+                "rows",
+                definition(
+                    "attains",
+                    vec![
+                        parameter("rows", vector_rows_t()),
+                        parameter("cost", nats_t()),
+                    ],
+                    lx::bool_t(),
+                    on_list(
+                        var("rows"),
+                        no(),
+                        "row",
+                        "rest",
+                        or(
+                            local_call("vectorEq", vec![cost_of("row"), var("cost")]),
+                            at_id("attains", vec![var("rest"), var("cost")]),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        recursive(
+            "left",
+            definition(
+                "pointwiseMinimum",
+                vec![parameter("left", nats_t()), parameter("right", nats_t())],
+                nats_t(),
+                on_list(
+                    var("left"),
+                    nil(nat_t()),
+                    "leftHead",
+                    "leftRest",
+                    on_list(
+                        var("right"),
+                        nil(nat_t()),
+                        "rightHead",
+                        "rightRest",
+                        cons(
+                            ite(
+                                blt(var("rightHead"), var("leftHead")),
+                                var("rightHead"),
+                                var("leftHead"),
+                            ),
+                            local_call("pointwiseMinimum", vec![var("leftRest"), var("rightRest")]),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        generic(
+            &[ID],
+            recursive(
+                "rows",
+                definition(
+                    "minimumFrom",
+                    vec![
+                        parameter("rows", vector_rows_t()),
+                        parameter("minimum", nats_t()),
+                    ],
+                    nats_t(),
+                    on_list(
+                        var("rows"),
+                        var("minimum"),
+                        "row",
+                        "rest",
+                        at_id(
+                            "minimumFrom",
+                            vec![
+                                var("rest"),
+                                local_call(
+                                    "pointwiseMinimum",
+                                    vec![var("minimum"), cost_of("row")],
+                                ),
+                            ],
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        // §9.3: the least value of every component, each possibly from a
+        // different row; a vector optimum must be attained, so these minima
+        // are one only if some row attains them.
+        generic(
+            &[ID],
+            definition(
+                "componentwiseMinimum",
+                vec![parameter("rows", vector_rows_t())],
+                nats_t(),
+                on_list(
+                    var("rows"),
+                    nil(nat_t()),
+                    "head",
+                    "ignoredRest",
+                    at_id("minimumFrom", vec![var("rows"), cost_of("head")]),
+                ),
+            ),
+        ),
+        definition(
+            "natSame",
+            vec![parameter("left", nat_t()), parameter("right", nat_t())],
+            lx::bool_t(),
+            beq(var("left"), var("right")),
         ),
     ]
 }
@@ -1501,6 +3208,7 @@ fn on_status(scrutinee: Json, admitted_binders: Vec<String>, admitted: Json) -> 
     )
 }
 
+#[allow(clippy::too_many_lines)]
 fn admission(unused: &Unused) -> Vec<Json> {
     let field = |name: &str| project(var("request"), name);
     let machine = |name: &str| project(field("machine"), name);
@@ -1543,11 +3251,19 @@ fn admission(unused: &Unused) -> Vec<Json> {
             }
         },
     );
+    let functions = || project(var("system"), "functions");
     let per_invocation = prim(
         "multiply",
         vec![
             prim("length", vec![field("domain")], nat_t()),
-            local_call("preparationCharge", vec![machine("actions")]),
+            local_call(
+                "reachableCharge",
+                vec![
+                    machine("actions"),
+                    project(var("grammar"), "plans"),
+                    var("indices"),
+                ],
+            ),
         ],
         nat_t(),
     );
@@ -1566,7 +3282,7 @@ fn admission(unused: &Unused) -> Vec<Json> {
             "admitted",
             vec![
                 add(var("steps"), per_invocation),
-                local_call("functionsSize", vec![project(var("system"), "functions")]),
+                local_call("reachableSize", vec![functions(), var("indices")]),
             ],
         ),
     );
@@ -1596,8 +3312,9 @@ fn admission(unused: &Unused) -> Vec<Json> {
                 ),
             ),
         ),
-        // The cost of an admitted system: its steps over the domain plus the
-        // declared preparation charge per invocation, and its size.
+        // The cost of an admitted system: its steps over the domain plus
+        // the preparation of every plan it can run on every invocation,
+        // and the size of the code it can run.
         axioms(
             &RUN_AXIOMS,
             definition(
@@ -1612,7 +3329,12 @@ fn admission(unused: &Unused) -> Vec<Json> {
                     "system",
                     syntax_t("Program"),
                     local_call("realize", vec![var("grammar"), var("selector")]),
-                    costed,
+                    let_in(
+                        "indices",
+                        nats_t(),
+                        local_call("reachable", vec![functions()]),
+                        costed,
+                    ),
                 ),
             ),
         ),
@@ -1667,11 +3389,199 @@ fn entry_t() -> Json {
 }
 /// An admitted system's index paired with its (steps, size).
 fn costed_t() -> Json {
-    product_t(nat_t(), product_t(nat_t(), nat_t()))
+    product_t(nat_t(), nats_t())
 }
 
+/// The statuses of every system of `grammar`, in expansion order.
+fn evaluated(request: Json, grammar: Json) -> Json {
+    local_call(
+        "statuses",
+        vec![
+            request,
+            grammar.clone(),
+            local_call("expand", vec![grammar]),
+            nat(0),
+        ],
+    )
+}
+
+/// A match on the request's carrier: `grammar` binds the grammar, every
+/// other carrier is `otherwise`.
+fn on_carrier(unused: &Unused, grammar: Json, otherwise: &Json) -> Json {
+    matching(
+        project(var("request"), "carrier"),
+        vec![
+            arm("Carrier.grammar", binders!["grammar"], grammar),
+            arm("Carrier.internalPlans", Vec::new(), otherwise.clone()),
+            arm("Carrier.optimizerOutput", Vec::new(), otherwise.clone()),
+            arm(
+                "Carrier.discovered",
+                binders![unused.next()],
+                otherwise.clone(),
+            ),
+            arm("Carrier.cached", Vec::new(), otherwise.clone()),
+        ],
+    )
+}
+
+#[allow(clippy::too_many_lines)]
 fn answer(unused: &Unused) -> Vec<Json> {
-    let steps_of = |entry: &str| first(second(var(entry)));
+    let nat_rows =
+        |function: &str, arguments: Vec<Json>| generic_call(function, nat_t(), arguments);
+    let answers_t = || local_t("Answer");
+    let same_ids = |left: Json, right: Json| {
+        nat_rows(
+            "sameIdsBy",
+            vec![function_ref(lx::member("natSame")), left, right],
+        )
+    };
+    // Only an argmin certifies an argmin and only a frontier a frontier.
+    let claimed_as = |unused: &Unused, kind: &str, certified: Json| {
+        let other = |name: &str, fields: usize, unused: &Unused| {
+            arm(
+                &format!("Answer.{name}"),
+                (0..fields).map(|_| unused.next()).collect(),
+                no(),
+            )
+        };
+        let branches: Vec<Json> = [
+            ("rejected", 1),
+            ("argmin", 2),
+            ("frontier", 1),
+            ("infeasible", 0),
+            ("incomplete", 0),
+        ]
+        .into_iter()
+        .map(|(name, fields)| {
+            if name == kind {
+                let binders = if fields == 2 {
+                    binders!["claimedMembers", "claimedSteps"]
+                } else {
+                    binders!["claimedMembers"]
+                };
+                arm(&format!("Answer.{name}"), binders, certified.clone())
+            } else {
+                other(name, fields, unused)
+            }
+        })
+        .collect();
+        matching(var("claimed"), branches)
+    };
+    let certified_argmin = claimed_as(
+        unused,
+        "argmin",
+        and(
+            beq(var("steps"), var("claimedSteps")),
+            same_ids(var("members"), var("claimedMembers")),
+        ),
+    );
+    let certified_frontier = claimed_as(
+        unused,
+        "frontier",
+        same_ids(var("members"), var("claimedMembers")),
+    );
+    let certified = matching(
+        local_call("answer", vec![var("request")]),
+        vec![
+            arm("Answer.rejected", binders![unused.next()], no()),
+            arm(
+                "Answer.argmin",
+                binders!["members", "steps"],
+                certified_argmin,
+            ),
+            arm("Answer.frontier", binders!["members"], certified_frontier),
+            arm("Answer.infeasible", Vec::new(), no()),
+            arm("Answer.incomplete", Vec::new(), no()),
+        ],
+    );
+    let evaluate_body = let_in(
+        "entries",
+        list_t(entry_t()),
+        evaluated(var("request"), var("grammar")),
+        ite(
+            local_call("anyUnresolved", vec![var("entries")]),
+            local("Answer.incomplete", Vec::new()),
+            let_in(
+                "rows",
+                list_t(costed_t()),
+                local_call("admittedRows", vec![var("entries")]),
+                matching(
+                    project(var("request"), "objective"),
+                    vec![
+                        arm(
+                            "Objective.scalar",
+                            Vec::new(),
+                            on_option(
+                                nat_rows(
+                                    "argmin",
+                                    vec![local_call("scalarRows", vec![var("rows")])],
+                                ),
+                                local("Answer.infeasible", Vec::new()),
+                                "found",
+                                local(
+                                    "Answer.argmin",
+                                    vec![first(var("found")), second(var("found"))],
+                                ),
+                            ),
+                        ),
+                        arm(
+                            "Objective.vector",
+                            Vec::new(),
+                            on_list(
+                                var("rows"),
+                                local("Answer.infeasible", Vec::new()),
+                                unused.next(),
+                                unused.next(),
+                                local(
+                                    "Answer.frontier",
+                                    vec![nat_rows("frontier", vec![var("rows")])],
+                                ),
+                            ),
+                        ),
+                    ],
+                ),
+            ),
+        ),
+    );
+    let answer_body = on_option(
+        local_call("validate", vec![var("request")]),
+        on_carrier(
+            unused,
+            local_call("evaluate", vec![var("request"), var("grammar")]),
+            &local("Answer.incomplete", Vec::new()),
+        ),
+        "rejection",
+        local("Answer.rejected", vec![var("rejection")]),
+    );
+    let minima_body = on_carrier(
+        unused,
+        let_in(
+            "rows",
+            list_t(costed_t()),
+            local_call(
+                "admittedRows",
+                vec![evaluated(var("request"), var("grammar"))],
+            ),
+            nat_rows(
+                "attains",
+                vec![
+                    var("rows"),
+                    nat_rows("componentwiseMinimum", vec![var("rows")]),
+                ],
+            ),
+        ),
+        &no(),
+    );
+    let universe_body = on_carrier(
+        unused,
+        local_call("expand", vec![var("grammar")]),
+        &nil(selector_t()),
+    );
+    let statuses_body = on_carrier(
+        unused,
+        evaluated(var("request"), var("grammar")),
+        &nil(entry_t()),
+    );
     vec![
         recursive(
             "entries",
@@ -1703,10 +3613,11 @@ fn answer(unused: &Unused) -> Vec<Json> {
                 ),
             ),
         ),
+        // The admitted systems as rows of the order, costed (steps, size).
         recursive(
             "entries",
             definition(
-                "admitted",
+                "admittedRows",
                 vec![parameter("entries", list_t(entry_t()))],
                 list_t(costed_t()),
                 on_list(
@@ -1721,145 +3632,59 @@ fn answer(unused: &Unused) -> Vec<Json> {
                                 "Status.admitted",
                                 binders!["steps", "size"],
                                 cons(
-                                    pair(first(var("entry")), pair(var("steps"), var("size"))),
-                                    local_call("admitted", vec![var("rest")]),
+                                    pair(
+                                        first(var("entry")),
+                                        list(nat_t(), vec![var("steps"), var("size")]),
+                                    ),
+                                    local_call("admittedRows", vec![var("rest")]),
                                 ),
                             ),
                             arm(
                                 "Status.inadmissible",
                                 Vec::new(),
-                                local_call("admitted", vec![var("rest")]),
+                                local_call("admittedRows", vec![var("rest")]),
                             ),
                             arm(
                                 "Status.unresolved",
                                 Vec::new(),
-                                local_call("admitted", vec![var("rest")]),
+                                local_call("admittedRows", vec![var("rest")]),
                             ),
                         ],
                     ),
                 ),
             ),
         ),
+        // The scalar objective of each row: its steps.
         recursive(
-            "costed",
+            "rows",
             definition(
-                "minimumSteps",
-                vec![
-                    parameter("costed", list_t(costed_t())),
-                    parameter("best", nat_t()),
-                ],
-                nat_t(),
+                "scalarRows",
+                vec![parameter("rows", list_t(costed_t()))],
+                list_t(product_t(nat_t(), nat_t())),
                 on_list(
-                    var("costed"),
-                    var("best"),
-                    "entry",
+                    var("rows"),
+                    nil(product_t(nat_t(), nat_t())),
+                    "row",
                     "rest",
-                    local_call(
-                        "minimumSteps",
-                        vec![
-                            var("rest"),
-                            ite(
-                                blt(steps_of("entry"), var("best")),
-                                steps_of("entry"),
-                                var("best"),
+                    cons(
+                        pair(
+                            first(var("row")),
+                            on_list(
+                                second(var("row")),
+                                nat(0),
+                                "steps",
+                                unused.next(),
+                                var("steps"),
                             ),
-                        ],
-                    ),
-                ),
-            ),
-        ),
-        recursive(
-            "costed",
-            definition(
-                "withSteps",
-                vec![
-                    parameter("costed", list_t(costed_t())),
-                    parameter("value", nat_t()),
-                ],
-                list_t(nat_t()),
-                on_list(
-                    var("costed"),
-                    nil(nat_t()),
-                    "entry",
-                    "rest",
-                    ite(
-                        beq(steps_of("entry"), var("value")),
-                        cons(
-                            first(var("entry")),
-                            local_call("withSteps", vec![var("rest"), var("value")]),
                         ),
-                        local_call("withSteps", vec![var("rest"), var("value")]),
-                    ),
-                ),
-            ),
-        ),
-        // §9.3: strict componentwise dominance over (steps, size).
-        definition(
-            "dominates",
-            vec![
-                parameter("left", product_t(nat_t(), nat_t())),
-                parameter("right", product_t(nat_t(), nat_t())),
-            ],
-            lx::bool_t(),
-            and(
-                and(
-                    ble(first(var("left")), first(var("right"))),
-                    ble(second(var("left")), second(var("right"))),
-                ),
-                or(
-                    blt(first(var("left")), first(var("right"))),
-                    blt(second(var("left")), second(var("right"))),
-                ),
-            ),
-        ),
-        recursive(
-            "others",
-            definition(
-                "dominated",
-                vec![
-                    parameter("cost", product_t(nat_t(), nat_t())),
-                    parameter("others", list_t(costed_t())),
-                ],
-                lx::bool_t(),
-                on_list(
-                    var("others"),
-                    no(),
-                    "other",
-                    "rest",
-                    or(
-                        local_call("dominates", vec![second(var("other")), var("cost")]),
-                        local_call("dominated", vec![var("cost"), var("rest")]),
-                    ),
-                ),
-            ),
-        ),
-        recursive(
-            "candidates",
-            definition(
-                "nondominated",
-                vec![
-                    parameter("candidates", list_t(costed_t())),
-                    parameter("all", list_t(costed_t())),
-                ],
-                list_t(nat_t()),
-                on_list(
-                    var("candidates"),
-                    nil(nat_t()),
-                    "entry",
-                    "rest",
-                    ite(
-                        local_call("dominated", vec![second(var("entry")), var("all")]),
-                        local_call("nondominated", vec![var("rest"), var("all")]),
-                        cons(
-                            first(var("entry")),
-                            local_call("nondominated", vec![var("rest"), var("all")]),
-                        ),
+                        local_call("scalarRows", vec![var("rest")]),
                     ),
                 ),
             ),
         ),
         // An unknown cost anywhere leaves the answer incomplete: the
-        // unresolved system might be the optimum.
+        // unresolved system might be the optimum. Otherwise the generic
+        // order answers.
         axioms(
             &RUN_AXIOMS,
             definition(
@@ -1868,73 +3693,8 @@ fn answer(unused: &Unused) -> Vec<Json> {
                     parameter("request", local_t("Request")),
                     parameter("grammar", local_t("Grammar")),
                 ],
-                local_t("Answer"),
-                let_in(
-                    "entries",
-                    list_t(entry_t()),
-                    local_call(
-                        "statuses",
-                        vec![
-                            var("request"),
-                            var("grammar"),
-                            local_call("expand", vec![var("grammar")]),
-                            nat(0),
-                        ],
-                    ),
-                    ite(
-                        local_call("anyUnresolved", vec![var("entries")]),
-                        local("Answer.incomplete", Vec::new()),
-                        let_in(
-                            "costed",
-                            list_t(costed_t()),
-                            local_call("admitted", vec![var("entries")]),
-                            on_list(
-                                var("costed"),
-                                local("Answer.infeasible", Vec::new()),
-                                "head",
-                                unused.next(),
-                                matching(
-                                    project(var("request"), "objective"),
-                                    vec![
-                                        arm(
-                                            "Objective.scalar",
-                                            Vec::new(),
-                                            let_in(
-                                                "best",
-                                                nat_t(),
-                                                local_call(
-                                                    "minimumSteps",
-                                                    vec![var("costed"), steps_of("head")],
-                                                ),
-                                                local(
-                                                    "Answer.argmin",
-                                                    vec![
-                                                        local_call(
-                                                            "withSteps",
-                                                            vec![var("costed"), var("best")],
-                                                        ),
-                                                        var("best"),
-                                                    ],
-                                                ),
-                                            ),
-                                        ),
-                                        arm(
-                                            "Objective.vector",
-                                            Vec::new(),
-                                            local(
-                                                "Answer.frontier",
-                                                vec![local_call(
-                                                    "nondominated",
-                                                    vec![var("costed"), var("costed")],
-                                                )],
-                                            ),
-                                        ),
-                                    ],
-                                ),
-                            ),
-                        ),
-                    ),
-                ),
+                answers_t(),
+                evaluate_body,
             ),
         ),
         // The answer: a rejected request, or the request's grammar universe
@@ -1944,42 +3704,49 @@ fn answer(unused: &Unused) -> Vec<Json> {
             definition(
                 "answer",
                 vec![parameter("request", local_t("Request"))],
-                local_t("Answer"),
-                on_option(
-                    local_call("validate", vec![var("request")]),
-                    matching(
-                        project(var("request"), "carrier"),
-                        vec![
-                            arm(
-                                "Carrier.grammar",
-                                binders!["grammar"],
-                                local_call("evaluate", vec![var("request"), var("grammar")]),
-                            ),
-                            arm(
-                                "Carrier.internalPlans",
-                                Vec::new(),
-                                local("Answer.incomplete", Vec::new()),
-                            ),
-                            arm(
-                                "Carrier.optimizerOutput",
-                                Vec::new(),
-                                local("Answer.incomplete", Vec::new()),
-                            ),
-                            arm(
-                                "Carrier.discovered",
-                                binders![unused.next()],
-                                local("Answer.incomplete", Vec::new()),
-                            ),
-                            arm(
-                                "Carrier.cached",
-                                Vec::new(),
-                                local("Answer.incomplete", Vec::new()),
-                            ),
-                        ],
-                    ),
-                    "rejection",
-                    local("Answer.rejected", vec![var("rejection")]),
-                ),
+                answers_t(),
+                answer_body,
+            ),
+        ),
+        // §12.7: whether a claimed answer is exactly the request's optimum,
+        // identity-complete; only optimality answers are certified.
+        axioms(
+            &RUN_AXIOMS,
+            definition(
+                "certifies",
+                vec![
+                    parameter("request", local_t("Request")),
+                    parameter("claimed", answers_t()),
+                ],
+                lx::bool_t(),
+                certified,
+            ),
+        ),
+        // §9.3, GNAF-REJ-14: whether some admitted system attains the
+        // componentwise minima of the admitted costs.
+        axioms(
+            &RUN_AXIOMS,
+            definition(
+                "minimaAttained",
+                vec![parameter("request", local_t("Request"))],
+                lx::bool_t(),
+                minima_body,
+            ),
+        ),
+        // The request's universe, before any evaluation.
+        definition(
+            "universeOf",
+            vec![parameter("request", local_t("Request"))],
+            list_t(selector_t()),
+            universe_body,
+        ),
+        axioms(
+            &RUN_AXIOMS,
+            definition(
+                "statusesOf",
+                vec![parameter("request", local_t("Request"))],
+                list_t(entry_t()),
+                statuses_body,
             ),
         ),
     ]
@@ -1987,169 +3754,140 @@ fn answer(unused: &Unused) -> Vec<Json> {
 
 // --- the authority's normative fixtures -------------------------------------
 
-/// uor-gnaf/1-draft.2 §16: identities are naturals, costs vectors of
-/// naturals, so a table lists `(identity, cost vector)` rows.
-fn table_t() -> Json {
-    list_t(product_t(nat_t(), list_t(nat_t())))
+/// An operation of GNAF-VEC-01: `(identity, (from, (to, cost)))`.
+fn operation_t() -> Json {
+    product_t(nat_t(), product_t(nat_t(), product_t(nat_t(), nat_t())))
+}
+/// A partial composition: `(path, (end, cost))`.
+fn walk_t() -> Json {
+    product_t(nats_t(), product_t(nat_t(), nat_t()))
 }
 
-fn cost_tables(unused: &Unused) -> Vec<Json> {
-    let nats_t = || list_t(nat_t());
-    let cost_of = |row: &str| second(var(row));
+/// GNAF-VEC-01's grammar, the well-typed finite compositions of the
+/// operations, by layers of one more operation each; and GNAF-VEC-04's
+/// local rewriting and GNAF-VEC-17's hidden environment.
+#[allow(clippy::too_many_lines)]
+fn vector_definitions() -> Vec<Json> {
+    let op = |part: fn(Json) -> Json| part(var("operation"));
+    let from = |operation: Json| first(second(operation));
+    let to = |operation: Json| first(second(second(operation)));
+    let cost = |operation: Json| second(second(second(operation)));
     vec![
+        // Every operation leaving `end` extends the walk.
         recursive(
-            "left",
+            "operations",
             definition(
-                "weaklyBelow",
-                vec![parameter("left", nats_t()), parameter("right", nats_t())],
-                lx::bool_t(),
+                "extendWalk",
+                vec![
+                    parameter("operations", list_t(operation_t())),
+                    parameter("walk", walk_t()),
+                ],
+                list_t(walk_t()),
                 on_list(
-                    var("left"),
-                    yes(),
-                    "leftHead",
-                    "leftRest",
-                    on_list(
-                        var("right"),
-                        no(),
-                        "rightHead",
-                        "rightRest",
-                        and(
-                            ble(var("leftHead"), var("rightHead")),
-                            local_call("weaklyBelow", vec![var("leftRest"), var("rightRest")]),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-        definition(
-            "strictlyBelow",
-            vec![parameter("left", nats_t()), parameter("right", nats_t())],
-            lx::bool_t(),
-            and(
-                local_call("weaklyBelow", vec![var("left"), var("right")]),
-                not(local_call("weaklyBelow", vec![var("right"), var("left")])),
-            ),
-        ),
-        recursive(
-            "table",
-            definition(
-                "tableDominated",
-                vec![parameter("cost", nats_t()), parameter("table", table_t())],
-                lx::bool_t(),
-                on_list(
-                    var("table"),
-                    no(),
-                    "row",
-                    "rest",
-                    or(
-                        local_call("strictlyBelow", vec![cost_of("row"), var("cost")]),
-                        local_call("tableDominated", vec![var("cost"), var("rest")]),
-                    ),
-                ),
-            ),
-        ),
-        recursive(
-            "rows",
-            definition(
-                "tableFrontierFrom",
-                vec![parameter("rows", table_t()), parameter("table", table_t())],
-                nats_t(),
-                on_list(
-                    var("rows"),
-                    nil(nat_t()),
-                    "row",
+                    var("operations"),
+                    nil(walk_t()),
+                    "operation",
                     "rest",
                     ite(
-                        local_call("tableDominated", vec![cost_of("row"), var("table")]),
-                        local_call("tableFrontierFrom", vec![var("rest"), var("table")]),
+                        beq(op(from), first(second(var("walk")))),
                         cons(
-                            first(var("row")),
-                            local_call("tableFrontierFrom", vec![var("rest"), var("table")]),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-        definition(
-            "tableFrontier",
-            vec![parameter("table", table_t())],
-            nats_t(),
-            local_call("tableFrontierFrom", vec![var("table"), var("table")]),
-        ),
-        recursive(
-            "left",
-            definition(
-                "sameIds",
-                vec![parameter("left", nats_t()), parameter("right", nats_t())],
-                lx::bool_t(),
-                on_list(
-                    var("left"),
-                    on_list(var("right"), yes(), unused.next(), unused.next(), no()),
-                    "leftHead",
-                    "leftRest",
-                    on_list(
-                        var("right"),
-                        no(),
-                        "rightHead",
-                        "rightRest",
-                        and(
-                            beq(var("leftHead"), var("rightHead")),
-                            local_call("sameIds", vec![var("leftRest"), var("rightRest")]),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-        recursive(
-            "table",
-            definition(
-                "tableAttains",
-                vec![parameter("table", table_t()), parameter("cost", nats_t())],
-                lx::bool_t(),
-                on_list(
-                    var("table"),
-                    no(),
-                    "row",
-                    "rest",
-                    or(
-                        and(
-                            local_call("weaklyBelow", vec![cost_of("row"), var("cost")]),
-                            local_call("weaklyBelow", vec![var("cost"), cost_of("row")]),
-                        ),
-                        local_call("tableAttains", vec![var("rest"), var("cost")]),
-                    ),
-                ),
-            ),
-        ),
-        recursive(
-            "table",
-            definition(
-                "rowMinimum",
-                vec![parameter("table", table_t()), parameter("best", nat_t())],
-                nat_t(),
-                on_list(
-                    var("table"),
-                    var("best"),
-                    "row",
-                    "rest",
-                    local_call(
-                        "rowMinimum",
-                        vec![
-                            var("rest"),
-                            on_list(
-                                cost_of("row"),
-                                var("best"),
-                                "cost",
-                                unused.next(),
-                                ite(blt(var("cost"), var("best")), var("cost"), var("best")),
+                            pair(
+                                append_all(
+                                    nat_t(),
+                                    first(var("walk")),
+                                    list(nat_t(), vec![first(var("operation"))]),
+                                ),
+                                pair(op(to), add(second(second(var("walk"))), op(cost))),
                             ),
-                        ],
+                            local_call("extendWalk", vec![var("rest"), var("walk")]),
+                        ),
+                        local_call("extendWalk", vec![var("rest"), var("walk")]),
                     ),
                 ),
             ),
         ),
-        // A one-step local rewrite system: `normalize` follows rewrites until
-        // no rule applies, within `fuel` steps.
+        recursive(
+            "walks",
+            definition(
+                "extendAll",
+                vec![
+                    parameter("operations", list_t(operation_t())),
+                    parameter("walks", list_t(walk_t())),
+                ],
+                list_t(walk_t()),
+                on_list(
+                    var("walks"),
+                    nil(walk_t()),
+                    "walk",
+                    "rest",
+                    append_all(
+                        walk_t(),
+                        local_call("extendWalk", vec![var("operations"), var("walk")]),
+                        local_call("extendAll", vec![var("operations"), var("rest")]),
+                    ),
+                ),
+            ),
+        ),
+        // The walks ending at `target`, as rows (path, cost).
+        recursive(
+            "walks",
+            definition(
+                "arrivals",
+                vec![
+                    parameter("target", nat_t()),
+                    parameter("walks", list_t(walk_t())),
+                ],
+                list_t(product_t(nats_t(), nat_t())),
+                on_list(
+                    var("walks"),
+                    nil(product_t(nats_t(), nat_t())),
+                    "walk",
+                    "rest",
+                    ite(
+                        beq(first(second(var("walk"))), var("target")),
+                        cons(
+                            pair(first(var("walk")), second(second(var("walk")))),
+                            local_call("arrivals", vec![var("target"), var("rest")]),
+                        ),
+                        local_call("arrivals", vec![var("target"), var("rest")]),
+                    ),
+                ),
+            ),
+        ),
+        // The compositions reaching `target` with at most `depth - 1`
+        // operations, from the walks `layer` has.
+        recursive(
+            "depth",
+            definition(
+                "compositions",
+                vec![
+                    parameter("depth", nat_t()),
+                    parameter("operations", list_t(operation_t())),
+                    parameter("target", nat_t()),
+                    parameter("layer", list_t(walk_t())),
+                ],
+                list_t(product_t(nats_t(), nat_t())),
+                on_nat(
+                    var("depth"),
+                    nil(product_t(nats_t(), nat_t())),
+                    append_all(
+                        product_t(nats_t(), nat_t()),
+                        local_call("arrivals", vec![var("target"), var("layer")]),
+                        local_call(
+                            "compositions",
+                            vec![
+                                var("remaining"),
+                                var("operations"),
+                                var("target"),
+                                local_call("extendAll", vec![var("operations"), var("layer")]),
+                            ],
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        // A one-step local rewrite system: `normalize` follows rewrites
+        // until no rule applies, within `fuel` steps.
         recursive(
             "rules",
             definition(
@@ -2197,53 +3935,82 @@ fn cost_tables(unused: &Unused) -> Vec<Json> {
                 ),
             ),
         ),
-        recursive(
-            "costs",
-            definition(
-                "listMax",
-                vec![parameter("costs", nats_t()), parameter("worst", nat_t())],
+        // GNAF-VEC-17: system `system` costs 0 when it equals the hidden bit
+        // and 10 otherwise.
+        definition(
+            "hiddenBitCost",
+            vec![parameter("system", nat_t()), parameter("hidden", nat_t())],
+            nat_t(),
+            ite(beq(var("system"), var("hidden")), nat(0), nat(10)),
+        ),
+        // The two systems' costs once the environment chose `hidden`.
+        definition(
+            "environmentRows",
+            vec![parameter("hidden", nat_t())],
+            list_t(product_t(nat_t(), nat_t())),
+            list(
+                product_t(nat_t(), nat_t()),
+                (0..2)
+                    .map(|system| {
+                        pair(
+                            nat(system),
+                            local_call("hiddenBitCost", vec![nat(system), var("hidden")]),
+                        )
+                    })
+                    .collect(),
+            ),
+        ),
+        // A uniform system acts before the bit is known, so its guarantee is
+        // its worst case over both environments.
+        definition(
+            "worstCase",
+            vec![parameter("system", nat_t())],
+            nat_t(),
+            let_in(
+                "atZero",
                 nat_t(),
-                on_list(
-                    var("costs"),
-                    var("worst"),
-                    "cost",
-                    "rest",
-                    local_call(
-                        "listMax",
-                        vec![
-                            var("rest"),
-                            ite(blt(var("worst"), var("cost")), var("cost"), var("worst")),
-                        ],
+                local_call("hiddenBitCost", vec![var("system"), nat(0)]),
+                let_in(
+                    "atOne",
+                    nat_t(),
+                    local_call("hiddenBitCost", vec![var("system"), nat(1)]),
+                    ite(
+                        blt(var("atZero"), var("atOne")),
+                        var("atOne"),
+                        var("atZero"),
                     ),
                 ),
             ),
         ),
-        // The best worst case a single uniform system guarantees over every
-        // environment: the minimum over rows of each row's maximum.
-        recursive(
-            "table",
-            definition(
-                "uniformWorst",
-                vec![parameter("table", table_t()), parameter("best", nat_t())],
-                nat_t(),
-                on_list(
-                    var("table"),
-                    var("best"),
-                    "row",
-                    "rest",
-                    local_call(
-                        "uniformWorst",
-                        vec![
-                            var("rest"),
-                            let_in(
-                                "worst",
-                                nat_t(),
-                                local_call("listMax", vec![cost_of("row"), nat(0)]),
-                                ite(blt(var("worst"), var("best")), var("worst"), var("best")),
-                            ),
-                        ],
+        definition(
+            "uniformRows",
+            Vec::new(),
+            list_t(product_t(nat_t(), nat_t())),
+            list(
+                product_t(nat_t(), nat_t()),
+                (0..2)
+                    .map(|system| pair(nat(system), local_call("worstCase", vec![nat(system)])))
+                    .collect(),
+            ),
+        ),
+        // The fair randomized system's expected cost once the environment
+        // chose `hidden`: the mean over both systems.
+        definition(
+            "fairExpectation",
+            vec![parameter("hidden", nat_t())],
+            nat_t(),
+            prim(
+                "quotient",
+                vec![
+                    add(
+                        local_call("hiddenBitCost", vec![nat(0), var("hidden")]),
+                        local_call("hiddenBitCost", vec![nat(1), var("hidden")]),
                     ),
-                ),
+                    nat(2),
+                    // The divisor is the two systems, never zero.
+                    nat(0),
+                ],
+                nat_t(),
             ),
         ),
     ]
@@ -2252,108 +4019,237 @@ fn cost_tables(unused: &Unused) -> Vec<Json> {
 fn nats(numbers: &[u64]) -> Json {
     list(nat_t(), numbers.iter().map(|number| nat(*number)).collect())
 }
-/// A cost table: `(identity, costs)` rows.
-fn table(rows: &[(u64, &[u64])]) -> Json {
+/// A scalar cost table: `(identity, cost)` rows.
+pub fn scalar_table(rows: &[(u64, u64)]) -> Json {
     list(
-        product_t(nat_t(), list_t(nat_t())),
+        product_t(nat_t(), nat_t()),
+        rows.iter()
+            .map(|(identity, cost)| pair(nat(*identity), nat(*cost)))
+            .collect(),
+    )
+}
+/// A vector cost table: `(identity, costs)` rows.
+pub fn vector_table(rows: &[(u64, &[u64])]) -> Json {
+    list(
+        product_t(nat_t(), nats_t()),
         rows.iter()
             .map(|(identity, costs)| pair(nat(*identity), nats(costs)))
             .collect(),
     )
 }
-/// `call arguments = expected`, decided by the kernel.
-fn decided(name: &str, function: &str, arguments: Vec<Json>, expected: Json) -> Json {
-    theorem(
-        name,
-        eq(local_call(function, arguments), expected),
-        decide(),
+/// GNAF-VEC-01's operations `(identity, from, to, cost)`.
+pub fn operations(rows: &[(u64, u64, u64, u64)]) -> Json {
+    list(
+        operation_t(),
+        rows.iter()
+            .map(|(identity, from, to, cost)| {
+                pair(nat(*identity), pair(nat(*from), pair(nat(*to), nat(*cost))))
+            })
+            .collect(),
+    )
+}
+/// `some (members, cost)` of the order's argmin over identities `id`.
+fn found(id: Json, members: Vec<Json>, cost: u64) -> Json {
+    some(
+        product_t(list_t(id.clone()), nat_t()),
+        pair(list(id, members), nat(cost)),
+    )
+}
+/// `call arguments = expected`, by reduction in the kernel.
+fn reduced(name: &str, left: Json, expected: Json) -> Json {
+    theorem(name, eq(left, expected), reflexivity())
+}
+
+/// GNAF-VEC-01's operations of the snapshot `S0`, and of `S1`, which adds
+/// `rAC4`: `rAB = 0`, `rBC = 1`, `rAC6 = 2`, `rAC4 = 3` over the values
+/// `a0 = 0`, `b0 = 1`, `c0 = 2`.
+pub const VEC01_S0: [(u64, u64, u64, u64); 3] = [(0, 0, 1, 2), (1, 1, 2, 3), (2, 0, 2, 6)];
+/// See [`VEC01_S0`].
+pub const VEC01_S1: [(u64, u64, u64, u64); 4] =
+    [(0, 0, 1, 2), (1, 1, 2, 3), (2, 0, 2, 6), (3, 0, 2, 4)];
+/// GNAF-VEC-02's admitted costs: `rA = (1,3)`, `rB = (2,2)`, `rC = (3,1)`,
+/// `rD = (3,3)`.
+pub const VEC02: [(u64, [u64; 2]); 4] = [(0, [1, 3]), (1, [2, 2]), (2, [3, 1]), (3, [3, 3])];
+/// GNAF-VEC-04's representations `a`, `b`, `c` at costs 2, 1, 0, and its
+/// only local rewrite `a -> b`.
+pub const VEC04: [(u64, u64); 3] = [(0, 2), (1, 1), (2, 0)];
+
+/// The compositions of `operations` from `a0` to `c0`: walks of up to as
+/// many operations as there are, from the empty walk at `a0`.
+pub fn vec01_compositions(operations_table: &[(u64, u64, u64, u64)]) -> Json {
+    local_call(
+        "compositions",
+        vec![
+            nat(operations_table.len() as u64 + 1),
+            operations(operations_table),
+            nat(2),
+            list(walk_t(), vec![pair(nil(nat_t()), pair(nat(0), nat(0)))]),
+        ],
     )
 }
 
+/// The authority's vectors, each a theorem over the generic order the
+/// answers are computed by.
+#[allow(clippy::too_many_lines)]
 fn authority_vectors() -> Vec<Json> {
-    let vec02 = || table(&[(0, &[1, 3]), (1, &[2, 2]), (2, &[3, 1]), (3, &[3, 3])]);
-    let unbounded = || nat(1000);
+    let paths =
+        |members: &[&[u64]]| -> Vec<Json> { members.iter().map(|path| nats(path)).collect() };
+    let path_order =
+        |function: &str, arguments: Vec<Json>| generic_call(function, nats_t(), arguments);
+    let nat_order =
+        |function: &str, arguments: Vec<Json>| generic_call(function, nat_t(), arguments);
+    let natsame = || function_ref(lx::member("natSame"));
+    let vec02 = || {
+        vector_table(
+            &VEC02
+                .iter()
+                .map(|(identity, cost)| (*identity, cost.as_slice()))
+                .collect::<Vec<_>>(),
+        )
+    };
+    let vec04 = || scalar_table(&VEC04);
+    let rules = || list(product_t(nat_t(), nat_t()), vec![pair(nat(0), nat(1))]);
     vec![
-        // GNAF-VEC-02 (§16.2): rA=(1,3), rB=(2,2), rC=(3,1), rD=(3,3); the
-        // complete frontier is exactly {rA, rB, rC}.
-        decided(
+        // GNAF-VEC-01 (§16.1): the S0 compositions are [rAB, rBC] at 5 and
+        // [rAC6] at 6, optimum [rAB, rBC] at 5.
+        reduced(
+            "vec01Optimum",
+            path_order("argmin", vec![vec01_compositions(&VEC01_S0)]),
+            found(nats_t(), paths(&[&[0, 1]]), 5),
+        ),
+        // Admitting rAC4 at 4 in S1 makes [rAC4] the optimum at 4.
+        reduced(
+            "vec01Extension",
+            path_order("argmin", vec![vec01_compositions(&VEC01_S1)]),
+            found(nats_t(), paths(&[&[3]]), 4),
+        ),
+        // The S0 certificate holds for S0 and is invalid for S1.
+        reduced(
+            "vec01CertificateHolds",
+            path_order(
+                "certifiesArgmin",
+                vec![
+                    function_ref(lx::member("vectorEq")),
+                    vec01_compositions(&VEC01_S0),
+                    list(nats_t(), paths(&[&[0, 1]])),
+                    nat(5),
+                ],
+            ),
+            yes(),
+        ),
+        reduced(
+            "vec01CertificateInvalidated",
+            path_order(
+                "certifiesArgmin",
+                vec![
+                    function_ref(lx::member("vectorEq")),
+                    vec01_compositions(&VEC01_S1),
+                    list(nats_t(), paths(&[&[0, 1]])),
+                    nat(5),
+                ],
+            ),
+            no(),
+        ),
+        // GNAF-VEC-02 (§16.2): the complete frontier is exactly
+        // {rA, rB, rC}; rD is dominated.
+        reduced(
             "vec02Frontier",
-            "tableFrontier",
-            vec![vec02()],
+            nat_order("frontier", vec![vec02()]),
             nats(&[0, 1, 2]),
         ),
-        // GNAF-REJ-14 (§16.24): the componentwise minima (1,1) of
-        // GNAF-VEC-02 are attained by no candidate, so they are no vector
-        // optimum.
-        decided(
-            "rej14ComponentwiseMinimaUnattained",
-            "tableAttains",
-            vec![vec02(), nats(&[1, 1])],
-            no(),
-        ),
-        // GNAF-REJ-29 (§16.24): a frontier response omitting rC is not the
-        // complete frontier.
-        decided(
+        // GNAF-REJ-29 (§16.24): a frontier response omitting rC is not
+        // frontier-complete.
+        reduced(
             "rej29FrontierOmission",
-            "sameIds",
-            vec![local_call("tableFrontier", vec![vec02()]), nats(&[0, 1])],
+            nat_order("certifiesFrontier", vec![natsame(), vec02(), nats(&[0, 1])]),
             no(),
         ),
-        // GNAF-VEC-01 (§16.1): the S0 compositions are [rAB, rBC] at 5 and
-        // rAC6 at 6, optimum 5; admitting rAC4 at 4 in S1 makes the optimum
-        // 4, so the S0 optimum certifies nothing about S1.
-        decided(
-            "vec01Optimum",
-            "rowMinimum",
-            vec![table(&[(0, &[5]), (1, &[6])]), unbounded()],
-            nat(5),
+        // GNAF-REJ-14 (§16.24): the componentwise minima (1,1) come from rA
+        // and rC; no candidate attains them, so they are no vector optimum.
+        reduced(
+            "rej14ComponentwiseMinima",
+            nat_order("componentwiseMinimum", vec![vec02()]),
+            nats(&[1, 1]),
         ),
-        decided(
-            "vec01Extension",
-            "rowMinimum",
-            vec![table(&[(0, &[5]), (1, &[6]), (2, &[4])]), unbounded()],
-            nat(4),
+        reduced(
+            "rej14MinimaUnattained",
+            nat_order(
+                "attains",
+                vec![vec02(), nat_order("componentwiseMinimum", vec![vec02()])],
+            ),
+            no(),
         ),
-        // GNAF-VEC-04 (§16.4): with only the local rewrite a -> b, b is
-        // normal but c is the global minimum; local irreducibility proves
-        // nothing.
-        decided(
+        // GNAF-VEC-04 (§16.4): with only the local rewrite a -> b, a
+        // normalizes to b, the global minimum is c at 0, and a claim that b
+        // is optimal because it is normal is refused.
+        reduced(
             "vec04NormalFormIsB",
-            "normalize",
-            vec![
-                nat(10),
-                list(product_t(nat_t(), nat_t()), vec![pair(nat(0), nat(1))]),
-                nat(0),
-            ],
+            local_call("normalize", vec![nat(10), rules(), nat(0)]),
             nat(1),
         ),
-        decided(
+        reduced(
             "vec04GlobalMinimumIsC",
-            "tableFrontier",
-            vec![table(&[(0, &[2]), (1, &[1]), (2, &[0])])],
-            nats(&[2]),
+            nat_order("argmin", vec![vec04()]),
+            found(nat_t(), vec![nat(2)], 0),
         ),
-        // GNAF-VEC-17 (§16.17): R0 and R1 cost 0 when their index equals the
-        // hidden bit h and 10 otherwise. The pointwise envelope is 0 for each
-        // h, but every uniform system's worst case is 10, so no executable
-        // system may be certified with the pointwise value.
-        decided(
+        reduced(
+            "vec04NormalFormRefused",
+            nat_order(
+                "certifiesArgmin",
+                vec![
+                    natsame(),
+                    vec04(),
+                    list(
+                        nat_t(),
+                        vec![local_call("normalize", vec![nat(10), rules(), nat(0)])],
+                    ),
+                    nat(1),
+                ],
+            ),
+            no(),
+        ),
+        // GNAF-VEC-17 (§16.17): R0 and R1 cost 0 when their index equals
+        // the hidden bit h and 10 otherwise. The pointwise envelope is 0 for
+        // each h, every uniform system's worst case is 10, the fair
+        // randomized system expects 5, and no uniform system is certified
+        // at the pointwise value.
+        reduced(
             "vec17EnvelopeAtZero",
-            "rowMinimum",
-            vec![table(&[(0, &[0]), (1, &[10])]), unbounded()],
-            nat(0),
+            nat_order("argmin", vec![local_call("environmentRows", vec![nat(0)])]),
+            found(nat_t(), vec![nat(0)], 0),
         ),
-        decided(
+        reduced(
             "vec17EnvelopeAtOne",
-            "rowMinimum",
-            vec![table(&[(0, &[10]), (1, &[0])]), unbounded()],
-            nat(0),
+            nat_order("argmin", vec![local_call("environmentRows", vec![nat(1)])]),
+            found(nat_t(), vec![nat(1)], 0),
         ),
-        decided(
+        reduced(
             "vec17UniformWorstCase",
-            "uniformWorst",
-            vec![table(&[(0, &[0, 10]), (1, &[10, 0])]), unbounded()],
-            nat(10),
+            nat_order("argmin", vec![local_call("uniformRows", Vec::new())]),
+            found(nat_t(), vec![nat(0), nat(1)], 10),
+        ),
+        reduced(
+            "vec17FairExpectationAtZero",
+            local_call("fairExpectation", vec![nat(0)]),
+            nat(5),
+        ),
+        reduced(
+            "vec17FairExpectationAtOne",
+            local_call("fairExpectation", vec![nat(1)]),
+            nat(5),
+        ),
+        reduced(
+            "vec17PointwiseValueRefused",
+            nat_order(
+                "certifiesArgmin",
+                vec![
+                    natsame(),
+                    local_call("uniformRows", Vec::new()),
+                    nats(&[0]),
+                    nat(0),
+                ],
+            ),
+            no(),
         ),
     ]
 }
@@ -2366,14 +4262,16 @@ fn declarations() -> Vec<Json> {
     let unused = Unused::new();
     let mut out = request_types();
     out.extend(machine_contract(&unused));
-    out.extend(validation(&unused));
     out.extend(universe());
+    out.extend(completeness());
+    out.extend(validation(&unused));
     out.extend(realization());
     out.extend(value_equality(&unused));
-    out.extend(program_size(&unused));
+    out.extend(reachable_code(&unused));
+    out.extend(order());
     out.extend(admission(&unused));
     out.extend(answer(&unused));
-    out.extend(cost_tables(&unused));
+    out.extend(vector_definitions());
     out.extend(authority_vectors());
     out
 }

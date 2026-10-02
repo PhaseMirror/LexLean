@@ -42,7 +42,7 @@ Class: `language`. Exit code: 1.
 
 ## `LLB6006` --- GNAF request malformed
 
-A GNAF request is not a closed `lexlean/gnaf-request/1` document, or its reference program or a system its universe realizes is not a valid target program.
+A GNAF request is not a closed `lexlean/gnaf-request/1` document, its reference program or a system its universe realizes is not a valid target program, its reference returns no value on a domain argument, its grammar repeats a threshold or misdeclares a plan's preparation, or its stated universe identity is not the one its components determine.
 
 Class: `language`. Exit code: 1.
 
@@ -220,9 +220,9 @@ Path escape, symlink, special file, or filesystem identity conflict.
 
 Class: `security-limit`. Exit code: 4.
 
-## `LLS8002` --- Explicit project resource limit exceeded
+## `LLS8002` --- Explicit resource limit exceeded
 
-Explicit project resource limit exceeded.
+An explicit project resource limit, or the declared capacity of an evaluator such as the GNAF host's (§17.15), is exceeded.
 
 Class: `security-limit`. Exit code: 4.
 
