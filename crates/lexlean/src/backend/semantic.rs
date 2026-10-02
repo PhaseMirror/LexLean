@@ -119,9 +119,11 @@ fn term_uses(term: &SemanticTerm, local: &str) -> bool {
             left: head,
             right: tail,
         } => pair(head, tail),
-        SemanticTerm::Not { value } | SemanticTerm::Project { value, .. } => {
-            term_uses(value, local)
-        }
+        SemanticTerm::Not { value }
+        | SemanticTerm::Project { value, .. }
+        | SemanticTerm::First { value }
+        | SemanticTerm::Second { value } => term_uses(value, local),
+        SemanticTerm::Pair { left, right } => term_uses(left, local) || term_uses(right, local),
         SemanticTerm::Record { fields, .. } => fields
             .iter()
             .any(|assignment| term_uses(&assignment.value, local)),
@@ -249,6 +251,9 @@ impl Render<'_> {
                     out.push(')');
                 }
                 out
+            }
+            SemanticType::Product { left, right } => {
+                format!("(Prod ({}) ({}))", self.ty(left), self.ty(right))
             }
         }
     }
@@ -585,6 +590,11 @@ impl Render<'_> {
                 self.term(value),
                 self.term(body)
             ),
+            SemanticTerm::Pair { left, right } => {
+                format!("({}, {})", self.term(left), self.term(right))
+            }
+            SemanticTerm::First { value } => format!("({}).1", self.term(value)),
+            SemanticTerm::Second { value } => format!("({}).2", self.term(value)),
         }
     }
 
@@ -746,6 +756,157 @@ fn emit(checked: &CheckedModule, text: &str, kind: &str) -> Emitter {
         node,
     );
     emitter
+}
+
+fn skip_whitespace(bytes: &[u8], mut position: usize) -> usize {
+    while bytes
+        .get(position)
+        .is_some_and(|byte| matches!(byte, b' ' | b'\n' | b'\r' | b'\t'))
+    {
+        position += 1;
+    }
+    position
+}
+
+/// The end of the JSON value starting at `position`.
+fn skip_value(bytes: &[u8], mut position: usize) -> Option<usize> {
+    let (mut depth, mut in_string, mut escaped) = (0usize, false, false);
+    loop {
+        let byte = *bytes.get(position)?;
+        if in_string {
+            position += 1;
+            match byte {
+                _ if escaped => escaped = false,
+                b'\\' => escaped = true,
+                b'"' => {
+                    in_string = false;
+                    if depth == 0 {
+                        return Some(position);
+                    }
+                }
+                _ => {}
+            }
+            continue;
+        }
+        match byte {
+            b'"' => in_string = true,
+            b'{' | b'[' => depth += 1,
+            // A closing bracket at depth zero ends the scalar before it.
+            b'}' | b']' if depth == 0 => return Some(position),
+            b'}' | b']' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(position + 1);
+                }
+            }
+            b',' | b' ' | b'\n' | b'\r' | b'\t' if depth == 0 => return Some(position),
+            _ => {}
+        }
+        position += 1;
+    }
+}
+
+/// The byte range of every element of the `declarations` array of the
+/// module's semantic data in the normalized source, in order.
+fn declaration_spans(source: &str) -> Option<Vec<(usize, usize)>> {
+    let bytes = source.as_bytes();
+    let data = source.find("\\semanticdata{")? + "\\semanticdata{".len();
+    let mut position = skip_whitespace(bytes, data);
+    if bytes.get(position) != Some(&b'{') {
+        return None;
+    }
+    position += 1;
+    loop {
+        position = skip_whitespace(bytes, position);
+        let key_end = skip_value(bytes, position)?;
+        let key = source.get(position..key_end)?;
+        position = skip_whitespace(bytes, key_end);
+        if bytes.get(position) != Some(&b':') {
+            return None;
+        }
+        position = skip_whitespace(bytes, position + 1);
+        if key == "\"declarations\"" {
+            break;
+        }
+        position = skip_whitespace(bytes, skip_value(bytes, position)?);
+        if bytes.get(position) != Some(&b',') {
+            return None;
+        }
+        position += 1;
+    }
+    if bytes.get(position) != Some(&b'[') {
+        return None;
+    }
+    position += 1;
+    let mut spans = Vec::new();
+    loop {
+        position = skip_whitespace(bytes, position);
+        match bytes.get(position)? {
+            b']' => return Some(spans),
+            b',' if !spans.is_empty() => position = skip_whitespace(bytes, position + 1),
+            _ if spans.is_empty() => {}
+            _ => return None,
+        }
+        let end = skip_value(bytes, position)?;
+        spans.push((position, end));
+        position = end;
+    }
+}
+
+/// Language 1.2: one mapping node per declaration, relating its generated
+/// text to its own object in the source, inside the module node that
+/// relates the preamble and closing to the whole module.
+fn emit_declarations(
+    checked: &CheckedModule,
+    text: &str,
+    kind: &str,
+    starts: &[usize],
+    end: usize,
+) -> Result<Emitter, Diagnostic> {
+    let spans = declaration_spans(&checked.normalized)
+        .filter(|spans| spans.len() == starts.len())
+        .ok_or_else(|| {
+            Diagnostic::new(
+                code!("LLI9001"),
+                format!("phase {kind}: the source declarations do not match the rendered ones"),
+            )
+        })?;
+    let origin = || Origin::Metadata {
+        owner: "lexlean.core::semanticdata".to_owned(),
+    };
+    let whole = EmitSource::File(0, checked.normalized.len());
+    let mut emitter = Emitter::new();
+    let module_node = emitter.node(kind);
+    let first = starts.first().copied().unwrap_or(end);
+    emitter.piece(
+        &text[..first],
+        kind,
+        origin(),
+        whole.clone(),
+        MapRole::Declaration,
+        module_node,
+    );
+    for (index, (start, span)) in starts.iter().zip(&spans).enumerate() {
+        let stop = starts.get(index + 1).copied().unwrap_or(end);
+        let node = emitter.node("semantic-declaration");
+        emitter.piece(
+            &text[*start..stop],
+            kind,
+            origin(),
+            EmitSource::File(span.0, span.1),
+            MapRole::Declaration,
+            node,
+        );
+    }
+    emitter.piece(
+        &text[end..],
+        kind,
+        origin(),
+        whole,
+        MapRole::Declaration,
+        module_node,
+    );
+    Ok(emitter)
 }
 
 fn portable_runtime() -> &'static str {
@@ -1094,8 +1255,22 @@ pub fn render_lean(
     {
         text.push_str(portable_runtime());
     }
-    for declaration in &module.declarations {
+    let group_of = |index: usize| match module.declarations.get(index) {
+        Some(SemanticDeclaration::Inductive {
+            mutual: Some(label),
+            ..
+        }) => Some(label.as_str()),
+        _ => None,
+    };
+    let mut starts = Vec::with_capacity(module.declarations.len());
+    for (index, declaration) in module.declarations.iter().enumerate() {
+        starts.push(text.len());
         text.push('\n');
+        // §17.12: one contiguous mutual group is one Lean `mutual` block.
+        let group = group_of(index);
+        if group.is_some() && (index == 0 || group_of(index - 1) != group) {
+            text.push_str("mutual\n");
+        }
         match declaration {
             SemanticDeclaration::Structure {
                 name,
@@ -1166,6 +1341,7 @@ pub fn render_lean(
                 type_parameters,
                 parameters,
                 constructors,
+                ..
             } => {
                 let name = identifier(name);
                 text.push_str(&format!(
@@ -1180,6 +1356,9 @@ pub fn render_lean(
                         .map(|field| format!(" (_ : {})", render.ty(field)))
                         .collect::<String>();
                     text.push_str(&format!("  | {}{fields}\n", identifier(&constructor.name)));
+                }
+                if group_of(index).is_some() && group_of(index + 1) != group_of(index) {
+                    text.push_str("end\n");
                 }
             }
             SemanticDeclaration::Definition {
@@ -1227,6 +1406,7 @@ pub fn render_lean(
             }
         }
     }
+    let end = text.len();
     text.push_str("\nend ");
     text.push_str(&identifier(&document.lean_module));
     text.push('\n');
@@ -1236,7 +1416,11 @@ pub fn render_lean(
             "phase lean-backend: semantic lowering produced a comment token",
         ));
     }
-    Ok(emit(checked, &text, "semantic-lean-module"))
+    if module.spec == "lexlean/semantic-module/2" {
+        emit_declarations(checked, &text, "semantic-lean-module", &starts, end)
+    } else {
+        Ok(emit(checked, &text, "semantic-lean-module"))
+    }
 }
 
 fn tex_escape(text: &str) -> String {
@@ -1269,15 +1453,39 @@ pub fn render_latex(
     let render = Render {
         prefix: module_prefix,
     };
+    let version_2 = module.spec == "lexlean/semantic-module/2";
     let mut text = String::from(
         "\\documentclass[11pt]{article}\n\\usepackage[T1]{fontenc}\n\\usepackage{amsmath,amssymb}\n\\begin{document}\n\\section*{Semantic declarations}\n",
     );
+    let mut starts = Vec::with_capacity(module.declarations.len());
     for declaration in &module.declarations {
+        starts.push(text.len());
         text.push_str(&format!(
             "\\subsection*{{\\texttt{{{}}}}}\n\\noindent Kind: \\texttt{{{}}}.\\par\n",
             tex_escape(declaration.name()),
             declaration.kind()
         ));
+        // Language 1.2: a parameterized data declaration states the type
+        // parameters its constructor and field types mention.
+        if version_2 {
+            if let SemanticDeclaration::Inductive {
+                type_parameters, ..
+            }
+            | SemanticDeclaration::Structure {
+                type_parameters, ..
+            }
+            | SemanticDeclaration::Class {
+                type_parameters, ..
+            } = declaration
+            {
+                if !type_parameters.is_empty() {
+                    text.push_str(&format!(
+                        "\\noindent Type parameters: \\texttt{{({})}}.\\par\n",
+                        tex_escape(&type_parameters.join(", "))
+                    ));
+                }
+            }
+        }
         match declaration {
             SemanticDeclaration::Definition {
                 result,
@@ -1311,11 +1519,86 @@ pub fn render_latex(
                     tex_escape(&policy)
                 ));
             }
-            _ => {}
+            // Language 1.2 renders the data shape that 1.1 leaves implicit;
+            // 1.1 documents keep their historical bytes.
+            SemanticDeclaration::Inductive {
+                constructors,
+                mutual,
+                ..
+            } if version_2 => {
+                if let Some(label) = mutual {
+                    text.push_str(&format!(
+                        "\\noindent Mutual group: \\texttt{{{}}}.\\par\n",
+                        tex_escape(label)
+                    ));
+                }
+                for constructor in constructors {
+                    let fields = constructor
+                        .fields
+                        .iter()
+                        .map(|field| render.ty(field))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    text.push_str(&format!(
+                        "\\noindent Constructor \\texttt{{{}}}: \\texttt{{({})}}.\\par\n",
+                        tex_escape(&constructor.name),
+                        tex_escape(&fields)
+                    ));
+                }
+            }
+            SemanticDeclaration::Structure { fields, .. }
+            | SemanticDeclaration::Class { fields, .. }
+                if version_2 =>
+            {
+                for field in fields {
+                    text.push_str(&format!(
+                        "\\noindent Field \\texttt{{{}}}: \\texttt{{{}}}.\\par\n",
+                        tex_escape(&field.name),
+                        tex_escape(&render.ty(&field.r#type))
+                    ));
+                }
+            }
+            SemanticDeclaration::Structure { .. }
+            | SemanticDeclaration::Class { .. }
+            | SemanticDeclaration::Instance { .. }
+            | SemanticDeclaration::Inductive { .. } => {}
         }
     }
+    let end = text.len();
     text.push_str("\\end{document}\n");
-    Ok(emit(checked, &text, "semantic-latex-module"))
+    if version_2 {
+        emit_declarations(checked, &text, "semantic-latex-module", &starts, end)
+    } else {
+        Ok(emit(checked, &text, "semantic-latex-module"))
+    }
+}
+
+#[cfg(test)]
+mod declaration_span_tests {
+    use super::declaration_spans;
+
+    #[test]
+    fn spans_are_the_declaration_objects_whatever_the_layout() {
+        let compact = r#"\semanticdata{{"declarations":[{"name":"a\"}"},{"name":"b","x":[1,{"y":"]"}]}],"spec":"s"}}"#;
+        let spans = declaration_spans(compact).expect("spans");
+        let objects: Vec<&str> = spans
+            .iter()
+            .map(|(start, end)| &compact[*start..*end])
+            .collect();
+        assert_eq!(
+            objects,
+            [r#"{"name":"a\"}"}"#, r#"{"name":"b","x":[1,{"y":"]"}]}"#]
+        );
+        let spaced = "\\semanticdata{{\n  \"version\": 2,\n  \"declarations\": [\n    {\"name\":\"a\"} ,\n    {\"name\":\"b\"}\n  ]\n}}";
+        let spans = declaration_spans(spaced).expect("spans");
+        let objects: Vec<&str> = spans
+            .iter()
+            .map(|(start, end)| &spaced[*start..*end])
+            .collect();
+        assert_eq!(objects, [r#"{"name":"a"}"#, r#"{"name":"b"}"#]);
+        assert_eq!(declaration_spans("\\semanticdata{{\"spec\":1}}"), None);
+        assert_eq!(declaration_spans("no data"), None);
+    }
 }
 
 #[cfg(test)]

@@ -2419,6 +2419,86 @@ backend runs.
 | 1.2-only construct | Schema | Meaning |
 |---|---|---|
 | `let` term | `lexlean/semantic-module/2` | A typed, nonrecursive local definition `{"binder":{"name":...,"type":...},"kind":"let","value":...,"body":...}`. The value is checked in the enclosing scope and must have exactly the binder type; the binder is in scope only in `body`, may not shadow any local, and is never treated as a structurally smaller recursive argument. It lowers to the Lean term `(let x : T := v; b)` and contributes its binder type, value, and body to `max_ir_nodes`. |
+| `product` type | `lexlean/semantic-module/2` | `{"kind":"product","left":T,"right":U}`, the binary product of two closed types, lowered to `(Prod (T) (U))`. |
+| `pair`, `first`, `second` terms | `lexlean/semantic-module/2` | `{"kind":"pair","left":a,"right":b}` has the product of its component types and lowers to `(a, b)`; `first` and `second` require a product operand and lower to `(v).1` and `(v).2`. A `match` on a product has exactly one `Prod.mk` branch with two binders. |
+| recursive inductive | `lexlean/semantic-module/2` | A constructor field may mention the inductive being declared, under the recursive-data rules below. |
+| `mutual` inductive label | `lexlean/semantic-module/2` | `"mutual":"Label"` on an inductive places it in a mutual group under the recursive-data rules below. |
+
+#### Recursive data (language 1.2)
+
+These rules are LexLean's own and are checked in linking (`LLT4001`) before
+either backend runs; they do not defer to what Lean would accept.
+
+1. **Groups.** A standalone inductive is a group of one. Inductives carrying
+   the same `mutual` label form one group: the members are contiguous in
+   declaration order, there are at least two, they declare identical ordered
+   type parameters, and each has at least one constructor and no value
+   parameters. A member may mention any member of its group; every other
+   reference is to an earlier declaration. No language-1.2 declaration is named `Bool`, `List`, `Nat`, `Option`,
+   `Prod`, or `Result`: a local reference to a built-in constructor carries no
+   module, so such a declaration would make it ambiguous.
+2. **Uniformity.** Every mention of a group member inside a constructor field
+   applies it to exactly the declared type parameters, in order.
+3. **Strict positivity.** A group member occurs in a field only as the whole
+   field type (a *direct* occurrence) or nested under `List`, `Option`,
+   `Result`, or a product. A group member inside the type arguments of
+   another document type is rejected, because the positivity of that type's
+   parameters is not part of its closed contract.
+4. **Inhabitation.** The least set of inhabited members is computed by
+   fixed point: a member is inhabited when one of its constructors has only
+   constructible fields. `List` and `Option` are always constructible, a
+   `Result` when either side is, a product when both are, a group member
+   when it is already inhabited, and every other accepted type always. A
+   member outside the fixed point is an uninhabited recursive cycle.
+5. **Structures** and classes remain nonrecursive: a field that mentions its
+   own structure or class is rejected; recursive data is an inductive.
+6. **Structural recursion.** When a recursive definition matches its
+   decreasing argument, the structurally smaller pattern binders are the
+   `List.cons` tail, the `Nat.succ` predecessor, and every field of a
+   document constructor that is a direct occurrence of the matched
+   inductive itself. A nested occurrence, or a member of another type in a
+   mutual group, is not smaller under this rule. Imported recursive
+   inductives keep the same smaller positions. A standalone recursive
+   definition decreases only on `Nat`, `List`, or a self-recursive inductive
+   with no nested occurrence and no mutual group, exactly the types
+   `induction` accepts: a nested or mutual type has no single structural
+   eliminator for one function.
+7. **Induction.** `induction` applies to a self-recursive inductive with no
+   nested occurrence and no mutual group, and binds the constructor fields
+   followed by one hypothesis per direct recursive field, in field order.
+   `cases` applies to every inductive.
+8. **Lowering.** Each inductive lowers to one `public inductive` with
+   positional `(_ : T)` fields; each mutual group lowers to one
+   `mutual ... end` block. A constructor's identity is its owner and name,
+   `Owner.ctor`, qualified by its module when imported; constructor names are
+   unique within their owner and lowered in declaration order. The canonical
+   LaTeX of a `lexlean/semantic-module/2` module additionally lists the type
+   parameters of every parameterized inductive, structure, or class, every
+   constructor with its field types, the mutual group label, and every
+   structure or class field; language-1.1 documents keep their bytes.
+9. **Accounting.** Every constructor field type is charged recursively to
+   `max_ir_nodes`, and a `lexlean/semantic-module/2` module is also charged
+   one node per type parameter, per constructor, and per mutual group label,
+   so no part of a data declaration is free; language-1.1 modules keep their
+   historical count.
+10. **Binder hygiene.** The backend refers to the module's own declarations,
+    to the built-in names it emits (`And`, `Bool`, `ByteArray`, `Except`,
+    `Iff`, `Int`, `Int8`..`Int64`, `LexLeanCollections`, `LexLeanRuntime`,
+    `List`, `Nat`, `Option`, `Ordering`, `Prod`, `Prop`, `Result`, `String`,
+    `Type`, `UInt8`..`UInt64`, `Unit`, `and_congr`, `congr`, `decide`, `id`,
+    `rfl`), and to every imported declaration through the project's module
+    prefix, all without qualification. In a `lexlean/semantic-module/2`
+    module no binder (a type parameter, a value parameter, or a pattern,
+    `let`, quantifier, or proof binder) is spelled like a declaration of the
+    module, one of those built-in names, or the first segment of the module
+    prefix, because Lean would resolve the reference to the binder after
+    linking has accepted the module. The language-1.1 contract is frozen
+    and does not carry this rule.
+11. **Source maps.** In a `lexlean/semantic-module/2` module every
+    declaration is its own mapping node in both artifacts, relating its
+    generated Lean and LaTeX to exactly its object in the source; the
+    preamble and closing map to the whole module. Language-1.1 maps keep
+    their module granularity and bytes.
 
 Routing is fixed by the project language and is never inferred from module
 content, so no byte sequence has two meanings:
@@ -4013,7 +4093,18 @@ Tests MUST establish that LexLean rejects, at minimum:
   lock with the language-1.1 lock schema;
 - a builtin glossary reference with another language's version, from 1.2 to
   1.1 and from 1.1 to 1.2;
-- a lexicon package whose language differs from the project's.
+- a lexicon package whose language differs from the project's;
+- a recursive occurrence inside another document type (positivity);
+- a non-uniform recursive occurrence;
+- an uninhabited recursive cycle;
+- a self-referential structure;
+- a noncontiguous mutual group;
+- a recursive occurrence with the wrong number of type arguments;
+- a constructor applied to the wrong number of arguments;
+- a forward reference outside a mutual group;
+- an uninhabited cycle through a mutual group;
+- a match on a value of one type with the constructors of another;
+- a binder spelled like a name the generated Lean refers to.
 
 ### 28.6 Example verification
 
@@ -4375,6 +4466,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `SM-21` | `semantic-ir` | Structural recursion admits byte/list values and closed Option and Result inductives while preserving termination and exhaustiveness checks. | §17.11 |
 | `SM-22` | `semantic-ir` | The public owned snapshot DTO and schemas cover every portable type, literal, primitive, and explicit definition axiom policy without backend text. | §17.11, §21 |
 | `SM-23` | `semantic-ir` | Language 1.2 semantic modules use the versioned module and snapshot schemas and accept the typed nonrecursive let term, which language 1.1 rejects before either backend runs. | §17.12 |
+| `SM-24` | `semantic-ir` | Language 1.2 product types, pairs, projections, and product matches are typed, snapshotted under the v2 schemas, and give identical semantic IDs from distinct roots. | §17.12, §21 |
 | `DF-01` | `declarations` | A valid type-definition sentence emits one nonrecursive sort-valued Lean def linked to its document entry. | §15.7, §18.6 |
 | `DF-02` | `declarations` | A valid term-definition sentence emits one nonrecursive explicitly typed Lean def. | §15.7, §18.6 |
 | `DF-03` | `declarations` | A valid predicate-definition sentence emits one nonrecursive Prop-valued Lean def. | §15.7, §18.6 |
@@ -4386,6 +4478,8 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `DF-09` | `declarations` | Every theorem-like component contains exactly one nonempty structured proof. | §15.8, §16 |
 | `DF-10` | `declarations` | Generated declarations preserve source order and every document reference respects that order. | §18.3 |
 | `DF-11` | `declarations` | Language 1.1 checks and lowers generic structures, classes, instances, inductives, definitions, structural recursion, matches, Boolean validators, and closed proofs from semantic source data. | §17.11 |
+| `DF-12` | `declarations` | Language 1.2 inductives admit uniform, strictly positive self, nested, and mutual recursion with a buildable base case, all checked before either backend runs. | §17.12 |
+| `DF-13` | `declarations` | Language 1.2 structural recursion and induction over a recursive inductive use exactly its direct recursive fields, across modules, with one induction hypothesis per recursive field. | §17.12 |
 | `PF-01` | `proofs` | Assume and exact-style simple proof sentences create scoped introductions and exact proof nodes. | §16.2 |
 | `PF-02` | `proofs` | Simple Apply is accepted only when its declared signature yields exactly one residual premise. | §16.2 |
 | `PF-03` | `proofs` | Structured apply requires every numbered residual premise exactly once and in signature order. | §16.6 |
@@ -4503,7 +4597,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `EX-07` | `examples` | The negative fixture suite covers every required rejection class and prescribed diagnostic family. | §28.5 |
 | `EX-08` | `examples` | Every example directory is discovered automatically and must satisfy the full example gate. | §28.6 |
 
-**Total required capability IDs:** 228.
+**Total required capability IDs:** 231.
 
 No row may be downgraded to `some-true` or `open`. Upstream Lean facts are ledger/authority rows, not substitutions for these build behaviors.
 

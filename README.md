@@ -116,6 +116,7 @@ Every directory under [examples/](examples/) is discovered by the example gate (
 | [list-induction](examples/list-induction/) | Universe-polymorphic `List` with an eliminator descriptor: type-valued section parameters, `List.nil`/`List.cons`, an infix `⧺` for `List.append`, structural induction over lists using earlier document lemmas as rewrite rules, and nested noun phrases (`the length of ... equals the sum of the length of ... and the length of ...`). |
 | [semantic-1.1](examples/semantic-1.1/) | A source-Lean-free, multi-module language-1.1 project covering every closed type, declaration, term, instance, structural-recursion, match, Boolean/Nat validation, proof variant, portable integer width, byte/string form, primitive operation, and cross-module kernel reduction. |
 | [language-1.2](examples/language-1.2/) | The language-1.2 contract (SPEC.md §17.12): a `lexlean/semantic-module/2` module whose definition and theorem statement use the 1.2-only typed `let` term, lowered to Lean `let` and verified with an empty observed axiom set. |
+| [recursive-data](examples/recursive-data/) | Language-1.2 recursive data (SPEC.md §17.12) across two modules: a self-recursive parameterized `Tree`, a nested `Rose` through `List`, the mutual `Expr`/`Stmt` group, a parameterized result-like `Outcome`, products and pairs in a structure; structural recursion and induction with one hypothesis per recursive field, under exact axiom policies. |
 | [uor-atlas](examples/uor-atlas/) | The complete native Atlas declaration and proof graph, including the census/group chain, `S37`, `S38`, and the authoritative integer-uniqueness statement `S43`; no handwritten Atlas module is a generated dependency. |
 
 ## Building and running the gate
@@ -127,7 +128,7 @@ just vv        # the complete normative acceptance gate (SPEC.md §9.2)
 just release   # vv, then the §30 release criterion; refused until 1.0.0
 ```
 
-All 228 registered conformance IDs are implemented and pass; `just vv` runs clean from a checkout with the pinned toolchain installed.
+All 231 registered conformance IDs are implemented and pass; `just vv` runs clean from a checkout with the pinned toolchain installed.
 
 `just vv` is the Linux x86-64 gate. On the other four supported hosts (§8.3) the crate builds and every test runs. A case whose assertions need something the host does not have runs its platform-independent assertions and prints which ones it skipped: the pinned toolchain, a `#!/bin/sh` program for the external-provider cases, a filesystem that distinguishes two names differing only in case, or one that accepts a name that is not valid UTF-8. Each is detected at run time rather than assumed from the target triple, and on Linux x86-64 the toolchain gate is mandatory, so nothing there passes vacuously.
 
@@ -142,8 +143,8 @@ Every row is validated by `just vv`; the IDs link the claim to its register row,
 | Total lexical closure: every accepted atom is covered by exactly one declared origin | `LX-01`..`LX-14` | `build` |
 | Versioned lexicon packages with closed schemas, denotations, and renderer tokens | `GL-01`..`GL-18` | `build` |
 | Fixed structural, mathematical, and proposition grammar with closed ambiguity handling | `GR-01`..`GR-16` | `build` |
-| Typed closed IR with canonical serialization, native core modules, portable language-1.1 application data and operations, versioned language-1.2 semantic modules, semantic snapshots, and content identities | `SM-01`..`SM-23` | `build` |
-| Document and generic semantic declarations with exact self-application, type checking, structural recursion, and acyclicity rules | `DF-01`..`DF-11` | `build` |
+| Typed closed IR with canonical serialization, native core modules, portable language-1.1 application data and operations, versioned language-1.2 semantic modules and products, semantic snapshots, and content identities | `SM-01`..`SM-24` | `build` |
+| Document and generic semantic declarations with exact self-application, type checking, structural recursion, recursive and mutual language-1.2 data, and acyclicity rules | `DF-01`..`DF-13` | `build` |
 | The structured proof language with pinned Lean lowerings | `PF-01`..`PF-18` | `build` |
 | Prose-free deterministic generated Lean with complete token traceability | `LN-01`..`LN-12` | `build` |
 | Canonical LaTeX regeneration and the optional hash-checked PDF provider | `TX-01`..`TX-12` | `build` |

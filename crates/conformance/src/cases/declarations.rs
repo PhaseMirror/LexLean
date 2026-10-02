@@ -1,4 +1,4 @@
-//! The `declarations` suite: DF-01..DF-11.
+//! The `declarations` suite: DF-01..DF-13.
 
 use lexlean::ir::declaration::{DeclBody, DeclKind};
 
@@ -615,6 +615,301 @@ pub(crate) fn run(id: &str) {
                     "semantic rejection occurs before a backend"
                 );
             }
+        }
+        // §17.12: recursive data is uniform, strictly positive, and
+        // buildable; every rule holds before either backend runs.
+        "DF-12" => {
+            let project = P::copy_example("recursive-data");
+            project.check_ok();
+            let rendered = support::rendered(&project);
+            let types = support::lean_text(&rendered, "Types");
+            for expected in [
+                "public inductive Tree (Item : Type) where\n  | leaf\n  | node (_ : Tree (Item)) (_ : Item) (_ : Tree (Item))\n",
+                "public inductive Rose (Item : Type) where\n  | node (_ : Item) (_ : List (Rose (Item)))\n",
+                "mutual\npublic inductive Expr where\n",
+                "public inductive Stmt where\n  | assign (_ : String) (_ : Expr)\n  | sequence (_ : Stmt) (_ : Stmt)\nend\n",
+                "mutual\npublic inductive Node (Item : Type) where\n  | node (_ : Item) (_ : Branches (Item))\n\npublic inductive Branches (Item : Type) where\n",
+            ] {
+                assert!(types.contains(expected), "missing {expected:?} in:\n{types}");
+            }
+            let tex = support::tex_text(&rendered, "Types");
+            assert!(tex.contains("Mutual group: \\texttt{Syntax}"), "{tex}");
+            for expected in [
+                "\\subsection*{\\texttt{Tree}}\n\\noindent Kind: \\texttt{inductive}.\\par\n\\noindent Type parameters: \\texttt{(Item)}.\\par\n\\noindent Constructor \\texttt{leaf}: \\texttt{()}.\\par\n",
+                "\\noindent Type parameters: \\texttt{(Problem, Item)}.\\par\n",
+                "\\subsection*{\\texttt{Located}}\n\\noindent Kind: \\texttt{structure}.\\par\n\\noindent Type parameters: \\texttt{(Item)}.\\par\n\\noindent Field \\texttt{value}: \\texttt{Item}.\\par\n",
+            ] {
+                assert!(tex.contains(expected), "missing {expected:?} in:\n{tex}");
+            }
+            // Language 1.2 maps every declaration to its own source object,
+            // in both artifacts.
+            let (_, map_bytes) = rendered
+                .files
+                .iter()
+                .find(|(path, _)| path == "maps/RecursiveData/Types.map.json")
+                .expect("the Types source map");
+            let map: serde_json::Value = serde_json::from_slice(map_bytes).expect("map JSON");
+            let types_text = project.read("src/Types.lex.tex");
+            let declaration_nodes: Vec<u64> = map["nodes"]
+                .as_array()
+                .expect("nodes")
+                .iter()
+                .filter(|node| node["kind"] == "semantic-declaration")
+                .map(|node| node["id"].as_u64().expect("id"))
+                .collect();
+            assert_eq!(
+                declaration_nodes.len(),
+                16,
+                "eight declarations in each artifact"
+            );
+            for mapping in map["mappings"].as_array().expect("mappings") {
+                if !declaration_nodes.contains(&mapping["node"].as_u64().expect("node")) {
+                    continue;
+                }
+                let range =
+                    |key: &str| usize::try_from(mapping[key].as_u64().expect(key)).expect("fits");
+                let object: serde_json::Value =
+                    serde_json::from_str(&types_text[range("src_start")..range("src_end")])
+                        .expect("a declaration maps to exactly its own source object");
+                let name = object["name"].as_str().expect("a declaration name");
+                let generated = if mapping["artifact"] == 0 {
+                    &types
+                } else {
+                    &tex
+                };
+                assert!(
+                    generated[range("gen_start")..range("gen_end")].contains(name),
+                    "the generated range of `{name}` names it"
+                );
+            }
+            let _ = support::verify_ok_backed("DF-12", &project);
+
+            let types_source = project.read("src/Types.lex.tex");
+            let mutate = |from: &str, to: &str, message: &str| {
+                let copy = P::copy_example("recursive-data");
+                assert!(types_source.contains(from), "fixture lacks {from:?}");
+                copy.write("src/Types.lex.tex", &types_source.replacen(from, to, 1));
+                let error = copy.check_fails_with("LLT4001");
+                assert!(
+                    error.to_string().contains(message),
+                    "expected {message:?}, got {error}"
+                );
+                copy.assert_no_backend_output();
+            };
+            let tree = r#"{"arguments":[{"kind":"parameter","name":"Item"}],"kind":"named","member":{"name":"Tree"}}"#;
+            // Non-uniform recursive occurrence.
+            mutate(
+                tree,
+                r#"{"arguments":[{"kind":"nat"}],"kind":"named","member":{"name":"Tree"}}"#,
+                "non-uniform recursive occurrence of `Tree`",
+            );
+            // Bad type arguments on a recursive occurrence.
+            mutate(
+                tree,
+                r#"{"arguments":[],"kind":"named","member":{"name":"Tree"}}"#,
+                "type `Tree` expects 1 argument(s), received 0",
+            );
+            // Positivity: a recursive occurrence inside another document
+            // type. The added declaration is otherwise well formed and unused,
+            // so only the positivity rule can refuse it.
+            mutate(
+                r#"{"fields":[{"name":"value""#,
+                r#"{"constructors":[{"fields":[],"name":"empty"},{"fields":[{"arguments":[{"arguments":[],"kind":"named","member":{"name":"Wrap"}}],"kind":"named","member":{"name":"Tree"}}],"name":"wrap"}],"kind":"inductive","name":"Wrap","parameters":[],"type_parameters":[]},{"fields":[{"name":"value""#,
+                "positivity violation in `Wrap.wrap`",
+            );
+            // An uninhabited cycle: removing the only base case of `Tree`.
+            mutate(
+                r#"{"fields":[],"name":"leaf"},"#,
+                "",
+                "uninhabited recursive cycle: no constructor of inductive `Tree`",
+            );
+            // A one-member group, and members with different type
+            // parameters.
+            mutate(
+                r#""mutual":"Syntax","name":"Stmt""#,
+                r#""mutual":"Other","name":"Stmt""#,
+                "has one member; a standalone inductive omits `mutual`",
+            );
+            mutate(
+                r#""mutual":"Syntax","name":"Stmt","parameters":[],"type_parameters":[]"#,
+                r#""mutual":"Syntax","name":"Stmt","parameters":[],"type_parameters":["Item"]"#,
+                "members must declare identical type parameters",
+            );
+            // A later group member is admitted by the group, and still meets
+            // every naming rule: here it duplicates an earlier declaration.
+            mutate(
+                r#""mutual":"Syntax","name":"Stmt""#,
+                r#""mutual":"Syntax","name":"Tree""#,
+                "duplicate generated name `Tree`",
+            );
+            // A built-in constructor owner cannot be redeclared, or a local
+            // `Option.some` would be ambiguous.
+            mutate(
+                r#""kind":"inductive","name":"Outcome""#,
+                r#""kind":"inductive","name":"Option""#,
+                "declaration name `Option` is reserved for the built-in type",
+            );
+            // Binder hygiene: a type parameter spelled like a declaration of
+            // the module (the inductive itself or a mutual group member), a
+            // built-in type the backend names, or the module prefix would
+            // capture that name in generated Lean.
+            let rename_problem = |to: &str, message: &str| {
+                let copy = P::copy_example("recursive-data");
+                copy.write(
+                    "src/Types.lex.tex",
+                    &types_source.replace(r#""Problem""#, &format!("\"{to}\"")),
+                );
+                let error = copy.check_fails_with("LLT4001");
+                assert!(
+                    error.to_string().contains(message),
+                    "expected {message:?}, got {error}"
+                );
+                copy.assert_no_backend_output();
+            };
+            rename_problem(
+                "Outcome",
+                "binder `Outcome` in `Outcome` is spelled like the declaration `Outcome`",
+            );
+            rename_problem(
+                "Expr",
+                "binder `Expr` in `Outcome` is spelled like the declaration `Expr`",
+            );
+            rename_problem(
+                "Prod",
+                "binder `Prod` in `Outcome` is spelled like the built-in Lean name `Prod`",
+            );
+            rename_problem(
+                "Nat",
+                "binder `Nat` in `Outcome` is spelled like the built-in Lean name `Nat`",
+            );
+            rename_problem(
+                "RecursiveData",
+                "binder `RecursiveData` in `Outcome` is spelled like the module prefix `RecursiveData`",
+            );
+            // A self-referential structure.
+            mutate(
+                r#"{"name":"value","type":{"kind":"parameter","name":"Item"}}"#,
+                r#"{"name":"value","type":{"arguments":[{"kind":"parameter","name":"Item"}],"kind":"named","member":{"name":"Located"}}}"#,
+                "structure or class `Located` refers to itself",
+            );
+
+            // Language 1.1 keeps rejecting every recursive payload.
+            let eleven = P::semantic_example();
+            let support_source = eleven.read("src/Support.lex.tex");
+            eleven.write(
+                "src/Support.lex.tex",
+                &support_source.replacen(
+                    r#"{"fields":[],"name":"enabled"}"#,
+                    r#"{"fields":[{"arguments":[],"kind":"named","member":{"name":"RemoteFlag"}}],"name":"enabled"}"#,
+                    1,
+                ),
+            );
+            let error = eleven.check_fails_with("LLT4001");
+            assert_eq!(
+                error.to_string(),
+                "LLT4001: phase link: forward or missing type `RemoteFlag`"
+            );
+
+            // Resource accounting charges the data module exactly: one node
+            // per declaration, per type node of every field, and, in
+            // language 1.2, per type parameter, per constructor, and per
+            // mutual label. The limit equal to the charge of the modules
+            // through `Types` admits it, and one less overruns.
+            let limited_project = |limit: u64| {
+                let limited = P::copy_example("recursive-data");
+                limited.edit(
+                    "lexlean.toml",
+                    "max_ir_nodes = 2000000",
+                    &format!("max_ir_nodes = {limit}"),
+                );
+                limited.relock();
+                limited
+            };
+            let limit_at = |limit: u64| {
+                limited_project(limit)
+                    .check_fails_with("LLS8002")
+                    .to_string()
+            };
+            let message = limit_at(1);
+            assert!(message.contains("through module `Types`"), "{message}");
+            let observed: u64 = message
+                .split("observed ")
+                .nth(1)
+                .and_then(|tail| tail.split(' ').next())
+                .and_then(|count| count.parse().ok())
+                .expect("observed node count");
+            // Declarations 8; field type nodes 32; type parameters 7;
+            // constructors 13; mutual labels 4.
+            assert_eq!(observed, 64, "the exact charge of `Types`");
+            assert!(limit_at(observed - 1).contains(&format!("observed {observed} ")));
+            let at_limit = limited_project(observed)
+                .check_fails_with("LLS8002")
+                .to_string();
+            assert!(
+                !at_limit.contains("through module `Types`"),
+                "the exact charge of `Types` is admitted: {at_limit}"
+            );
+        }
+        // §17.12: structural recursion and induction over a recursive
+        // inductive use exactly its direct recursive fields.
+        "DF-13" => {
+            let project = P::copy_example("recursive-data");
+            project.check_ok();
+            let main = support::lean_text(&support::rendered(&project), "Main");
+            for expected in [
+                "| RecursiveData.Types.Tree.node left _ right => ((treeSize (left) + 1) + treeSize (right))",
+                "induction tree with\n  | leaf =>\n    simp only [mirror]\n  | node left value right leftHypothesis rightHypothesis =>\n",
+            ] {
+                assert!(main.contains(expected), "missing {expected:?} in:\n{main}");
+            }
+            let _ = support::verify_ok_backed("DF-13", &project);
+
+            let source = project.read("src/Main.lex.tex");
+            let mutate = |from: &str, to: &str, message: &str| {
+                let copy = P::copy_example("recursive-data");
+                assert!(source.contains(from), "fixture lacks {from:?}");
+                copy.write("src/Main.lex.tex", &source.replacen(from, to, 1));
+                let error = copy.check_fails_with("LLT4001");
+                assert!(
+                    error.to_string().contains(message),
+                    "expected {message:?}, got {error}"
+                );
+                copy.assert_no_backend_output();
+            };
+            // A recursive call on the matched value itself.
+            mutate(
+                r#""arguments":[{"kind":"var","name":"left"}],"function":{"name":"treeSize"}"#,
+                r#""arguments":[{"kind":"var","name":"tree"}],"function":{"name":"treeSize"}"#,
+                "recursive call `treeSize` is not on a structurally smaller value",
+            );
+            // A value rebuilt from the fields is not smaller than the match
+            // scrutinee: only a direct recursive field binder is. For a
+            // self-recursive inductive these are exactly the binders of the
+            // scrutinee's own type, so typing and this rule coincide.
+            mutate(
+                r#""arguments":[{"kind":"var","name":"right"}],"function":{"name":"mirror"}"#,
+                r#""arguments":[{"arguments":[{"kind":"var","name":"left"},{"kind":"var","name":"value"},{"kind":"var","name":"right"}],"constructor":{"module":"Types","name":"Tree.node"},"kind":"constructor","type_arguments":[{"kind":"nat"}]}],"function":{"name":"mirror"}"#,
+                "recursive call `mirror` is not on a structurally smaller value",
+            );
+            // A standalone definition cannot recurse over a nested type: it has
+            // no single structural eliminator.
+            mutate(
+                r#""name":"roseLabel","parameters":[{"name":"rose","type":{"arguments":[{"kind":"nat"}],"kind":"named","member":{"module":"Types","name":"Rose"}}}],"result""#,
+                r#""name":"roseLabel","parameters":[{"name":"rose","type":{"arguments":[{"kind":"nat"}],"kind":"named","member":{"module":"Types","name":"Rose"}}}],"recursive_argument":"rose","result""#,
+                "standalone structural recursion requires a self-recursive inductive",
+            );
+            // One hypothesis per direct recursive field.
+            mutate(
+                r#""binders":["left","value","right","leftHypothesis","rightHypothesis"]"#,
+                r#""binders":["left","value","right","leftHypothesis"]"#,
+                "proof branch `node` expects 5 binder(s), received 4",
+            );
+            // Induction over a nested inductive is not a closed proof form.
+            mutate(
+                r#"{"kind":"theorem","name":"rose_label","parameters":[],"proof":{"kind":"reflexivity"}"#,
+                r#"{"kind":"theorem","name":"rose_label","parameters":[{"name":"rose","type":{"arguments":[{"kind":"nat"}],"kind":"named","member":{"module":"Types","name":"Rose"}}}],"proof":{"branches":[{"binders":["label","children"],"constructor":"node","proof":{"kind":"reflexivity"}}],"kind":"induction","scrutinee":"rose"}"#,
+                "requires a self-recursive inductive without nested or mutual occurrences",
+            );
         }
         other => panic!("no declarations case is wired for {other}"),
     }

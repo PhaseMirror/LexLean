@@ -1,4 +1,4 @@
-//! The `semantic-ir` suite: SM-01..SM-23.
+//! The `semantic-ir` suite: SM-01..SM-24.
 
 use std::collections::BTreeSet;
 use std::process::Command;
@@ -1497,6 +1497,141 @@ pub(crate) fn run(id: &str) {
             let (spec, value) = snapshot_of(&P::semantic_example());
             assert_eq!(spec, "lexlean/semantic-snapshot/1");
             support::assert_schema("semantic-snapshot", "the 1.1 snapshot", &value);
+        }
+        "SM-24" => {
+            let snapshot_of = |project: &P| {
+                let snapshot = project
+                    .engine()
+                    .snapshot(lexlean::CheckRequest {
+                        selection: lexlean::Selection::Entrypoints,
+                    })
+                    .expect("snapshot");
+                snapshot.canonical_bytes()
+            };
+            // Two roots, one semantic identity and one snapshot.
+            let first = P::copy_example("recursive-data");
+            let second = P::copy_example("recursive-data");
+            assert_ne!(first.root, second.root);
+            let first_bytes = snapshot_of(&first);
+            assert_eq!(
+                first_bytes,
+                snapshot_of(&second),
+                "snapshots are root independent"
+            );
+            assert_eq!(
+                support::checked_project(&first).semantic_id,
+                support::checked_project(&second).semantic_id
+            );
+            let value: serde_json::Value =
+                serde_json::from_slice(&first_bytes).expect("snapshot JSON");
+            support::assert_schema(
+                "semantic-snapshot-v2",
+                "the recursive-data snapshot",
+                &value,
+            );
+            let mut tags = BTreeSet::new();
+            let mut mutual = 0;
+            for module in value["modules"].as_array().expect("modules") {
+                support::assert_schema(
+                    "semantic-module-v2",
+                    "a recursive-data module",
+                    &module["semantic"],
+                );
+                collect_tags(&module["semantic"], "kind", &mut tags);
+                mutual += module["semantic"]["declarations"]
+                    .as_array()
+                    .expect("declarations")
+                    .iter()
+                    .filter(|declaration| declaration["mutual"] == "Syntax")
+                    .count();
+            }
+            assert_eq!(mutual, 2, "the snapshot records both mutual members");
+            for tag in ["product", "pair", "first", "second", "inductive"] {
+                assert!(tags.contains(tag), "snapshot carries `{tag}`");
+            }
+            let main = support::lean_text(&support::rendered(&first), "Main");
+            for expected in [
+                "public def swap (pair : (Prod (Nat) (Bool))) : (Prod (Bool) (Nat)) := ((pair).2, (pair).1)",
+                "(match pair with | Prod.mk left right => (left + right))",
+            ] {
+                assert!(main.contains(expected), "missing {expected:?} in:\n{main}");
+            }
+
+            // Projections and product matches are typed.
+            let source = first.read("src/Main.lex.tex");
+            let mutate = |from: &str, to: &str, message: &str| {
+                let copy = P::copy_example("recursive-data");
+                assert!(source.contains(from), "fixture lacks {from:?}");
+                copy.write("src/Main.lex.tex", &source.replacen(from, to, 1));
+                let error = copy.check_fails_with("LLT4001");
+                assert!(
+                    error.to_string().contains(message),
+                    "expected {message:?}, got {error}"
+                );
+                copy.assert_no_backend_output();
+            };
+            mutate(
+                r#"{"kind":"second","value":{"kind":"var","name":"pair"}}"#,
+                r#"{"kind":"second","value":{"kind":"nat","value":"1"}}"#,
+                "pair projection of non-product type",
+            );
+            mutate(
+                r#"{"binders":["left","right"],"body":{"kind":"add","left":{"kind":"var","name":"left"},"right":{"kind":"var","name":"right"}},"constructor":{"name":"Prod.mk"}}"#,
+                r#"{"binders":["left"],"body":{"kind":"var","name":"left"},"constructor":{"name":"Prod.mk"}}"#,
+                "match branch `Prod.mk` expects 2 binder(s), received 1",
+            );
+
+            // Language 1.1 rejects the product type and the pair term.
+            let eleven = P::semantic_example();
+            let support_source = eleven.read("src/Support.lex.tex");
+            eleven.write(
+                "src/Support.lex.tex",
+                &support_source.replacen(
+                    r#""body":{"kind":"bool","value":true},"kind":"definition","name":"remoteEnabled","parameters":[],"result":{"kind":"bool"}"#,
+                    r#""body":{"kind":"pair","left":{"kind":"bool","value":true},"right":{"kind":"unit"}},"kind":"definition","name":"remoteEnabled","parameters":[],"result":{"kind":"product","left":{"kind":"bool"},"right":{"kind":"unit"}}"#,
+                    1,
+                ),
+            );
+            let error = eleven.check_fails_with("LLT4001");
+            assert!(
+                error
+                    .to_string()
+                    .contains("`product type` is a language-1.2 construct"),
+                "{error}"
+            );
+            // Each 1.2 term is refused on its own, with no product type in
+            // sight to be reported first.
+            for (term, construct) in [
+                (
+                    r#"{"kind":"pair","left":{"kind":"bool","value":true},"right":{"kind":"unit"}}"#,
+                    "pair",
+                ),
+                (
+                    r#"{"kind":"first","value":{"kind":"bool","value":true}}"#,
+                    "first",
+                ),
+                (
+                    r#"{"kind":"second","value":{"kind":"bool","value":true}}"#,
+                    "second",
+                ),
+            ] {
+                let eleven = P::semantic_example();
+                eleven.write(
+                    "src/Support.lex.tex",
+                    &support_source.replacen(
+                        r#""body":{"kind":"bool","value":true},"kind":"definition","name":"remoteEnabled""#,
+                        &format!(r#""body":{term},"kind":"definition","name":"remoteEnabled""#),
+                        1,
+                    ),
+                );
+                let error = eleven.check_fails_with("LLT4001");
+                assert!(
+                    error
+                        .to_string()
+                        .contains(&format!("`{construct}` is a language-1.2 construct")),
+                    "{error}"
+                );
+            }
         }
         other => panic!("no semantic-ir case is wired for {other}"),
     }

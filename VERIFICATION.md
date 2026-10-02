@@ -12,7 +12,7 @@ How this repository's claims are checked, which recipe enforces which rule, and 
 | `model` | `cargo xtask validate-model` | R1 (model is the single source; every model file parsed with unknown-field rejection), R2 (honesty levels and vocabulary, via the meta-gate), R3 (register/scenario/test bijection, Gherkin subset), R4 (`audit-deferral`), R5 (`audit-errors`), R6 (`audit-shipped`, including the shipped crate's normative links), R8 (`audit-generated`, `audit-language-closure`), RP-09 (`audit-no-unsafe`), §27.5 (CONFORMANCE.md and ERRORS.md equal regeneration) |
 | `spec-links` | `cargo xtask validate-spec-links` | RP-07, §27.6: the §31 table and `model/ids.toml` are bijective and byte-consistent |
 | `lint` | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | no tolerated warnings |
-| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 228 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
+| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 231 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
 | `features` | `cargo check --workspace --all-features --all-targets` | every target compiles |
 | `bdd` | `cargo test -p repo-conformance` | R3, §27.7, §27.8: register ↔ scenario ↔ test bijection, the meta-gate, and its own falsifiability test |
 | `examples` | `cargo xtask verify-examples` | §28.6, EX-01: every example directory formats, locks, checks, builds, and verifies with real Lean 4.32.1; when an example commits `expected/verify/`, its normalized verification records must equal it (§29.5) |
@@ -232,7 +232,7 @@ Expected: the committed language-1.2 example no longer checks, and the
 negative fixture of a `let` under language 1.1 is accepted.
 
 ```text
-thread 'conformance_sm_23' panicked at crates/conformance/src/support.rs:269:14:
+thread 'conformance_sm_23' panicked at crates/conformance/src/support.rs:307:14:
 check succeeds: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLT4001"), message: "phase link: `let` is a language-1.2 construct; language 1.1 rejects it", ... }] }
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 227 filtered out
 gate failed: tests/negative/language-1.2-construct-under-1.1: step 1 `check ` exited 0, case.toml expects 1
@@ -281,6 +281,61 @@ gate failed: R8: language/bootstrap-1.2.toml declares a different fixed backend 
 Removed: each mutation was reverted; `conformance_sm_23`,
 `conformance_cf_17`, `conformance_cf_18`, `conformance_rp_10`,
 `cargo xtask validate-model`, and `cargo xtask check-fixtures` pass.
+
+### standalone structural recursion can fail
+
+Planted: the rejection of a standalone `recursive_argument` over a nested or
+mutual inductive disabled (`info.nested_or_mutual && false`), so a single
+definition could claim structural recursion over `Rose`, which has no single
+structural eliminator. Command: `cargo test -p repo-conformance --test
+conformance -- conformance_df_13`.
+
+```text
+thread 'conformance_df_13' panicked at crates/conformance/src/support.rs:317:14:
+check fails
+```
+
+### recursive data positivity can fail
+
+Planted: the positivity rule in `classify_occurrence` was bypassed (`if false
+&& ...`), so a group member inside another document type's arguments was
+admitted. Command: `cargo test -p repo-conformance --test conformance --
+conformance_df_12`. Expected: the mutation that adds an otherwise unused,
+well-formed `Wrap` with a constructor field `Tree (Wrap)` is no longer
+rejected at all; only the positivity rule refused it.
+
+```text
+thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:317:14:
+check fails
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 230 filtered out
+```
+
+Removed: the rule was restored; `conformance_df_12` passes and the
+`recursive-type-positivity` negative fixture fails with `LLT4001`.
+
+### binder hygiene can fail
+
+Planted: the language-1.2 call to `check_binder_hygiene` in
+`SemanticModule::validate` was disabled (`if false && ...`). Commands: `cargo
+test -p repo-conformance --test conformance -- conformance_df_12`, and
+`lexlean check` then `lexlean verify` on a copy of the `binder-capture`
+negative project, whose inductive `Box` has a type parameter `Prod` and a
+product field. Expected: the renamed type parameter is admitted, and Lean,
+not linking, is the first to refuse the capture.
+
+```text
+thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:317:14:
+check fails
+
+checked 1 module (source 0eec48d541180c1a6dbf34539884c1063f8a6637964a1f7667a5b6c0f73a4d15, semantic 1fe3fc4d4fa60d781de6ea42be16516d7b6b860a2918f6ed351b40ad6e1e0d2c)
+error[LLV7002]: Lean rejected `LanguageTwelve.Main` (error): Function expected at
+  Prod
+but this term has type
+  Type
+```
+
+Removed: the check was restored; `conformance_df_12` passes and
+`binder-capture` fails in linking with `LLT4001`, before any backend runs.
 
 ### fmt-check can fail
 
@@ -521,7 +576,7 @@ Removed: the function was deleted; clippy is clean.
 Planted: the last hex digit of the empty-input SHA-256 vector in `crates/model/src/release.rs` changed from `5` to `6`. Command: `cargo test -p repo-model --all-features`. Expected: the unit test fails on the digest.
 
 ```text
-thread 'release::tests::the_local_sha256_agrees_with_the_test_vectors' panicked at crates/model/src/release.rs:551:9:
+thread 'release::tests::the_local_sha256_agrees_with_the_test_vectors' panicked at crates/model/src/release.rs:556:9:
 assertion `left == right` failed
   left: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
  right: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b856"

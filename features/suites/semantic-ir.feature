@@ -163,3 +163,11 @@ Feature: semantic-ir
     And the generated Lean contains the fixed let lowering and verifies with real Lean
     And the language-1.1 copy, a /1 module under 1.2, and a /2 module under 1.1 fail with LLT4001 before any build root exists
     And a mistyped, shadowing, or self-referential let binder is rejected and the 1.1 snapshot keeps lexlean/semantic-snapshot/1
+
+  @SM-24 @build
+  Scenario: Language 1.2 product types, pairs, projections, and product matches are typed, snapshotted under the v2 schemas, and give identical semantic IDs from distinct roots.
+    Given two copies of the committed recursive-data example in distinct absolute roots
+    When both are snapshotted and checked, and copies mistype a projection, a product match, or use a product in language 1.1
+    Then both snapshots and semantic IDs are identical and validate against the v2 snapshot and module schemas
+    And the generated Lean uses Prod, pair syntax, projections, and a Prod.mk match
+    And each mistyped form and the language-1.1 product fail with LLT4001

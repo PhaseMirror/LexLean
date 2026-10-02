@@ -53,7 +53,9 @@ fn declaration(value: &SnapshotSemanticDeclaration) -> usize {
         SnapshotSemanticDeclaration::Structure { fields, .. }
         | SnapshotSemanticDeclaration::Class { fields, .. } => fields.len(),
         SnapshotSemanticDeclaration::Instance { fields, .. } => fields.len(),
-        SnapshotSemanticDeclaration::Inductive { constructors, .. } => constructors.len(),
+        SnapshotSemanticDeclaration::Inductive { constructors, mutual, .. } => {
+            constructors.len() + mutual.as_ref().map_or(0, String::len)
+        }
         SnapshotSemanticDeclaration::Definition { result, body, .. } => ty(result) + term(body),
         SnapshotSemanticDeclaration::Theorem { statement, proof, .. } => term(statement) + prove(proof),
     }
@@ -72,6 +74,7 @@ fn ty(value: &SnapshotType) -> usize {
         SnapshotType::Result { ok, error } => ty(ok) + ty(error),
         SnapshotType::List { element } => ty(element),
         SnapshotType::Named { arguments, .. } => arguments.iter().map(ty).sum(),
+        SnapshotType::Product { left, right } => ty(left) + ty(right),
     }
 }
 
@@ -101,6 +104,8 @@ fn term(value: &SnapshotTerm) -> usize {
         SnapshotTerm::Implies { premise, conclusion } => term(premise) + term(conclusion),
         SnapshotTerm::Forall { binder, body } => ty(&binder.r#type) + term(body),
         SnapshotTerm::Let { binder, value, body } => ty(&binder.r#type) + term(value) + term(body),
+        SnapshotTerm::Pair { left, right } => term(left) + term(right),
+        SnapshotTerm::First { value } | SnapshotTerm::Second { value } => term(value),
     }
 }
 
@@ -207,6 +212,39 @@ impl P {
         copy_tree(source.as_std_path(), temp.path(), &[".lexlean", "expected"]);
         let root = Utf8PathBuf::from_path_buf(temp.path().to_path_buf()).expect("utf8 tempdir");
         Self { temp, root }
+    }
+
+    /// A fresh copy of any committed example, without build output or
+    /// expected oracles.
+    #[must_use]
+    pub fn copy_example(name: &str) -> Self {
+        let temp = tempfile::Builder::new()
+            .prefix("lexlean-example-case-")
+            .tempdir()
+            .expect("tempdir");
+        let source = repo_root().join("examples").join(name);
+        assert!(source.is_dir(), "committed example `{name}` is required");
+        copy_tree(source.as_std_path(), temp.path(), &[".lexlean", "expected"]);
+        let root = Utf8PathBuf::from_path_buf(temp.path().to_path_buf()).expect("utf8 tempdir");
+        Self { temp, root }
+    }
+
+    /// Assert that a link-time failure also refuses `build` and leaves no
+    /// backend output (§17.12). `check` alone never runs a backend, so the
+    /// assertion is made against the command that would: the §21.8 mutation
+    /// lock may exist, a build or verification root may not.
+    pub fn assert_no_backend_output(&self) {
+        let built = self.engine().build(BuildRequest {
+            selection: Selection::Entrypoints,
+        });
+        let error = built.err().expect("a link-time failure refuses build");
+        expect_code(&error, "LLT4001");
+        for output in [".lexlean/build", ".lexlean/verified"] {
+            assert!(
+                !self.root.join(output).exists(),
+                "a link-time failure occurs before any backend writes {output}"
+            );
+        }
     }
 
     /// A fresh copy of the committed language-1.2 example (§17.12).
