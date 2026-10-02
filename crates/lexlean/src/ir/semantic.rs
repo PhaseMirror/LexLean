@@ -666,10 +666,13 @@ impl AlphaRenamer {
             },
             SemanticTerm::Forall { binder, body } => {
                 let r#type = self.ty(&binder.r#type);
+                let mark = self.scopes.len();
                 let name = self.bind(&binder.name);
+                let body = Box::new(self.term(body));
+                self.scopes.truncate(mark);
                 SemanticTerm::Forall {
                     binder: SemanticParameter { name, r#type },
-                    body: Box::new(self.term(body)),
+                    body,
                 }
             }
             SemanticTerm::Let {
@@ -679,11 +682,14 @@ impl AlphaRenamer {
             } => {
                 let value = self.term(value);
                 let r#type = self.ty(&binder.r#type);
+                let mark = self.scopes.len();
                 let name = self.bind(&binder.name);
+                let body = Box::new(self.term(body));
+                self.scopes.truncate(mark);
                 SemanticTerm::Let {
                     binder: SemanticParameter { name, r#type },
                     value: Box::new(value),
-                    body: Box::new(self.term(body)),
+                    body,
                 }
             }
             SemanticTerm::Lambda {
@@ -691,7 +697,13 @@ impl AlphaRenamer {
                 captures,
                 body,
             } => {
-                let captures = captures.iter().map(|name| self.resolve(name)).collect();
+                // Captures are a sorted set of names, so they are sorted
+                // again after renaming: alpha-equivalent sources whose
+                // original names sort differently must agree.
+                let mut captures: Vec<String> =
+                    captures.iter().map(|name| self.resolve(name)).collect();
+                captures.sort();
+                let mark = self.scopes.len();
                 let parameters = parameters
                     .iter()
                     .map(|parameter| {
@@ -702,10 +714,12 @@ impl AlphaRenamer {
                         }
                     })
                     .collect();
+                let body = Box::new(self.term(body));
+                self.scopes.truncate(mark);
                 SemanticTerm::Lambda {
                     parameters,
                     captures,
-                    body: Box::new(self.term(body)),
+                    body,
                 }
             }
             SemanticTerm::Match {
@@ -1762,6 +1776,132 @@ fn check_type_parameters(ty: &SemanticType, allowed: &BTreeSet<String>) -> Resul
     }
 }
 
+/// The Lean type names the backend writes in generated declarations. A
+/// language-1.2 type parameter of the same spelling would capture them inside
+/// the declaration it binds.
+const BACKEND_TYPE_NAMES: [&str; 21] = [
+    "Bool",
+    "ByteArray",
+    "Except",
+    "Int",
+    "Int16",
+    "Int32",
+    "Int64",
+    "Int8",
+    "List",
+    "Nat",
+    "Option",
+    "Ordering",
+    "Prod",
+    "Prop",
+    "String",
+    "Type",
+    "UInt16",
+    "UInt32",
+    "UInt64",
+    "UInt8",
+    "Unit",
+];
+
+/// §17.12: in language 1.2 a type parameter names nothing else the
+/// generated declaration mentions: not a backend type, not a document type,
+/// and not a value binder of the same declaration. Lean would otherwise
+/// elaborate a different declaration from the one the semantic data states.
+fn check_type_parameter_spelling(
+    type_parameters: &[String],
+    binders: &BTreeSet<String>,
+    env: &Environment<'_>,
+) -> Result<(), String> {
+    if !env.language_1_2 {
+        return Ok(());
+    }
+    for parameter in type_parameters {
+        if BACKEND_TYPE_NAMES.contains(&parameter.as_str()) {
+            return Err(format!(
+                "type parameter `{parameter}` would capture the built-in type of the same name"
+            ));
+        }
+        if env.types.contains_key(parameter) {
+            return Err(format!(
+                "type parameter `{parameter}` would capture the document type of the same name"
+            ));
+        }
+        if binders.contains(parameter) {
+            return Err(format!(
+                "type parameter `{parameter}` is also bound as a value in the same declaration"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Every value name a term binds: lambda parameters, `let` and quantifier
+/// binders, and match pattern binders.
+fn bound_names(term: &SemanticTerm, out: &mut BTreeSet<String>) {
+    visit_terms(term, &mut |node| match node {
+        SemanticTerm::Lambda { parameters, .. } => {
+            out.extend(parameters.iter().map(|parameter| parameter.name.clone()));
+        }
+        SemanticTerm::Let { binder, .. } | SemanticTerm::Forall { binder, .. } => {
+            out.insert(binder.name.clone());
+        }
+        SemanticTerm::Match { branches, .. } => {
+            for branch in branches {
+                out.extend(branch.binders.iter().cloned());
+            }
+        }
+        _ => {}
+    });
+}
+
+/// A language-1.2 explicit type argument instantiates a `(T : Type)` binder,
+/// so it can never be the universe `Type` itself, at any depth.
+fn check_type_argument(argument: &SemanticType, env: &Environment<'_>) -> Result<(), String> {
+    check_type(argument, env)?;
+    if env.language_1_2 && mentions_universe(argument) {
+        return Err(
+            "an explicit type argument cannot be the universe `Type`; a type parameter ranges over `Type`"
+                .to_owned(),
+        );
+    }
+    Ok(())
+}
+
+fn mentions_universe(ty: &SemanticType) -> bool {
+    match ty {
+        SemanticType::Type => true,
+        SemanticType::Option { value: inner } | SemanticType::List { element: inner } => {
+            mentions_universe(inner)
+        }
+        SemanticType::Result { ok, error }
+        | SemanticType::Product {
+            left: ok,
+            right: error,
+        } => mentions_universe(ok) || mentions_universe(error),
+        SemanticType::Named { arguments, .. } => arguments.iter().any(mentions_universe),
+        SemanticType::Function { parameters, result } => {
+            parameters.iter().any(mentions_universe) || mentions_universe(result)
+        }
+        SemanticType::Parameter { .. }
+        | SemanticType::Nat
+        | SemanticType::Bool
+        | SemanticType::Prop
+        | SemanticType::Unit
+        | SemanticType::Int
+        | SemanticType::Int8
+        | SemanticType::Int16
+        | SemanticType::Int32
+        | SemanticType::Int64
+        | SemanticType::UInt8
+        | SemanticType::UInt16
+        | SemanticType::UInt32
+        | SemanticType::UInt64
+        | SemanticType::String
+        | SemanticType::Bytes
+        | SemanticType::Ordering => false,
+    }
+}
+
 fn type_parameter_set(parameters: &[String]) -> Result<BTreeSet<String>, String> {
     let mut out = BTreeSet::new();
     for parameter in parameters {
@@ -2129,6 +2269,11 @@ fn register_inductive_group(
             ));
         }
     }
+    check_type_parameter_spelling(
+        first.type_parameters,
+        &rows.iter().map(|row| row.name.to_owned()).collect(),
+        env,
+    )?;
     let type_parameter_set = type_parameter_set(first.type_parameters)?;
     let mut group = BTreeSet::new();
     for row in rows {
@@ -2392,18 +2537,45 @@ fn immediate_subterms(term: &SemanticTerm) -> Vec<&SemanticTerm> {
     }
 }
 
-fn contains_function(ty: &SemanticType) -> bool {
+/// Whether values of a type can hold a function: a function type itself, or
+/// a container, product, or document type that can, through its type
+/// arguments or through the field types of its declaration. A type argument
+/// counts even where today's declaration does not store it, because the
+/// argument is data the value carries by its type.
+fn holds_function(
+    ty: &SemanticType,
+    env: &Environment<'_>,
+    visiting: &mut BTreeSet<String>,
+) -> bool {
     match ty {
         SemanticType::Function { .. } => true,
         SemanticType::Option { value: inner } | SemanticType::List { element: inner } => {
-            contains_function(inner)
+            holds_function(inner, env, visiting)
         }
         SemanticType::Result { ok, error }
         | SemanticType::Product {
             left: ok,
             right: error,
-        } => contains_function(ok) || contains_function(error),
-        SemanticType::Named { arguments, .. } => arguments.iter().any(contains_function),
+        } => holds_function(ok, env, visiting) || holds_function(error, env, visiting),
+        SemanticType::Named { member, arguments } => {
+            if arguments
+                .iter()
+                .any(|argument| holds_function(argument, env, visiting))
+            {
+                return true;
+            }
+            // A recursive or mutual declaration is visited once: a cycle
+            // adds no field type that was not already examined.
+            if !visiting.insert(member_key(member)) {
+                return false;
+            }
+            type_info(member, env).is_some_and(|info| {
+                info.field_types
+                    .iter()
+                    .chain(info.constructor_types.values().flatten())
+                    .any(|field| holds_function(field, env, visiting))
+            })
+        }
         SemanticType::Type
         | SemanticType::Parameter { .. }
         | SemanticType::Nat
@@ -2430,7 +2602,9 @@ fn contains_function(ty: &SemanticType) -> bool {
 /// be passed directly to an executable definition's function parameter or
 /// applied on the spot; it is never returned, stored in data, bound by `let`,
 /// or reached through a projection, and every definition it calls is itself
-/// executable.
+/// executable. No type the definition states or writes in its body can hold
+/// a function, so no data value in it carries a closure, and a function
+/// parameter is used only where a closure may be.
 fn check_executable(
     name: &str,
     parameters: &[SemanticParameter],
@@ -2438,47 +2612,95 @@ fn check_executable(
     body: &SemanticTerm,
     env: &Environment<'_>,
 ) -> Result<(), String> {
-    if contains_function(result) {
+    let holds = |ty: &SemanticType| holds_function(ty, env, &mut BTreeSet::new());
+    if holds(result) {
         return Err(format!(
             "escaping closure: executable definition `{name}` returns a function"
         ));
     }
+    let mut function_locals = BTreeSet::new();
     for parameter in parameters {
         if let SemanticType::Function {
             parameters: inner,
             result: inner_result,
         } = &parameter.r#type
         {
-            if inner.iter().any(contains_function) || contains_function(inner_result) {
+            if inner.iter().any(holds) || holds(inner_result) {
                 return Err(format!(
                     "executable definition `{name}` parameter `{}` is a higher-order function of functions",
                     parameter.name
                 ));
             }
-        } else if contains_function(&parameter.r#type) {
+            function_locals.insert(parameter.name.clone());
+        } else if holds(&parameter.r#type) {
             return Err(format!(
                 "escaping closure: executable definition `{name}` parameter `{}` stores a function in data",
                 parameter.name
             ));
         }
     }
-    check_executable_term(name, body, false, env)
+    let own: Vec<SemanticType> = parameters
+        .iter()
+        .map(|parameter| parameter.r#type.clone())
+        .collect();
+    let scope = ExecutableScope {
+        name,
+        own: &own,
+        function_locals: &function_locals,
+    };
+    check_executable_term(&scope, body, false, env)
+}
+
+/// What the escape analysis of one executable definition knows.
+struct ExecutableScope<'a> {
+    name: &'a str,
+    /// The definition's own parameter types, for its recursive calls.
+    own: &'a [SemanticType],
+    /// Its function-typed parameters, the only function-valued locals.
+    function_locals: &'a BTreeSet<String>,
 }
 
 fn check_executable_term(
-    name: &str,
+    scope: &ExecutableScope<'_>,
     term: &SemanticTerm,
     closure_position: bool,
     env: &Environment<'_>,
 ) -> Result<(), String> {
+    let name = scope.name;
+    if let SemanticTerm::Let { binder, .. } = term {
+        if holds_function(&binder.r#type, env, &mut BTreeSet::new()) {
+            return Err(format!(
+                "escaping closure in executable definition `{name}`: a function is bound by let"
+            ));
+        }
+    }
+    let mut written = None;
+    term_types(term, &mut |ty| {
+        if written.is_none() && holds_function(ty, env, &mut BTreeSet::new()) {
+            written = Some(ty.clone());
+        }
+    });
+    if let Some(ty) = written {
+        return Err(format!(
+            "escaping closure in executable definition `{name}`: the type {ty:?} written in its body holds a function"
+        ));
+    }
     match term {
+        SemanticTerm::Var { name: local } => {
+            if scope.function_locals.contains(local) && !closure_position {
+                return Err(format!(
+                    "escaping closure in executable definition `{name}`: the function `{local}` is used as a value"
+                ));
+            }
+            Ok(())
+        }
         SemanticTerm::Lambda { body, .. } => {
             if !closure_position {
                 return Err(format!(
                     "escaping closure in executable definition `{name}`: a lambda may only be passed directly to an executable function parameter or applied"
                 ));
             }
-            check_executable_term(name, body, false, env)
+            check_executable_term(scope, body, false, env)
         }
         SemanticTerm::FunctionRef { function, .. } => {
             if !closure_position {
@@ -2502,7 +2724,7 @@ fn check_executable_term(
                 SemanticTerm::Var { .. }
                 | SemanticTerm::Lambda { .. }
                 | SemanticTerm::FunctionRef { .. } => {
-                    check_executable_term(name, function, true, env)?;
+                    check_executable_term(scope, function, true, env)?;
                 }
                 _ => {
                     return Err(format!(
@@ -2511,7 +2733,7 @@ fn check_executable_term(
                 }
             }
             for argument in arguments {
-                check_executable_term(name, argument, false, env)?;
+                check_executable_term(scope, argument, false, env)?;
             }
             Ok(())
         }
@@ -2528,23 +2750,21 @@ fn check_executable_term(
                     member_key(function)
                 ));
             }
+            let callee: &[SemanticType] = if recursive {
+                scope.own
+            } else {
+                info.map_or(&[], |info| info.parameters.as_slice())
+            };
             for (index, argument) in arguments.iter().enumerate() {
-                let function_parameter = info.is_some_and(|info| {
-                    matches!(
-                        info.parameters.get(index),
-                        Some(SemanticType::Function { .. })
-                    )
-                });
-                check_executable_term(name, argument, function_parameter, env)?;
+                let function_parameter =
+                    matches!(callee.get(index), Some(SemanticType::Function { .. }));
+                check_executable_term(scope, argument, function_parameter, env)?;
             }
             Ok(())
         }
-        SemanticTerm::Let { binder, .. } if contains_function(&binder.r#type) => Err(format!(
-            "escaping closure in executable definition `{name}`: a function is bound by let"
-        )),
         _ => {
             for child in immediate_subterms(term) {
-                check_executable_term(name, child, false, env)?;
+                check_executable_term(scope, child, false, env)?;
             }
             Ok(())
         }
@@ -2708,7 +2928,7 @@ fn check_term(
         } => {
             check_member(r#type, env)?;
             for argument in type_arguments {
-                check_type(argument, env)?;
+                check_type_argument(argument, env)?;
             }
             let info = type_info(r#type, env)
                 .ok_or_else(|| format!("record type `{}` is unavailable", member_key(r#type)))?;
@@ -2729,7 +2949,7 @@ fn check_term(
         } => {
             check_member(constructor, env)?;
             for argument in type_arguments {
-                check_type(argument, env)?;
+                check_type_argument(argument, env)?;
             }
             for argument in arguments {
                 check_term(argument, locals, env, recursion, smaller)?;
@@ -2802,7 +3022,7 @@ fn check_term(
                 require_language_1_2(env, "call type arguments")?;
             }
             for argument in type_arguments {
-                check_type(argument, env)?;
+                check_type_argument(argument, env)?;
             }
             for argument in arguments {
                 check_term(argument, locals, env, recursion, smaller)?;
@@ -3087,7 +3307,7 @@ fn check_term(
                 ));
             }
             for argument in type_arguments {
-                check_type(argument, env)?;
+                check_type_argument(argument, env)?;
             }
             let info = function_info(function, env)
                 .ok_or_else(|| format!("forward or missing function `{}`", member_key(function)))?;
@@ -3744,7 +3964,9 @@ fn infer_term(
             Some(other) => Err(format!(
                 "application of a non-function value of type {other:?}"
             )),
-            None => Ok(None),
+            // An application is checked against its head's function type;
+            // with none known, its arity and arguments would go unchecked.
+            None => Err("application of a value with no statically known function type".to_owned()),
         },
         SemanticTerm::FunctionRef {
             function,
@@ -4024,7 +4246,7 @@ fn check_proof(
                 ));
             }
             for argument in type_arguments {
-                check_type(argument, env)?;
+                check_type_argument(argument, env)?;
             }
             let instantiation: BTreeMap<String, SemanticType> = type_parameters
                 .into_iter()
@@ -4685,6 +4907,11 @@ impl SemanticModule {
                         ));
                     }
                     let type_parameter_names = type_parameters.clone();
+                    check_type_parameter_spelling(
+                        &type_parameter_names,
+                        &BTreeSet::from([name.to_owned()]),
+                        &env,
+                    )?;
                     let type_parameters = type_parameter_set(type_parameters)?;
                     let _ = check_parameters(parameters, &env, &type_parameters)?;
                     if fields.is_empty() {
@@ -4790,6 +5017,11 @@ impl SemanticModule {
                         ));
                     }
                     let type_parameter_names = type_parameters.clone();
+                    check_type_parameter_spelling(
+                        &type_parameter_names,
+                        &BTreeSet::from([name.to_owned()]),
+                        &env,
+                    )?;
                     let type_parameters = type_parameter_set(type_parameters)?;
                     let _ = check_parameters(parameters, &env, &type_parameters)?;
                     if constructors.is_empty() {
@@ -4905,6 +5137,12 @@ impl SemanticModule {
                         require_language_1_2(&env, "executable definition")?;
                     }
                     let scope = type_parameter_set(type_parameters)?;
+                    let mut binders: BTreeSet<String> = parameters
+                        .iter()
+                        .map(|parameter| parameter.name.clone())
+                        .collect();
+                    bound_names(body, &mut binders);
+                    check_type_parameter_spelling(type_parameters, &binders, &env)?;
                     let locals = check_parameters(parameters, &env, &scope)?;
                     check_type(result, &env)?;
                     check_type_parameters(result, &scope)?;
@@ -4987,6 +5225,13 @@ impl SemanticModule {
                         require_language_1_2(&env, "theorem type parameters")?;
                     }
                     let scope = type_parameter_set(type_parameters)?;
+                    let mut binders: BTreeSet<String> = parameters
+                        .iter()
+                        .map(|parameter| parameter.name.clone())
+                        .collect();
+                    bound_names(statement, &mut binders);
+                    proof_terms(proof, &mut |term| bound_names(term, &mut binders));
+                    check_type_parameter_spelling(type_parameters, &binders, &env)?;
                     let locals = check_parameters(parameters, &env, &scope)?;
                     check_term_type_parameters(statement, &scope)?;
                     let mut proof_terms_ok = Ok(());

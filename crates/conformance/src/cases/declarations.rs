@@ -910,19 +910,20 @@ pub(crate) fn run(id: &str) {
                 r#""executable":true,"kind":"definition","name":"compose""#,
                 "escaping closure: executable definition `compose` returns a function",
             );
-            // Calling formal-only code.
+            // Returning a record of closures: a document type whose fields
+            // hold functions holds them too.
             mutate(
                 "src/Main.lex.tex",
                 r#""kind":"definition","name":"evaluator""#,
                 r#""executable":true,"kind":"definition","name":"evaluator""#,
-                "escaping closure in executable definition `evaluator`",
+                "escaping closure: executable definition `evaluator` returns a function",
             );
-            // Applying a function reached through data.
+            // Receiving closures inside data.
             mutate(
                 "src/Combinators.lex.tex",
                 r#""kind":"definition","name":"visit""#,
                 r#""executable":true,"kind":"definition","name":"visit""#,
-                "applies a function value that is not a parameter, lambda, or function reference",
+                "escaping closure: executable definition `visit` parameter `visitor` stores a function in data",
             );
             // A closure stored in a pair escapes even when never returned.
             mutate(

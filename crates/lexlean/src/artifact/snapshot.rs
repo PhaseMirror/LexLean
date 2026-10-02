@@ -249,7 +249,8 @@ impl SemanticSnapshot {
         }
     }
 
-    /// The modules in canonical name order.
+    /// Every definition's language-1.2 alpha identity as
+    /// `(module, declaration, alpha ID)`, in module and declaration order.
     #[must_use]
     pub fn alpha_ids(&self) -> Vec<(String, String, Sha256Digest)> {
         self.modules

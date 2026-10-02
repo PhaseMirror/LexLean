@@ -171,7 +171,7 @@ pub(crate) fn run(id: &str) {
         // exactly the one prescribed diagnostic code.
         "EX-07" => {
             let root = support::repo_root();
-            let prescribed: [(&str, &str); 56] = [
+            let prescribed: [(&str, &str); 61] = [
                 ("unknown-word", "LLL1004"),
                 ("unknown-symbol", "LLL1004"),
                 ("unknown-control", "LLL1004"),
@@ -231,6 +231,11 @@ pub(crate) fn run(id: &str) {
                 ("polymorphic-recursion", "LLT4001"),
                 ("recursion-under-lambda", "LLT4001"),
                 ("executable-calls-formal", "LLT4001"),
+                ("escaping-closure-in-data", "LLT4001"),
+                ("escaping-closure-structure", "LLT4001"),
+                ("escaping-closure-parameter", "LLT4001"),
+                ("type-parameter-capture", "LLT4001"),
+                ("type-argument-universe", "LLT4001"),
             ];
             let negative_root = root.join("tests/negative");
             let mut classes: Vec<String> = std::fs::read_dir(negative_root.as_std_path())

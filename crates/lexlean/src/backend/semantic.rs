@@ -1415,13 +1415,22 @@ pub fn render_latex(
                 ));
             }
             SemanticDeclaration::Theorem {
-                statement, axioms, ..
+                statement,
+                axioms,
+                type_parameters,
+                ..
             } => {
                 let policy = if axioms.is_empty() {
                     "none".to_owned()
                 } else {
                     format!("exact [{}]", axioms.join(", "))
                 };
+                if version_2 && !type_parameters.is_empty() {
+                    text.push_str(&format!(
+                        "\\noindent Type parameters: \\texttt{{{}}}.\\par\n",
+                        tex_escape(&type_parameters.join(", "))
+                    ));
+                }
                 text.push_str(&format!(
                     "\\noindent Statement: \\texttt{{{}}}.\\par\n\\noindent Axiom policy: \\texttt{{{}}}.\\par\n",
                     tex_escape(&render.term(statement)),

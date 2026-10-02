@@ -45,9 +45,18 @@ versions, and the entries below say what each tag does and does not claim.
   explicit captures, full applications, definition references, and generic
   definitions and theorems with explicit type arguments and no polymorphic
   recursion. `executable` definitions are production-eligible only with
-  non-escaping closures and executable callees. Snapshots record a
-  per-definition alpha identity (`DF-14`, `DF-15`, `SM-25`, `SM-26`,
-  `examples/higher-order`).
+  non-escaping closures and executable callees: no type they state or write
+  may hold a function, directly or through a document type's fields, and a
+  function parameter is used only where a closure may be. Type parameters
+  never capture a backend type, a document type, or a value binder, and the
+  universe is never a type argument. Snapshots record a per-definition alpha
+  identity (`DF-14`, `DF-15`, `SM-25`, `SM-26`, `examples/higher-order`),
+  exposed as `SnapshotSemanticDeclaration::alpha_identity` and
+  `SemanticSnapshot::alpha_ids`. Fifteen new negative fixtures cover
+  capture, arity, typing, escaping closures (returned, stored in an
+  `Option`, and passed in or out of a structure), polymorphic ambiguity and
+  recursion, recursion under a lambda, formal callees, a captured type name,
+  and a universe type argument.
 - Language 1.1 definitions now reject a type parameter written inside their
   body: the scope is empty, so such a definition could never elaborate.
 - The public snapshot DTO `SnapshotTerm` gains the `Let`, `Pair`, `First`,

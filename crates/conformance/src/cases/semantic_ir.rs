@@ -1730,8 +1730,6 @@ pub(crate) fn run(id: &str) {
             // identity and changes the semantic identity.
             let renamed = P::copy_example("higher-order");
             let source = renamed.read("src/Main.lex.tex");
-            let target = r#"{"body":{"arguments":[{"body":{"kind":"add","left":{"kind":"var","name":"value"},"right":{"kind":"var","name":"offset"}},"captures":["offset"],"kind":"lambda","parameters":[{"name":"value","type":{"kind":"nat"}}]},{"kind":"var","name":"values"}],"function":{"module":"Combinators","name":"mapList"},"kind":"call","type_arguments":[{"kind":"nat"},{"kind":"nat"}]},"executable":true,"kind":"definition","name":"addAll","parameters":[{"name":"offset","type":{"kind":"nat"}},{"name":"values","type":{"arguments":[],"kind":"named","member":{"name":"List"}}}]"#;
-            let _ = target;
             let renamed_source = source
                 .replacen(
                     r#"{"body":{"kind":"add","left":{"kind":"var","name":"value"},"right":{"kind":"var","name":"offset"}},"captures":["offset"],"kind":"lambda","parameters":[{"name":"value","type":{"kind":"nat"}}]}"#,
@@ -1766,6 +1764,44 @@ pub(crate) fn run(id: &str) {
             assert_ne!(alpha(&changed, "addAll"), alpha(&original, "addAll"));
             // Distinct generic definitions differ; language 1.1 has none.
             assert_ne!(alpha(&original, "mapList"), alpha(&original, "foldList"));
+            // Every binder kind renames positionally: type parameters, value
+            // parameters in a different order (so the sorted captures
+            // renumber out of source order), `let`, and match binders.
+            let identity = |json: &str| {
+                serde_json::from_str::<lexlean::SnapshotSemanticDeclaration>(json)
+                    .expect("declaration JSON")
+                    .alpha_identity()
+                    .expect("a definition has an alpha identity")
+            };
+            for (left, right) in [
+                (
+                    r#"{"kind":"definition","name":"pick","type_parameters":["Item"],"parameters":[{"name":"value","type":{"kind":"parameter","name":"Item"}}],"result":{"kind":"parameter","name":"Item"},"body":{"kind":"var","name":"value"}}"#,
+                    r#"{"kind":"definition","name":"pick","type_parameters":["Source"],"parameters":[{"name":"value","type":{"kind":"parameter","name":"Source"}}],"result":{"kind":"parameter","name":"Source"},"body":{"kind":"var","name":"value"}}"#,
+                ),
+                (
+                    r#"{"kind":"definition","name":"sum","parameters":[{"name":"a","type":{"kind":"nat"}},{"name":"b","type":{"kind":"nat"}}],"result":{"kind":"nat"},"body":{"kind":"apply","function":{"kind":"lambda","parameters":[{"name":"x","type":{"kind":"nat"}}],"captures":["a","b"],"body":{"kind":"add","left":{"kind":"var","name":"a"},"right":{"kind":"var","name":"b"}}},"arguments":[{"kind":"nat","value":"0"}]}}"#,
+                    r#"{"kind":"definition","name":"sum","parameters":[{"name":"b","type":{"kind":"nat"}},{"name":"a","type":{"kind":"nat"}}],"result":{"kind":"nat"},"body":{"kind":"apply","function":{"kind":"lambda","parameters":[{"name":"x","type":{"kind":"nat"}}],"captures":["a","b"],"body":{"kind":"add","left":{"kind":"var","name":"b"},"right":{"kind":"var","name":"a"}}},"arguments":[{"kind":"nat","value":"0"}]}}"#,
+                ),
+                (
+                    r#"{"kind":"definition","name":"twice","parameters":[{"name":"value","type":{"kind":"nat"}}],"result":{"kind":"nat"},"body":{"kind":"let","binder":{"name":"half","type":{"kind":"nat"}},"value":{"kind":"var","name":"value"},"body":{"kind":"add","left":{"kind":"var","name":"half"},"right":{"kind":"var","name":"half"}}}}"#,
+                    r#"{"kind":"definition","name":"twice","parameters":[{"name":"value","type":{"kind":"nat"}}],"result":{"kind":"nat"},"body":{"kind":"let","binder":{"name":"part","type":{"kind":"nat"}},"value":{"kind":"var","name":"value"},"body":{"kind":"add","left":{"kind":"var","name":"part"},"right":{"kind":"var","name":"part"}}}}"#,
+                ),
+                (
+                    r#"{"kind":"definition","name":"head","parameters":[{"name":"values","type":{"kind":"list","element":{"kind":"nat"}}}],"result":{"kind":"nat"},"body":{"kind":"match","scrutinee":{"kind":"var","name":"values"},"branches":[{"constructor":{"name":"List.nil"},"binders":[],"body":{"kind":"nat","value":"0"}},{"constructor":{"name":"List.cons"},"binders":["first","rest"],"body":{"kind":"var","name":"first"}}]}}"#,
+                    r#"{"kind":"definition","name":"head","parameters":[{"name":"values","type":{"kind":"list","element":{"kind":"nat"}}}],"result":{"kind":"nat"},"body":{"kind":"match","scrutinee":{"kind":"var","name":"values"},"branches":[{"constructor":{"name":"List.nil"},"binders":[],"body":{"kind":"nat","value":"0"}},{"constructor":{"name":"List.cons"},"binders":["item","others"],"body":{"kind":"var","name":"item"}}]}}"#,
+                ),
+            ] {
+                assert_eq!(identity(left), identity(right), "{left}\n{right}");
+            }
+            // A renaming that changes which binder is used is not one.
+            assert_ne!(
+                identity(
+                    r#"{"kind":"definition","name":"head","parameters":[{"name":"values","type":{"kind":"list","element":{"kind":"nat"}}}],"result":{"kind":"nat"},"body":{"kind":"match","scrutinee":{"kind":"var","name":"values"},"branches":[{"constructor":{"name":"List.nil"},"binders":[],"body":{"kind":"nat","value":"0"}},{"constructor":{"name":"List.cons"},"binders":["first","rest"],"body":{"kind":"var","name":"first"}}]}}"#
+                ),
+                identity(
+                    r#"{"kind":"definition","name":"head","parameters":[{"name":"values","type":{"kind":"list","element":{"kind":"nat"}}}],"result":{"kind":"nat"},"body":{"kind":"match","scrutinee":{"kind":"var","name":"values"},"branches":[{"constructor":{"name":"List.nil"},"binders":[],"body":{"kind":"nat","value":"0"}},{"constructor":{"name":"List.cons"},"binders":["first","rest"],"body":{"kind":"var","name":"values"}}]}}"#
+                ),
+            );
             assert!(snapshot_of(&P::semantic_example()).alpha_ids().is_empty());
         }
         other => panic!("no semantic-ir case is wired for {other}"),

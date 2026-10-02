@@ -2489,7 +2489,14 @@ either backend runs; they do not defer to what Lean would accept.
    no inference, so no use is ambiguous. Every type written in a
    definition's parameters, result, or body, or in a theorem's statement or
    proof arguments, mentions only declared type parameters; this also holds
-   for language-1.1 definitions, whose scope is empty.
+   for language-1.1 definitions, whose scope is empty. A language-1.2 type
+   parameter is not spelled like a backend type (`Bool`, `ByteArray`,
+   `Except`, `Int`, `Int8`..`Int64`, `List`, `Nat`, `Option`, `Ordering`,
+   `Prod`, `Prop`, `String`, `Type`, `UInt8`..`UInt64`, `Unit`), a document
+   type in scope, the declaration itself, or any value binder of the same
+   declaration, each of which it would capture in the generated binder. An
+   explicit type argument instantiates a `(T : Type)` binder and so never
+   mentions the universe `Type`.
 2. **No polymorphic recursion.** A recursive call passes exactly the
    definition's own type parameters, in order. Every executable root
    therefore has finitely many specializations, obtained by substituting its
@@ -2502,7 +2509,8 @@ either backend runs; they do not defer to what Lean would accept.
    A lambda lowers to `(fun (x : T) ... => body)`.
 4. **Application.** `apply` fully applies a function-typed value: the
    argument count equals the function type's parameter count and each
-   argument has the parameter's type. It lowers to `(f (a) ... )`.
+   argument has the parameter's type; a function value with no statically
+   known function type is not applied. It lowers to `(f (a) ... )`.
    `function_ref` names a prior definition with at least one value
    parameter at explicit type arguments and has its function type.
 5. **Identity.** Binder names are part of the semantic value and therefore
@@ -2510,13 +2518,20 @@ either backend runs; they do not defer to what Lean would accept.
    records, for each definition, `alpha_id`: the SHA-256 of the canonical
    JSON of the definition after renaming its type parameters to `T0, T1, ...`
    and its value parameters and every term binder to `_0, _1, ...` in
-   binding order. Alpha-equivalent definitions share it; any other change
-   alters it.
+   binding order, each binder scoped to its own subterm, with every lambda's
+   renamed captures sorted again. Alpha-equivalent definitions share it; any
+   other change alters it.
 6. **Production eligibility.** Higher-order values are formal by default. A
    definition marked `"executable":true` is production-eligible only when
-   every closure it forms is non-escaping and second-class: its result type
-   and every non-function parameter type contain no function type; a
-   function-typed parameter takes and returns no function; a lambda or
+   every closure it forms is non-escaping and second-class. A type *holds a
+   function* when it is a function type, or a container, product, or
+   document type that holds one through its type arguments or, transitively,
+   through the field types of its declaration. Its result type and every
+   non-function parameter type hold no function; no type written in its body
+   (a type argument, a `let`, `nil`, or lambda parameter type, a primitive
+   result type) holds one, so no data value in it carries a closure; a
+   function-typed parameter takes and returns no function and occurs only
+   where a closure may; a lambda or
    function reference occurs only as a direct argument to a function-typed
    parameter of an executable callee, or as the function of an `apply`; the
    function of an `apply` is a parameter, a lambda, or a function reference,
@@ -4139,7 +4154,12 @@ Tests MUST establish that LexLean rejects, at minimum:
 - a generic call without its type arguments;
 - a polymorphically recursive call;
 - a recursive call inside a lambda;
-- an executable definition that calls a non-executable definition.
+- an executable definition that calls a non-executable definition;
+- an executable definition that stores a closure in an `Option`;
+- an executable definition that returns a structure of closures;
+- an executable definition that receives a structure of closures;
+- a type parameter spelled like a built-in Lean type;
+- the universe `Type` as an explicit type argument.
 
 ### 28.6 Example verification
 
