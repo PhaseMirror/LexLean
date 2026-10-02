@@ -169,6 +169,48 @@ versions, and the entries below say what each tag does and does not claim.
     analysis's other refusals have unit tests on unlinked IR.
   - PD-01 pins every column of every registry row, and a registry failure is
     an internal error (`LLI9001`), not `LLT4005`.
+- Named-root extraction (§22.10): verifying a project with production roots
+  now runs a new stage 12. Lean's compiler front end translates every
+  definition each root reaches to base-phase LCNF through the pinned adapter
+  `language/lcnf-1.2/extract.lean`, which runs no LCNF pass after the
+  translation. Every Lean operation the adapter uses is pinned in
+  `language/lcnf-1.2/authority.toml` by exact signature and source SHA-256,
+  and is probed on each run; drift fails with the new `LLV7012`.
+  Extraction fails closed with the new `LLV7011` on:
+  - an unknown root, an opaque, axiomatic, unsafe, partial, or noncomputable
+    dependency, or an unresolved or unsupported constant or form;
+  - a dropped dependency;
+  - a proof presented as a runtime member;
+  - any disagreement with the production-eligibility closure.
+
+  Each root's Lean closure must equal the eligibility closure computed from
+  the semantic IR, so two independent implementations check each other.
+  Verification publishes the canonical, root-independent
+  `production/compiler-input.json` (`lexlean/compiler-input/1`, schema
+  `compiler-input`) and records it in the attestation (`NE-01`..`NE-06`).
+  Changes after review:
+  - The adapter reports facts only. For everything reachable from the roots
+    it reports each constant's kind, module, computability, and kernel uses,
+    and the base-phase LCNF of every code-generating project definition,
+    runtime members included. The host decides each closure, its runtime
+    members, its erased proofs, recursion (cycles of the use graph), and
+    admissibility, and carries the eligibility analysis's monomorphization
+    plan into the compiler input (`lexlean/compiler-input/2`).
+  - The authority registry (`lexlean/lcnf-authority/2`) is closed. Every
+    constant the adapter uses is one call, type, or plumbing row. Every
+    extraction checks the adapter's constants against it, compares each
+    signature structurally (default values and binder kinds included), and
+    compares each type's constructors with Lean's.
+  - A warning beside the record is drift. Universe levels are recorded.
+    Variable scope is lexical.
+  - Language-1.2 attestations are `lexlean/attestation/2`
+    (`attestation-v2` schema), which records the compiler input. The
+    verified layout lists the eligibility reports, and VR-13 checks it on a
+    project with production roots.
+  - New fixtures `extraction-rejected` (`LLV7011`) and
+    `extraction-authority-drift` (`LLV7012`) run end to end. The adapter's
+    classification is checked on real Lean over a hand-written module, and
+    the authority statement is a `some-true` ledger claim.
 - Every semantic-module member must survive into the typed value: an extra
   member of a unit variant (for example `{"kind":"reflexivity","tactic":...}`)
   was silently ignored and is now rejected in every language.

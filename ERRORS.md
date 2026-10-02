@@ -315,3 +315,15 @@ Class: `environment`. Exit code: 3.
 A host filesystem or platform operation under the project (creating, writing, renaming, or locking a file) failed for a reason outside the project's control.
 
 Class: `environment`. Exit code: 3.
+
+## `LLV7011` --- Named-root extraction rejected
+
+Lean's compiler front end could not extract a production root's computational closure, or the extracted closure names an unknown root, an opaque, unsafe, partial, or noncomputable dependency, an unresolved or unsupported constant, an unsupported compiler form, or disagrees with the production-eligibility closure.
+
+Class: `language`. Exit code: 1.
+
+## `LLV7012` --- Lean compiler-front-end authority drift
+
+The pinned Lean compiler-front-end interface no longer matches its registry: a signature probe or the pinned extraction adapter fails to elaborate, or the running Lean reports another version or source commit.
+
+Class: `environment`. Exit code: 3.

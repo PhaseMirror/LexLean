@@ -10,6 +10,7 @@ mod collections_model;
 mod configuration_lock;
 mod declarations;
 mod examples;
+mod extraction;
 mod grammar;
 mod latex_pdf;
 mod lean_backend;
@@ -48,6 +49,7 @@ pub fn run(id: &str) {
         "SE" => security::run(id),
         "EX" => examples::run(id),
         "PD" => production::run(id),
+        "NE" => extraction::run(id),
         _ => panic!("no conformance case is wired for {id}"),
     }
 }

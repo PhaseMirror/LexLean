@@ -123,6 +123,17 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `EX-07` | `build` | The negative fixture suite covers every required rejection class and prescribed diagnostic family. |
 | `EX-08` | `build` | Every example directory is discovered automatically and must satisfy the full example gate. |
 
+## extraction
+
+| ID | Level | Statement |
+| --- | --- | --- |
+| `NE-01` | `build` | Verifying a project with production roots extracts every root through Lean's compiler front end into one canonical compiler input whose bytes and ID are schema-valid, recorded in the attestation, and identical from distinct project directories, and a project without a production root publishes none. |
+| `NE-02` | `build` | Each root's extracted closure is exactly its computational dependencies, equals its production-eligibility closure, carries its runtime members and monomorphization instances, names every constant its code uses, marks recursion from the use graph, and records proof-only dependencies as erased and never as runtime members. |
+| `NE-03` | `build` | An unknown root, an opaque, axiomatic, unsafe, partial, or noncomputable dependency, an external implementation, an unresolved external, an unsupported compiler form, and a malformed, noisy, or foreign extraction record fail closed with LLV7011. |
+| `NE-04` | `build` | Every constant the extraction adapter uses is registered exactly once, as a call with its exact signature and pinned source identity, a type with its exact constructors, or plumbing; each extraction compares every signature structurally and the adapter's constants with the registry under pinned Lean, the adapter runs no LCNF pass, and drift of a signature, a constructor list, the adapter's constants, its output, or the Lean identity fails with LLV7012. |
+| `NE-05` | `build` | A dependency dropped from Lean's extracted facts or from the production-eligibility closure fails extraction with LLV7011 before any compiler input is published. |
+| `NE-06` | `build` | A proof-only dependency presented as a runtime closure member fails extraction with LLV7011 before any compiler input is published. |
+
 ## grammar
 
 | ID | Level | Statement |
@@ -341,7 +352,7 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `VR-10` | `build` | The axiom parser accepts only the pinned exact output forms and rejects missing, duplicate, extra, or malformed records. |
 | `VR-11` | `build` | None, allow-subset, and exact axiom policies are enforced exactly and recorded per declaration. |
 | `VR-12` | `build` | Child process output is normalized with the exact path and line rules before hashing. |
-| `VR-13` | `build` | A verified directory contains the complete fixed source, map, coverage, olean, probe, audit, and process artifact set. |
+| `VR-13` | `build` | A verified directory contains the complete fixed source, map, coverage, olean, probe, audit, and process artifact set, and, exactly when a production root exists, the eligibility reports, the extraction module, its process record, and the compiler input. |
 | `VR-14` | `build` | The attestation ID is computed over the canonical body with its ID field removed. |
 | `VR-15` | `build` | Any failed verification stage removes staging and produces no verified artifact or verified status. |
 | `VR-16` | `build` | Axioms flowing from imported theorems remain subject to the generated declaration's policy. |
@@ -359,6 +370,7 @@ Never re-derived, vendored, or gated on.
 | `LAKE-4-32-1` | https://github.com/leanprover/lean4/tree/v4.32.1/src/lake | `VR-03`, `VR-17` |
 | `LEANCHECKER-4-32-1` | https://github.com/leanprover/lean4/tree/v4.32.1 | `VR-08` |
 | `PRINT-AXIOMS-4-32-1` | https://github.com/leanprover/lean4/tree/v4.32.1 (the #print axioms command); observed output fixtures under tests/golden/axiom-parser/ | `VR-09`, `VR-10` |
+| `LEAN-LCNF-4-32-1` | https://github.com/leanprover/lean4/tree/f054605aea4b840552cca2e725580bffd1e1b704/src/Lean/Compiler/LCNF | `NE-01`, `NE-02`, `NE-04` |
 
 ## Claims that are not conformance IDs
 
@@ -367,4 +379,5 @@ Never re-derived, vendored, or gated on.
 | `AUTH-LEAN-REL-4-32-1` | `some-true` | Lean 4.32.1 is the release tagged leanprover/lean4:v4.32.1, built from source commit f054605aea4b840552cca2e725580bffd1e1b704. |
 | `AUTH-LAKE-4-32-1` | `some-true` | Lake as distributed with Lean 4.32.1 resolves a pinned workspace environment through lake env without network access when every locked dependency is locally available. |
 | `AUTH-LEANCHECKER-4-32-1` | `some-true` | The leanchecker executable distributed with Lean 4.32.1 replays a compiled module's environment through the Lean kernel in a separate process and is not an independent proof checker. |
+| `AUTH-LEAN-LCNF-4-32-1` | `some-true` | Lean 4.32.1 translates a code-generating definition to base-phase LCNF with Lean.Compiler.LCNF.toDecl, the compiler's own input to its later passes, so every constant the compiled definition can depend on at run time is named by that translation or by a definition it names. |
 | `AUTH-PRINT-AXIOMS-4-32-1` | `some-true` | Lean 4.32.1 reports the transitive axiom dependencies of a declaration through #print axioms in exactly the output forms recorded by the committed axiom-parser fixtures. |

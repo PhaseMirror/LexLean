@@ -12,7 +12,7 @@ How this repository's claims are checked, which recipe enforces which rule, and 
 | `model` | `cargo xtask validate-model` | R1 (model is the single source; every model file parsed with unknown-field rejection), R2 (honesty levels and vocabulary, via the meta-gate), R3 (register/scenario/test bijection, Gherkin subset), R4 (`audit-deferral`), R5 (`audit-errors`), R6 (`audit-shipped`, including the shipped crate's normative links), R8 (`audit-generated`, `audit-language-closure`), RP-09 (`audit-no-unsafe`), PD-07 (`audit-production`), §27.5 (CONFORMANCE.md and ERRORS.md equal regeneration) |
 | `spec-links` | `cargo xtask validate-spec-links` | RP-07, §27.6: the §31 table and `model/ids.toml` are bijective and byte-consistent |
 | `lint` | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | no tolerated warnings |
-| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 250 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
+| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 256 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
 | `features` | `cargo check --workspace --all-features --all-targets` | every target compiles |
 | `bdd` | `cargo test -p repo-conformance` | R3, §27.7, §27.8: register ↔ scenario ↔ test bijection, the meta-gate, and its own falsifiability test |
 | `examples` | `cargo xtask verify-examples` | §28.6, EX-01: every example directory formats, locks, checks, builds, and verifies with real Lean 4.32.1; when an example commits `expected/verify/`, its normalized verification records must equal it (§29.5) |
@@ -292,6 +292,119 @@ effect now checks.
 thread 'conformance_pd_05' panicked at crates/conformance/src/support.rs:372:14:
 check fails
 ```
+
+### named-root dropped dependency can fail
+
+Planted: the comparison of Lean's closure with the eligibility closure ignored
+members only Lean reaches
+(`source.difference(&eligibility.declarations).next().filter(|_| false)` in
+`crates/lexlean/src/production/lcnf.rs`). Command: `cargo test -p
+repo-conformance --test conformance -- conformance_ne_05`. Expected: an
+eligibility closure that drops `Production.Kernel.area` is accepted.
+
+```text
+thread 'conformance_ne_05' panicked at crates/conformance/src/cases/extraction.rs:73:18:
+expected an LLV7011 rejection containing "dropped dependency: Lean's compiler reaches `Production.Kernel.area` from `Production.Main.shapeArea`", got Ok(CompilerInput { spec: "lexlean/compiler-input/2", ...
+```
+
+Planted: the pinned adapter stopped following project callees (`if inProject r
+then codeQueue := codeQueue`), so no dependency of a root was translated. The
+oracle is Lean itself. Command: `lexlean lock && lexlean verify` in a copy of
+`examples/production`.
+
+```text
+error[LLV7011]: named-root extraction: the extraction record of `Production.Main.LexLeanRuntime.instFixedUInt32` lacks its code
+```
+
+The message now names the class: "dropped dependency: … is a definition Lean
+compiles, but the extraction reports no translation of it". Removed: both
+were restored; `conformance_ne_05` passes and the production example verifies
+with its committed compiler input.
+
+### named-root proof-as-runtime and erasure can fail
+
+Planted: the theorem check on closure members was bypassed (`"theorem" if
+false =>` in `unrealizable`). Command: `cargo test -p repo-conformance --test
+conformance -- conformance_ne_06`. Expected: the proof-as-runtime class is no
+longer named.
+
+```text
+thread 'conformance_ne_06' panicked at crates/conformance/src/cases/extraction.rs:68:13:
+expected "proof-as-runtime dependency: the theorem `Production.Kernel.area` is in the runtime closure", got `Production.Kernel.area` is a theorem, not a definition the compiler can realize
+```
+
+Planted: the pinned adapter reported theorems as definitions (`| .thmInfo _ =>
+"definition"`), so the host could no longer tell which kernel-reached
+constants are proofs. The oracle is Lean itself. Command: `lexlean lock &&
+lexlean verify` in a copy of `examples/production`.
+
+```text
+error[LLV7011]: named-root extraction: the proof-only dependencies of `Production.Main.halvings` differ: Lean erases {}, the eligibility analysis {"Production.Kernel.countdown_decreases"}
+```
+
+Removed: both were restored; `conformance_ne_06` passes and the production
+example verifies.
+
+### named-root authority closure can fail
+
+Planted: the pinned adapter ran an LCNF pass after translation
+(`CompilerM.run (do let d ← toDecl n; d.etaExpand)`). The oracle is Lean
+itself. Command: `lexlean lock && lexlean verify` in a copy of
+`examples/production`. Expected: the registry check refuses every constant
+the pass introduces.
+
+```text
+error[LLV7012]: named-root extraction: the adapter's constants no longer match the pinned registry: lexlean-extract-drift: the adapter and its registry differ: `Lean.Compiler.LCNF.CompilerM` is used as type but registered as unregistered; `Lean.Compiler.LCNF.instMonadCompilerM` is used as plumbing but registered as unregistered; `Lean.Compiler.LCNF.Decl.etaExpand` is used as call but registered as …
+```
+
+`conformance_ne_04` plants, against pinned Lean, a changed result type, a
+changed default value (`optParam Bool Bool.true`), a changed binder kind
+(`(α : Type)` for `{α : Type}`), a constructor list missing `ctorAlt`, a call
+missing from the registry, and a deprecation warning inside the adapter on a
+run Lean completes successfully; each is drift naming its cause. The
+structural signature comparison is what refuses the default value and the
+binder kind, which the definitional-equality probes it replaced accepted.
+Removed: the adapter was restored; it verifies.
+
+### named-root host decisions can fail
+
+Planted, one at a time in `crates/lexlean/src/production/lcnf.rs`, each with
+`cargo test -p repo-conformance --test conformance -- <case>`:
+
+- recursion never marked (`if next == *name && false`), `conformance_ne_02`:
+
+  ```text
+  thread 'conformance_ne_02' panicked at crates/conformance/src/cases/extraction.rs:428:13:
+  assertion `left == right` failed
+  ```
+
+- the monomorphization plan dropped (`instances: Vec::new()`),
+  `conformance_ne_02`:
+
+  ```text
+  thread 'conformance_ne_02' panicked at crates/conformance/src/cases/extraction.rs:410:18:
+  the firstOr instance
+  ```
+
+- lexical scope not restored after an alternative (`let _ = saved;`),
+  `conformance_ne_03`, whose sibling-alternative reference then passes the
+  renamer:
+
+  ```text
+  thread 'conformance_ne_03' panicked at crates/conformance/src/cases/extraction.rs:68:13:
+  expected "is used before it is bound", got the extraction record of `Production.Kernel.total` lists uses that differ from its code
+  ```
+
+- output beside the record ignored (`lines.len() <= 1 || lines.len() > 1`),
+  `conformance_ne_04`, whose warning plant is then misread as a malformed
+  record:
+
+  ```text
+  thread 'conformance_ne_04' panicked at crates/conformance/src/cases/extraction.rs:834:34:
+  expected drift naming "the pinned extraction adapter no longer elaborates cleanly", got Rejected("the extraction record is malformed: expected value at line 1 column 1")
+  ```
+
+Removed: each was restored; the cases pass.
 
 ### language-1.2 version routing can fail
 
@@ -1091,10 +1204,11 @@ Every upstream authority cited by LexLean (`model/authorities.toml`) is bound to
 - `LAKE-4-32-1`: Lake toolchain component (same source commit and acquired archive SHA-256).
 - `LEANCHECKER-4-32-1`: leanchecker kernel replay utility (same source commit and acquired archive SHA-256).
 - `PRINT-AXIOMS-4-32-1`: Lean `#print axioms` output behavior bound by toolchain revision and committed test vectors (`tests/golden/axiom-parser/`).
+- `LEAN-LCNF-4-32-1`: Lean's compiler front end (base-phase LCNF), bound by source revision and by the SHA-256 of the defining source file of every registered call and type in `language/lcnf-1.2/authority.toml`, re-checked against the pinned toolchain by `conformance_ne_04`.
 
 Oracle execution evidence binds positive and negative paths:
 - Positive execution: End-to-end elaboration, kernel replay, and axiom auditing across all examples (`list-induction`, `nat-add-zero`, `peano-arithmetic`, `propositional-logic`, `semantic-1.1`, `uor-atlas`).
-- Negative execution: Non-vacuous rejection of planted mutations in `tests/negative/` across toolchain mismatch (`LLV7001`), elaboration failure (`LLV7002`), kernel replay rejection (`LLV7003`), axiom corruption (`LLV7004`), axiom policy excess (`LLV7005`), compilation warning (`LLV7006`), and PDF mismatch (`LLS8004`).
+- Negative execution: Non-vacuous rejection of planted mutations in `tests/negative/` across toolchain mismatch (`LLV7001`), elaboration failure (`LLV7002`), kernel replay rejection (`LLV7003`), axiom corruption (`LLV7004`), axiom policy excess (`LLV7005`), compilation warning (`LLV7006`), named-root extraction rejection (`LLV7011`, `extraction-rejected`), extraction authority drift (`LLV7012`, `extraction-authority-drift`), and PDF mismatch (`LLS8004`).
 - Non-executable boundaries: Lean's mathematical correctness is an external authority guarantee (`some-true`), not proven by LexLean; `leanchecker` is a same-kernel replay mechanism rather than an independent verifier.
 
 ## First-party package identity and publishing bootstrap closure (Issue #5)

@@ -191,8 +191,9 @@ fn verify_examples(root: &Path, write: bool) -> Result<(), Fail> {
 }
 
 /// The verification records that are platform independent after
-/// normalization (§22.7, §29.5): the audit output, the probe and audit
-/// modules, and every process record with the executable digest replaced.
+/// normalization (§22.7, §29.5): the audit output, the probe, audit, and
+/// extraction modules, the canonical compiler input, and every process
+/// record with the executable digest replaced.
 fn normalized_verify_records(verified: &Path) -> Result<Vec<(String, Vec<u8>)>, Fail> {
     let mut out = Vec::new();
     for entry in walkdir::WalkDir::new(verified).into_iter().flatten() {
@@ -206,13 +207,21 @@ fn normalized_verify_records(verified: &Path) -> Result<Vec<(String, Vec<u8>)>, 
             .to_string_lossy()
             .replace('\\', "/");
         let is_process = relative == "probe/process.json"
+            || relative == "extract/process.json"
             || relative
                 .strip_prefix("audit/")
                 .is_some_and(|name| name.ends_with(".process.json"))
             || relative.starts_with("process/");
-        let is_module = (relative.starts_with("probe/") || relative.starts_with("audit/"))
+        let is_module = (relative.starts_with("probe/")
+            || relative.starts_with("audit/")
+            || relative.starts_with("extract/"))
             && relative.ends_with(".lean");
-        if relative == "audit/output.txt" || is_module {
+        // The canonical compiler input (§22.10) is platform independent
+        // byte for byte, so it is compared exactly.
+        if relative == "audit/output.txt"
+            || relative == "production/compiler-input.json"
+            || is_module
+        {
             out.push((relative, std::fs::read(entry.path())?));
         } else if is_process {
             let value: serde_json::Value = serde_json::from_slice(&std::fs::read(entry.path())?)
