@@ -5,6 +5,7 @@
 //! pass before its case exists.
 
 mod artifacts;
+mod calculus;
 mod cli_api;
 mod collections_model;
 mod configuration_lock;
@@ -50,6 +51,7 @@ pub fn run(id: &str) {
         "EX" => examples::run(id),
         "PD" => production::run(id),
         "NE" => extraction::run(id),
+        "TC" => calculus::run(id),
         _ => panic!("no conformance case is wired for {id}"),
     }
 }

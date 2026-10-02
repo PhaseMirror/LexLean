@@ -853,7 +853,7 @@ pub fn audit_deferral(root: &Path) -> Result<(), Fail> {
         root,
         &[
             "crates", "xtask", "language", "schemas", "features", "examples", "model", "tests",
-            "lean",
+            "lean", "compiler",
         ],
         &[
             ".rs", ".toml", ".json", ".md", ".feature", ".lex.tex", ".lean", ".txt", ".sh",
@@ -1057,7 +1057,7 @@ pub fn audit_errors(root: &Path, model: &repo_model::Model) -> Result<(), Fail> 
     let mut mention_files = Vec::new();
     gather(
         root,
-        &["tests", "features", "examples", "model"],
+        &["tests", "features", "examples", "model", "compiler"],
         &[".toml", ".json", ".feature", ".md", ".txt"],
         &mut mention_files,
     );
@@ -1209,8 +1209,8 @@ pub fn audit_generated(root: &Path) -> Result<(), Fail> {
             return Err(format!("{}: missing its $id `{identity}`", path.display()).into());
         }
     }
-    if count != 22 {
-        return Err(format!("§7 commits exactly 22 schemas, found {count}").into());
+    if count != 24 {
+        return Err(format!("§7 commits exactly 24 schemas, found {count}").into());
     }
     println!("audit-generated: {count} schemas canonical and identified");
     Ok(())

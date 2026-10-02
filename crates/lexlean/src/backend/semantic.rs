@@ -1488,6 +1488,29 @@ fn emit_declarations(
     Ok(emitter)
 }
 
+/// The language-1.2 portable runtime: the frozen runtime with every
+/// definition exposed (§17.12). An unexposed definition's body is invisible
+/// to every other module under Lean's module system, so a definition
+/// imported from another module could not reduce through the primitives it
+/// applies. `noinline` is kept on every definition that had it.
+fn portable_runtime_1_2() -> &'static str {
+    static RUNTIME: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    RUNTIME.get_or_init(|| {
+        portable_runtime()
+            .lines()
+            .map(|line| {
+                if let Some(rest) = line.strip_prefix("@[noinline] public def ") {
+                    format!("@[expose, noinline] public def {rest}\n")
+                } else if let Some(rest) = line.strip_prefix("public def ") {
+                    format!("@[expose] public def {rest}\n")
+                } else {
+                    format!("{line}\n")
+                }
+            })
+            .collect()
+    })
+}
+
 fn portable_runtime() -> &'static str {
     r#"
 namespace LexLeanRuntime
@@ -1835,7 +1858,11 @@ pub fn render_lean(
     text.push_str(&identifier(&document.lean_module));
     text.push('\n');
     if runtime {
-        text.push_str(portable_runtime());
+        if module.spec == "lexlean/semantic-module/2" {
+            text.push_str(portable_runtime_1_2());
+        } else {
+            text.push_str(portable_runtime());
+        }
     }
     if uses_collections(module) {
         text.push_str(COLLECTIONS_RUNTIME);
@@ -2404,6 +2431,41 @@ mod comment_tests {
         for value in ["\u{301}", "\u{200b}", "\u{10000}", "\u{10ffff}"] {
             assert_eq!(super::string_literal(value), format!("\"{value}\""));
         }
+    }
+
+    #[test]
+    fn language_1_2_runtime_exposes_every_definition_and_keeps_1_1_frozen() {
+        let frozen = super::portable_runtime();
+        let exposed = super::portable_runtime_1_2();
+        for line in exposed.lines() {
+            assert!(!line.starts_with("public def "), "{line}");
+            assert!(!line.starts_with("@[noinline] public def "), "{line}");
+        }
+        assert!(exposed.contains("@[expose, noinline] public def index "));
+        assert!(exposed.contains("@[expose] public def magnitudeInt64 "));
+        assert!(frozen.contains("@[noinline] public def index "));
+        assert_eq!(
+            exposed
+                .replace("@[expose, noinline] public def", "@[noinline] public def")
+                .replace("@[expose] public def magnitude", "public def magnitude")
+                .replace(
+                    "@[expose] public def signedMagnitude",
+                    "public def signedMagnitude"
+                )
+                .replace(
+                    "@[expose] public def divideMagnitude",
+                    "public def divideMagnitude"
+                )
+                .replace(
+                    "@[expose] public def multiplyMagnitude",
+                    "public def multiplyMagnitude"
+                ),
+            if frozen.ends_with('\n') {
+                frozen.to_owned()
+            } else {
+                format!("{frozen}\n")
+            }
+        );
     }
 
     #[test]

@@ -286,7 +286,7 @@ recursion = false
 [[construct]]
 key = "term.nil"
 disposition = "runtime"
-allocation = true
+allocation = false
 overflow = []
 recursion = false
 
@@ -745,21 +745,21 @@ recursion = false
 [[construct]]
 key = "primitive.map_lookup"
 disposition = "runtime"
-allocation = true
+allocation = false
 overflow = []
 recursion = false
 
 [[construct]]
 key = "primitive.map_contains"
 disposition = "runtime"
-allocation = true
+allocation = false
 overflow = []
 recursion = false
 
 [[construct]]
 key = "primitive.map_size"
 disposition = "runtime"
-allocation = true
+allocation = false
 overflow = []
 recursion = false
 
@@ -780,14 +780,14 @@ recursion = false
 [[construct]]
 key = "primitive.map_entries"
 disposition = "runtime"
-allocation = true
+allocation = false
 overflow = []
 recursion = false
 
 [[construct]]
 key = "primitive.map_fold"
 disposition = "runtime"
-allocation = true
+allocation = false
 overflow = []
 recursion = false
 
@@ -808,21 +808,21 @@ recursion = false
 [[construct]]
 key = "primitive.set_contains"
 disposition = "runtime"
-allocation = true
+allocation = false
 overflow = []
 recursion = false
 
 [[construct]]
 key = "primitive.set_size"
 disposition = "runtime"
-allocation = true
+allocation = false
 overflow = []
 recursion = false
 
 [[construct]]
 key = "primitive.set_elements"
 disposition = "runtime"
-allocation = true
+allocation = false
 overflow = []
 recursion = false
 
@@ -850,7 +850,7 @@ recursion = false
 [[construct]]
 key = "primitive.set_fold"
 disposition = "runtime"
-allocation = true
+allocation = false
 overflow = []
 recursion = false
 
@@ -878,7 +878,7 @@ recursion = false
 [[construct]]
 key = "primitive.graph_successors"
 disposition = "runtime"
-allocation = true
+allocation = false
 overflow = []
 recursion = false
 

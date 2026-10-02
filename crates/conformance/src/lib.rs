@@ -8,8 +8,11 @@
 
 #![deny(missing_docs)]
 
+pub mod calculus;
+pub mod calculus_source;
 pub mod cases;
 pub mod fixtures;
+mod lx;
 pub mod meta;
 pub mod runner;
 pub mod schema;

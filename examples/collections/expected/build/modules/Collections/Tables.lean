@@ -151,14 +151,14 @@ public instance : Fixed UInt64 where
 @[expose] public def checkedNegateInt64 (value : Int64) : Option Int64 :=
   if value == (-9223372036854775808 : Int64) then none else some (-value)
 
-public def magnitudeInt64 (value : Int64) : UInt64 :=
+@[expose] public def magnitudeInt64 (value : Int64) : UInt64 :=
   let bits := value.toUInt64
   if value < 0 then 0 - bits else bits
 
-public def signedMagnitudeInt64 (negative : Bool) (value : UInt64) : Int64 :=
+@[expose] public def signedMagnitudeInt64 (negative : Bool) (value : UInt64) : Int64 :=
   (if negative then 0 - value else value).toInt64
 
-public def divideMagnitudeInt64 : Nat -> UInt64 -> UInt64 -> UInt64 -> UInt64 -> UInt64
+@[expose] public def divideMagnitudeInt64 : Nat -> UInt64 -> UInt64 -> UInt64 -> UInt64 -> UInt64
   | 0, _, _, _, quotient => quotient
   | Nat.succ fuel, source, divisor, remainder, quotient =>
       let high := 9223372036854775808 <= source
@@ -178,7 +178,7 @@ public def divideMagnitudeInt64 : Nat -> UInt64 -> UInt64 -> UInt64 -> UInt64 ->
     some (signedMagnitudeInt64 negative
       (divideMagnitudeInt64 64 (magnitudeInt64 left) (magnitudeInt64 right) 0 0))
 
-public def multiplyMagnitudeInt64 : Nat -> UInt64 -> UInt64 -> UInt64 -> Bool -> Option UInt64
+@[expose] public def multiplyMagnitudeInt64 : Nat -> UInt64 -> UInt64 -> UInt64 -> Bool -> Option UInt64
   | 0, _, _, accumulator, _ => some accumulator
   | Nat.succ fuel, source, multiplicand, accumulator, negative =>
       let high := 9223372036854775808 <= source
@@ -200,9 +200,9 @@ public def multiplyMagnitudeInt64 : Nat -> UInt64 -> UInt64 -> UInt64 -> Bool ->
   | none => none
   | some value => some (signedMagnitudeInt64 negative value)
 
-@[noinline] public def subtract {α : Type} [Sub α] (left right : α) : α := left - right
-@[noinline] public def multiply {α : Type} [Mul α] (left right : α) : α := left * right
-@[noinline] public def negate {α : Type} [Neg α] (value : α) : α := -value
+@[expose, noinline] public def subtract {α : Type} [Sub α] (left right : α) : α := left - right
+@[expose, noinline] public def multiply {α : Type} [Mul α] (left right : α) : α := left * right
+@[expose, noinline] public def negate {α : Type} [Neg α] (value : α) : α := -value
 
 public class Quotient (α : Type) where
   quotient : α -> α -> α
@@ -219,10 +219,10 @@ public instance : Quotient Int where
   remainder := Int.tmod
   isZero := fun value => value == 0
 
-@[noinline] public def quotient {α : Type} [Quotient α] (left right zeroCase : α) : α :=
+@[expose, noinline] public def quotient {α : Type} [Quotient α] (left right zeroCase : α) : α :=
   if Quotient.isZero right then zeroCase else Quotient.quotient left right
 
-@[noinline] public def remainder {α : Type} [Quotient α] (left right zeroCase : α) : α :=
+@[expose, noinline] public def remainder {α : Type} [Quotient α] (left right zeroCase : α) : α :=
   if Quotient.isZero right then zeroCase else Quotient.remainder left right
 
 @[expose] public def bitAnd {α : Type} [Fixed α] (left right : α) : α := Fixed.bitAnd left right
@@ -251,25 +251,25 @@ public instance : Lengthable String where length := String.length
 public class Indexable (α β : Type) where index : α -> Nat -> Option β
 public instance {α : Type} : Indexable (List α) α where index := listIndex
 public instance : Indexable ByteArray UInt8 where index := fun value offset => value.data[offset]?
-@[noinline] public def index {α β : Type} [Indexable α β] (value : α) (offset : Nat) : Option β := Indexable.index value offset
+@[expose, noinline] public def index {α β : Type} [Indexable α β] (value : α) (offset : Nat) : Option β := Indexable.index value offset
 
 public class Sliceable (α : Type) where slice : α -> Nat -> Nat -> Option α
 public instance {α : Type} : Sliceable (List α) where
   slice := fun value start count => if start + count <= value.length then some ((value.drop start).take count) else none
 public instance : Sliceable ByteArray where
   slice := fun value start count => if start + count <= value.size then some (value.extract start (start + count)) else none
-@[noinline] public def slice {α : Type} [Sliceable α] (value : α) (start count : Nat) : Option α := Sliceable.slice value start count
+@[expose, noinline] public def slice {α : Type} [Sliceable α] (value : α) (start count : Nat) : Option α := Sliceable.slice value start count
 
-@[noinline] public def utf8Encode (value : String) : ByteArray := value.toUTF8
-@[noinline] public def utf8Decode (value : ByteArray) : Option String := String.fromUTF8? value
-@[noinline] public def compareBytes (left right : ByteArray) : Ordering := compare left.toList right.toList
+@[expose, noinline] public def utf8Encode (value : String) : ByteArray := value.toUTF8
+@[expose, noinline] public def utf8Decode (value : ByteArray) : Option String := String.fromUTF8? value
+@[expose, noinline] public def compareBytes (left right : ByteArray) : Ordering := compare left.toList right.toList
 @[expose] public def equal {α : Type} [BEq α] (left right : α) : Bool := left == right
 
-@[noinline] public def splitExact (value delimiter : String) (maximum : UInt32) : Option (List String) :=
+@[expose, noinline] public def splitExact (value delimiter : String) (maximum : UInt32) : Option (List String) :=
   let fields := value.splitOn delimiter
   if delimiter.isEmpty || maximum.toNat < fields.length then none else some fields
 
-@[noinline] public def join (values : List String) (delimiter : String) : String := delimiter.intercalate values
+@[expose, noinline] public def join (values : List String) (delimiter : String) : String := delimiter.intercalate values
 
 public class Decimal (α : Type) where
   parse : String -> Option α
@@ -283,8 +283,8 @@ public instance {α : Type} [Fixed α] [ToString α] : Decimal α where
   parse := fun value => match value.toInt? with | some parsed => if toString parsed = value then checkedFromInt parsed else none | none => none
   format := toString
 
-@[noinline] public def parseDecimal {α : Type} [Decimal α] (value : String) : Option α := Decimal.parse value
-@[noinline] public def formatDecimal {α : Type} [Decimal α] (value : α) : String := Decimal.format value
+@[expose, noinline] public def parseDecimal {α : Type} [Decimal α] (value : String) : Option α := Decimal.parse value
+@[expose, noinline] public def formatDecimal {α : Type} [Decimal α] (value : α) : String := Decimal.format value
 
 end LexLeanRuntime
 

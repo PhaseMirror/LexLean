@@ -39,6 +39,12 @@ features:
 bdd:
     cargo test -p repo-conformance
 
+# §17.14: the target fixtures and their Lean module equal their generator.
+# `just test` enforces the same comparison through `conformance_tc_03`; this
+# recipe is the direct report.
+calculus:
+    cargo xtask check-calculus
+
 # §28.6: every example directory formats, locks, checks, builds, and verifies.
 examples:
     cargo xtask verify-examples
@@ -73,6 +79,11 @@ fixtures:
 # The only path that rewrites fixture expectations (§28.3). Never part of `vv`.
 fixtures-write:
     cargo xtask check-fixtures --write
+
+# §17.14: the only path that rewrites the generated target fixtures. Never part
+# of `vv`.
+calculus-write:
+    cargo xtask check-calculus --write
 
 # §29.5: the only path that rewrites the normalized verification records under
 # examples/*/expected/verify. Never part of `vv`.

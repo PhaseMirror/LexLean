@@ -12,10 +12,10 @@ How this repository's claims are checked, which recipe enforces which rule, and 
 | `model` | `cargo xtask validate-model` | R1 (model is the single source; every model file parsed with unknown-field rejection), R2 (honesty levels and vocabulary, via the meta-gate), R3 (register/scenario/test bijection, Gherkin subset), R4 (`audit-deferral`), R5 (`audit-errors`), R6 (`audit-shipped`, including the shipped crate's normative links), R8 (`audit-generated`, `audit-language-closure`), RP-09 (`audit-no-unsafe`), PD-07 (`audit-production`), §27.5 (CONFORMANCE.md and ERRORS.md equal regeneration) |
 | `spec-links` | `cargo xtask validate-spec-links` | RP-07, §27.6: the §31 table and `model/ids.toml` are bijective and byte-consistent |
 | `lint` | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | no tolerated warnings |
-| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 256 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
+| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 263 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
 | `features` | `cargo check --workspace --all-features --all-targets` | every target compiles |
 | `bdd` | `cargo test -p repo-conformance` | R3, §27.7, §27.8: register ↔ scenario ↔ test bijection, the meta-gate, and its own falsifiability test |
-| `examples` | `cargo xtask verify-examples` | §28.6, EX-01: every example directory formats, locks, checks, builds, and verifies with real Lean 4.32.1; when an example commits `expected/verify/`, its normalized verification records must equal it (§29.5) |
+| `examples` | `cargo xtask verify-examples` | §28.6, EX-01: every example directory and the `compiler` project (§17.14) format, lock, check, build, and verify with real Lean 4.32.1; when an example commits `expected/verify/`, its normalized verification records must equal it (§29.5) |
 | `golden` | `cargo xtask check-golden` | R10, §28.3: the *published* build tree of a real `build` in a fresh directory equals the committed oracles byte for byte |
 | `repro` | `cargo xtask check-reproducibility` | AR-13, §28.4: two clean `build`s in distinct absolute directories publish byte-identical trees with no absolute path inside |
 | `deny` | `cargo deny --all-features check` | advisories, bans, licenses, sources |
@@ -23,6 +23,7 @@ How this repository's claims are checked, which recipe enforces which rule, and 
 Outside `vv`:
 
 - `just fixtures` (`cargo xtask check-fixtures`) runs every §28.2 fixture under `tests/fixtures/` and `tests/negative/` through the CLI entry point and compares exit code, canonical command result, diagnostics, artifact list, and platform-independent hashes with `expected/`. `just fixtures-write` is the only rewrite path.
+- `just calculus` (`cargo xtask check-calculus`) compares every committed target fixture under `compiler/fixtures/`, the generated `TargetFixtures` module, the calculus modules `TargetSyntax`, `TargetSemantics`, `TargetOracle`, and `Main`, the project configuration, and every fixture's Rust rendering under `compiler/rust/rust-core/` and `compiler/rust/rust-std/` with what the hand-written fixture set, the calculus's definition in `crates/conformance/src/calculus_source.rs`, and the renderer produce (§17.14); `just test` enforces the same comparison through `conformance_tc_03`. `just calculus-write` is the only rewrite path.
 - `just verify-write` (`cargo xtask verify-examples --write`) is the only path that rewrites `examples/*/expected/verify/`.
 - `just release` runs `vv` and then `cargo xtask release-check` (RP-12): every §30.3 artifact by content, the §30.4 completion criteria, and the crate-packaging round trip (`cargo package`, extract, offline build, `--version` equal to the in-repository binary). It is refused until 1.0.0.
 
@@ -276,7 +277,7 @@ repo-conformance --test conformance -- conformance_pd_04 conformance_pd_05`.
 ```text
 thread 'conformance_pd_05' panicked at crates/conformance/src/cases/production.rs:646:17:
 production-unbounded-type: expected "construct `type.list` requires heap allocation, which target `rust-core` does not provide", got LLT4005: phase production: production root `LanguageTwelve.Main.first` is not eligible for target `rust-core`: effect mismatch: construct `type.list` realizes effect `allocation`, which the root does not admit (in `LanguageTwelve.Main.first`, reached by LanguageTwelve.Main.first; 1 violation(s) in total)
-thread 'conformance_pd_04' panicked at crates/conformance/src/support.rs:372:14:
+thread 'conformance_pd_04' panicked at crates/conformance/src/support.rs:390:14:
 check fails
 ```
 
@@ -289,7 +290,7 @@ conformance_pd_05`. The first fixture whose only violation is an unadmitted
 effect now checks.
 
 ```text
-thread 'conformance_pd_05' panicked at crates/conformance/src/support.rs:372:14:
+thread 'conformance_pd_05' panicked at crates/conformance/src/support.rs:390:14:
 check fails
 ```
 
@@ -417,7 +418,7 @@ Expected: the committed language-1.2 example no longer checks, and the
 negative fixture of a `let` under language 1.1 is accepted.
 
 ```text
-thread 'conformance_sm_23' panicked at crates/conformance/src/support.rs:362:14:
+thread 'conformance_sm_23' panicked at crates/conformance/src/support.rs:380:14:
 check succeeds: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLT4001"), message: "phase link: `let` is a language-1.2 construct; language 1.1 rejects it", ... }] }
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 227 filtered out
 gate failed: tests/negative/language-1.2-construct-under-1.1: step 1 `check ` exited 0, case.toml expects 1
@@ -476,7 +477,7 @@ structural eliminator. Command: `cargo test -p repo-conformance --test
 conformance -- conformance_df_13`.
 
 ```text
-thread 'conformance_df_13' panicked at crates/conformance/src/support.rs:372:14:
+thread 'conformance_df_13' panicked at crates/conformance/src/support.rs:390:14:
 check fails
 ```
 
@@ -490,7 +491,7 @@ well-formed `Wrap` with a constructor field `Tree (Wrap)` is no longer
 rejected at all; only the positivity rule refused it.
 
 ```text
-thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:372:14:
+thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:390:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 230 filtered out
 ```
@@ -579,7 +580,7 @@ Command: `cargo test -p repo-conformance --test conformance --
 conformance_df_17`. Expected: the forged-evidence mutation links.
 
 ```text
-thread 'conformance_df_17' panicked at crates/conformance/src/support.rs:372:14:
+thread 'conformance_df_17' panicked at crates/conformance/src/support.rs:390:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 238 filtered out
 ```
@@ -596,7 +597,7 @@ so a member could call its group on its own argument. Command: `cargo test
 `isOdd (number)` mutation links.
 
 ```text
-thread 'conformance_df_16' panicked at crates/conformance/src/support.rs:372:14:
+thread 'conformance_df_16' panicked at crates/conformance/src/support.rs:390:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 238 filtered out
 ```
@@ -674,7 +675,7 @@ product field. Expected: the renamed type parameter is admitted, and Lean,
 not linking, is the first to refuse the capture.
 
 ```text
-thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:372:14:
+thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:390:14:
 check fails
 
 checked 1 module (source 0eec48d541180c1a6dbf34539884c1063f8a6637964a1f7667a5b6c0f73a4d15, semantic 1fe3fc4d4fa60d781de6ea42be16516d7b6b860a2918f6ed351b40ad6e1e0d2c)
@@ -712,7 +713,7 @@ test -p repo-conformance --test conformance -- conformance_sm_29`.
 Expected: the `02` mutation links.
 
 ```text
-thread 'conformance_sm_29' panicked at crates/conformance/src/support.rs:372:14:
+thread 'conformance_sm_29' panicked at crates/conformance/src/support.rs:390:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
 ```
@@ -741,6 +742,209 @@ error[LLV7002]: Lean rejected `Collections.Measure` (error): Tactic `decide` fai
 Removed: the primitive case was restored; `conformance_sm_28` passes and the
 collections example verifies.
 
+### check-calculus can fail
+
+Planted: the committed expected outcome of `compiler/fixtures/sum-to.json`
+was edited from 55 to 56. Command: `cargo xtask check-calculus`. Expected:
+the committed fixture no longer equals what the hand-written fixture set
+renders.
+
+```text
+gate failed: compiler/fixtures/sum-to.json differs from its generator; run `cargo xtask check-calculus --write`
+```
+
+Removed: the fixture was restored; `cargo xtask check-calculus` reports 208
+generated files equal to their generator.
+
+### check-calculus covers the calculus modules
+
+Planted: in the committed `compiler/src/TargetSemantics.lex.tex`, the bound
+test of `natResult` was edited from `blt` to `ble`, admitting `2^64` as a
+`nat` result. Command: `cargo xtask check-calculus`. Expected: the committed
+module no longer equals what `crates/conformance/src/calculus_source.rs`
+renders.
+
+```text
+gate failed: compiler/src/TargetSemantics.lex.tex differs from its generator; run `cargo xtask check-calculus --write`
+```
+
+Removed: the committed module was restored; the gate reports 208 generated
+files equal to their generator.
+
+### calculus kernel oracle can fail
+
+Planted: the reference interpreter computed `int_rem` as a Euclidean
+remainder (`rem_euclid`) instead of Lean's truncating `Int.tmod`, and
+`cargo xtask check-calculus --write` regenerated the fixtures from it, so
+the stated expectation of `int-arithmetic` changed from -1 to 1. The oracle
+is Lean's kernel. Command: `lexlean verify` in `compiler/`.
+
+```text
+error[LLV7002]: Lean rejected `Compiler.TargetFixtures` (error): Tactic `rfl` failed: The left-hand side
+  intArithmeticRun
+is not definitionally equal to the right-hand side
+```
+
+Removed: the interpreter was restored and the fixtures regenerated;
+`compiler/` verifies and `conformance_tc_03` and `conformance_tc_04` pass.
+
+### calculus rust differential can fail
+
+Planted: the runtime computed natural subtraction by wrapping
+(`a.wrapping_sub(b)`) instead of truncating at zero. Command: `cargo test -p
+repo-conformance --test conformance -- conformance_tc_07`. Expected: the
+compiled rendering of `nat-arithmetic` prints a different value.
+
+```text
+thread 'conformance_tc_07' panicked at crates/conformance/src/cases/calculus.rs:1351:17:
+assertion `left == right` failed: natArithmetic_rust_std: the Rust rendering and the denotation disagree
+```
+
+Removed: the runtime was restored; `conformance_tc_07` passes.
+
+### calculus rust work bound can fail
+
+Planted: the `rust-std` runtime's `append_list` rebuilt its accumulated
+result once per element of the left operand, so its work grew quadratically
+while its value stayed correct. Command: `cargo test -p repo-conformance
+--test conformance -- conformance_tc_07`. Expected: the rendering of
+`list-append-long` counts more work than the denotation charges steps.
+
+```text
+thread 'conformance_tc_07' panicked at crates/conformance/src/cases/calculus.rs:1356:17:
+listAppendLong_rust_std: the rendering worked 1220 units for 87 steps
+```
+
+Removed: the runtime was restored; `conformance_tc_07` passes, and every
+rendering's work is within its steps.
+
+### rust-core allocation refusal can fail
+
+Planted: the renderer's heap check refused a heap type in `rust-core` only
+when its description was empty, so `rust-core` admitted strings, byte
+strings, and lists. Command: `cargo test -p repo-conformance --test
+conformance -- conformance_tc_07`. Expected: `rust-core` renders a program
+whose realization requires allocation.
+
+```text
+thread 'conformance_tc_07' panicked at crates/conformance/src/cases/calculus.rs:1271:29:
+binding-and-shapes: rust-core renders a program that needs the heap
+```
+
+Removed: the check was restored; `rust-core` renders exactly the fixtures
+`realization::program_allocates` says need no heap.
+
+### calculus realization coverage can fail
+
+Planted: the realization row of `primitive.map_size` was deleted from
+`crates/lexlean/src/calculus/realization.rs`. Command: `cargo test -p
+repo-conformance --test conformance -- conformance_tc_06`.
+
+```text
+thread 'conformance_tc_06' panicked at crates/conformance/src/cases/calculus.rs:1149:48:
+the realization table: "runtime construct `primitive.map_size` has no realization row"
+```
+
+Removed: the row was restored; `conformance_tc_06` passes.
+
+### registry allocation agreement can fail
+
+Planted: `term.nil` in `language/production-1.2.toml` was marked
+`allocation = true`, although its realization builds no heap storage.
+Command: `cargo test -p repo-conformance --test conformance --
+conformance_tc_06`.
+
+```text
+thread 'conformance_tc_06' panicked at crates/conformance/src/cases/calculus.rs:1165:13:
+allocation disagreements: [
+    "term.nil: registry true, realization false",
+]
+```
+
+Removed: the row was restored; every runtime row's `allocation` equals its
+realization's.
+
+### fixed-width coverage can fail
+
+Planted: the fixture generator skipped the `u16` instances of
+`fixed-width-*` and `fixed-decimal-*`. Command: `cargo test -p
+repo-conformance --test conformance -- conformance_tc_06`. Expected: the
+typed (primitive, width) pairs only those fixtures exercise are reported.
+
+```text
+thread 'conformance_tc_06' panicked at crates/conformance/src/cases/calculus.rs:1219:13:
+(primitive, width) pairs no fixture exercises: [("bit_and", "u16"), ("bit_not", "u16"), ("bit_or", "u16"), ("bit_xor", "u16"), ("checked_mul", "u16"), ("checked_quot", "u16"), ("compare", "u16"), ("format_decimal", "u16"), ("parse_decimal", "u16"), ("shift_left", "u16"), ("shift_right", "u16")]
+```
+
+Removed: the generator was restored; every admitted pair is exercised.
+
+### calculus progress sampling can fail
+
+Planted: the interpreter took the `succ` shape only for naturals below
+`2^63`, so larger naturals matched no arm. No fixture's stated arguments
+reach such a value. Command: `cargo test -p repo-conformance --test
+conformance -- conformance_tc_03`. Expected: a seeded random argument does.
+
+```text
+thread '<unnamed>' (8081) panicked at crates/conformance/src/cases/calculus.rs:39:17:
+assertion `left != right` failed: iterate: stuck on [Nat { value: "18446744073709551615" }] with fuel 7
+```
+
+Removed: the interpreter was restored. The sampling also found a real defect:
+the interpreter's checked fixed-width multiplication multiplied in `i128`,
+which two 64-bit operands near `u64::MAX` overflow, so it panicked instead of
+returning `none`. The product is now checked.
+
+### calculus cost accounting can fail
+
+Planted: the reference interpreter did not charge the step for the arm a
+`match` takes, and `cargo xtask check-calculus --write` regenerated the
+fixtures from it. The oracle is Lean's kernel over the LexLean denotation.
+Command: `lexlean verify` in `compiler/`.
+
+```text
+error[LLV7002]: Lean rejected `Compiler.TargetFixtures` (error): Tactic `rfl` failed: The left-hand side
+  adtEvaluationRun
+is not definitionally equal to the right-hand side
+  TargetSemantics.Outcome.value (TargetSyntax.Value.nat 37) 49
+```
+
+A second plant dropped the result weight from a primitive's charge; the
+kernel refused the same theorem, stated with 50 steps. Removed: the
+interpreter was restored and the fixtures regenerated; `compiler/` verifies.
+
+### kernel-opaque classification is observed
+
+Probe: `compare_bytes` and byte equality were both treated as reducible, and
+the new fixture `byte-compare` applies `compare_bytes` alone. Command:
+`lexlean verify` in `compiler/`. Lean accepted the `rfl` theorem of the
+`equality` fixture, so byte equality is now decided by the kernel. It refused
+`byte-compare`:
+
+```text
+error[LLV7002]: Lean rejected `Compiler.TargetFixtures` (error): Tactic `rfl` failed: The left-hand side
+  byteCompareRun
+is not definitionally equal to the right-hand side
+```
+
+`compare_bytes` stays evaluator-only.
+
+### language-1.2 imported runtime reduction can fail
+
+Planted: language-1.2 modules emitted the frozen language-1.1 runtime, whose
+`@[noinline]` primitives are not exposed to other modules. The oracle is
+Lean's kernel. Command: `lexlean verify` in `compiler/`. Expected: a fixture
+module can no longer reduce `run`, which `TargetSemantics` defines through
+`LexLeanRuntime.index`.
+
+```text
+error[LLV7002]: Lean rejected `Compiler.TargetFixtures` (error): Tactic `rfl` failed: The left-hand side
+  adtEvaluationRun
+is not definitionally equal to the right-hand side
+```
+
+Removed: the exposed runtime was restored; `compiler/` verifies.
+
 ### graph node set can fail
 
 Planted: `graphTopological` ordered only the graph's keys
@@ -751,7 +955,7 @@ seeded graphs and the 24-node chain, whose last node is such a successor,
 disagree with the independent model.
 
 ```text
-thread 'conformance_sm_30' panicked at crates/conformance/src/support.rs:1829:10:
+thread 'conformance_sm_30' panicked at crates/conformance/src/support.rs:1875:10:
 the module verifies with real Lean: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLV7002"), message: "Lean rejected `Collections.Main` (error): Tactic `decide` proved that the proposition\n  LexLeanCollections.graphTopological
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
 ```
@@ -769,7 +973,7 @@ canonical order disagreed with Lean's `Key Int` instance. Command: `cargo test
 insertion of the source order, fail under verification.
 
 ```text
-thread 'conformance_sm_28' panicked at crates/conformance/src/support.rs:1829:10:
+thread 'conformance_sm_28' panicked at crates/conformance/src/support.rs:1875:10:
 the module verifies with real Lean: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLV7002"), message: "Lean rejected `Collections.Main` (error): Tactic `decide` proved that the proposition\n  [-2, -10, -100, 0, 3, 9, 100] =\n    LexLeanCollections.listFold (fun built element => LexLeanCollections.setInsert built element) []\n      [3, -2, 0, -10, 100, -100, 9]\nis false"
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
 ```
@@ -786,7 +990,7 @@ conformance -- conformance_sm_28`. Expected: the seeded union theorems,
 whose right-hand sides come from `BTreeSet`, fail under verification.
 
 ```text
-thread 'conformance_sm_28' panicked at crates/conformance/src/support.rs:1829:10:
+thread 'conformance_sm_28' panicked at crates/conformance/src/support.rs:1875:10:
 the module verifies with real Lean: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLV7002"), message: "Lean rejected `Collections.Main` (error): Tactic `decide` proved that the proposition\n  LexLeanCollections.setUnion [1, 2, 3] [0, 5] = [0, 1, 2, 3, 5]\nis false"
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
 ```
@@ -1034,7 +1238,7 @@ Removed: the function was deleted; clippy is clean.
 Planted: the last hex digit of the empty-input SHA-256 vector in `crates/model/src/release.rs` changed from `5` to `6`. Command: `cargo test -p repo-model --all-features`. Expected: the unit test fails on the digest.
 
 ```text
-thread 'release::tests::the_local_sha256_agrees_with_the_test_vectors' panicked at crates/model/src/release.rs:557:9:
+thread 'release::tests::the_local_sha256_agrees_with_the_test_vectors' panicked at crates/model/src/release.rs:558:9:
 assertion `left == right` failed
   left: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
  right: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b856"
@@ -1205,6 +1409,7 @@ Every upstream authority cited by LexLean (`model/authorities.toml`) is bound to
 - `LEANCHECKER-4-32-1`: leanchecker kernel replay utility (same source commit and acquired archive SHA-256).
 - `PRINT-AXIOMS-4-32-1`: Lean `#print axioms` output behavior bound by toolchain revision and committed test vectors (`tests/golden/axiom-parser/`).
 - `LEAN-LCNF-4-32-1`: Lean's compiler front end (base-phase LCNF), bound by source revision and by the SHA-256 of the defining source file of every registered call and type in `language/lcnf-1.2/authority.toml`, re-checked against the pinned toolchain by `conformance_ne_04`.
+- `RUSTC-1-97-1`: the Rust 1.97.1 compiler that `rust-toolchain.toml` pins (source revision `8bab26f4f68e0e26f0bb7960be334d5b520ea452`, source archive SHA-256 `622c2b429c53cbfdc0dd3a51d03554e91cd63ebec1912c1f5709640cdfef1a9d`), the oracle of the calculus's Rust renderings; `conformance_tc_07` refuses any other `rustc`.
 
 Oracle execution evidence binds positive and negative paths:
 - Positive execution: End-to-end elaboration, kernel replay, and axiom auditing across all examples (`list-induction`, `nat-add-zero`, `peano-arithmetic`, `propositional-logic`, `semantic-1.1`, `uor-atlas`).

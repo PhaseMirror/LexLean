@@ -1284,3 +1284,38 @@ fn conformance_ne_05() {
 fn conformance_ne_06() {
     repo_conformance::cases::run("NE-06");
 }
+
+#[test]
+fn conformance_tc_01() {
+    repo_conformance::cases::run("TC-01");
+}
+
+#[test]
+fn conformance_tc_02() {
+    repo_conformance::cases::run("TC-02");
+}
+
+#[test]
+fn conformance_tc_03() {
+    repo_conformance::cases::run("TC-03");
+}
+
+#[test]
+fn conformance_tc_04() {
+    repo_conformance::cases::run("TC-04");
+}
+
+#[test]
+fn conformance_tc_05() {
+    repo_conformance::cases::run("TC-05");
+}
+
+#[test]
+fn conformance_tc_06() {
+    repo_conformance::cases::run("TC-06");
+}
+
+#[test]
+fn conformance_tc_07() {
+    repo_conformance::cases::run("TC-07");
+}

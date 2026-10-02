@@ -34,6 +34,12 @@ PDF-provider protocol failure.
 
 Class: `environment`. Exit code: 3.
 
+## `LLB6005` --- Target realization program invalid or unrenderable
+
+A production-realization target program is malformed, violates the calculus's static rules, or cannot be rendered faithfully to the Rust profile.
+
+Class: `language`. Exit code: 1.
+
 ## `LLC0001` --- Invalid command-line usage
 
 Invalid command-line usage.

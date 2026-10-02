@@ -1226,9 +1226,34 @@ pub(crate) fn run(id: &str) {
                 .iter()
                 .map(|module| module.lean_text.clone())
                 .collect();
-            assert_eq!(
+            // Language 1.2 exposes the portable runtime (§17.12, rule 6);
+            // undoing exactly those attributes leaves the 1.1 text.
+            let unexposed: Vec<String> = migrated_lean
+                .iter()
+                .map(|text| {
+                    let mut text =
+                        text.replace("@[expose, noinline] public def ", "@[noinline] public def ");
+                    for helper in [
+                        "magnitudeInt64",
+                        "signedMagnitudeInt64",
+                        "divideMagnitudeInt64",
+                        "multiplyMagnitudeInt64",
+                    ] {
+                        text = text.replace(
+                            &format!("@[expose] public def {helper} "),
+                            &format!("public def {helper} "),
+                        );
+                    }
+                    text
+                })
+                .collect();
+            assert_ne!(
                 migrated_lean, original_lean,
-                "migration changes identities, not generated Lean declarations"
+                "the language-1.2 runtime is exposed"
+            );
+            assert_eq!(
+                unexposed, original_lean,
+                "migration changes identities and runtime exposure, not generated Lean declarations"
             );
             assert_ne!(
                 support::checked_project(&migrated).semantic_id,

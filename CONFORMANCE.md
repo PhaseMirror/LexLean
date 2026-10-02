@@ -38,6 +38,18 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `AR-13` | `build` | Two clean builds in different absolute directories produce byte-identical platform-independent artifacts. |
 | `AR-14` | `build` | Platform-independent build evidence is distinguished from platform-bound oleans, process records, PDF bytes, and attestations. |
 
+## calculus
+
+| ID | Level | Statement |
+| --- | --- | --- |
+| `TC-01` | `build` | Hand-constructed target programs have canonical bytes and a SHA-256 content identity, alpha-equivalent programs canonicalize to identical bytes and identity, an ill-typed program has neither, and every committed fixture validates against the target schemas. |
+| `TC-02` | `build` | Every malformed target program or violated static rule fails closed with LLB6005, and an invalid program has neither a canonical form nor a rendering. |
+| `TC-03` | `build` | The calculus denotation is a kernel-checked LexLean definition that charges every evaluator operation, Lean's kernel reduces every kernel-reducible fixture to its expected outcome with its exact step count, no fixture program is stuck on its stated arguments or on seeded random well-typed arguments at any sampled fuel, and a wrong expected outcome is rejected by Lean. |
+| `TC-04` | `build` | Lean's evaluator, running the published calculus sources compiled again by pinned Lean, reproduces every fixture's expected outcome and step count, including fixtures a reflexivity proof cannot decide, and the comparison refuses a fixture stated one step off. |
+| `TC-05` | `build` | Every realization library template has a fixture whose outcome the kernel proves equal to the value LexLean's own collection primitive computes, committed instances equal their templates, and a mutated template is rejected by Lean. |
+| `TC-06` | `build` | Every runtime construct of the production registry has exactly one realization row naming existing calculus elements and requires allocation exactly when its realization does, and the fixtures exercise every calculus type, literal, expression, shape, primitive, and template, and every fixed-width primitive at every width it admits. |
+| `TC-07` | `build` | Every fixture with an observable outcome renders to a safe Rust library crate in rust-std, and in rust-core exactly when it needs no heap, that the pinned rustc compiles with warnings denied, that prints exactly the denotation's value or overflow, and whose counted work never exceeds the denotation's steps; planted value and work discrepancies are detected. |
+
 ## cli-api
 
 | ID | Level | Statement |
@@ -371,6 +383,7 @@ Never re-derived, vendored, or gated on.
 | `LEANCHECKER-4-32-1` | https://github.com/leanprover/lean4/tree/v4.32.1 | `VR-08` |
 | `PRINT-AXIOMS-4-32-1` | https://github.com/leanprover/lean4/tree/v4.32.1 (the #print axioms command); observed output fixtures under tests/golden/axiom-parser/ | `VR-09`, `VR-10` |
 | `LEAN-LCNF-4-32-1` | https://github.com/leanprover/lean4/tree/f054605aea4b840552cca2e725580bffd1e1b704/src/Lean/Compiler/LCNF | `NE-01`, `NE-02`, `NE-04` |
+| `RUSTC-1-97-1` | https://github.com/rust-lang/rust/releases/tag/1.97.1 | `TC-07` |
 
 ## Claims that are not conformance IDs
 
@@ -380,4 +393,5 @@ Never re-derived, vendored, or gated on.
 | `AUTH-LAKE-4-32-1` | `some-true` | Lake as distributed with Lean 4.32.1 resolves a pinned workspace environment through lake env without network access when every locked dependency is locally available. |
 | `AUTH-LEANCHECKER-4-32-1` | `some-true` | The leanchecker executable distributed with Lean 4.32.1 replays a compiled module's environment through the Lean kernel in a separate process and is not an independent proof checker. |
 | `AUTH-LEAN-LCNF-4-32-1` | `some-true` | Lean 4.32.1 translates a code-generating definition to base-phase LCNF with Lean.Compiler.LCNF.toDecl, the compiler's own input to its later passes, so every constant the compiled definition can depend on at run time is named by that translation or by a definition it names. |
+| `AUTH-RUSTC-1-97-1` | `some-true` | rustc 1.97.1 compiles a safe Rust 2021 crate with the semantics The Rust Reference states for that release: the checked integer methods return None exactly on overflow, the wrapping shifts mask their amount, integer division truncates toward zero, and a #![no_std] crate that declares no extern crate links neither alloc nor std. |
 | `AUTH-PRINT-AXIOMS-4-32-1` | `some-true` | Lean 4.32.1 reports the transitive axiom dependencies of a declaration through #print axioms in exactly the output forms recorded by the committed axiom-parser fixtures. |
