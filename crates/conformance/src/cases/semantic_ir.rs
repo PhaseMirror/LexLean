@@ -1387,9 +1387,8 @@ pub(crate) fn run(id: &str) {
             collect_tags(&value["modules"][0]["semantic"], "kind", &mut tags);
             assert!(tags.contains("let"), "the snapshot carries the let term");
             assert!(
-                support::schema("semantic-snapshot")["properties"]["spec"]["const"]
-                    != value["spec"],
-                "the 1.2 snapshot is not admitted by the 1.1 envelope"
+                !crate::schema::validate(&support::schema("semantic-snapshot"), &value).is_empty(),
+                "the 1.2 snapshot is not admitted by the 1.1 envelope schema"
             );
             let rendered = support::rendered(&twelve);
             let lean = support::lean_text(&rendered, "Main");
@@ -1454,7 +1453,23 @@ pub(crate) fn run(id: &str) {
                 r#""binder":{"name":"doubled","type":{"kind":"nat"}}"#,
                 r#""binder":{"name":"doubled","type":{"kind":"bool"}}"#,
             );
-            mistyped.check_fails_with("LLT4001");
+            let error = mistyped.check_fails_with("LLT4001");
+            assert!(
+                error
+                    .to_string()
+                    .contains("let binder `doubled` has type Nat, expected Bool"),
+                "{error}"
+            );
+            // A language-1.0 document has no semantic module at all.
+            let ten = P::language_1_2_example();
+            ten.edit("lexlean.toml", "language = \"1.2\"", "language = \"1.0\"");
+            ten.edit("src/Main.lex.tex", "@1.2.0", "@1.0.0");
+            ten.relock();
+            let error = ten.check_fails_with("LLP2003");
+            assert_eq!(
+                error.to_string(),
+                "LLP2003: semanticmodule requires language 1.1 or 1.2"
+            );
             let shadowing = P::language_1_2_example();
             shadowing.edit(
                 "src/Main.lex.tex",

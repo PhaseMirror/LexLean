@@ -242,24 +242,45 @@ Planted: `"1.3"` appended to `LANGUAGE_VERSIONS`. Command: `cargo test -p
 repo-conformance --test conformance -- conformance_cf_17`.
 
 ```text
-thread 'conformance_cf_17' panicked at crates/conformance/src/cases/configuration_lock.rs:1071:18:
-1.3 is unsupported
+thread 'conformance_cf_17' panicked at crates/conformance/src/cases/configuration_lock.rs:1097:40:
+`1.3` is not a supported language
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 227 filtered out
 ```
 
 Planted: `Lock::canonical_bytes` emitted `lexlean/lock/1` for language 1.2.
 Command: `cargo test -p repo-conformance --test conformance --
-conformance_cf_18`.
+conformance_cf_18`. The migrated copy of the 1.1 example is the first lock
+written for language 1.2.
 
 ```text
-thread 'conformance_cf_18' panicked at crates/conformance/src/cases/configuration_lock.rs:1153:13:
-assertion failed: lock_text.contains("spec = \"lexlean/lock/2\"")
+thread 'conformance_cf_18' panicked at crates/conformance/src/cases/configuration_lock.rs:1221:13:
+assertion failed: migrated_lock.starts_with("spec = \"lexlean/lock/2\"\nlanguage = \"1.2\"\n")
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 227 filtered out
 ```
 
+Planted: `schemas/project-v2.schema.json` dropped from the 1.2-only partition
+in `is_v1_2_file`, so the frozen 1.1 identity silently absorbed a 1.2 file.
+Command: `cargo test -p repo-conformance --test conformance --
+conformance_rp_10`. The test recomputes the 1.1 ID from the exclusion list in
+§21.2, not from the compiler.
+
+```text
+thread 'conformance_rp_10' panicked at crates/conformance/src/cases/repository.rs:626:13:
+assertion `left == right` failed: RP-10: the 1.1 ID
+```
+
+Planted: `"opt-11pt"` removed from the backend tokens of
+`language/bootstrap-1.2.toml` only. Command: `cargo xtask validate-model`.
+`audit-language-closure` had compared only the 1.0 and 1.1 bootstraps; it now
+discovers every bootstrap.
+
+```text
+gate failed: R8: language/bootstrap-1.2.toml declares a different fixed backend token set
+```
+
 Removed: each mutation was reverted; `conformance_sm_23`,
-`conformance_cf_17`, `conformance_cf_18`, and `cargo xtask check-fixtures`
-pass.
+`conformance_cf_17`, `conformance_cf_18`, `conformance_rp_10`,
+`cargo xtask validate-model`, and `cargo xtask check-fixtures` pass.
 
 ### fmt-check can fail
 

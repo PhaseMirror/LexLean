@@ -1431,6 +1431,82 @@ math = "(seq (operator-name gsucc) (paren (slot 0)))"
             assert_eq!(bootstrap.spec, "lexlean/bootstrap/1");
             assert!(!bootstrap.structural.controls.is_empty());
             assert!(!bootstrap.structural.environments.is_empty());
+
+            // Every builtin package of every language validates against its
+            // language's schemas, and the 1.2 lexicon semantics is exactly
+            // the 1.1 semantics re-versioned: identical entry files, and a
+            // manifest differing only in version, language, and imports.
+            let language_dir = support::repo_root().join("language");
+            for (package, versions) in [
+                ("core", ["core", "core-1.1", "core-1.2"]),
+                ("std/bool", ["", "std/bool-1.1", "std/bool-1.2"]),
+                ("std/int", ["std/int", "std/int-1.1", "std/int-1.2"]),
+                ("std/nat", ["std/nat", "std/nat-1.1", "std/nat-1.2"]),
+            ] {
+                for (dir, language) in versions.iter().zip(["1.0", "1.1", "1.2"]) {
+                    if dir.is_empty() {
+                        continue;
+                    }
+                    let manifest = language_dir.join(dir).join("lexicon.toml");
+                    let (_, _, lexicon_schema, _) = support::language_schemas(language);
+                    support::assert_toml_file_schema(lexicon_schema, &manifest);
+                    let value: toml::Value = std::fs::read_to_string(manifest.as_std_path())
+                        .expect("manifest")
+                        .parse()
+                        .expect("manifest TOML");
+                    assert_eq!(value["language"].as_str(), Some(language), "{dir}");
+                    assert_eq!(
+                        value["version"].as_str(),
+                        Some(format!("{language}.0").as_str()),
+                        "{dir}"
+                    );
+                    for import in value
+                        .get("imports")
+                        .and_then(toml::Value::as_array)
+                        .into_iter()
+                        .flatten()
+                    {
+                        let import = import.as_str().expect("import");
+                        assert!(
+                            import.ends_with(&format!("@{language}.0")),
+                            "{dir} imports {import} from its own language"
+                        );
+                    }
+                }
+                let files = |dir: &str| {
+                    let root = language_dir.join(dir);
+                    let mut out = std::collections::BTreeMap::new();
+                    for entry in walkdir::WalkDir::new(root.as_std_path())
+                        .into_iter()
+                        .flatten()
+                    {
+                        if entry.file_type().is_file() {
+                            let relative = entry
+                                .path()
+                                .strip_prefix(root.as_std_path())
+                                .expect("under package")
+                                .to_string_lossy()
+                                .replace('\\', "/");
+                            out.insert(relative, std::fs::read(entry.path()).expect("read"));
+                        }
+                    }
+                    out
+                };
+                let (eleven, twelve) = (files(versions[1]), files(versions[2]));
+                assert_eq!(
+                    eleven.keys().collect::<Vec<_>>(),
+                    twelve.keys().collect::<Vec<_>>(),
+                    "{package}: the 1.2 package has the 1.1 file set"
+                );
+                for (path, bytes) in &eleven {
+                    if path != "lexicon.toml" {
+                        assert_eq!(
+                            bytes, &twelve[path],
+                            "{package}/{path} is inherited unchanged"
+                        );
+                    }
+                }
+            }
         }
         "GL-18" => {
             // 1. Language 1.1 project importing 1.2 lexicon fails with LLC0103
@@ -1486,6 +1562,12 @@ math = "(seq (operator-name gsucc) (paren (slot 0)))"
                 .err()
                 .expect("1.2 project importing 1.1 package fails");
             support::expect_code(&error, "LLC0103");
+            assert!(
+                error.diagnostics.iter().any(|d| d
+                    .message
+                    .contains("lexicon language `1.1` does not match project language `1.2`")),
+                "diagnostic explains cross-language conflict: {error}"
+            );
 
             // 3. Cross-language lock tampering fails with LLC0102
             let tampered = P::example();
@@ -1503,12 +1585,19 @@ math = "(seq (operator-name gsucc) (paren (slot 0)))"
                 .expect("tampered lock language fails check");
             support::expect_code(&error, "LLC0102");
 
-            // 4. None of these failures reached a backend: no build root was
-            // created, and `build` itself refuses the tampered lock.
-            let (exit, _, stderr) = tampered.cli(&["build"]);
-            assert_eq!(exit, 2, "build refuses a cross-version lock: {stderr}");
+            let (exit, _, stderr) = tampered.cli(&["lock", "--check"]);
+            assert_eq!(
+                exit, 2,
+                "lock --check refuses a cross-version lock: {stderr}"
+            );
+            assert!(stderr.contains("LLC0102"), "{stderr}");
+
+            // 4. No failure reaches a backend: `build` itself refuses every
+            // project, and no build or verification root exists afterwards.
             // `.lexlean/.lock` is the §21.8 mutation lock, not backend output.
             for project in [&p11, &p12, &tampered] {
+                let (exit, _, stderr) = project.cli(&["build"]);
+                assert_eq!(exit, 2, "build refuses a cross-version project: {stderr}");
                 for output in [".lexlean/build", ".lexlean/verified"] {
                     assert!(
                         !project.root.join(output).exists(),

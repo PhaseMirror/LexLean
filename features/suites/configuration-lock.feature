@@ -119,18 +119,15 @@ Feature: configuration-lock
 
   @CF-17 @build
   Scenario: Language 1.2 declaration support accepts language 1.2 and rejects unsupported or malformed language versions.
-    Given an example project with `language = "1.2"` in lexlean.toml and another with `language = "1.3"`
-    When Engine::load is called on each lexlean.toml and `lexlean init . --language 1.2` runs in an empty directory
-    Then the 1.2 project loads cleanly with LanguageVersion 1.2
-    And the init command exits 0 and creates a valid 1.2 project configuration and lockfile
-    And the 1.3 project fails configuration with LLC0103 naming the unsupported version
+    Given the example project with `language = "1.2"` and copies declaring `1.3`, `2.0`, `1.2.0`, `01.2`, ` 1.2`, `1.2 `, `1`, `1.`, `v1.2`, and the empty string
+    When each lexlean.toml is loaded, the 1.2 copy is locked, and `lexlean init . --language 1.2` runs in an empty directory
+    Then the 1.2 copy locks as language 1.2, and the initialized project writes a `lexlean/lock/2` lock and a configuration valid against the language-1.2 schemas
+    And every other spelling fails with LLC0103 naming that exact spelling
 
   @CF-18 @build
   Scenario: Lockfile v2 schema migration validates 1.2 locks while preserving exact byte-stability for language 1.0 and 1.1 projects.
-    Given committed language 1.0 and 1.1 projects with `spec = "lexlean/lock/1"`, and a fresh language 1.2 project
-    When `lexlean lock --check` runs on the 1.0 and 1.1 projects, relock is executed, and lock is generated for the 1.2 project
-    Then lock --check exits 0 on 1.0 and 1.1 and relock reports written = false leaving bytes unchanged
-    And the 1.2 lock is generated with `spec = "lexlean/lock/2"` and `language = "1.2"`
+    Given the committed language 1.0 and 1.1 examples and every other committed example
+    When each is relocked and checked with `lock --check`, its documents are validated against its language's schemas, and a copy of the 1.1 example is migrated to 1.2 and relocked
+    Then the 1.0 and 1.1 locks are byte-identical with written = false and pass `lock --check`, and every example validates against its own language's schemas
+    And the migrated copy fails `lock --check` with LLC0102 before relocking, then writes a `lexlean/lock/2` lock valid against `lock-v2` with an unchanged generated Lean module set and a different semantic identity
     And an unsupported lock schema `lexlean/lock/3` fails lock parsing with LLC0103
-    And a stale unmigrated lock fails lock --check with LLC0102
-

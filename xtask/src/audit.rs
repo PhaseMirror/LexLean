@@ -1209,8 +1209,8 @@ pub fn audit_generated(root: &Path) -> Result<(), Fail> {
             return Err(format!("{}: missing its $id `{identity}`", path.display()).into());
         }
     }
-    if count != 15 {
-        return Err(format!("§7 commits exactly 15 schemas, found {count}").into());
+    if count != 19 {
+        return Err(format!("§7 commits exactly 19 schemas, found {count}").into());
     }
     println!("audit-generated: {count} schemas canonical and identified");
     Ok(())
@@ -1387,8 +1387,23 @@ pub fn audit_language_closure(root: &Path) -> Result<(), Fail> {
         })
         .unwrap_or_default();
 
+    // Every language's bootstrap is read, discovered rather than listed, so a
+    // newly added language cannot drift its backend tokens unseen.
+    let mut bootstraps: Vec<String> = std::fs::read_dir(root.join("language"))?
+        .flatten()
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.starts_with("bootstrap") && name.ends_with(".toml"))
+        .map(|name| format!("language/{name}"))
+        .collect();
+    bootstraps.sort();
+    if bootstraps.len() < 3 {
+        return Err(format!(
+            "R8: expected a bootstrap for every supported language, found {bootstraps:?}"
+        )
+        .into());
+    }
     let mut declared: BTreeSet<String> = BTreeSet::new();
-    for path in ["language/bootstrap.toml", "language/bootstrap-1.1.toml"] {
+    for path in &bootstraps {
         let bootstrap_text = std::fs::read_to_string(root.join(path))?;
         let bootstrap: toml::Value = bootstrap_text.parse()?;
         let current: BTreeSet<String> = bootstrap

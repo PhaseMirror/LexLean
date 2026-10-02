@@ -31,8 +31,18 @@ versions, and the entries below say what each tag does and does not claim.
 - The public snapshot DTO `SnapshotTerm` gains the `Let` variant; downstream
   exhaustive matches must add it.
 - New conformance IDs `CF-17`, `CF-18`, `GL-17`, `GL-18`, and `SM-23`; new
-  example `examples/language-1.2`, verified with real Lean; seven new
-  negative fixtures for version mismatches and malformed versions.
+  example `examples/language-1.2`, verified with real Lean; ten new negative
+  fixtures for version mismatches in both directions, a package of another
+  language, and malformed versions.
+- Schemas for the later languages, in the 1.2-only partition so the frozen
+  1.0 and 1.1 identities are untouched: `project-v2`, `lexicon-v2`, and
+  `build-manifest-v2` admit languages 1.1 and 1.2, and `lock-1.1` describes
+  the language-1.1 lock. The v1 project, lexicon, manifest, and lock schemas
+  had pinned `language` to `1.0`, so every committed 1.1 document violated
+  them; every example's documents are now validated against its language's
+  schemas.
+- `SnapshotSemanticModule::parse` takes the project language, which routes
+  the `semanticdata` discriminator; a downstream caller must pass it.
 
 ## 0.3.0
 

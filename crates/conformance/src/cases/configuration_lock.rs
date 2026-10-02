@@ -1028,14 +1028,29 @@ pub(crate) fn run(id: &str) {
             support::expect_code(&error, "LLC0102");
         }
         "CF-17" => {
-            // 1. Language 1.2 in lexlean.toml loads cleanly
+            // 1. Language 1.2 in lexlean.toml loads, and locks as 1.2.
             let proj_1_2 = P::example();
             proj_1_2.edit("lexlean.toml", "language = \"1.0\"", "language = \"1.2\"");
-            let _engine = Engine::load(&proj_1_2.root.join("lexlean.toml"))
-                .expect("loads language 1.2 project");
-            assert!(proj_1_2.read("lexlean.toml").contains("language = \"1.2\""));
+            let engine =
+                Engine::load(&proj_1_2.root.join("lexlean.toml")).expect("loads language 1.2");
+            engine
+                .lock(LockRequest {
+                    check_only: false,
+                    allow_network: false,
+                })
+                .expect("a 1.2 project locks");
+            let lock = lexlean::api::parse_lock_bytes(
+                "lexlean.lock",
+                proj_1_2.read("lexlean.lock").as_bytes(),
+            )
+            .expect("the 1.2 lock parses");
+            assert_eq!(
+                lock.language, "1.2",
+                "the loaded configuration is language 1.2"
+            );
 
-            // 2. CLI init with --language 1.2 succeeds and emits valid 1.2 lock with spec = "lexlean/lock/2"
+            // 2. `init --language 1.2` writes a 1.2 project and lock that
+            // validate against the language-1.2 schemas.
             let init_dir = tempfile::tempdir().expect("tempdir");
             let init_root = camino::Utf8Path::from_path(init_dir.path()).expect("utf8");
             let (exit, _, stderr) = support::cli_in(
@@ -1060,23 +1075,39 @@ pub(crate) fn run(id: &str) {
                 lock.compiler_semantics,
                 lexlean::compiler_semantics_id_for("1.2")
             );
-            let lock_text = String::from_utf8(lock_bytes).expect("utf8");
-            assert!(lock_text.contains("spec = \"lexlean/lock/2\""));
+            assert!(String::from_utf8(lock_bytes)
+                .expect("utf8")
+                .starts_with("spec = \"lexlean/lock/2\"\nlanguage = \"1.2\"\n"));
+            assert_eq!(support::assert_language_documents(init_root), "1.2");
 
-            // 3. Unsupported language version (e.g. 1.3) fails with LLC0103
-            let unsupported = P::example();
-            unsupported.edit("lexlean.toml", "language = \"1.0\"", "language = \"1.3\"");
-            let error = Engine::load(&unsupported.root.join("lexlean.toml"))
-                .err()
-                .expect("1.3 is unsupported");
-            support::expect_code(&error, "LLC0103");
-            assert!(
-                error.diagnostics.iter().any(|d| d.message.contains("1.3")),
-                "diagnostic names unsupported version: {error}"
-            );
+            // 3. Every unsupported or malformed spelling fails with LLC0103
+            // naming the exact spelling: versions are matched exactly, never
+            // parsed, trimmed, or padded.
+            for spelling in [
+                "1.3", "2.0", "1.2.0", "01.2", " 1.2", "1.2 ", "1", "1.", "v1.2", "",
+            ] {
+                let unsupported = P::example();
+                unsupported.edit(
+                    "lexlean.toml",
+                    "language = \"1.0\"",
+                    &format!("language = \"{spelling}\""),
+                );
+                let error = Engine::load(&unsupported.root.join("lexlean.toml"))
+                    .err()
+                    .unwrap_or_else(|| panic!("`{spelling}` is not a supported language"));
+                support::expect_code(&error, "LLC0103");
+                assert!(
+                    error
+                        .diagnostics
+                        .iter()
+                        .any(|d| d.message == format!("unsupported language version `{spelling}`")),
+                    "the diagnostic names `{spelling}` exactly: {error}"
+                );
+            }
         }
         "CF-18" => {
-            // 1. Language 1.0 lock remains byte-stable
+            // 1. The committed language-1.0 lock is byte-stable and validates
+            // against the 1.0 schemas.
             let ex10 = P::example();
             let bytes10 = ex10.read("lexlean.lock");
             let lock10 = lexlean::api::parse_lock_bytes("lexlean.lock", bytes10.as_bytes())
@@ -1089,24 +1120,29 @@ pub(crate) fn run(id: &str) {
                     allow_network: false,
                 })
                 .expect("relock 1.0");
-            assert!(!relock10.written, "relocking 1.0 produces written = false");
+            assert!(!relock10.written, "relocking 1.0 writes nothing");
             assert_eq!(
                 ex10.read("lexlean.lock"),
                 bytes10,
-                "1.0 lock bytes are byte-identical"
+                "1.0 lock bytes are unchanged"
             );
             let (exit, _, stderr) = ex10.cli(&["lock", "--check"]);
             assert_eq!(exit, 0, "1.0 lock --check passes: {stderr}");
+            assert_eq!(
+                support::assert_language_documents(
+                    &support::repo_root().join("examples/nat-add-zero")
+                ),
+                "1.0"
+            );
 
-            // 2. Language 1.1 lock remains byte-stable. The committed example
-            // is required, not probed: a missing file must fail this case
-            // rather than skip its assertions.
+            // 2. The committed language-1.1 lock is byte-stable, passes
+            // `lock --check`, and validates against the 1.1 schemas. The
+            // example is required, not probed.
             let ex11 = P::semantic_example();
             let bytes11 = ex11.read("lexlean.lock");
             assert!(bytes11.starts_with("spec = \"lexlean/lock/1\"\nlanguage = \"1.1\"\n"));
             let lock11 = lexlean::api::parse_lock_bytes("lexlean.lock", bytes11.as_bytes())
                 .expect("1.1 lock parses");
-            assert_eq!(lock11.language, "1.1");
             assert_eq!(
                 lock11.compiler_semantics,
                 lexlean::compiler_semantics_id_for("1.1")
@@ -1124,54 +1160,88 @@ pub(crate) fn run(id: &str) {
                 bytes11,
                 "1.1 lock bytes are unchanged"
             );
-            // Neither historical identity moved when language 1.2 was added.
-            assert_ne!(
-                lexlean::compiler_semantics_id_for("1.1"),
-                lexlean::compiler_semantics_id_for("1.2")
+            let (exit, _, stderr) = ex11.cli(&["lock", "--check"]);
+            assert_eq!(exit, 0, "1.1 lock --check passes: {stderr}");
+            assert_eq!(
+                support::assert_language_documents(
+                    &support::repo_root().join("examples/semantic-1.1")
+                ),
+                "1.1"
             );
-            assert_ne!(
-                lexlean::compiler_semantics_id_for("1.0"),
-                lexlean::compiler_semantics_id_for("1.1")
+            // The three languages have three distinct identities.
+            let ids: std::collections::BTreeSet<_> = lexlean::LANGUAGE_VERSIONS
+                .iter()
+                .map(|language| lexlean::compiler_semantics_id_for(language))
+                .collect();
+            assert_eq!(
+                ids.len(),
+                3,
+                "each language has its own compiler-semantics ID"
             );
 
-            // 3. Language 1.2 project produces lockfile matching 1.2 schema
-            let dir = tempfile::tempdir().expect("tempdir");
-            let root = camino::Utf8Path::from_path(dir.path()).expect("utf8");
-            let (exit, _, stderr) = support::cli_in(
-                root,
-                &[
-                    "init",
-                    ".",
-                    "--name",
-                    "lang-twelve-lock",
-                    "--module-prefix",
-                    "LangTwelveLock",
-                    "--language",
-                    "1.2",
-                ],
-            );
-            assert_eq!(exit, 0, "init 1.2: {stderr}");
-            let lock_text = std::fs::read_to_string(root.join("lexlean.lock").as_std_path())
-                .expect("read lock");
-            assert!(lock_text.contains("language = \"1.2\""));
-            assert!(lock_text.contains("spec = \"lexlean/lock/2\""));
+            // 3. Every committed example's documents validate against the
+            // schemas of its own language.
+            for entry in std::fs::read_dir(support::repo_root().join("examples").as_std_path())
+                .expect("examples")
+                .flatten()
+            {
+                let root = camino::Utf8PathBuf::from_path_buf(entry.path()).expect("utf8");
+                if root.join("lexlean.toml").as_std_path().is_file() {
+                    support::assert_language_documents(&root);
+                }
+            }
 
-            // 4. Unsupported lock schema (e.g. lexlean/lock/3) fails with LLC0103
-            let mut bad_lock = ex10.read("lexlean.lock");
-            bad_lock =
-                bad_lock.replacen("spec = \"lexlean/lock/1\"", "spec = \"lexlean/lock/3\"", 1);
+            // 4. The explicit migration (§17.12): the language row, every
+            // discriminator, every builtin glossary reference, then `lock`.
+            // The lock becomes `lexlean/lock/2`, validates against its schema,
+            // and the generated Lean declarations are unchanged.
+            let migrated = P::semantic_example();
+            let original_lean: Vec<String> = support::rendered(&ex11)
+                .modules
+                .iter()
+                .map(|module| module.lean_text.clone())
+                .collect();
+            migrated.edit("lexlean.toml", "language = \"1.1\"", "language = \"1.2\"");
+            let source_dir = migrated.root.join("src");
+            for entry in std::fs::read_dir(source_dir.as_std_path())
+                .expect("src")
+                .flatten()
+            {
+                let path = camino::Utf8PathBuf::from_path_buf(entry.path()).expect("utf8");
+                let text = std::fs::read_to_string(path.as_std_path()).expect("source");
+                let rewritten = text
+                    .replace("lexlean/semantic-module/1", "lexlean/semantic-module/2")
+                    .replace("@1.1.0}", "@1.2.0}");
+                std::fs::write(path.as_std_path(), rewritten).expect("migrate source");
+            }
+            // An unmigrated lock is stale, never silently reinterpreted.
+            lock_check_fails_with(&migrated, "LLC0102");
+            migrated.relock();
+            let migrated_lock = migrated.read("lexlean.lock");
+            assert!(migrated_lock.starts_with("spec = \"lexlean/lock/2\"\nlanguage = \"1.2\"\n"));
+            support::assert_toml_file_schema("lock-v2", &migrated.root.join("lexlean.lock"));
+            support::assert_toml_file_schema("project-v2", &migrated.root.join("lexlean.toml"));
+            let migrated_lean: Vec<String> = support::rendered(&migrated)
+                .modules
+                .iter()
+                .map(|module| module.lean_text.clone())
+                .collect();
+            assert_eq!(
+                migrated_lean, original_lean,
+                "migration changes identities, not generated Lean declarations"
+            );
+            assert_ne!(
+                support::checked_project(&migrated).semantic_id,
+                support::checked_project(&ex11).semantic_id,
+                "migration changes the semantic identity"
+            );
+
+            // 5. An unsupported lock schema fails parsing with LLC0103.
+            let bad_lock =
+                bytes10.replacen("spec = \"lexlean/lock/1\"", "spec = \"lexlean/lock/3\"", 1);
             let error = lexlean::api::parse_lock_bytes("lexlean.lock", bad_lock.as_bytes())
                 .expect_err("bad lock spec fails");
             assert!(error.iter().any(|d| d.code.as_str() == "LLC0103"));
-
-            // 5. Config drift fails lock --check with LLC0102
-            let drifted = P::example();
-            drifted.edit(
-                "lexlean.toml",
-                "max_scope_depth = 1024",
-                "max_scope_depth = 512",
-            );
-            lock_check_fails_with(&drifted, "LLC0102");
         }
         other => panic!("no configuration-lock case is wired for {other}"),
     }

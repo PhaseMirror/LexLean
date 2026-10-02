@@ -59,8 +59,8 @@ pub use artifact::snapshot::{
     SemanticSnapshot, SnapshotAxiomPolicy, SnapshotDeclaration, SnapshotModule, SnapshotOrigin,
     SnapshotRange, SnapshotSource,
 };
-// These owned values are the closed language-1.1 portion of the stable
-// snapshot contract. Re-exporting them under snapshot-specific names lets a
+// These owned values are the closed language-1.1 and language-1.2 portion of
+// the stable snapshot contract. Re-exporting them under snapshot-specific names lets a
 // downstream consumer exhaustively inspect every variant without depending
 // on the hidden compiler-module path.
 pub use diagnostic::{Diagnostic, DiagnosticCode, DiagnosticDetail, Label, Note, Span};
@@ -96,7 +96,9 @@ pub const LANGUAGE_1_1: &str = "1.1";
 /// The language 1.2 identifier.
 pub const LANGUAGE_1_2: &str = "1.2";
 
-/// The current language identifier used by newly initialized projects.
+/// The newest supported language identifier, whose compiler-semantics ID
+/// covers the whole embedded tree. `init` keeps `1.0` as its default so an
+/// unqualified invocation never changes meaning.
 pub const LATEST_LANGUAGE_VERSION: &str = "1.2";
 
 /// The closed set of language versions accepted by this compiler.
@@ -143,7 +145,11 @@ fn is_v1_2_file(path: &str) -> bool {
         || path.starts_with("language/std/bool-1.2/")
         || path == "language/bootstrap-1.2.toml"
         || path == "language/semantics-1.2.toml"
+        || path == "schemas/build-manifest-v2.schema.json"
+        || path == "schemas/lexicon-v2.schema.json"
+        || path == "schemas/lock-1.1.schema.json"
         || path == "schemas/lock-v2.schema.json"
+        || path == "schemas/project-v2.schema.json"
         || path == "schemas/semantic-module-v2.schema.json"
         || path == "schemas/semantic-snapshot-v2.schema.json"
 }

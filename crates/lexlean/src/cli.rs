@@ -73,8 +73,9 @@ enum CommandKind {
         /// The Lean module prefix.
         #[arg(long)]
         module_prefix: String,
-        /// Fixed source-language version. Language 1.1 creates a source-free
-        /// Lake workspace; 1.0 retains the historical host-module skeleton.
+        /// Fixed source-language version. Languages 1.1 and 1.2 create a
+        /// source-free Lake workspace; 1.0 retains the historical
+        /// host-module skeleton.
         #[arg(long, default_value = "1.0", value_parser = ["1.0", "1.1", "1.2"])]
         language: String,
     },

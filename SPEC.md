@@ -15,7 +15,7 @@
 
 This document is the complete implementation contract for `github.com/afflom/lexlean`.
 
-The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHALL**, **SHALL NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** are normative. A behavior not authorized by this specification is not part of LexLean language 1.0 or 1.1.
+The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHALL**, **SHALL NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** are normative. A behavior not authorized by this specification is not part of LexLean language 1.0, 1.1, or 1.2.
 
 A LexLean implementation conforms to this specification only when:
 
@@ -404,14 +404,18 @@ The completed repository MUST have this layout. Additional files are allowed onl
 ├── schemas/
 │   ├── attestation.schema.json
 │   ├── build-manifest.schema.json
+│   ├── build-manifest-v2.schema.json
 │   ├── core-module.schema.json
 │   ├── coverage.schema.json
 │   ├── diagnostic.schema.json
 │   ├── entry.schema.json
 │   ├── lexicon.schema.json
+│   ├── lexicon-v2.schema.json
 │   ├── lock.schema.json
+│   ├── lock-1.1.schema.json
 │   ├── lock-v2.schema.json
 │   ├── project.schema.json
+│   ├── project-v2.schema.json
 │   ├── semantic-snapshot.schema.json
 │   ├── semantic-snapshot-v2.schema.json
 │   ├── semantic-module.schema.json
@@ -1291,7 +1295,8 @@ Loading a package MUST reject:
 - invalid renderer slots;
 - raw control output;
 - a document denotation whose declaration is unavailable;
-- an eliminator descriptor that references absent constructors.
+- an eliminator descriptor that references absent constructors;
+- a package whose `language` differs from the project's (`LLC0103`).
 
 ---
 
@@ -2428,8 +2433,19 @@ content, so no byte sequence has two meanings:
 with the `/2` discriminator and the 1.2-only constructs added;
 `schemas/semantic-snapshot-v2.schema.json` is the snapshot schema with the
 `/2` envelope, `language` fixed to `1.2`, and the same embedded module
-definitions. `schemas/lock-v2.schema.json` has the language-1.1 lock shape
-with `spec` fixed to `lexlean/lock/2` and `language` fixed to `1.2`.
+definitions. `schemas/lock-v2.schema.json` has the lock shape of
+`schemas/lock.schema.json` with `spec` fixed to `lexlean/lock/2` and
+`language` fixed to `1.2`.
+
+The project, lock, lexicon-manifest, and build-manifest schemas of §7 pin
+`language` to `1.0`, and they are hashed into the frozen 1.0 and 1.1
+identities, so the later languages have their own schemas in the 1.2-only
+partition rather than edits to those files. A language-`1.1` or `1.2`
+`lexlean.toml` validates against `schemas/project-v2.schema.json`, its lexicon
+manifests against `schemas/lexicon-v2.schema.json`, and its build manifest
+against `schemas/build-manifest-v2.schema.json`; a language-1.1 lock validates
+against `schemas/lock-1.1.schema.json` (`lexlean/lock/1`, `language` fixed to
+`1.1`) and a language-1.2 lock against `schemas/lock-v2.schema.json`.
 
 Compatibility rules:
 
@@ -2939,7 +2955,9 @@ nested partition of the embedded tree. The language-1.2 ID covers the whole
 tree. The language-1.1 ID excludes the files introduced solely for 1.2:
 `language/bootstrap-1.2.toml`, `language/semantics-1.2.toml`,
 `language/core-1.2/`, `language/std/{bool,int,nat}-1.2/`,
-`schemas/lock-v2.schema.json`, `schemas/semantic-module-v2.schema.json`, and
+`schemas/build-manifest-v2.schema.json`, `schemas/lexicon-v2.schema.json`,
+`schemas/lock-1.1.schema.json`, `schemas/lock-v2.schema.json`,
+`schemas/project-v2.schema.json`, `schemas/semantic-module-v2.schema.json`, and
 `schemas/semantic-snapshot-v2.schema.json`. The language-1.0 ID additionally
 excludes the files introduced solely for 1.1: `language/bootstrap-1.1.toml`,
 `language/semantics-1.1.toml`, `language/core-1.1/`,
@@ -2957,8 +2975,9 @@ The full (language-1.2) tree is the §11.5 tree digest of:
 The specification-link gate ensures these version declarations agree with this document. The digest excludes README prose, CI YAML, host binaries, timestamps, and generated build output.
 
 The released binary embeds all three closed language IDs. Repository tests
-recompute the complete current input tree and the compatibility-filtered
-trees independently and compare them.
+recompute the complete current input tree and, from the exclusion lists of
+this section, the compatibility-filtered trees independently, compare each with
+the embedded ID, and pin the 1.0 and 1.1 IDs to the committed example locks.
 
 ### 21.3 Source ID
 
@@ -3990,8 +4009,11 @@ Tests MUST establish that LexLean rejects, at minimum:
 - a `lexlean/semantic-module/2` module under language 1.1;
 - an unsupported language version;
 - a malformed language version;
-- a lock schema that does not match its language;
-- a builtin glossary reference with another language's version.
+- a language-1.1 lock with the language-1.2 lock schema, and a language-1.2
+  lock with the language-1.1 lock schema;
+- a builtin glossary reference with another language's version, from 1.2 to
+  1.1 and from 1.1 to 1.2;
+- a lexicon package whose language differs from the project's.
 
 ### 28.6 Example verification
 
