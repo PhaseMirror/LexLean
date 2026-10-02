@@ -171,7 +171,7 @@ pub(crate) fn run(id: &str) {
         // exactly the one prescribed diagnostic code.
         "EX-07" => {
             let root = support::repo_root();
-            let prescribed: [(&str, &str); 38] = [
+            let prescribed: [(&str, &str); 46] = [
                 ("unknown-word", "LLL1004"),
                 ("unknown-symbol", "LLL1004"),
                 ("unknown-control", "LLL1004"),
@@ -211,6 +211,15 @@ pub(crate) fn run(id: &str) {
                 ("lock-schema-language-mismatch-1.1", "LLC0103"),
                 ("cross-version-glossary-1.1", "LLR3001"),
                 ("package-language-mismatch", "LLC0103"),
+                // §17.12: ill-formed recursive data fails before any backend.
+                ("recursive-type-positivity", "LLT4001"),
+                ("recursive-type-nonuniform", "LLT4001"),
+                ("recursive-type-uninhabited", "LLT4001"),
+                ("recursive-structure", "LLT4001"),
+                ("mutual-group-noncontiguous", "LLT4001"),
+                ("recursive-type-arguments", "LLT4001"),
+                ("recursive-constructor-mismatch", "LLT4001"),
+                ("recursive-type-forward", "LLT4001"),
             ];
             let negative_root = root.join("tests/negative");
             let mut classes: Vec<String> = std::fs::read_dir(negative_root.as_std_path())

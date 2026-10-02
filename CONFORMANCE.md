@@ -102,6 +102,8 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `DF-09` | `build` | Every theorem-like component contains exactly one nonempty structured proof. |
 | `DF-10` | `build` | Generated declarations preserve source order and every document reference respects that order. |
 | `DF-11` | `build` | Language 1.1 checks and lowers generic structures, classes, instances, inductives, definitions, structural recursion, matches, Boolean validators, and closed proofs from semantic source data. |
+| `DF-12` | `build` | Language 1.2 inductives admit uniform, strictly positive self, nested, and mutual recursion with a buildable base case, all checked before either backend runs. |
+| `DF-13` | `build` | Language 1.2 structural recursion and induction over a recursive inductive use exactly its direct recursive fields, across modules, with one induction hypothesis per recursive field. |
 
 ## examples
 
@@ -297,6 +299,7 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `SM-21` | `build` | Structural recursion admits byte/list values and closed Option and Result inductives while preserving termination and exhaustiveness checks. |
 | `SM-22` | `build` | The public owned snapshot DTO and schemas cover every portable type, literal, primitive, and explicit definition axiom policy without backend text. |
 | `SM-23` | `build` | Language 1.2 semantic modules use the versioned module and snapshot schemas and accept the typed nonrecursive let term, which language 1.1 rejects before either backend runs. |
+| `SM-24` | `build` | Language 1.2 product types, pairs, projections, and product matches are typed, snapshotted under the v2 schemas, and give identical semantic IDs from distinct roots. |
 
 ## verification
 

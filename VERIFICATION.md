@@ -12,7 +12,7 @@ How this repository's claims are checked, which recipe enforces which rule, and 
 | `model` | `cargo xtask validate-model` | R1 (model is the single source; every model file parsed with unknown-field rejection), R2 (honesty levels and vocabulary, via the meta-gate), R3 (register/scenario/test bijection, Gherkin subset), R4 (`audit-deferral`), R5 (`audit-errors`), R6 (`audit-shipped`, including the shipped crate's normative links), R8 (`audit-generated`, `audit-language-closure`), RP-09 (`audit-no-unsafe`), §27.5 (CONFORMANCE.md and ERRORS.md equal regeneration) |
 | `spec-links` | `cargo xtask validate-spec-links` | RP-07, §27.6: the §31 table and `model/ids.toml` are bijective and byte-consistent |
 | `lint` | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | no tolerated warnings |
-| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 228 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
+| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 231 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
 | `features` | `cargo check --workspace --all-features --all-targets` | every target compiles |
 | `bdd` | `cargo test -p repo-conformance` | R3, §27.7, §27.8: register ↔ scenario ↔ test bijection, the meta-gate, and its own falsifiability test |
 | `examples` | `cargo xtask verify-examples` | §28.6, EX-01: every example directory formats, locks, checks, builds, and verifies with real Lean 4.32.1; when an example commits `expected/verify/`, its normalized verification records must equal it (§29.5) |
@@ -281,6 +281,23 @@ gate failed: R8: language/bootstrap-1.2.toml declares a different fixed backend 
 Removed: each mutation was reverted; `conformance_sm_23`,
 `conformance_cf_17`, `conformance_cf_18`, `conformance_rp_10`,
 `cargo xtask validate-model`, and `cargo xtask check-fixtures` pass.
+
+### recursive data positivity can fail
+
+Planted: the positivity rule in `classify_occurrence` was bypassed (`if false
+&& ...`), so a group member inside another document type's arguments was
+admitted. Command: `cargo test -p repo-conformance --test conformance --
+conformance_df_12`. Expected: the mutation that nests `Rose` inside `Tree`
+is no longer rejected for positivity.
+
+```text
+thread 'conformance_df_12' panicked at crates/conformance/src/cases/declarations.rs:644:17:
+expected "positivity violation in `Rose.node`", got LLT4001: phase link: constructor `Rose.node` argument has type List { element: Named { ... name: "Rose" ... } }, expected Named { ... name: "Tree" ... }
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 230 filtered out
+```
+
+Removed: the rule was restored; `conformance_df_12` passes and the
+`recursive-type-positivity` negative fixture fails with `LLT4001`.
 
 ### fmt-check can fail
 

@@ -77,3 +77,18 @@ Feature: declarations
     When it is checked, built, and verified through the fixed Lean and LaTeX backends
     Then every generic declaration and proof form is present in both linked semantic data and deterministic generated artifacts with an empty axiom policy
     And forward references, duplicate names, bad instance priority, nonstructural recursion, nonexhaustive matches, and raw backend fields each fail before a backend runs
+
+  @DF-12 @build
+  Scenario: Language 1.2 inductives admit uniform, strictly positive self, nested, and mutual recursion with a buildable base case, all checked before either backend runs.
+    Given the committed recursive-data example with self-recursive, nested, mutual, and parameterized types across modules
+    When it is checked, rendered, and verified, and copies change one recursive occurrence, base case, group, or structure
+    Then the generated Lean declares the recursive inductives and one mutual block and verifies with real Lean
+    And non-uniform, mis-applied, non-positive, uninhabited, mis-grouped, and self-referential structure data each fail with LLT4001 before any build output
+    And language 1.1 still rejects recursive payloads and one node fewer than the observed charge overruns max_ir_nodes
+
+  @DF-13 @build
+  Scenario: Language 1.2 structural recursion and induction over a recursive inductive use exactly its direct recursive fields, across modules, with one induction hypothesis per recursive field.
+    Given the committed recursive-data example whose main module recurses and inducts over an imported tree type
+    When it is rendered and verified, and copies change a recursive call, a binder list, or an induction scrutinee
+    Then the generated Lean uses pattern equations over the direct recursive fields and binds one hypothesis per field
+    And a call on the matched value or a non-recursive field, a missing hypothesis, and induction over a nested inductive fail with LLT4001 before any build output

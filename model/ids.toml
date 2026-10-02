@@ -615,6 +615,12 @@ suite = "semantic-ir"
 statement = "Language 1.2 semantic modules use the versioned module and snapshot schemas and accept the typed nonrecursive let term, which language 1.1 rejects before either backend runs."
 
 [[id]]
+id = "SM-24"
+level = "build"
+suite = "semantic-ir"
+statement = "Language 1.2 product types, pairs, projections, and product matches are typed, snapshotted under the v2 schemas, and give identical semantic IDs from distinct roots."
+
+[[id]]
 id = "DF-01"
 level = "build"
 suite = "declarations"
@@ -679,6 +685,18 @@ id = "DF-11"
 level = "build"
 suite = "declarations"
 statement = "Language 1.1 checks and lowers generic structures, classes, instances, inductives, definitions, structural recursion, matches, Boolean validators, and closed proofs from semantic source data."
+
+[[id]]
+id = "DF-12"
+level = "build"
+suite = "declarations"
+statement = "Language 1.2 inductives admit uniform, strictly positive self, nested, and mutual recursion with a buildable base case, all checked before either backend runs."
+
+[[id]]
+id = "DF-13"
+level = "build"
+suite = "declarations"
+statement = "Language 1.2 structural recursion and induction over a recursive inductive use exactly its direct recursive fields, across modules, with one induction hypothesis per recursive field."
 
 [[id]]
 id = "PF-01"

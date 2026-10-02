@@ -28,8 +28,17 @@ versions, and the entries below say what each tag does and does not claim.
   language digests a fixed nested partition of the embedded tree, and every
   committed 1.0 and 1.1 artifact keeps its bytes. Migration from 1.1 to 1.2 is
   explicit and never implicit.
-- The public snapshot DTO `SnapshotTerm` gains the `Let` variant; downstream
-  exhaustive matches must add it.
+- Language-1.2 recursive data (§17.12): inductives may recurse uniformly and
+  strictly positively, directly or nested under `List`, `Option`, `Result`,
+  and products; `mutual` labels form contiguous mutual groups; every member
+  must have a buildable base case; structures stay nonrecursive. Structural
+  recursion uses exactly the direct recursive fields, and induction binds one
+  hypothesis per recursive field. Products, pairs, `first`, `second`, and
+  `Prod.mk` matches are new (`DF-12`, `DF-13`, `SM-24`, `examples/recursive-data`).
+- The public snapshot DTO `SnapshotTerm` gains the `Let`, `Pair`, `First`,
+  and `Second` variants, `SnapshotType` gains `Product`, and the inductive
+  declaration gains an optional `mutual` label; downstream exhaustive
+  matches must add them.
 - New conformance IDs `CF-17`, `CF-18`, `GL-17`, `GL-18`, and `SM-23`; new
   example `examples/language-1.2`, verified with real Lean; ten new negative
   fixtures for version mismatches in both directions, a package of another

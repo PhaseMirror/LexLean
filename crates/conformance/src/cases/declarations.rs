@@ -1,4 +1,4 @@
-//! The `declarations` suite: DF-01..DF-11.
+//! The `declarations` suite: DF-01..DF-13.
 
 use lexlean::ir::declaration::{DeclBody, DeclKind};
 
@@ -615,6 +615,175 @@ pub(crate) fn run(id: &str) {
                     "semantic rejection occurs before a backend"
                 );
             }
+        }
+        // §17.12: recursive data is uniform, strictly positive, and
+        // buildable; every rule holds before either backend runs.
+        "DF-12" => {
+            let project = P::copy_example("recursive-data");
+            project.check_ok();
+            let rendered = support::rendered(&project);
+            let types = support::lean_text(&rendered, "Types");
+            for expected in [
+                "public inductive Tree (Item : Type) where\n  | leaf\n  | node (_ : Tree (Item)) (_ : Item) (_ : Tree (Item))\n",
+                "public inductive Rose (Item : Type) where\n  | node (_ : Item) (_ : List (Rose (Item)))\n",
+                "mutual\npublic inductive Expr where\n",
+                "public inductive Stmt where\n  | assign (_ : String) (_ : Expr)\n  | sequence (_ : Stmt) (_ : Stmt)\nend\n",
+            ] {
+                assert!(types.contains(expected), "missing {expected:?} in:\n{types}");
+            }
+            let tex = support::tex_text(&rendered, "Types");
+            assert!(tex.contains("Mutual group: \\texttt{Syntax}"), "{tex}");
+            let _ = support::verify_ok_backed("DF-12", &project);
+
+            let types_source = project.read("src/Types.lex.tex");
+            let mutate = |from: &str, to: &str, message: &str| {
+                let copy = P::copy_example("recursive-data");
+                assert!(types_source.contains(from), "fixture lacks {from:?}");
+                copy.write("src/Types.lex.tex", &types_source.replacen(from, to, 1));
+                let error = copy.check_fails_with("LLT4001");
+                assert!(
+                    error.to_string().contains(message),
+                    "expected {message:?}, got {error}"
+                );
+                copy.assert_no_backend_output();
+            };
+            let tree = r#"{"arguments":[{"kind":"parameter","name":"Item"}],"kind":"named","member":{"name":"Tree"}}"#;
+            // Non-uniform recursive occurrence.
+            mutate(
+                tree,
+                r#"{"arguments":[{"kind":"nat"}],"kind":"named","member":{"name":"Tree"}}"#,
+                "non-uniform recursive occurrence of `Tree`",
+            );
+            // Bad type arguments on a recursive occurrence.
+            mutate(
+                tree,
+                r#"{"arguments":[],"kind":"named","member":{"name":"Tree"}}"#,
+                "type `Tree` expects 1 argument(s), received 0",
+            );
+            // Positivity: a recursive occurrence inside another document type.
+            mutate(
+                r#"{"element":{"arguments":[{"kind":"parameter","name":"Item"}],"kind":"named","member":{"name":"Rose"}},"kind":"list"}"#,
+                r#"{"arguments":[{"arguments":[{"kind":"parameter","name":"Item"}],"kind":"named","member":{"name":"Rose"}}],"kind":"named","member":{"name":"Tree"}}"#,
+                "positivity violation in `Rose.node`",
+            );
+            // An uninhabited cycle: removing the only base case of `Tree`.
+            mutate(
+                r#"{"fields":[],"name":"leaf"},"#,
+                "",
+                "uninhabited recursive cycle: no constructor of inductive `Tree`",
+            );
+            // A mutual group across a foreign declaration, a one-member
+            // group, and members with different type parameters.
+            mutate(
+                r#""mutual":"Syntax","name":"Stmt""#,
+                r#""mutual":"Other","name":"Stmt""#,
+                "has one member; a standalone inductive omits `mutual`",
+            );
+            mutate(
+                r#""mutual":"Syntax","name":"Stmt","parameters":[],"type_parameters":[]"#,
+                r#""mutual":"Syntax","name":"Stmt","parameters":[],"type_parameters":["Item"]"#,
+                "members must declare identical type parameters",
+            );
+            // A self-referential structure.
+            mutate(
+                r#"{"name":"value","type":{"kind":"parameter","name":"Item"}}"#,
+                r#"{"name":"value","type":{"arguments":[{"kind":"parameter","name":"Item"}],"kind":"named","member":{"name":"Located"}}}"#,
+                "structure or class `Located` refers to itself",
+            );
+
+            // Language 1.1 keeps rejecting every recursive payload.
+            let eleven = P::semantic_example();
+            let support_source = eleven.read("src/Support.lex.tex");
+            eleven.write(
+                "src/Support.lex.tex",
+                &support_source.replacen(
+                    r#"{"fields":[],"name":"enabled"}"#,
+                    r#"{"fields":[{"arguments":[],"kind":"named","member":{"name":"RemoteFlag"}}],"name":"enabled"}"#,
+                    1,
+                ),
+            );
+            let error = eleven.check_fails_with("LLT4001");
+            assert!(error.to_string().contains("RemoteFlag"), "{error}");
+
+            // Resource accounting charges every recursive constructor field:
+            // the data module alone is charged at least one node per
+            // declaration, constructor, and field type, and one node fewer
+            // than its observed charge overruns the limit.
+            let limit_at = |limit: u64| {
+                let limited = P::copy_example("recursive-data");
+                limited.edit(
+                    "lexlean.toml",
+                    "max_ir_nodes = 2000000",
+                    &format!("max_ir_nodes = {limit}"),
+                );
+                limited.relock();
+                limited.check_fails_with("LLS8002").to_string()
+            };
+            let message = limit_at(1);
+            assert!(message.contains("through module `Types`"), "{message}");
+            let observed: u64 = message
+                .split("observed ")
+                .nth(1)
+                .and_then(|tail| tail.split(' ').next())
+                .and_then(|count| count.parse().ok())
+                .expect("observed node count");
+            assert!(
+                observed >= 30,
+                "recursive data is charged recursively: {observed}"
+            );
+            assert!(limit_at(observed - 1).contains(&format!("observed {observed} ")));
+        }
+        // §17.12: structural recursion and induction over a recursive
+        // inductive use exactly its direct recursive fields.
+        "DF-13" => {
+            let project = P::copy_example("recursive-data");
+            project.check_ok();
+            let main = support::lean_text(&support::rendered(&project), "Main");
+            for expected in [
+                "| RecursiveData.Types.Tree.node left _ right => ((treeSize (left) + 1) + treeSize (right))",
+                "induction tree with\n  | leaf =>\n    simp only [mirror]\n  | node left value right leftHypothesis rightHypothesis =>\n",
+            ] {
+                assert!(main.contains(expected), "missing {expected:?} in:\n{main}");
+            }
+            let _ = support::verify_ok_backed("DF-13", &project);
+
+            let source = project.read("src/Main.lex.tex");
+            let mutate = |from: &str, to: &str, message: &str| {
+                let copy = P::copy_example("recursive-data");
+                assert!(source.contains(from), "fixture lacks {from:?}");
+                copy.write("src/Main.lex.tex", &source.replacen(from, to, 1));
+                let error = copy.check_fails_with("LLT4001");
+                assert!(
+                    error.to_string().contains(message),
+                    "expected {message:?}, got {error}"
+                );
+                copy.assert_no_backend_output();
+            };
+            // A recursive call on the matched value itself.
+            mutate(
+                r#""arguments":[{"kind":"var","name":"left"}],"function":{"name":"treeSize"}"#,
+                r#""arguments":[{"kind":"var","name":"tree"}],"function":{"name":"treeSize"}"#,
+                "recursive call `treeSize` is not on a structurally smaller value",
+            );
+            // A non-recursive field is not smaller even when the call would
+            // otherwise be typed: `mirror` on the stored label.
+            mutate(
+                r#""arguments":[{"kind":"var","name":"right"}],"function":{"name":"mirror"}"#,
+                r#""arguments":[{"kind":"var","name":"tree"}],"function":{"name":"mirror"}"#,
+                "recursive call `mirror` is not on a structurally smaller value",
+            );
+            // One hypothesis per direct recursive field.
+            mutate(
+                r#""binders":["left","value","right","leftHypothesis","rightHypothesis"]"#,
+                r#""binders":["left","value","right","leftHypothesis"]"#,
+                "proof branch `node` expects 5 binder(s), received 4",
+            );
+            // Induction over a nested inductive is not a closed proof form.
+            mutate(
+                r#"{"kind":"theorem","name":"rose_label","parameters":[],"proof":{"kind":"reflexivity"}"#,
+                r#"{"kind":"theorem","name":"rose_label","parameters":[{"name":"rose","type":{"arguments":[{"kind":"nat"}],"kind":"named","member":{"module":"Types","name":"Rose"}}}],"proof":{"branches":[{"binders":["label","children"],"constructor":"node","proof":{"kind":"reflexivity"}}],"kind":"induction","scrutinee":"rose"}"#,
+                "requires a self-recursive inductive without nested or mutual occurrences",
+            );
         }
         other => panic!("no declarations case is wired for {other}"),
     }

@@ -119,9 +119,11 @@ fn term_uses(term: &SemanticTerm, local: &str) -> bool {
             left: head,
             right: tail,
         } => pair(head, tail),
-        SemanticTerm::Not { value } | SemanticTerm::Project { value, .. } => {
-            term_uses(value, local)
-        }
+        SemanticTerm::Not { value }
+        | SemanticTerm::Project { value, .. }
+        | SemanticTerm::First { value }
+        | SemanticTerm::Second { value } => term_uses(value, local),
+        SemanticTerm::Pair { left, right } => term_uses(left, local) || term_uses(right, local),
         SemanticTerm::Record { fields, .. } => fields
             .iter()
             .any(|assignment| term_uses(&assignment.value, local)),
@@ -249,6 +251,9 @@ impl Render<'_> {
                     out.push(')');
                 }
                 out
+            }
+            SemanticType::Product { left, right } => {
+                format!("(Prod ({}) ({}))", self.ty(left), self.ty(right))
             }
         }
     }
@@ -585,6 +590,11 @@ impl Render<'_> {
                 self.term(value),
                 self.term(body)
             ),
+            SemanticTerm::Pair { left, right } => {
+                format!("({}, {})", self.term(left), self.term(right))
+            }
+            SemanticTerm::First { value } => format!("({}).1", self.term(value)),
+            SemanticTerm::Second { value } => format!("({}).2", self.term(value)),
         }
     }
 
@@ -1094,8 +1104,20 @@ pub fn render_lean(
     {
         text.push_str(portable_runtime());
     }
-    for declaration in &module.declarations {
+    let group_of = |index: usize| match module.declarations.get(index) {
+        Some(SemanticDeclaration::Inductive {
+            mutual: Some(label),
+            ..
+        }) => Some(label.as_str()),
+        _ => None,
+    };
+    for (index, declaration) in module.declarations.iter().enumerate() {
         text.push('\n');
+        // §17.12: one contiguous mutual group is one Lean `mutual` block.
+        let group = group_of(index);
+        if group.is_some() && (index == 0 || group_of(index - 1) != group) {
+            text.push_str("mutual\n");
+        }
         match declaration {
             SemanticDeclaration::Structure {
                 name,
@@ -1166,6 +1188,7 @@ pub fn render_lean(
                 type_parameters,
                 parameters,
                 constructors,
+                ..
             } => {
                 let name = identifier(name);
                 text.push_str(&format!(
@@ -1180,6 +1203,9 @@ pub fn render_lean(
                         .map(|field| format!(" (_ : {})", render.ty(field)))
                         .collect::<String>();
                     text.push_str(&format!("  | {}{fields}\n", identifier(&constructor.name)));
+                }
+                if group_of(index).is_some() && group_of(index + 1) != group_of(index) {
+                    text.push_str("end\n");
                 }
             }
             SemanticDeclaration::Definition {
@@ -1269,6 +1295,7 @@ pub fn render_latex(
     let render = Render {
         prefix: module_prefix,
     };
+    let version_2 = module.spec == "lexlean/semantic-module/2";
     let mut text = String::from(
         "\\documentclass[11pt]{article}\n\\usepackage[T1]{fontenc}\n\\usepackage{amsmath,amssymb}\n\\begin{document}\n\\section*{Semantic declarations}\n",
     );
@@ -1311,7 +1338,49 @@ pub fn render_latex(
                     tex_escape(&policy)
                 ));
             }
-            _ => {}
+            // Language 1.2 renders the data shape that 1.1 leaves implicit;
+            // 1.1 documents keep their historical bytes.
+            SemanticDeclaration::Inductive {
+                constructors,
+                mutual,
+                ..
+            } if version_2 => {
+                if let Some(label) = mutual {
+                    text.push_str(&format!(
+                        "\\noindent Mutual group: \\texttt{{{}}}.\\par\n",
+                        tex_escape(label)
+                    ));
+                }
+                for constructor in constructors {
+                    let fields = constructor
+                        .fields
+                        .iter()
+                        .map(|field| render.ty(field))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    text.push_str(&format!(
+                        "\\noindent Constructor \\texttt{{{}}}: \\texttt{{({})}}.\\par\n",
+                        tex_escape(&constructor.name),
+                        tex_escape(&fields)
+                    ));
+                }
+            }
+            SemanticDeclaration::Structure { fields, .. }
+            | SemanticDeclaration::Class { fields, .. }
+                if version_2 =>
+            {
+                for field in fields {
+                    text.push_str(&format!(
+                        "\\noindent Field \\texttt{{{}}}: \\texttt{{{}}}.\\par\n",
+                        tex_escape(&field.name),
+                        tex_escape(&render.ty(&field.r#type))
+                    ));
+                }
+            }
+            SemanticDeclaration::Structure { .. }
+            | SemanticDeclaration::Class { .. }
+            | SemanticDeclaration::Instance { .. }
+            | SemanticDeclaration::Inductive { .. } => {}
         }
     }
     text.push_str("\\end{document}\n");

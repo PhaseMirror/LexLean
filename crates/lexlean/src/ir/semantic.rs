@@ -194,6 +194,8 @@ pub enum SemanticType {
         member: MemberRef,
         arguments: Vec<Self>,
     },
+    /// Language 1.2: the binary product of two closed types.
+    Product { left: Box<Self>, right: Box<Self> },
 }
 
 /// One explicit declaration parameter.
@@ -376,6 +378,19 @@ pub enum SemanticTerm {
         value: Box<Self>,
         body: Box<Self>,
     },
+    /// Language 1.2: the pair of two values, of product type.
+    Pair {
+        left: Box<Self>,
+        right: Box<Self>,
+    },
+    /// Language 1.2: the first component of a pair.
+    First {
+        value: Box<Self>,
+    },
+    /// Language 1.2: the second component of a pair.
+    Second {
+        value: Box<Self>,
+    },
 }
 
 /// One proof branch for a fixed cases/induction lowering.
@@ -493,6 +508,10 @@ pub enum SemanticDeclaration {
         type_parameters: Vec<String>,
         parameters: Vec<SemanticParameter>,
         constructors: Vec<SemanticConstructor>,
+        /// Language 1.2: the label of the contiguous mutual group this
+        /// inductive belongs to. Absent for a standalone inductive.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        mutual: Option<String>,
     },
     Definition {
         name: String,
@@ -573,6 +592,7 @@ fn type_node_count(ty: &SemanticType) -> u64 {
         SemanticType::Result { ok, error } => type_node_count(ok) + type_node_count(error),
         SemanticType::List { element } => type_node_count(element),
         SemanticType::Named { arguments, .. } => arguments.iter().map(type_node_count).sum(),
+        SemanticType::Product { left, right } => type_node_count(left) + type_node_count(right),
         _ => 0,
     }
 }
@@ -641,7 +661,12 @@ fn term_node_count(term: &SemanticTerm) -> u64 {
         | SemanticTerm::Iff {
             left: head,
             right: tail,
+        }
+        | SemanticTerm::Pair {
+            left: head,
+            right: tail,
         } => pair(head, tail),
+        SemanticTerm::First { value } | SemanticTerm::Second { value } => term_node_count(value),
         SemanticTerm::Record {
             type_arguments,
             fields,
@@ -784,6 +809,9 @@ pub fn semantic_module_spec(language: &str) -> Option<&'static str> {
 fn language_1_2_construct(term: &SemanticTerm) -> Option<&'static str> {
     match term {
         SemanticTerm::Let { .. } => Some("let"),
+        SemanticTerm::Pair { .. } => Some("pair"),
+        SemanticTerm::First { .. } => Some("first"),
+        SemanticTerm::Second { .. } => Some("second"),
         SemanticTerm::Var { .. }
         | SemanticTerm::Nat { .. }
         | SemanticTerm::Integer { .. }
@@ -891,11 +919,18 @@ fn visit_terms(term: &SemanticTerm, visit: &mut impl FnMut(&SemanticTerm)) {
         | SemanticTerm::Iff {
             left: head,
             right: tail,
+        }
+        | SemanticTerm::Pair {
+            left: head,
+            right: tail,
         } => {
             visit_terms(head, visit);
             visit_terms(tail, visit);
         }
-        SemanticTerm::Project { value, .. } | SemanticTerm::Not { value } => {
+        SemanticTerm::Project { value, .. }
+        | SemanticTerm::Not { value }
+        | SemanticTerm::First { value }
+        | SemanticTerm::Second { value } => {
             visit_terms(value, visit);
         }
         SemanticTerm::If {
@@ -921,6 +956,131 @@ fn visit_terms(term: &SemanticTerm, visit: &mut impl FnMut(&SemanticTerm)) {
             visit_terms(value, visit);
             visit_terms(body, visit);
         }
+    }
+}
+
+/// The construct name when `ty` contains a language-1.2-only type form.
+fn language_1_2_type(ty: &SemanticType) -> Option<&'static str> {
+    match ty {
+        SemanticType::Product { .. } => Some("product type"),
+        SemanticType::Option { value: inner } | SemanticType::List { element: inner } => {
+            language_1_2_type(inner)
+        }
+        SemanticType::Result { ok, error } => {
+            language_1_2_type(ok).or_else(|| language_1_2_type(error))
+        }
+        SemanticType::Named { arguments, .. } => arguments.iter().find_map(language_1_2_type),
+        SemanticType::Type
+        | SemanticType::Parameter { .. }
+        | SemanticType::Nat
+        | SemanticType::Bool
+        | SemanticType::Prop
+        | SemanticType::Unit
+        | SemanticType::Int
+        | SemanticType::Int8
+        | SemanticType::Int16
+        | SemanticType::Int32
+        | SemanticType::Int64
+        | SemanticType::UInt8
+        | SemanticType::UInt16
+        | SemanticType::UInt32
+        | SemanticType::UInt64
+        | SemanticType::String
+        | SemanticType::Bytes
+        | SemanticType::Ordering => None,
+    }
+}
+
+/// Visit the types a term node itself carries (not those of subterms).
+fn term_types(term: &SemanticTerm, visit: &mut impl FnMut(&SemanticType)) {
+    match term {
+        SemanticTerm::Nil { element } => visit(element),
+        SemanticTerm::Primitive { result, .. } => visit(result),
+        SemanticTerm::Record { type_arguments, .. }
+        | SemanticTerm::Constructor { type_arguments, .. } => {
+            type_arguments.iter().for_each(&mut *visit);
+        }
+        SemanticTerm::InstanceValue { arguments, .. } => arguments.iter().for_each(&mut *visit),
+        SemanticTerm::Forall { binder, .. } | SemanticTerm::Let { binder, .. } => {
+            visit(&binder.r#type);
+        }
+        SemanticTerm::Var { .. }
+        | SemanticTerm::Nat { .. }
+        | SemanticTerm::Integer { .. }
+        | SemanticTerm::String { .. }
+        | SemanticTerm::Bytes { .. }
+        | SemanticTerm::Bool { .. }
+        | SemanticTerm::Unit
+        | SemanticTerm::Cons { .. }
+        | SemanticTerm::Project { .. }
+        | SemanticTerm::Call { .. }
+        | SemanticTerm::If { .. }
+        | SemanticTerm::Match { .. }
+        | SemanticTerm::Eq { .. }
+        | SemanticTerm::Le { .. }
+        | SemanticTerm::Lt { .. }
+        | SemanticTerm::Add { .. }
+        | SemanticTerm::Beq { .. }
+        | SemanticTerm::Ble { .. }
+        | SemanticTerm::Blt { .. }
+        | SemanticTerm::And { .. }
+        | SemanticTerm::PropAnd { .. }
+        | SemanticTerm::Or { .. }
+        | SemanticTerm::Not { .. }
+        | SemanticTerm::Implies { .. }
+        | SemanticTerm::Iff { .. }
+        | SemanticTerm::Pair { .. }
+        | SemanticTerm::First { .. }
+        | SemanticTerm::Second { .. } => {}
+    }
+}
+
+/// Visit every type a declaration states directly (parameters, fields,
+/// constructor fields, instance arguments, and results).
+fn declaration_types(declaration: &SemanticDeclaration, visit: &mut impl FnMut(&SemanticType)) {
+    let parameters = |values: &[SemanticParameter], visit: &mut dyn FnMut(&SemanticType)| {
+        for parameter in values {
+            visit(&parameter.r#type);
+        }
+    };
+    match declaration {
+        SemanticDeclaration::Structure {
+            parameters: values,
+            fields,
+            ..
+        }
+        | SemanticDeclaration::Class {
+            parameters: values,
+            fields,
+            ..
+        } => {
+            parameters(values, visit);
+            for field in fields {
+                visit(&field.r#type);
+            }
+        }
+        SemanticDeclaration::Instance { arguments, .. } => arguments.iter().for_each(visit),
+        SemanticDeclaration::Inductive {
+            parameters: values,
+            constructors,
+            ..
+        } => {
+            parameters(values, visit);
+            for constructor in constructors {
+                constructor.fields.iter().for_each(&mut *visit);
+            }
+        }
+        SemanticDeclaration::Definition {
+            parameters: values,
+            result,
+            ..
+        } => {
+            parameters(values, visit);
+            visit(result);
+        }
+        SemanticDeclaration::Theorem {
+            parameters: values, ..
+        } => parameters(values, visit),
     }
 }
 
@@ -979,6 +1139,8 @@ impl SemanticModule {
 
 #[derive(Default)]
 struct Environment<'a> {
+    /// Whether the module is language-1.2 data (`lexlean/semantic-module/2`).
+    language_1_2: bool,
     imports: &'a [String],
     types: BTreeMap<String, TypeInfo>,
     functions: BTreeMap<String, FunctionInfo>,
@@ -986,7 +1148,7 @@ struct Environment<'a> {
     proof_rules: BTreeMap<String, Vec<SemanticType>>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 struct TypeInfo {
     parameters: usize,
     fields: Vec<String>,
@@ -995,6 +1157,12 @@ struct TypeInfo {
     field_types: Vec<SemanticType>,
     constructor_types: BTreeMap<String, Vec<SemanticType>>,
     class: bool,
+    /// Language 1.2: per constructor, which fields are a direct recursive
+    /// occurrence of this very type (the structurally smaller positions).
+    direct_recursive: BTreeMap<String, Vec<bool>>,
+    /// Language 1.2: a recursive occurrence of the group appears nested
+    /// under a container, or the type belongs to a mutual group.
+    nested_or_mutual: bool,
 }
 
 #[derive(Clone)]
@@ -1045,7 +1213,28 @@ fn qualify_type(ty: &SemanticType, module: &str) -> SemanticType {
             ok: Box::new(qualify_type(ok, module)),
             error: Box::new(qualify_type(error, module)),
         },
-        other => other.clone(),
+        SemanticType::Product { left, right } => SemanticType::Product {
+            left: Box::new(qualify_type(left, module)),
+            right: Box::new(qualify_type(right, module)),
+        },
+        SemanticType::Type
+        | SemanticType::Parameter { .. }
+        | SemanticType::Nat
+        | SemanticType::Bool
+        | SemanticType::Prop
+        | SemanticType::Unit
+        | SemanticType::Int
+        | SemanticType::Int8
+        | SemanticType::Int16
+        | SemanticType::Int32
+        | SemanticType::Int64
+        | SemanticType::UInt8
+        | SemanticType::UInt16
+        | SemanticType::UInt32
+        | SemanticType::UInt64
+        | SemanticType::String
+        | SemanticType::Bytes
+        | SemanticType::Ordering => ty.clone(),
     }
 }
 
@@ -1127,6 +1316,16 @@ fn check_type(ty: &SemanticType, env: &Environment<'_>) -> Result<(), String> {
             check_type(ok, env)?;
             check_type(error, env)
         }
+        SemanticType::Product { left, right } => {
+            if !env.language_1_2 {
+                return Err(
+                    "`product type` is a language-1.2 construct; language 1.1 rejects it"
+                        .to_owned(),
+                );
+            }
+            check_type(left, env)?;
+            check_type(right, env)
+        }
         SemanticType::Named { member, arguments } => {
             check_member(member, env)?;
             for argument in arguments {
@@ -1160,7 +1359,11 @@ fn check_type_parameters(ty: &SemanticType, allowed: &BTreeSet<String>) -> Resul
         SemanticType::List { element } | SemanticType::Option { value: element } => {
             check_type_parameters(element, allowed)
         }
-        SemanticType::Result { ok, error } => {
+        SemanticType::Result { ok, error }
+        | SemanticType::Product {
+            left: ok,
+            right: error,
+        } => {
             check_type_parameters(ok, allowed)?;
             check_type_parameters(error, allowed)
         }
@@ -1306,6 +1509,391 @@ fn constructor_arity(member: &MemberRef, env: &Environment<'_>) -> Option<usize>
 }
 
 #[allow(clippy::too_many_lines)]
+/// Where a constructor field mentions a member of the inductive group being
+/// declared (§17.12 positivity).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Occurrence {
+    /// The field does not mention the group.
+    Absent,
+    /// The field is exactly one group member applied to the declared type
+    /// parameters, in order.
+    Direct,
+    /// A group member occurs strictly positively under `List`, `Option`,
+    /// `Result`, or a product.
+    Nested,
+}
+
+fn mentions_group(ty: &SemanticType, group: &BTreeSet<String>) -> bool {
+    match ty {
+        SemanticType::Named { member, arguments } => {
+            (member.module.is_none() && group.contains(&member.name))
+                || arguments
+                    .iter()
+                    .any(|argument| mentions_group(argument, group))
+        }
+        SemanticType::List { element: inner } | SemanticType::Option { value: inner } => {
+            mentions_group(inner, group)
+        }
+        SemanticType::Result { ok, error }
+        | SemanticType::Product {
+            left: ok,
+            right: error,
+        } => mentions_group(ok, group) || mentions_group(error, group),
+        SemanticType::Type
+        | SemanticType::Parameter { .. }
+        | SemanticType::Nat
+        | SemanticType::Bool
+        | SemanticType::Prop
+        | SemanticType::Unit
+        | SemanticType::Int
+        | SemanticType::Int8
+        | SemanticType::Int16
+        | SemanticType::Int32
+        | SemanticType::Int64
+        | SemanticType::UInt8
+        | SemanticType::UInt16
+        | SemanticType::UInt32
+        | SemanticType::UInt64
+        | SemanticType::String
+        | SemanticType::Bytes
+        | SemanticType::Ordering => false,
+    }
+}
+
+/// Classify one constructor field against the group. Recursive occurrences
+/// must be uniform (the declared type parameters, in order) and strictly
+/// positive: directly, or nested only under the closed containers. A group
+/// member inside another document type's arguments is rejected, because the
+/// positivity of that type's parameters is not part of its closed contract.
+fn classify_occurrence(
+    ty: &SemanticType,
+    group: &BTreeSet<String>,
+    uniform: &[SemanticType],
+    top: bool,
+    owner: &str,
+) -> Result<Occurrence, String> {
+    match ty {
+        SemanticType::Named { member, arguments }
+            if member.module.is_none() && group.contains(&member.name) =>
+        {
+            if arguments.as_slice() != uniform {
+                return Err(format!(
+                    "non-uniform recursive occurrence of `{}` in `{owner}`: its arguments must be the declared type parameters in order",
+                    member.name
+                ));
+            }
+            Ok(if top {
+                Occurrence::Direct
+            } else {
+                Occurrence::Nested
+            })
+        }
+        SemanticType::Named { member, arguments } => {
+            if arguments
+                .iter()
+                .any(|argument| mentions_group(argument, group))
+            {
+                return Err(format!(
+                    "positivity violation in `{owner}`: a recursive occurrence inside document type `{}` is not permitted",
+                    member_key(member)
+                ));
+            }
+            Ok(Occurrence::Absent)
+        }
+        SemanticType::List { element: inner } | SemanticType::Option { value: inner } => Ok(
+            match classify_occurrence(inner, group, uniform, false, owner)? {
+                Occurrence::Absent => Occurrence::Absent,
+                Occurrence::Direct | Occurrence::Nested => Occurrence::Nested,
+            },
+        ),
+        SemanticType::Result { ok, error }
+        | SemanticType::Product {
+            left: ok,
+            right: error,
+        } => {
+            let left = classify_occurrence(ok, group, uniform, false, owner)?;
+            let right = classify_occurrence(error, group, uniform, false, owner)?;
+            Ok(
+                if left == Occurrence::Absent && right == Occurrence::Absent {
+                    Occurrence::Absent
+                } else {
+                    Occurrence::Nested
+                },
+            )
+        }
+        SemanticType::Type
+        | SemanticType::Parameter { .. }
+        | SemanticType::Nat
+        | SemanticType::Bool
+        | SemanticType::Prop
+        | SemanticType::Unit
+        | SemanticType::Int
+        | SemanticType::Int8
+        | SemanticType::Int16
+        | SemanticType::Int32
+        | SemanticType::Int64
+        | SemanticType::UInt8
+        | SemanticType::UInt16
+        | SemanticType::UInt32
+        | SemanticType::UInt64
+        | SemanticType::String
+        | SemanticType::Bytes
+        | SemanticType::Ordering => Ok(Occurrence::Absent),
+    }
+}
+
+/// Whether a value of `ty` can be built from the group members already
+/// known to be inhabited. Containers that have an empty value (`List`,
+/// `Option`) are always inhabited; every type that is not a group member
+/// was itself accepted as inhabited.
+fn constructible(
+    ty: &SemanticType,
+    group: &BTreeSet<String>,
+    inhabited: &BTreeSet<String>,
+) -> bool {
+    match ty {
+        SemanticType::Named { member, .. }
+            if member.module.is_none() && group.contains(&member.name) =>
+        {
+            inhabited.contains(&member.name)
+        }
+        SemanticType::Result { ok, error } => {
+            constructible(ok, group, inhabited) || constructible(error, group, inhabited)
+        }
+        SemanticType::Product { left, right } => {
+            constructible(left, group, inhabited) && constructible(right, group, inhabited)
+        }
+        SemanticType::List { .. }
+        | SemanticType::Option { .. }
+        | SemanticType::Named { .. }
+        | SemanticType::Type
+        | SemanticType::Parameter { .. }
+        | SemanticType::Nat
+        | SemanticType::Bool
+        | SemanticType::Prop
+        | SemanticType::Unit
+        | SemanticType::Int
+        | SemanticType::Int8
+        | SemanticType::Int16
+        | SemanticType::Int32
+        | SemanticType::Int64
+        | SemanticType::UInt8
+        | SemanticType::UInt16
+        | SemanticType::UInt32
+        | SemanticType::UInt64
+        | SemanticType::String
+        | SemanticType::Bytes
+        | SemanticType::Ordering => true,
+    }
+}
+
+/// One member of a language-1.2 inductive group.
+struct InductiveRow<'a> {
+    name: &'a str,
+    type_parameters: &'a [String],
+    parameters: &'a [SemanticParameter],
+    constructors: &'a [SemanticConstructor],
+}
+
+/// The structurally-smaller flags of one already-validated inductive group
+/// and whether it is nested or mutual; shared by local and imported data.
+fn recursion_flags(
+    rows: &[InductiveRow<'_>],
+) -> BTreeMap<String, (BTreeMap<String, Vec<bool>>, bool)> {
+    let group: BTreeSet<String> = rows.iter().map(|row| row.name.to_owned()).collect();
+    let mut out = BTreeMap::new();
+    for row in rows {
+        let uniform: Vec<SemanticType> = row
+            .type_parameters
+            .iter()
+            .map(|name| SemanticType::Parameter { name: name.clone() })
+            .collect();
+        let mut nested = rows.len() > 1;
+        let mut flags = BTreeMap::new();
+        for constructor in row.constructors {
+            let mut direct = Vec::new();
+            for field in &constructor.fields {
+                let occurrence = classify_occurrence(field, &group, &uniform, true, row.name)
+                    .unwrap_or(Occurrence::Absent);
+                nested |= occurrence == Occurrence::Nested;
+                direct.push(
+                    occurrence == Occurrence::Direct
+                        && matches!(field, SemanticType::Named { member, .. } if member.name == row.name),
+                );
+            }
+            flags.insert(format!("{}.{}", row.name, constructor.name), direct);
+        }
+        out.insert(row.name.to_owned(), (flags, nested));
+    }
+    out
+}
+
+/// Validate and register one language-1.2 inductive group (a standalone
+/// inductive is a group of one): uniform, strictly positive recursion and a
+/// buildable base case for every member, all checked before any backend.
+fn register_inductive_group(
+    rows: &[InductiveRow<'_>],
+    label: Option<&str>,
+    env: &mut Environment<'_>,
+    generated_names: &mut BTreeSet<String>,
+) -> Result<(), String> {
+    let first = &rows[0];
+    if let Some(label) = label {
+        check_name(label, "mutual group")?;
+        if rows.len() < 2 {
+            return Err(format!(
+                "mutual group `{label}` has one member; a standalone inductive omits `mutual`"
+            ));
+        }
+    }
+    let type_parameter_set = type_parameter_set(first.type_parameters)?;
+    let mut group = BTreeSet::new();
+    for row in rows {
+        if !group.insert(row.name.to_owned()) {
+            return Err(format!("duplicate generated name `{}`", row.name));
+        }
+        if row.type_parameters != first.type_parameters {
+            return Err(format!(
+                "mutual group `{}` members must declare identical type parameters; `{}` differs from `{}`",
+                label.unwrap_or(first.name),
+                row.name,
+                first.name
+            ));
+        }
+        if !row.parameters.is_empty() {
+            return Err(format!(
+                "inductive `{}` value parameters are not part of a finite data declaration",
+                row.name
+            ));
+        }
+        if row.constructors.is_empty() {
+            return Err(format!("inductive `{}` has no constructors", row.name));
+        }
+    }
+    // Every member is visible to every constructor field of the group, and
+    // to nothing declared earlier: a forward reference outside the group
+    // still fails in `check_type`.
+    for row in rows {
+        env.types.insert(
+            row.name.to_owned(),
+            TypeInfo {
+                parameters: row.type_parameters.len(),
+                type_parameters: row.type_parameters.to_vec(),
+                constructors: row
+                    .constructors
+                    .iter()
+                    .map(|constructor| {
+                        (
+                            format!("{}.{}", row.name, constructor.name),
+                            constructor.fields.len(),
+                        )
+                    })
+                    .collect(),
+                constructor_types: row
+                    .constructors
+                    .iter()
+                    .map(|constructor| {
+                        (
+                            format!("{}.{}", row.name, constructor.name),
+                            constructor.fields.clone(),
+                        )
+                    })
+                    .collect(),
+                ..TypeInfo::default()
+            },
+        );
+    }
+    let uniform: Vec<SemanticType> = first
+        .type_parameters
+        .iter()
+        .map(|name| SemanticType::Parameter { name: name.clone() })
+        .collect();
+    for row in rows {
+        for constructor in row.constructors {
+            check_name(&constructor.name, "constructor")?;
+            let full = format!("{}.{}", row.name, constructor.name);
+            if !generated_names.insert(full.clone()) {
+                return Err(format!("duplicate generated name `{full}`"));
+            }
+            for field in &constructor.fields {
+                check_type(field, env)?;
+                check_type_parameters(field, &type_parameter_set)?;
+                classify_occurrence(field, &group, &uniform, true, &full)?;
+            }
+        }
+    }
+    let mut inhabited = BTreeSet::new();
+    loop {
+        let before = inhabited.len();
+        for row in rows {
+            if row.constructors.iter().any(|constructor| {
+                constructor
+                    .fields
+                    .iter()
+                    .all(|field| constructible(field, &group, &inhabited))
+            }) {
+                inhabited.insert(row.name.to_owned());
+            }
+        }
+        if inhabited.len() == before {
+            break;
+        }
+    }
+    if let Some(empty) = rows.iter().find(|row| !inhabited.contains(row.name)) {
+        return Err(format!(
+            "uninhabited recursive cycle: no constructor of inductive `{}` can be built without an existing value of its group",
+            empty.name
+        ));
+    }
+    for (name, (direct_recursive, nested_or_mutual)) in recursion_flags(rows) {
+        if let Some(info) = env.types.get_mut(&name) {
+            info.direct_recursive = direct_recursive;
+            info.nested_or_mutual = nested_or_mutual;
+        }
+    }
+    Ok(())
+}
+
+/// Reject a language-1.2-only construct in a language-1.1 module.
+fn require_language_1_2(env: &Environment<'_>, construct: &str) -> Result<(), String> {
+    if env.language_1_2 {
+        Ok(())
+    } else {
+        Err(format!(
+            "`{construct}` is a language-1.2 construct; language 1.1 rejects it"
+        ))
+    }
+}
+
+/// The pattern-binder positions of `constructor` that are structurally
+/// smaller values of the matched type: the `List.cons` tail, the `Nat.succ`
+/// predecessor, and every field of a document inductive that is a direct,
+/// uniform recursive occurrence of that same inductive (§17.12).
+fn structurally_smaller_positions(constructor: &MemberRef, env: &Environment<'_>) -> Vec<usize> {
+    if constructor.module.is_none() {
+        match constructor.name.as_str() {
+            "List.cons" => return vec![1],
+            "Nat.succ" => return vec![0],
+            "List.nil" | "Nat.zero" | "Bool.false" | "Bool.true" | "Option.none"
+            | "Option.some" | "Result.error" | "Result.ok" | "Prod.mk" => return Vec::new(),
+            _ => {}
+        }
+    }
+    for (owner, info) in &env.types {
+        if member_from_key(owner).module != constructor.module {
+            continue;
+        }
+        if let Some(flags) = info.direct_recursive.get(&constructor.name) {
+            return flags
+                .iter()
+                .enumerate()
+                .filter_map(|(index, direct)| direct.then_some(index))
+                .collect();
+        }
+    }
+    Vec::new()
+}
+
 fn check_term(
     term: &SemanticTerm,
     locals: &BTreeSet<String>,
@@ -1579,6 +2167,7 @@ fn check_term(
                     "Nat.succ" => 1,
                     "Option.none" => 0,
                     "Option.some" | "Result.error" | "Result.ok" => 1,
+                    "Prod.mk" if env.language_1_2 && branch.constructor.module.is_none() => 2,
                     _ => constructor_arity(&branch.constructor, env).ok_or_else(|| {
                         format!("unknown match constructor `{}`", branch.constructor.name)
                     })?,
@@ -1601,7 +2190,15 @@ fn check_term(
                 if recursion.is_some_and(|(_, _, argument)| {
                     matches!(scrutinee.as_ref(), SemanticTerm::Var { name } if name == argument)
                 }) {
-                    if let Some(last) = branch.binders.last() {
+                    if env.language_1_2 {
+                        for position in
+                            structurally_smaller_positions(&branch.constructor, env)
+                        {
+                            if let Some(binder) = branch.binders.get(position) {
+                                branch_smaller.insert(binder.clone());
+                            }
+                        }
+                    } else if let Some(last) = branch.binders.last() {
                         branch_smaller.insert(last.clone());
                     }
                 }
@@ -1618,6 +2215,7 @@ fn check_term(
             let nat = BTreeSet::from(["Nat.succ".to_owned(), "Nat.zero".to_owned()]);
             let option = BTreeSet::from(["Option.none".to_owned(), "Option.some".to_owned()]);
             let result = BTreeSet::from(["Result.error".to_owned(), "Result.ok".to_owned()]);
+            let product = BTreeSet::from(["Prod.mk".to_owned()]);
             let declared = env.types.values().find_map(|info| {
                 let set: BTreeSet<String> = info.constructors.keys().cloned().collect();
                 (set == constructors).then_some(set)
@@ -1627,6 +2225,7 @@ fn check_term(
                 && constructors != nat
                 && constructors != option
                 && constructors != result
+                && !(env.language_1_2 && constructors == product)
                 && declared.is_none()
             {
                 return Err(format!(
@@ -1662,6 +2261,18 @@ fn check_term(
             // admitted as smaller: termination evidence stays syntactic.
             check_term(body, &nested, env, recursion, smaller)
         }
+        SemanticTerm::Pair { left, right } => {
+            require_language_1_2(env, "pair")?;
+            pair(left, right)
+        }
+        SemanticTerm::First { value } => {
+            require_language_1_2(env, "first")?;
+            check_term(value, locals, env, recursion, smaller)
+        }
+        SemanticTerm::Second { value } => {
+            require_language_1_2(env, "second")?;
+            check_term(value, locals, env, recursion, smaller)
+        }
     }
 }
 
@@ -1691,7 +2302,27 @@ fn substitute_type(
                 .map(|argument| substitute_type(argument, substitutions))
                 .collect(),
         },
-        _ => ty.clone(),
+        SemanticType::Product { left, right } => SemanticType::Product {
+            left: Box::new(substitute_type(left, substitutions)),
+            right: Box::new(substitute_type(right, substitutions)),
+        },
+        SemanticType::Type
+        | SemanticType::Nat
+        | SemanticType::Bool
+        | SemanticType::Prop
+        | SemanticType::Unit
+        | SemanticType::Int
+        | SemanticType::Int8
+        | SemanticType::Int16
+        | SemanticType::Int32
+        | SemanticType::Int64
+        | SemanticType::UInt8
+        | SemanticType::UInt16
+        | SemanticType::UInt32
+        | SemanticType::UInt64
+        | SemanticType::String
+        | SemanticType::Bytes
+        | SemanticType::Ordering => ty.clone(),
     }
 }
 
@@ -2289,6 +2920,17 @@ fn infer_term(
                             }
                         }
                     }
+                    Some(SemanticType::Product { left, right }) => {
+                        match branch.constructor.name.as_str() {
+                            "Prod.mk" if branch.constructor.module.is_none() => {
+                                vec![left.as_ref().clone(), right.as_ref().clone()]
+                            }
+                            _ => {
+                                return Err("product match uses a constructor other than `Prod.mk`"
+                                    .to_owned())
+                            }
+                        }
+                    }
                     Some(SemanticType::Named { member, arguments }) => {
                         let Some((owner, fields)) =
                             constructor_signature(&branch.constructor, arguments, env)?
@@ -2428,6 +3070,24 @@ fn infer_term(
             nested.insert(binder.name.clone(), binder.r#type.clone());
             infer_term(body, &nested, env)
         }
+        SemanticTerm::Pair { left, right } => match (infer(left)?, infer(right)?) {
+            (Some(left), Some(right)) => Ok(Some(SemanticType::Product {
+                left: Box::new(left),
+                right: Box::new(right),
+            })),
+            _ => Ok(None),
+        },
+        SemanticTerm::First { value } | SemanticTerm::Second { value } => match infer(value)? {
+            Some(SemanticType::Product { left, right }) => {
+                Ok(Some(if matches!(term, SemanticTerm::First { .. }) {
+                    *left
+                } else {
+                    *right
+                }))
+            }
+            Some(other) => Err(format!("pair projection of non-product type {other:?}")),
+            None => Ok(None),
+        },
     }
 }
 
@@ -2690,17 +3350,29 @@ fn check_elimination_proof(
                     "proof scrutinee `{scrutinee}` does not have an inductive type"
                 ));
             }
+            if induction && env.language_1_2 && info.nested_or_mutual {
+                return Err(format!(
+                    "induction on `{scrutinee}` requires a self-recursive inductive without nested or mutual occurrences; use cases"
+                ));
+            }
             let substitutions = substitutions(info, arguments);
             info.constructor_types
                 .iter()
                 .map(|(name, fields)| {
-                    (
-                        name.rsplit('.').next().unwrap_or(name).to_owned(),
-                        fields
-                            .iter()
-                            .map(|field| substitute_type(field, &substitutions))
-                            .collect(),
-                    )
+                    let mut binders: Vec<SemanticType> = fields
+                        .iter()
+                        .map(|field| substitute_type(field, &substitutions))
+                        .collect();
+                    // §17.12: induction binds one hypothesis per direct
+                    // recursive field, after the fields, in field order.
+                    if induction && env.language_1_2 {
+                        let hypotheses = info
+                            .direct_recursive
+                            .get(name)
+                            .map_or(0, |flags| flags.iter().filter(|direct| **direct).count());
+                        binders.extend(std::iter::repeat_n(SemanticType::Prop, hypotheses));
+                    }
+                    (name.rsplit('.').next().unwrap_or(name).to_owned(), binders)
                 })
                 .collect()
         }
@@ -2771,14 +3443,37 @@ impl SemanticModule {
         Ok(module)
     }
 
-    /// The first language-1.2-only construct in this module, by kind.
+    /// The first language-1.2-only construct in this module, by kind: a
+    /// declaration form, a type, or a term, in declaration order.
     #[must_use]
     pub fn first_language_1_2_construct(&self) -> Option<&'static str> {
         let mut found = None;
         for declaration in &self.declarations {
+            if found.is_some() {
+                break;
+            }
+            if let SemanticDeclaration::Inductive {
+                mutual: Some(_), ..
+            } = declaration
+            {
+                found = Some("mutual inductive group");
+                break;
+            }
+            declaration_types(declaration, &mut |ty| {
+                if found.is_none() {
+                    found = language_1_2_type(ty);
+                }
+            });
             declaration_terms(declaration, &mut |term| {
                 if found.is_none() {
                     found = language_1_2_construct(term);
+                }
+                if found.is_none() {
+                    term_types(term, &mut |ty| {
+                        if found.is_none() {
+                            found = language_1_2_type(ty);
+                        }
+                    });
                 }
             });
         }
@@ -2812,13 +3507,52 @@ impl SemanticModule {
             return Err("a semantic module contains at least one declaration".to_owned());
         }
         let mut env = Environment {
+            language_1_2: language == crate::LANGUAGE_1_2,
             imports,
             ..Environment::default()
         };
+        let mut imported_flags: BTreeMap<String, (BTreeMap<String, Vec<bool>>, bool)> =
+            BTreeMap::new();
         for import in imports {
             let Some(module) = imported_modules.get(import) else {
                 continue;
             };
+            // Imported recursive groups keep their structurally-smaller
+            // positions, so recursion over them follows the same rule as
+            // recursion over a local group.
+            let mut imported_groups: BTreeMap<Option<&str>, Vec<InductiveRow<'_>>> =
+                BTreeMap::new();
+            for declaration in &module.declarations {
+                if let SemanticDeclaration::Inductive {
+                    name,
+                    type_parameters,
+                    parameters,
+                    constructors,
+                    mutual,
+                } = declaration
+                {
+                    let row = InductiveRow {
+                        name,
+                        type_parameters,
+                        parameters,
+                        constructors,
+                    };
+                    match mutual {
+                        Some(label) => imported_groups.entry(Some(label)).or_default().push(row),
+                        None => {
+                            for (member, (flags, nested)) in recursion_flags(&[row]) {
+                                imported_flags
+                                    .insert(format!("{import}::{member}"), (flags, nested));
+                            }
+                        }
+                    }
+                }
+            }
+            for rows in imported_groups.values() {
+                for (member, (flags, nested)) in recursion_flags(rows) {
+                    imported_flags.insert(format!("{import}::{member}"), (flags, nested));
+                }
+            }
             for declaration in &module.declarations {
                 let key = format!("{import}::{}", declaration.name());
                 match declaration {
@@ -2852,6 +3586,7 @@ impl SemanticModule {
                                     field_types,
                                 )]),
                                 class: matches!(declaration, SemanticDeclaration::Class { .. }),
+                                ..TypeInfo::default()
                             },
                         );
                     }
@@ -2890,6 +3625,7 @@ impl SemanticModule {
                                     })
                                     .collect(),
                                 class: false,
+                                ..TypeInfo::default()
                             },
                         );
                     }
@@ -2944,9 +3680,50 @@ impl SemanticModule {
                 }
             }
         }
+        for (key, (flags, nested)) in imported_flags {
+            if let Some(info) = env.types.get_mut(&key) {
+                info.direct_recursive = flags;
+                info.nested_or_mutual = nested;
+            }
+        }
+        // §17.12: a mutual group is one contiguous run of inductives sharing
+        // a label; a label may not reappear after its run ends.
+        let mut closed_groups = BTreeSet::new();
+        let mut open_group: Option<&str> = None;
+        for declaration in &self.declarations {
+            let label = match declaration {
+                SemanticDeclaration::Inductive {
+                    mutual: Some(label),
+                    ..
+                } => Some(label.as_str()),
+                _ => None,
+            };
+            if label != open_group {
+                if let Some(previous) = open_group {
+                    closed_groups.insert(previous);
+                }
+                if let Some(label) = label {
+                    if closed_groups.contains(label) {
+                        return Err(format!("mutual group `{label}` is not contiguous"));
+                    }
+                }
+                open_group = label;
+            }
+        }
         let mut generated_names = BTreeSet::new();
+        let mut registered_groups = BTreeSet::new();
         for declaration in &self.declarations {
             let name = declaration.name();
+            if let SemanticDeclaration::Inductive {
+                mutual: Some(label),
+                ..
+            } = declaration
+            {
+                // A later member was admitted with the first member.
+                if env.language_1_2 && registered_groups.contains(label) {
+                    continue;
+                }
+            }
             check_name(name, "declaration")?;
             if !generated_names.insert(name.to_owned()) {
                 return Err(format!("duplicate generated name `{name}`"));
@@ -2974,6 +3751,17 @@ impl SemanticModule {
                     let _ = check_parameters(parameters, &env, &type_parameters)?;
                     if fields.is_empty() {
                         return Err(format!("`{name}` has no fields"));
+                    }
+                    if env.language_1_2 {
+                        let own = BTreeSet::from([name.to_owned()]);
+                        if fields
+                            .iter()
+                            .any(|field| mentions_group(&field.r#type, &own))
+                        {
+                            return Err(format!(
+                                "structure or class `{name}` refers to itself; recursive data is declared as an inductive"
+                            ));
+                        }
                     }
                     let mut field_names = Vec::new();
                     for field in fields {
@@ -3006,8 +3794,51 @@ impl SemanticModule {
                                 fields.iter().map(|field| field.r#type.clone()).collect(),
                             )]),
                             class: matches!(declaration, SemanticDeclaration::Class { .. }),
+                            ..TypeInfo::default()
                         },
                     );
+                }
+                SemanticDeclaration::Inductive { mutual, .. } if env.language_1_2 => {
+                    if let Some(label) = mutual {
+                        registered_groups.insert(label.clone());
+                    }
+                    let rows: Vec<InductiveRow<'_>> = self
+                        .declarations
+                        .iter()
+                        .filter_map(|candidate| match candidate {
+                            SemanticDeclaration::Inductive {
+                                name: member,
+                                type_parameters,
+                                parameters,
+                                constructors,
+                                mutual: member_group,
+                            } if (mutual.is_none() && member == name)
+                                || (mutual.is_some() && member_group == mutual) =>
+                            {
+                                Some(InductiveRow {
+                                    name: member,
+                                    type_parameters,
+                                    parameters,
+                                    constructors,
+                                })
+                            }
+                            _ => None,
+                        })
+                        .collect();
+                    // Later members' own names are registered here so the
+                    // whole group is admitted at once, before any use.
+                    for row in rows.iter().skip(1) {
+                        check_name(row.name, "declaration")?;
+                        if !generated_names.insert(row.name.to_owned()) {
+                            return Err(format!("duplicate generated name `{}`", row.name));
+                        }
+                    }
+                    register_inductive_group(
+                        &rows,
+                        mutual.as_deref(),
+                        &mut env,
+                        &mut generated_names,
+                    )?;
                 }
                 SemanticDeclaration::Inductive {
                     type_parameters,
@@ -3057,6 +3888,7 @@ impl SemanticModule {
                             field_types: Vec::new(),
                             constructor_types,
                             class: false,
+                            ..TypeInfo::default()
                         },
                     );
                 }
