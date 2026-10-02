@@ -43,6 +43,8 @@ pub mod link;
 #[doc(hidden)]
 pub mod lock;
 #[doc(hidden)]
+pub mod production;
+#[doc(hidden)]
 pub mod project;
 #[doc(hidden)]
 pub mod source;
@@ -72,8 +74,8 @@ pub use ir::semantic::{
     SemanticField as SnapshotField, SemanticInteger as SnapshotInteger,
     SemanticMapEntry as SnapshotMapEntry, SemanticModule as SnapshotSemanticModule,
     SemanticParameter as SnapshotParameter, SemanticPrimitive as SnapshotPrimitive,
-    SemanticProof as SnapshotProof, SemanticProofBranch as SnapshotProofBranch,
-    SemanticReflection as SnapshotReflection,
+    SemanticProduction as SnapshotProduction, SemanticProof as SnapshotProof,
+    SemanticProofBranch as SnapshotProofBranch, SemanticReflection as SnapshotReflection,
     SemanticReflectionComparison as SnapshotReflectionComparison,
     SemanticReflectionField as SnapshotReflectionField, SemanticTerm as SnapshotTerm,
     SemanticTermination as SnapshotTermination, SemanticType as SnapshotType,
@@ -153,6 +155,8 @@ fn is_v1_2_file(path: &str) -> bool {
         || path == "schemas/project-v2.schema.json"
         || path == "schemas/semantic-module-v2.schema.json"
         || path == "schemas/semantic-snapshot-v2.schema.json"
+        || path == "schemas/production-eligibility.schema.json"
+        || path == crate::production::REGISTRY_PATH
 }
 
 /// The compiler-semantics ID for one selected language. Language 1.0 excludes

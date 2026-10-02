@@ -1966,6 +1966,25 @@ pub fn render_latex(
                 if version_2 && *executable {
                     text.push_str("\\noindent Execution: production-eligible, non-escaping closures only.\\par\n");
                 }
+                if let (
+                    true,
+                    SemanticDeclaration::Definition {
+                        production: Some(production),
+                        ..
+                    },
+                ) = (version_2, declaration)
+                {
+                    let effects = if production.effects.is_empty() {
+                        "none".to_owned()
+                    } else {
+                        production.effects.join(", ")
+                    };
+                    text.push_str(&format!(
+                        "\\noindent Production root for targets \\texttt{{{}}}; admitted effects: \\texttt{{{}}}.\\par\n",
+                        tex_escape(&production.targets.join(", ")),
+                        tex_escape(&effects)
+                    ));
+                }
                 text.push_str(&format!(
                     "\\noindent Type: \\texttt{{{}}}.\\par\n\\noindent Definition: \\texttt{{{}}}.\\par\n\\noindent Axiom policy: \\texttt{{{}}}.\\par\n",
                     tex_escape(&render.ty(result)),

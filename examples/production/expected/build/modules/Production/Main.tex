@@ -1,0 +1,56 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\begin{document}
+\section*{Semantic declarations}
+\subsection*{\texttt{checkedSum}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Production root for targets \texttt{rust-core, rust-std}; admitted effects: \texttt{none}.\par
+\noindent Type: \texttt{Option (UInt32)}.\par
+\noindent Definition: \texttt{(LexLeanRuntime.checkedAdd (left) (right) : Option (UInt32))}.\par
+\noindent Axiom policy: \texttt{exact [Quot.sound, propext]}.\par
+\subsection*{\texttt{shapeArea}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Production root for targets \texttt{rust-core, rust-std}; admitted effects: \texttt{overflow}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{Production.Kernel.area (Production.Kernel.Shape.rectangle (width) (height))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{quadruple}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Production root for targets \texttt{rust-core, rust-std}; admitted effects: \texttt{overflow}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{Production.Kernel.applyTwice ((fun (number : Nat) => (number + number))) (value)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{halvings}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Production root for targets \texttt{rust-core, rust-std}; admitted effects: \texttt{overflow, recursion}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{Production.Kernel.countdown (number) (0)}.\par
+\noindent Axiom policy: \texttt{exact [Quot.sound, propext]}.\par
+\subsection*{\texttt{sumAll}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Production root for targets \texttt{rust-std}; admitted effects: \texttt{allocation, overflow, recursion}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{Production.Kernel.total (values)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{headOr}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Production root for targets \texttt{rust-std}; admitted effects: \texttt{allocation}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{Production.Kernel.firstOr (Nat) (values) (0)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{quadruple\_three}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(quadruple (3) = 12)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{sum\_three}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(sumAll ((1 :: (2 :: (3 :: ([] : List (Nat)))))) = 6)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\end{document}

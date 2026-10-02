@@ -87,6 +87,18 @@ versions, and the entries below say what each tag does and does not claim.
   fixtures cover duplicate, unordered, non-literal, noncanonical, and
   out-of-range keys, graph references and duplicate edges, fold typing,
   unbounded iteration, and collections under language 1.1.
+- Language-1.2 production eligibility (§17.13): executable status is a
+  declared, checked property. A definition becomes a production root only by
+  declaring `production` with registered targets (`rust-core`, `rust-std`)
+  and admitted effects (`allocation`, `overflow`, `recursion`). Its runtime
+  closure across modules, monomorphized at type arguments and with
+  termination evidence erased, is classified construct by construct against
+  the closed registry `language/production-1.2.toml`; a boundary that is not
+  first-order data, a formal-only or unresolved dependency, an out-of-width
+  literal, unavailable allocation, or an unadmitted effect fails with the new
+  `LLT4005` before any backend runs. Each module's report is published as
+  `production/<module>.eligibility.json`, and audit-production rejects any
+  default branch in the analysis (`PD-01`..`PD-07`, `examples/production`).
 - Every semantic-module member must survive into the typed value: an extra
   member of a unit variant (for example `{"kind":"reflexivity","tactic":...}`)
   was silently ignored and is now rejected in every language.
@@ -103,7 +115,8 @@ versions, and the entries below say what each tag does and does not claim.
   `SnapshotEdge`) and call type arguments; `SnapshotType` gains `Product`,
   `Function`, `Map`, and `Set`; `SnapshotPrimitive` gains the collection
   operations; inductives gain `mutual`; definitions gain `type_parameters`,
-  `executable`, `mutual`, and `termination` (`SnapshotTermination`);
+  `executable`, `mutual`, `termination` (`SnapshotTermination`), and
+  `production` (`SnapshotProduction`);
   theorems gain `type_parameters`; `SnapshotProof` gains `Apply` type
   arguments and `LinearArithmetic`. Downstream exhaustive matches must add
   them.

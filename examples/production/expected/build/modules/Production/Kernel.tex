@@ -1,0 +1,55 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\begin{document}
+\section*{Semantic declarations}
+\subsection*{\texttt{Shape}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{circle}: \texttt{(Nat)}.\par
+\noindent Constructor \texttt{rectangle}: \texttt{(Nat, Nat)}.\par
+\subsection*{\texttt{area}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match shape with | Shape.circle radius => (LexLeanRuntime.multiply ((LexLeanRuntime.multiply (radius) (radius) : Nat)) (3) : Nat) | Shape.rectangle width height => (LexLeanRuntime.multiply (width) (height) : Nat))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{applyTwice}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(step ((step (value))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{total}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match values with | List.nil => 0 | List.cons head tail => (head + total (tail)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{firstOr}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type parameters: \texttt{Item}.\par
+\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Type: \texttt{Item}.\par
+\noindent Definition: \texttt{(match values with | List.nil => fallback | List.cons head \_ => head)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{countdown\_decreases}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(((Nat.blt (number) (2)) = false) -> ((LexLeanRuntime.subtract (number) (2) : Nat) < number))}.\par
+\noindent Axiom policy: \texttt{exact [Quot.sound, propext]}.\par
+\subsection*{\texttt{countdown}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Well-founded measure: \texttt{number}; decrease evidence per call: \texttt{countdown\_decreases}.\par
+\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(if (Nat.blt (number) (2)) then steps else countdown ((LexLeanRuntime.subtract (number) (2) : Nat)) ((steps + 1)))}.\par
+\noindent Axiom policy: \texttt{exact [Quot.sound, propext]}.\par
+\subsection*{\texttt{positive}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{Prop}.\par
+\noindent Definition: \texttt{(0 < value)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{area\_square}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(area (Shape.rectangle (3) (3)) = 9)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\end{document}

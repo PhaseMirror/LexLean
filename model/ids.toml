@@ -1465,3 +1465,45 @@ id = "EX-08"
 level = "build"
 suite = "examples"
 statement = "Every example directory is discovered automatically and must satisfy the full example gate."
+
+[[id]]
+id = "PD-01"
+level = "build"
+suite = "production"
+statement = "The closed production registry fixes the language-1.2 targets, effects, and the disposition of every semantic construct kind, and every construct the eligibility analysis can classify has exactly one registry row."
+
+[[id]]
+id = "PD-02"
+level = "build"
+suite = "production"
+statement = "Formal-only theorems, propositions, and non-executable definitions coexist with eligible executable production roots, and a module that declares no production root is never analysed for production."
+
+[[id]]
+id = "PD-03"
+level = "build"
+suite = "production"
+statement = "A production root's runtime closure contains exactly its transitive computational dependencies across modules at their type instantiations, and its termination evidence is recorded as erased and never realized."
+
+[[id]]
+id = "PD-04"
+level = "build"
+suite = "production"
+statement = "Production eligibility depends on the declared target: a construct that requires heap allocation is an admitted effect on a target with allocation and makes the root ineligible on a target without it."
+
+[[id]]
+id = "PD-05"
+level = "build"
+suite = "production"
+statement = "A production root fails with LLT4005 before any backend runs when its boundary holds a universe, proposition, type parameter, or function, or its closure reaches a formal-only, erased, non-executable, or unresolved dependency, a literal outside the target width, unavailable allocation, or an effect the root does not admit."
+
+[[id]]
+id = "PD-06"
+level = "build"
+suite = "production"
+statement = "Every production root's eligibility report is a deterministic, schema-valid build artifact recording its runtime closure, realized types, erased dependencies, constructs, and per-target effects with their sources."
+
+[[id]]
+id = "PD-07"
+level = "build"
+suite = "production"
+statement = "The eligibility analysis classifies every semantic construct by an explicit exhaustive match, and the exhaustiveness audit rejects a planted wildcard arm, rest pattern, implicit-default binding form, or unnamed IR variant."

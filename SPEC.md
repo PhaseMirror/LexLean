@@ -377,6 +377,7 @@ The completed repository MUST have this layout. Additional files are allowed onl
 │   ├── semantics.toml
 │   ├── semantics-1.1.toml
 │   ├── semantics-1.2.toml
+│   ├── production-1.2.toml
 │   ├── renderer-tokens.toml
 │   ├── core/
 │   │   ├── lexicon.toml
@@ -414,6 +415,7 @@ The completed repository MUST have this layout. Additional files are allowed onl
 │   ├── lock.schema.json
 │   ├── lock-1.1.schema.json
 │   ├── lock-v2.schema.json
+│   ├── production-eligibility.schema.json
 │   ├── project.schema.json
 │   ├── project-v2.schema.json
 │   ├── semantic-snapshot.schema.json
@@ -2749,6 +2751,110 @@ declarations. No command migrates a project implicitly: building an
 unmigrated project under a newer compiler keeps its declared language and its
 historical identities and artifact bytes.
 
+### 17.13 Production eligibility
+
+Being valid LexLean never implies being executable. A language-1.2 definition
+becomes a *production root* only by declaring it:
+
+```json
+"production": {"effects": ["overflow"], "targets": ["rust-core", "rust-std"]}
+```
+
+`targets` is non-empty and `targets` and `effects` are each strictly ascending
+and drawn from the closed registry `language/production-1.2.toml`
+(`lexlean/production/1`). A malformed declaration is `LLT4001`. A module that
+declares no production root is never analysed for production, so theorems,
+propositions, and non-executable definitions remain ordinary formal content
+and coexist with executable roots in the same module.
+
+**Registry.** The registry fixes three closed sets:
+
+- *targets*, each a machine profile with `allocation` (whether heap
+  allocation exists) and the bit widths of the natural-number and
+  mathematical-integer representations. Language 1.2 registers `rust-core`
+  (no allocation, 64-bit widths) and `rust-std` (allocation, 64-bit widths);
+- *effects*: `allocation` (heap storage whose exhaustion stops the
+  realization with an explicit failure), `overflow` (a `Nat` or `Int` value
+  outside the target width stops the realization with an explicit failure,
+  never wrapping or truncating), and `recursion` (a stack depth bounded only
+  by the input);
+- *constructs*: one row per semantic construct kind (`type.<kind>`,
+  `term.<kind>`, `primitive.<operation>`, `declaration.<kind>`, the
+  refinements `declaration.inductive.recursive` and
+  `declaration.definition.recursive`, and `constructor.nat_succ`) with its
+  `disposition` (`runtime`, `formal-only`, or `erased`), whether it requires
+  `allocation`, the representations (`nat`, `int`) for which its result may
+  `overflow`, and whether it implies `recursion`.
+
+The registry is language data: it is embedded and hashed into the
+language-1.2 compiler-semantics ID, so changing a disposition changes
+LexLean's identity. Every construct kind of `lexlean/semantic-module/2` has
+exactly one row; a construct with no row is rejected rather than defaulted.
+
+**Closure.** Eligibility is decided after linking and before any backend runs,
+over the root's *runtime closure*: the root and, transitively across modules,
+every definition it calls or references and every instance it resolves, each
+instantiated at its type arguments (monomorphization). Every type the closure
+realizes is visited through the declarations it names, under their
+instantiation. Termination evidence theorems are *erased* dependencies:
+recorded, never realized, and never walked. Proofs and theorem statements are
+never part of a runtime closure.
+
+**Rules.** A root is eligible for a target exactly when none of the following
+holds; otherwise `check` fails with `LLT4005`, naming the root, the target, the
+violation nearest the root, the closure member it occurs in, and the call path
+that reaches it:
+
+1. a root parameter or result holds, directly or inside the fields of a named
+   type, a universe, a proposition, an uninstantiated type parameter, or a
+   function — a root takes and returns first-order data only, so a closure can
+   never escape it;
+2. the closure reaches a construct whose disposition is `formal-only` or
+   `erased`, a declaration that is not a definition, a definition that is not
+   declared `executable`, or a dependency that does not resolve;
+3. a natural-number or mathematical-integer literal in the closure lies
+   outside the target width;
+4. the closure requires allocation and the target provides none;
+5. the closure realizes an effect the root does not admit. The realized
+   effects are `allocation` when the closure requires allocation on a target
+   that provides it, `overflow` for every construct whose registry row names
+   the representation of its result, and `recursion` for every recursive
+   definition.
+
+Two realization obligations follow from these rules and bind every later
+production stage. A `Nat` or `Int` value crossing a root boundary is
+represented in the target width, so a caller cannot supply a value outside it,
+and every value the realization computes outside it is the `overflow`
+failure, never a wrapped or truncated value. Primitive operations are
+realized without recursion; only recursive definitions of the closure carry
+the `recursion` effect.
+
+The analysis is a conservative over-approximation of effects: it may require a
+root to admit an effect its realization never exhibits, and it never admits a
+root whose realization could exhibit an effect, a construct, or a value
+representation that the declaration does not cover. Production compilation
+never approximates or erases computational meaning to admit a root.
+
+**Report.** Every module with a production root has the build artifact
+`production/<full-module-path>.eligibility.json`
+(`lexlean/production-eligibility/1`, `schemas/production-eligibility.schema.json`),
+recorded in the manifest with kind `production-eligibility`. Per root it
+records the declared effects, the runtime closure in discovery order with each
+member's construct, type arguments, and shortest call path, every realized type
+with its construct, the erased dependencies, every construct with the closure
+members using it, and, per target, each realized effect with every
+`(construct, instance)` source. The report is a deterministic function of the
+linked semantic modules and the registry.
+
+**Exhaustiveness.** The analysis maps every IR variant to its registry key by
+an exhaustive match that names every variant and every field. Its source admits
+no wildcard arm, rest pattern, `if let`, `while let`, `let`-`else`, or
+`matches!`, and names every variant of `SemanticType`, `SemanticTerm`,
+`SemanticPrimitive`, `SemanticDeclaration`, and `SemanticInteger`;
+`cargo xtask validate-model` (audit-production) rejects any such default and
+any unnamed variant, so a new construct cannot reach production without its
+disposition.
+
 ## 18. Lean backend
 
 ### 18.1 Output contract
@@ -3226,9 +3332,10 @@ Each language's compiler-semantics ID is the §11.5 tree digest of a fixed,
 nested partition of the embedded tree. The language-1.2 ID covers the whole
 tree. The language-1.1 ID excludes the files introduced solely for 1.2:
 `language/bootstrap-1.2.toml`, `language/semantics-1.2.toml`,
-`language/core-1.2/`, `language/std/{bool,int,nat}-1.2/`,
-`schemas/build-manifest-v2.schema.json`, `schemas/lexicon-v2.schema.json`,
-`schemas/lock-1.1.schema.json`, `schemas/lock-v2.schema.json`,
+`language/production-1.2.toml`, `language/core-1.2/`,
+`language/std/{bool,int,nat}-1.2/`, `schemas/build-manifest-v2.schema.json`,
+`schemas/lexicon-v2.schema.json`, `schemas/lock-1.1.schema.json`,
+`schemas/lock-v2.schema.json`, `schemas/production-eligibility.schema.json`,
 `schemas/project-v2.schema.json`, `schemas/semantic-module-v2.schema.json`, and
 `schemas/semantic-snapshot-v2.schema.json`. The language-1.0 ID additionally
 excludes the files introduced solely for 1.1: `language/bootstrap-1.1.toml`,
@@ -3312,9 +3419,11 @@ modules/<full-module-path>.tex
 maps/<full-module-path>.map.json
 coverage/<full-module-path>.coverage.json
 lexicons/<source-module>.closure.json
+production/<full-module-path>.eligibility.json
 ```
 
-Paths in manifests use `/` regardless of host OS.
+The `production/` report exists only for a language-1.2 module that declares a
+production root (§17.13). Paths in manifests use `/` regardless of host OS.
 
 ### 21.6 Build manifest
 
@@ -4016,6 +4125,7 @@ The initial registry MUST include at least these exact codes and meanings:
 | `LLT4002` | Unresolved overloaded entry. |
 | `LLT4003` | External-interface probe mismatch. |
 | `LLT4004` | Document-entry signature mismatch. |
+| `LLT4005` | Production root not eligible for a declared target. |
 | `LLF5001` | Invalid definition form, self head, or recursion. |
 | `LLF5002` | Invalid proof step for the current goal. |
 | `LLF5003` | Missing, duplicate, or malformed proof branch. |
@@ -4174,7 +4284,8 @@ The template audits are adapted as follows:
 - `audit-shipped` derives shipped crates from `publish = false`;
 - `audit-generated` proves generated documents and schemas are current;
 - `audit-language-closure` checks built-in lexicons and renderer tokens;
-- `audit-no-unsafe` verifies the shipped crate forbids unsafe code.
+- `audit-no-unsafe` verifies the shipped crate forbids unsafe code;
+- `audit-production` verifies that the production-eligibility analysis classifies every IR variant explicitly, with no default branch (§17.13).
 
 ---
 
@@ -4330,7 +4441,17 @@ Tests MUST establish that LexLean rejects, at minimum:
 - a duplicate graph edge;
 - a fold step whose type does not thread the state;
 - an iteration without its bound;
-- a collection under language 1.1.
+- a collection under language 1.1;
+- a production root on a target without allocation whose closure reaches allocation through two imported modules;
+- a production root on a target without allocation that takes an unbounded list;
+- a production root whose result is a proposition;
+- a production root whose closure has an effect the root does not admit;
+- a production root that takes a function;
+- a production root whose closure binds a proposition-valued dependency;
+- a production root with a literal outside the target width;
+- a production root that is not declared executable;
+- a production root with type parameters;
+- a production root naming an unregistered target.
 
 ### 28.6 Example verification
 
@@ -4834,8 +4955,15 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `EX-06` | `examples` | Two clean example builds in distinct paths have byte-identical platform-independent artifacts. | §29.6 |
 | `EX-07` | `examples` | The negative fixture suite covers every required rejection class and prescribed diagnostic family. | §28.5 |
 | `EX-08` | `examples` | Every example directory is discovered automatically and must satisfy the full example gate. | §28.6 |
+| `PD-01` | `production` | The closed production registry fixes the language-1.2 targets, effects, and the disposition of every semantic construct kind, and every construct the eligibility analysis can classify has exactly one registry row. | §17.13 |
+| `PD-02` | `production` | Formal-only theorems, propositions, and non-executable definitions coexist with eligible executable production roots, and a module that declares no production root is never analysed for production. | §17.13 |
+| `PD-03` | `production` | A production root's runtime closure contains exactly its transitive computational dependencies across modules at their type instantiations, and its termination evidence is recorded as erased and never realized. | §17.13 |
+| `PD-04` | `production` | Production eligibility depends on the declared target: a construct that requires heap allocation is an admitted effect on a target with allocation and makes the root ineligible on a target without it. | §17.13 |
+| `PD-05` | `production` | A production root fails with LLT4005 before any backend runs when its boundary holds a universe, proposition, type parameter, or function, or its closure reaches a formal-only, erased, non-executable, or unresolved dependency, a literal outside the target width, unavailable allocation, or an effect the root does not admit. | §17.13, §26.3 |
+| `PD-06` | `production` | Every production root's eligibility report is a deterministic, schema-valid build artifact recording its runtime closure, realized types, erased dependencies, constructs, and per-target effects with their sources. | §17.13, §21.5 |
+| `PD-07` | `production` | The eligibility analysis classifies every semantic construct by an explicit exhaustive match, and the exhaustiveness audit rejects a planted wildcard arm, rest pattern, implicit-default binding form, or unnamed IR variant. | §17.13, §27.10 |
 
-**Total required capability IDs:** 243.
+**Total required capability IDs:** 250.
 
 No row may be downgraded to `some-true` or `open`. Upstream Lean facts are ledger/authority rows, not substitutions for these build behaviors.
 

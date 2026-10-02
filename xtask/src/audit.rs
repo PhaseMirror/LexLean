@@ -1209,8 +1209,8 @@ pub fn audit_generated(root: &Path) -> Result<(), Fail> {
             return Err(format!("{}: missing its $id `{identity}`", path.display()).into());
         }
     }
-    if count != 19 {
-        return Err(format!("§7 commits exactly 19 schemas, found {count}").into());
+    if count != 20 {
+        return Err(format!("§7 commits exactly 20 schemas, found {count}").into());
     }
     println!("audit-generated: {count} schemas canonical and identified");
     Ok(())
@@ -1548,5 +1548,22 @@ pub fn audit_no_unsafe(root: &Path) -> Result<(), Fail> {
         }
     }
     println!("audit-no-unsafe: the prohibition is active (RP-09)");
+    Ok(())
+}
+
+/// §17.13: the production-eligibility analysis classifies every semantic
+/// construct explicitly. A wildcard arm, rest pattern, implicit-default
+/// binding form, or unnamed IR variant there would admit a construct to
+/// production that nobody classified.
+pub fn audit_production_exhaustive(root: &Path) -> Result<(), Fail> {
+    let eligibility =
+        std::fs::read_to_string(root.join(repo_model::exhaustive::ELIGIBILITY_SOURCE))?;
+    let semantic = std::fs::read_to_string(root.join(repo_model::exhaustive::SEMANTIC_SOURCE))?;
+    repo_model::exhaustive::audit_eligibility(&eligibility, &semantic)
+        .map_err(|report| format!("§17.13: {report}"))?;
+    println!(
+        "audit-production: every construct of {} enums has an explicit disposition (PD-07)",
+        repo_model::exhaustive::AUDITED_ENUMS.len()
+    );
     Ok(())
 }
