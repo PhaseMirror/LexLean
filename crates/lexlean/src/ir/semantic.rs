@@ -772,53 +772,197 @@ impl AlphaRenamer {
                     })
                     .collect(),
             },
-            other => {
-                // Nodes that bind nothing: rename inside their subterms and
-                // types through a serde round trip of the node itself.
-                let mut value = serde_json::to_value(other).expect("semantic term serializes");
-                self.rename_children(&mut value);
-                serde_json::from_value(value).expect("renamed semantic term deserializes")
+            // Nodes that bind nothing rename their subterms in evaluation
+            // order, which fixes the positional numbering of any binder
+            // nested inside them independently of how the node serializes.
+            SemanticTerm::Nat { .. }
+            | SemanticTerm::Integer { .. }
+            | SemanticTerm::String { .. }
+            | SemanticTerm::Bytes { .. }
+            | SemanticTerm::Bool { .. }
+            | SemanticTerm::Unit => term.clone(),
+            SemanticTerm::Primitive {
+                operation,
+                arguments,
+                result,
+            } => SemanticTerm::Primitive {
+                operation: *operation,
+                arguments: self.terms(arguments),
+                result: self.ty(result),
+            },
+            SemanticTerm::Nil { element } => SemanticTerm::Nil {
+                element: self.ty(element),
+            },
+            SemanticTerm::Cons { head, tail } => {
+                let head = Box::new(self.term(head));
+                SemanticTerm::Cons {
+                    head,
+                    tail: Box::new(self.term(tail)),
+                }
             }
+            SemanticTerm::Record {
+                r#type,
+                type_arguments,
+                fields,
+            } => SemanticTerm::Record {
+                r#type: r#type.clone(),
+                type_arguments: self.types(type_arguments),
+                fields: fields
+                    .iter()
+                    .map(|field| SemanticAssignment {
+                        field: field.field.clone(),
+                        value: self.term(&field.value),
+                    })
+                    .collect(),
+            },
+            SemanticTerm::Constructor {
+                constructor,
+                type_arguments,
+                arguments,
+            } => SemanticTerm::Constructor {
+                constructor: constructor.clone(),
+                type_arguments: self.types(type_arguments),
+                arguments: self.terms(arguments),
+            },
+            SemanticTerm::InstanceValue {
+                class,
+                arguments,
+                resolved,
+            } => SemanticTerm::InstanceValue {
+                class: class.clone(),
+                arguments: self.types(arguments),
+                resolved: resolved.clone(),
+            },
+            SemanticTerm::Project { value, field } => SemanticTerm::Project {
+                value: Box::new(self.term(value)),
+                field: field.clone(),
+            },
+            SemanticTerm::Call {
+                function,
+                type_arguments,
+                arguments,
+            } => SemanticTerm::Call {
+                function: function.clone(),
+                type_arguments: self.types(type_arguments),
+                arguments: self.terms(arguments),
+            },
+            SemanticTerm::If {
+                condition,
+                then_value,
+                else_value,
+            } => {
+                let condition = Box::new(self.term(condition));
+                let then_value = Box::new(self.term(then_value));
+                SemanticTerm::If {
+                    condition,
+                    then_value,
+                    else_value: Box::new(self.term(else_value)),
+                }
+            }
+            SemanticTerm::Eq { left, right } => {
+                let (left, right) = self.pair(left, right);
+                SemanticTerm::Eq { left, right }
+            }
+            SemanticTerm::Le { left, right } => {
+                let (left, right) = self.pair(left, right);
+                SemanticTerm::Le { left, right }
+            }
+            SemanticTerm::Lt { left, right } => {
+                let (left, right) = self.pair(left, right);
+                SemanticTerm::Lt { left, right }
+            }
+            SemanticTerm::Add { left, right } => {
+                let (left, right) = self.pair(left, right);
+                SemanticTerm::Add { left, right }
+            }
+            SemanticTerm::Beq { left, right } => {
+                let (left, right) = self.pair(left, right);
+                SemanticTerm::Beq { left, right }
+            }
+            SemanticTerm::Ble { left, right } => {
+                let (left, right) = self.pair(left, right);
+                SemanticTerm::Ble { left, right }
+            }
+            SemanticTerm::Blt { left, right } => {
+                let (left, right) = self.pair(left, right);
+                SemanticTerm::Blt { left, right }
+            }
+            SemanticTerm::And { left, right } => {
+                let (left, right) = self.pair(left, right);
+                SemanticTerm::And { left, right }
+            }
+            SemanticTerm::PropAnd { left, right } => {
+                let (left, right) = self.pair(left, right);
+                SemanticTerm::PropAnd { left, right }
+            }
+            SemanticTerm::Or { left, right } => {
+                let (left, right) = self.pair(left, right);
+                SemanticTerm::Or { left, right }
+            }
+            SemanticTerm::Iff { left, right } => {
+                let (left, right) = self.pair(left, right);
+                SemanticTerm::Iff { left, right }
+            }
+            SemanticTerm::Pair { left, right } => {
+                let (left, right) = self.pair(left, right);
+                SemanticTerm::Pair { left, right }
+            }
+            SemanticTerm::Implies {
+                premise,
+                conclusion,
+            } => {
+                let (premise, conclusion) = self.pair(premise, conclusion);
+                SemanticTerm::Implies {
+                    premise,
+                    conclusion,
+                }
+            }
+            SemanticTerm::Not { value } => SemanticTerm::Not {
+                value: Box::new(self.term(value)),
+            },
+            SemanticTerm::First { value } => SemanticTerm::First {
+                value: Box::new(self.term(value)),
+            },
+            SemanticTerm::Second { value } => SemanticTerm::Second {
+                value: Box::new(self.term(value)),
+            },
+            SemanticTerm::Apply {
+                function,
+                arguments,
+            } => {
+                let function = Box::new(self.term(function));
+                SemanticTerm::Apply {
+                    function,
+                    arguments: self.terms(arguments),
+                }
+            }
+            SemanticTerm::FunctionRef {
+                function,
+                type_arguments,
+            } => SemanticTerm::FunctionRef {
+                function: function.clone(),
+                type_arguments: self.types(type_arguments),
+            },
         };
         self.scopes.truncate(mark);
         out
     }
 
-    /// Rename the children of a non-binding node in place: every nested
-    /// object that is a term is renamed as a term, every nested type as a
-    /// type; other members are kept.
-    fn rename_children(&mut self, value: &mut serde_json::Value) {
-        let serde_json::Value::Object(map) = value else {
-            return;
-        };
-        for (key, child) in map.iter_mut() {
-            if key == "kind" {
-                continue;
-            }
-            self.rename_value(child);
-        }
+    fn terms(&mut self, terms: &[SemanticTerm]) -> Vec<SemanticTerm> {
+        terms.iter().map(|term| self.term(term)).collect()
     }
 
-    fn rename_value(&mut self, value: &mut serde_json::Value) {
-        match value {
-            serde_json::Value::Array(items) => {
-                for item in items {
-                    self.rename_value(item);
-                }
-            }
-            serde_json::Value::Object(_) => {
-                if let Ok(term) = serde_json::from_value::<SemanticTerm>(value.clone()) {
-                    *value = serde_json::to_value(self.term(&term)).expect("term serializes");
-                } else if let Ok(ty) = serde_json::from_value::<SemanticType>(value.clone()) {
-                    *value = serde_json::to_value(self.ty(&ty)).expect("type serializes");
-                } else if let Some(serde_json::Value::Object(map)) = Some(&mut *value) {
-                    for child in map.values_mut() {
-                        self.rename_value(child);
-                    }
-                }
-            }
-            _ => {}
-        }
+    fn types(&self, types: &[SemanticType]) -> Vec<SemanticType> {
+        types.iter().map(|ty| self.ty(ty)).collect()
+    }
+
+    fn pair(
+        &mut self,
+        left: &SemanticTerm,
+        right: &SemanticTerm,
+    ) -> (Box<SemanticTerm>, Box<SemanticTerm>) {
+        let left = Box::new(self.term(left));
+        (left, Box::new(self.term(right)))
     }
 }
 
@@ -1073,6 +1217,33 @@ fn proof_node_count(proof: &SemanticProof) -> u64 {
     }
 }
 
+/// Language 1.2 also charges a data declaration's shape, which 1.1's count
+/// leaves free: one node per type parameter, per constructor (so a nullary
+/// constructor is not free), and for a mutual group label. Language 1.1 keeps
+/// its historical count.
+fn data_shape_node_count(declaration: &SemanticDeclaration) -> u64 {
+    let count = |values: usize| u64::try_from(values).unwrap_or(u64::MAX);
+    match declaration {
+        SemanticDeclaration::Inductive {
+            type_parameters,
+            constructors,
+            mutual,
+            ..
+        } => count(type_parameters.len())
+            .saturating_add(count(constructors.len()))
+            .saturating_add(u64::from(mutual.is_some())),
+        SemanticDeclaration::Structure {
+            type_parameters, ..
+        }
+        | SemanticDeclaration::Class {
+            type_parameters, ..
+        } => count(type_parameters.len()),
+        SemanticDeclaration::Instance { .. }
+        | SemanticDeclaration::Definition { .. }
+        | SemanticDeclaration::Theorem { .. } => 0,
+    }
+}
+
 fn declaration_node_count(declaration: &SemanticDeclaration) -> u64 {
     let parameters = |values: &[SemanticParameter]| {
         values
@@ -1247,7 +1418,7 @@ fn language_1_2_construct(term: &SemanticTerm) -> Option<&'static str> {
 }
 
 /// Visit `term` and every subterm, parents first.
-fn visit_terms(term: &SemanticTerm, visit: &mut impl FnMut(&SemanticTerm)) {
+pub(crate) fn visit_terms(term: &SemanticTerm, visit: &mut impl FnMut(&SemanticTerm)) {
     visit(term);
     match term {
         SemanticTerm::Var { .. }
@@ -1367,6 +1538,55 @@ fn visit_terms(term: &SemanticTerm, visit: &mut impl FnMut(&SemanticTerm)) {
             }
         }
         SemanticTerm::FunctionRef { .. } => {}
+    }
+}
+
+/// The source spelling of a type in diagnostics: the document's own names,
+/// never the compiler's internal representation.
+impl std::fmt::Display for SemanticType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let simple = match self {
+            Self::Type => "Type",
+            Self::Nat => "Nat",
+            Self::Bool => "Bool",
+            Self::Prop => "Prop",
+            Self::Unit => "Unit",
+            Self::Int => "Int",
+            Self::Int8 => "Int8",
+            Self::Int16 => "Int16",
+            Self::Int32 => "Int32",
+            Self::Int64 => "Int64",
+            Self::UInt8 => "UInt8",
+            Self::UInt16 => "UInt16",
+            Self::UInt32 => "UInt32",
+            Self::UInt64 => "UInt64",
+            Self::String => "String",
+            Self::Bytes => "Bytes",
+            Self::Ordering => "Ordering",
+            Self::Parameter { name } => return f.write_str(name),
+            Self::Option { value } => return write!(f, "Option ({value})"),
+            Self::Result { ok, error } => return write!(f, "Result ({ok}) ({error})"),
+            Self::List { element } => return write!(f, "List ({element})"),
+            Self::Product { left, right } => return write!(f, "Prod ({left}) ({right})"),
+            Self::Function { parameters, result } => {
+                f.write_str("(")?;
+                for parameter in parameters {
+                    write!(f, "({parameter}) -> ")?;
+                }
+                return write!(f, "({result}))");
+            }
+            Self::Named { member, arguments } => {
+                if let Some(module) = &member.module {
+                    write!(f, "{module}.")?;
+                }
+                f.write_str(&member.name)?;
+                for argument in arguments {
+                    write!(f, " ({argument})")?;
+                }
+                return Ok(());
+            }
+        };
+        f.write_str(simple)
     }
 }
 
@@ -1531,6 +1751,160 @@ fn proof_terms(proof: &SemanticProof, visit: &mut impl FnMut(&SemanticTerm)) {
     }
 }
 
+/// Lean names the backend emits unqualified: built-in types and their
+/// constructor owners, the propositional connectives its proofs name, and the
+/// runtime namespaces. A binder spelled like one would capture it.
+const BACKEND_BARE_NAMES: [&str; 31] = [
+    "And",
+    "Bool",
+    "ByteArray",
+    "Except",
+    "Iff",
+    "Int",
+    "Int16",
+    "Int32",
+    "Int64",
+    "Int8",
+    "LexLeanCollections",
+    "LexLeanRuntime",
+    "List",
+    "Nat",
+    "Option",
+    "Ordering",
+    "Prod",
+    "Prop",
+    "Result",
+    "String",
+    "Type",
+    "UInt16",
+    "UInt32",
+    "UInt64",
+    "UInt8",
+    "Unit",
+    "and_congr",
+    "congr",
+    "decide",
+    "id",
+    "rfl",
+];
+
+fn proof_binders(proof: &SemanticProof, visit: &mut impl FnMut(&str)) {
+    match proof {
+        SemanticProof::Reflexivity
+        | SemanticProof::Decide
+        | SemanticProof::Simplify { .. }
+        | SemanticProof::Congruence
+        | SemanticProof::BooleanReflection { .. }
+        | SemanticProof::LinearArithmetic { .. }
+        | SemanticProof::Apply { .. } => {}
+        SemanticProof::Constructor { branches } => {
+            for branch in branches {
+                proof_binders(branch, visit);
+            }
+        }
+        SemanticProof::Cases { branches, .. } | SemanticProof::Induction { branches, .. } => {
+            for branch in branches {
+                branch.binders.iter().for_each(|binder| visit(binder));
+                proof_binders(&branch.proof, visit);
+            }
+        }
+    }
+}
+
+/// Visit every name a declaration binds locally: type parameters, value
+/// parameters, and the binders of its terms and proofs.
+fn declaration_binders(declaration: &SemanticDeclaration, visit: &mut impl FnMut(&str)) {
+    let (type_parameters, parameters): (&[String], &[SemanticParameter]) = match declaration {
+        SemanticDeclaration::Structure {
+            type_parameters,
+            parameters,
+            ..
+        }
+        | SemanticDeclaration::Class {
+            type_parameters,
+            parameters,
+            ..
+        }
+        | SemanticDeclaration::Inductive {
+            type_parameters,
+            parameters,
+            ..
+        } => (type_parameters, parameters),
+        SemanticDeclaration::Definition {
+            type_parameters,
+            parameters,
+            ..
+        }
+        | SemanticDeclaration::Theorem {
+            type_parameters,
+            parameters,
+            ..
+        } => (type_parameters, parameters),
+        SemanticDeclaration::Instance { .. } => (&[], &[]),
+    };
+    type_parameters.iter().for_each(|name| visit(name));
+    parameters
+        .iter()
+        .for_each(|parameter| visit(&parameter.name));
+    declaration_terms(declaration, &mut |term| match term {
+        SemanticTerm::Match { branches, .. } => {
+            for branch in branches {
+                branch.binders.iter().for_each(|binder| visit(binder));
+            }
+        }
+        SemanticTerm::Forall { binder, .. } | SemanticTerm::Let { binder, .. } => {
+            visit(&binder.name);
+        }
+        SemanticTerm::Lambda { parameters, .. } => {
+            parameters
+                .iter()
+                .for_each(|parameter| visit(&parameter.name));
+        }
+        _ => {}
+    });
+    if let SemanticDeclaration::Theorem { proof, .. } = declaration {
+        proof_binders(proof, visit);
+    }
+}
+
+/// §17.12 binder hygiene (language 1.2): the backend refers to this module's
+/// declarations, to built-in Lean names, and to every imported declaration
+/// through the project's module prefix without qualification, so no local
+/// binder may be spelled like any of them. Lean would otherwise resolve the
+/// reference to the binder after linking has accepted the module.
+fn check_binder_hygiene(module: &SemanticModule, module_prefix: &str) -> Result<(), String> {
+    let declared: BTreeSet<&str> = module
+        .declarations
+        .iter()
+        .map(SemanticDeclaration::name)
+        .collect();
+    let prefix_root = module_prefix.split('.').next().unwrap_or(module_prefix);
+    let mut failure = None;
+    for declaration in &module.declarations {
+        declaration_binders(declaration, &mut |binder| {
+            if failure.is_some() {
+                return;
+            }
+            let captured = if declared.contains(binder) {
+                Some("declaration")
+            } else if BACKEND_BARE_NAMES.contains(&binder) {
+                Some("built-in Lean name")
+            } else if binder == prefix_root {
+                Some("module prefix")
+            } else {
+                None
+            };
+            if let Some(what) = captured {
+                failure = Some(format!(
+                    "binder `{binder}` in `{}` is spelled like the {what} `{binder}` and would capture it in generated Lean",
+                    declaration.name()
+                ));
+            }
+        });
+    }
+    failure.map_or(Ok(()), Err)
+}
+
 /// Visit every term a declaration carries, including proof arguments.
 fn declaration_terms(declaration: &SemanticDeclaration, visit: &mut impl FnMut(&SemanticTerm)) {
     match declaration {
@@ -1559,10 +1933,96 @@ fn declaration_terms(declaration: &SemanticDeclaration, visit: &mut impl FnMut(&
     }
 }
 
+fn type_mentions_parameter(ty: &SemanticType, name: &str) -> bool {
+    match ty {
+        SemanticType::Parameter { name: parameter } => parameter == name,
+        SemanticType::Option { value: inner } | SemanticType::List { element: inner } => {
+            type_mentions_parameter(inner, name)
+        }
+        SemanticType::Result { ok, error } => {
+            type_mentions_parameter(ok, name) || type_mentions_parameter(error, name)
+        }
+        SemanticType::Product { left, right } => {
+            type_mentions_parameter(left, name) || type_mentions_parameter(right, name)
+        }
+        SemanticType::Named { arguments, .. } => arguments
+            .iter()
+            .any(|argument| type_mentions_parameter(argument, name)),
+        SemanticType::Function { parameters, result } => {
+            parameters
+                .iter()
+                .any(|parameter| type_mentions_parameter(parameter, name))
+                || type_mentions_parameter(result, name)
+        }
+        SemanticType::Type
+        | SemanticType::Nat
+        | SemanticType::Bool
+        | SemanticType::Prop
+        | SemanticType::Unit
+        | SemanticType::Int
+        | SemanticType::Int8
+        | SemanticType::Int16
+        | SemanticType::Int32
+        | SemanticType::Int64
+        | SemanticType::UInt8
+        | SemanticType::UInt16
+        | SemanticType::UInt32
+        | SemanticType::UInt64
+        | SemanticType::String
+        | SemanticType::Bytes
+        | SemanticType::Ordering => false,
+    }
+}
+
+fn proof_type_arguments(proof: &SemanticProof, visit: &mut impl FnMut(&SemanticType)) {
+    match proof {
+        SemanticProof::Reflexivity
+        | SemanticProof::LinearArithmetic { .. }
+        | SemanticProof::Decide
+        | SemanticProof::Simplify { .. }
+        | SemanticProof::Congruence
+        | SemanticProof::BooleanReflection { .. } => {}
+        SemanticProof::Constructor { branches } => {
+            for branch in branches {
+                proof_type_arguments(branch, visit);
+            }
+        }
+        SemanticProof::Cases { branches, .. } | SemanticProof::Induction { branches, .. } => {
+            for branch in branches {
+                proof_type_arguments(&branch.proof, visit);
+            }
+        }
+        SemanticProof::Apply { type_arguments, .. } => type_arguments.iter().for_each(visit),
+    }
+}
+
+/// Whether a declaration mentions its type parameter `name` anywhere: in a
+/// parameter, field, or result type, or in a type written in its body,
+/// statement, or proof. An unmentioned one lowers as `_name` (§17.12).
+pub(crate) fn mentions_type_parameter(declaration: &SemanticDeclaration, name: &str) -> bool {
+    let mut found = false;
+    let mut visit = |ty: &SemanticType| found = found || type_mentions_parameter(ty, name);
+    declaration_types(declaration, &mut visit);
+    declaration_terms(declaration, &mut |term| term_types(term, &mut visit));
+    if let SemanticDeclaration::Theorem { proof, .. } = declaration {
+        proof_type_arguments(proof, &mut visit);
+    }
+    found
+}
+
 impl SemanticModule {
     /// Exact recursive semantic-node count charged to `max_ir_nodes`.
     pub(crate) fn node_count(&self) -> u64 {
-        self.declarations.iter().map(declaration_node_count).sum()
+        let base: u64 = self.declarations.iter().map(declaration_node_count).sum();
+        if semantic_module_spec(crate::LANGUAGE_1_2) == Some(self.spec.as_str()) {
+            base + self
+                .declarations
+                .iter()
+                .map(data_shape_node_count)
+                .sum::<u64>()
+        } else {
+            base
+        }
     }
 }
 
@@ -1590,7 +2050,10 @@ struct Environment<'a> {
     current_decreasing_type: Option<SemanticType>,
     /// Language 1.2: the well-founded definition being checked, which may be
     /// called only at planned call sites and never referenced as a value.
-    well_founded_self: Option<String>,
+    /// The well-founded definitions being checked, standalone or one mutual
+    /// group, with each member's parameters and measure: calls to them are
+    /// recursive, and each call's obligation reads the callee's measure.
+    well_founded_group: BTreeMap<String, (Vec<SemanticParameter>, SemanticTerm)>,
     /// Language 1.2: local theorems by name, for termination evidence.
     theorems: BTreeMap<String, (Vec<String>, Vec<SemanticParameter>, SemanticTerm)>,
 }
@@ -1891,37 +2354,10 @@ fn check_type_parameters(ty: &SemanticType, allowed: &BTreeSet<String>) -> Resul
     }
 }
 
-/// The Lean type names the backend writes in generated declarations. A
-/// language-1.2 type parameter of the same spelling would capture them inside
-/// the declaration it binds.
-const BACKEND_TYPE_NAMES: [&str; 21] = [
-    "Bool",
-    "ByteArray",
-    "Except",
-    "Int",
-    "Int16",
-    "Int32",
-    "Int64",
-    "Int8",
-    "List",
-    "Nat",
-    "Option",
-    "Ordering",
-    "Prod",
-    "Prop",
-    "String",
-    "Type",
-    "UInt16",
-    "UInt32",
-    "UInt64",
-    "UInt8",
-    "Unit",
-];
-
-/// §17.12: in language 1.2 a type parameter names nothing else the
-/// generated declaration mentions: not a backend type, not a document type,
-/// and not a value binder of the same declaration. Lean would otherwise
-/// elaborate a different declaration from the one the semantic data states.
+/// §17.12: in language 1.2 a type parameter is not also a value binder of
+/// the same declaration, which it would capture in the generated binder.
+/// Every module-wide spelling it could capture (a declaration, a built-in
+/// name, the module prefix) is refused by `check_binder_hygiene` first.
 fn check_type_parameter_spelling(
     type_parameters: &[String],
     binders: &BTreeSet<String>,
@@ -1931,16 +2367,6 @@ fn check_type_parameter_spelling(
         return Ok(());
     }
     for parameter in type_parameters {
-        if BACKEND_TYPE_NAMES.contains(&parameter.as_str()) {
-            return Err(format!(
-                "type parameter `{parameter}` would capture the built-in type of the same name"
-            ));
-        }
-        if env.types.contains_key(parameter) {
-            return Err(format!(
-                "type parameter `{parameter}` would capture the document type of the same name"
-            ));
-        }
         if binders.contains(parameter) {
             return Err(format!(
                 "type parameter `{parameter}` is also bound as a value in the same declaration"
@@ -2731,9 +3157,13 @@ fn check_executable(
 ) -> Result<(), String> {
     let holds = |ty: &SemanticType| holds_function(ty, env, &mut BTreeSet::new());
     if holds(result) {
-        return Err(format!(
-            "escaping closure: executable definition `{name}` returns a function"
-        ));
+        return Err(if matches!(result, SemanticType::Function { .. }) {
+            format!("escaping closure: executable definition `{name}` returns a function")
+        } else {
+            format!(
+                "escaping closure: executable definition `{name}` returns a value of type {result}, which holds a function"
+            )
+        });
     }
     let mut function_locals = BTreeSet::new();
     for parameter in parameters {
@@ -2799,7 +3229,7 @@ fn check_executable_term(
     });
     if let Some(ty) = written {
         return Err(format!(
-            "escaping closure in executable definition `{name}`: the type {ty:?} written in its body holds a function"
+            "escaping closure in executable definition `{name}`: the type {ty} written in its body holds a function"
         ));
     }
     match term {
@@ -3009,7 +3439,7 @@ fn check_definition(
     }
     if termination.is_some() {
         require_language_1_2(env, "well-founded termination evidence")?;
-        if recursive_argument.is_some() || mutual.is_some() {
+        if recursive_argument.is_some() {
             return Err(format!(
                 "definition `{name}` declares both structural and well-founded recursion"
             ));
@@ -3075,15 +3505,25 @@ fn check_definition(
     } else {
         None
     };
+    // A standalone well-founded definition is a group of one; a mutual
+    // group's members are registered by `check_definition_group`.
+    let standalone = termination.is_some() && mutual.is_none();
     if let Some(termination) = termination {
+        if standalone {
+            env.well_founded_group.insert(
+                name.clone(),
+                (parameters.clone(), termination.measure.clone()),
+            );
+        }
         check_measure(name, &termination.measure, parameters, env)?;
-        // Self-calls of a well-founded definition are ordinary typed calls;
-        // their placement and evidence are checked below.
+        // Calls of a well-founded definition are ordinary typed calls; their
+        // placement and evidence are checked below.
         env.functions.insert(name.to_owned(), info.clone());
-        env.well_founded_self = Some(name.to_owned());
     }
     let checked = check_term(body, &locals, env, recursion, &BTreeSet::new());
-    env.well_founded_self = None;
+    if standalone && checked.is_err() {
+        env.well_founded_group.clear();
+    }
     checked?;
     env.functions.insert(name.to_owned(), info);
     require_type(
@@ -3092,7 +3532,11 @@ fn check_definition(
         &format!("definition `{name}` body"),
     )?;
     if let Some(termination) = termination {
-        check_well_founded(name, type_parameters, parameters, body, termination, env)?;
+        let outcome = check_well_founded(name, type_parameters, parameters, body, termination, env);
+        if standalone {
+            env.well_founded_group.clear();
+        }
+        outcome?;
     }
     if *executable {
         check_executable(name, parameters, result, body, env)?;
@@ -3116,6 +3560,27 @@ fn check_definition_group(
             "mutual group `{label}` has one member; a standalone definition omits `mutual`"
         ));
     }
+    let well_founded = rows
+        .iter()
+        .filter(|row| {
+            matches!(
+                row,
+                SemanticDeclaration::Definition {
+                    termination: Some(_),
+                    ..
+                }
+            )
+        })
+        .count();
+    if well_founded == rows.len() {
+        check_group_call_graph(rows, label)?;
+        return check_well_founded_group(rows, label, env);
+    }
+    if well_founded > 0 {
+        return Err(format!(
+            "mutual group `{label}` mixes structural and well-founded members"
+        ));
+    }
     let mut members = BTreeMap::new();
     let mut decreasing_types = Vec::new();
     let mut first_type_parameters: Option<&Vec<String>> = None;
@@ -3126,7 +3591,6 @@ fn check_definition_group(
             parameters,
             result,
             recursive_argument,
-            termination,
             executable,
             ..
         } = row
@@ -3141,11 +3605,6 @@ fn check_definition_group(
             }
         } else {
             first_type_parameters = Some(type_parameters);
-        }
-        if termination.is_some() {
-            return Err(format!(
-                "mutual group `{label}` member `{name}` declares well-founded termination; mutual recursion is structural"
-            ));
         }
         let argument = recursive_argument.as_ref().ok_or_else(|| {
             format!("mutual group `{label}` member `{name}` names no decreasing argument")
@@ -3190,6 +3649,9 @@ fn check_definition_group(
             }
         }
     }
+    // The call graph is checked once the members and their family are
+    // known, so a group of the wrong shape reports its shape first.
+    check_group_call_graph(rows, label)?;
     env.recursive_group = members;
     env.recursive_family = family;
     let mut outcome = Ok(());
@@ -3203,6 +3665,131 @@ fn check_definition_group(
     env.recursive_group.clear();
     env.recursive_family = None;
     env.current_decreasing_type = None;
+    outcome
+}
+
+/// §17.12: the recursion call graph of a mutual group is the calls and
+/// references among its members. Every member calls into the group and the
+/// graph is strongly connected: a member outside every cycle is not
+/// mutually recursive, and Lean refuses its termination clause.
+fn check_group_call_graph(rows: &[&SemanticDeclaration], label: &str) -> Result<(), String> {
+    let members: BTreeSet<String> = rows.iter().map(|row| row.name().to_owned()).collect();
+    let mut edges: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for row in rows {
+        let SemanticDeclaration::Definition { name, body, .. } = row else {
+            return Err(format!(
+                "mutual group `{label}` member `{}` is not a definition",
+                row.name()
+            ));
+        };
+        let mut callees = BTreeSet::new();
+        visit_terms(body, &mut |term| {
+            if let SemanticTerm::Call { function, .. }
+            | SemanticTerm::FunctionRef { function, .. } = term
+            {
+                if function.module.is_none() && members.contains(&function.name) {
+                    callees.insert(function.name.clone());
+                }
+            }
+        });
+        if callees.is_empty() {
+            return Err(format!(
+                "mutual group `{label}` member `{name}` calls no member of its group"
+            ));
+        }
+        edges.insert(name.clone(), callees);
+    }
+    let reach = |forward: bool| {
+        let start = rows[0].name().to_owned();
+        let mut seen = BTreeSet::from([start.clone()]);
+        let mut pending = vec![start];
+        while let Some(current) = pending.pop() {
+            let next: Vec<String> = if forward {
+                edges[&current].iter().cloned().collect()
+            } else {
+                edges
+                    .iter()
+                    .filter(|(_, callees)| callees.contains(&current))
+                    .map(|(caller, _)| caller.clone())
+                    .collect()
+            };
+            for member in next {
+                if seen.insert(member.clone()) {
+                    pending.push(member);
+                }
+            }
+        }
+        seen
+    };
+    for (forward, direction) in [(true, "reach"), (false, "be reached from")] {
+        let seen = reach(forward);
+        if let Some(missing) = members.iter().find(|member| !seen.contains(*member)) {
+            return Err(format!(
+                "mutual group `{label}` is not strongly connected: `{}` does not {direction} `{missing}`",
+                rows[0].name()
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// A mutual group of well-founded definitions (§17.12 rule 3): identical
+/// type parameters, a measure per member, and one evidence theorem per call
+/// site whose obligation compares the callee's measure at the call's
+/// arguments with the caller's measure.
+fn check_well_founded_group(
+    rows: &[&SemanticDeclaration],
+    label: &str,
+    env: &mut Environment<'_>,
+) -> Result<(), String> {
+    let mut first_type_parameters: Option<&Vec<String>> = None;
+    for row in rows {
+        let SemanticDeclaration::Definition {
+            name,
+            type_parameters,
+            parameters,
+            result,
+            executable,
+            termination: Some(termination),
+            ..
+        } = row
+        else {
+            continue;
+        };
+        if let Some(first) = first_type_parameters {
+            if first != type_parameters {
+                return Err(format!(
+                    "mutual group `{label}` members must declare identical type parameters; `{name}` differs"
+                ));
+            }
+        } else {
+            first_type_parameters = Some(type_parameters);
+        }
+        env.functions.insert(
+            name.clone(),
+            FunctionInfo {
+                type_parameters: type_parameters.clone(),
+                parameters: parameters
+                    .iter()
+                    .map(|parameter| parameter.r#type.clone())
+                    .collect(),
+                result: result.clone(),
+                executable: *executable,
+            },
+        );
+        env.well_founded_group.insert(
+            name.clone(),
+            (parameters.clone(), termination.measure.clone()),
+        );
+    }
+    let mut outcome = Ok(());
+    for row in rows {
+        outcome = check_definition(row, env);
+        if outcome.is_err() {
+            break;
+        }
+    }
+    env.well_founded_group.clear();
     outcome
 }
 
@@ -3222,13 +3809,14 @@ fn check_measure(
         | SemanticTerm::Lambda { .. }
         | SemanticTerm::Match { .. } => binder = true,
         SemanticTerm::Call { function, .. } | SemanticTerm::FunctionRef { function, .. } => {
-            cyclic |= function.module.is_none() && function.name == name;
+            cyclic |= function.module.is_none()
+                && (function.name == name || env.well_founded_group.contains_key(&function.name));
         }
         _ => {}
     });
     if cyclic {
         return Err(format!(
-            "the measure of `{name}` refers to `{name}` itself (cyclic measure)"
+            "the measure of `{name}` refers to `{name}` itself or a member of its group (cyclic measure)"
         ));
     }
     if binder {
@@ -3279,6 +3867,8 @@ pub(crate) enum PlannedNode<'a> {
 }
 
 pub(crate) struct CallSite {
+    /// The group member called.
+    pub(crate) callee: String,
     pub(crate) path: Vec<Step>,
     pub(crate) arguments: Vec<SemanticTerm>,
 }
@@ -3310,13 +3900,13 @@ impl WellFoundedPlan<'_> {
     }
 }
 
-fn contains_call(term: &SemanticTerm, name: &str) -> bool {
+fn contains_call(term: &SemanticTerm, group: &BTreeSet<String>) -> bool {
     let mut found = false;
     visit_terms(term, &mut |node| {
         if let SemanticTerm::Call { function, .. } | SemanticTerm::FunctionRef { function, .. } =
             node
         {
-            found |= function.module.is_none() && function.name == name;
+            found |= function.module.is_none() && group.contains(&function.name);
         }
     });
     found
@@ -3327,12 +3917,14 @@ fn contains_call(term: &SemanticTerm, name: &str) -> bool {
 /// the binders of the matches enclosing it.
 pub(crate) fn well_founded_plan<'a>(
     name: &str,
+    group: &BTreeSet<String>,
     type_parameters: &[String],
     parameters: &[SemanticParameter],
     body: &'a SemanticTerm,
 ) -> Result<WellFoundedPlan<'a>, String> {
     struct Walk<'n> {
         name: &'n str,
+        group: &'n BTreeSet<String>,
         own: Vec<SemanticType>,
         /// The locals an obligation may mention here: the parameters and the
         /// binders of every enclosing match.
@@ -3350,30 +3942,33 @@ pub(crate) fn well_founded_plan<'a>(
         plan: &mut WellFoundedPlan<'a>,
     ) -> Result<(), String> {
         let name = state.name;
+        let group = state.group;
         match term {
             SemanticTerm::Call {
                 function,
                 type_arguments,
                 arguments,
-            } if function.module.is_none() && function.name == name => {
+            } if function.module.is_none() && group.contains(&function.name) => {
+                let callee = &function.name;
                 if type_arguments.as_slice() != state.own {
                     return Err(format!(
-                        "recursive call `{name}` must pass its own type parameters in order; polymorphic recursion is not permitted"
+                        "recursive call `{callee}` must pass its own type parameters in order; polymorphic recursion is not permitted"
                     ));
                 }
                 for argument in arguments {
-                    if contains_call(argument, name) {
+                    if contains_call(argument, group) {
                         return Err(format!(
-                            "a recursive call of `{name}` is nested in another call's argument"
+                            "a recursive call of `{callee}` is nested in another call's argument"
                         ));
                     }
                     if let Some(local) = mentions_only(argument, &state.allowed) {
                         return Err(format!(
-                            "an argument of a recursive call of `{name}` mentions `{local}`, which is neither a parameter nor an enclosing match binder"
+                            "an argument of a recursive call of `{callee}` mentions `{local}`, which is neither a parameter nor an enclosing match binder"
                         ));
                     }
                 }
                 plan.sites.push(CallSite {
+                    callee: callee.clone(),
                     path: state.path.clone(),
                     arguments: arguments.clone(),
                 });
@@ -3388,7 +3983,7 @@ pub(crate) fn well_founded_plan<'a>(
                 plan.nodes.push(PlannedNode::If { condition });
                 plan.addresses.push(std::ptr::from_ref(term) as usize);
                 walk(condition, state, plan)?;
-                if contains_call(then_value, name) || contains_call(else_value, name) {
+                if contains_call(then_value, group) || contains_call(else_value, group) {
                     if let Some(local) = mentions_only(condition, &state.allowed) {
                         return Err(format!(
                             "a condition enclosing a recursive call of `{name}` mentions `{local}`, which is neither a parameter nor an enclosing match binder"
@@ -3415,7 +4010,7 @@ pub(crate) fn well_founded_plan<'a>(
                 walk(scrutinee, state, plan)?;
                 let encloses = branches
                     .iter()
-                    .any(|branch| contains_call(&branch.body, name));
+                    .any(|branch| contains_call(&branch.body, group));
                 if encloses {
                     if let Some(local) = mentions_only(scrutinee, &state.allowed) {
                         return Err(format!(
@@ -3450,7 +4045,7 @@ pub(crate) fn well_founded_plan<'a>(
                 Ok(())
             }
             SemanticTerm::Lambda { .. } | SemanticTerm::Forall { .. }
-                if contains_call(term, name) =>
+                if contains_call(term, group) =>
             {
                 Err(format!(
                     "a recursive call of `{name}` under a lambda or quantifier has no stated decrease obligation"
@@ -3466,6 +4061,7 @@ pub(crate) fn well_founded_plan<'a>(
     }
     let mut state = Walk {
         name,
+        group,
         own: type_parameters
             .iter()
             .map(|parameter| SemanticType::Parameter {
@@ -3561,12 +4157,14 @@ fn pattern_value(scrutinee_type: &SemanticType, branch: &SemanticBranch) -> Sema
 /// definition's parameters followed by the returned binders.
 fn decrease_obligation(
     measure: &SemanticTerm,
+    callee: (&[SemanticParameter], &SemanticTerm),
     parameters: &[SemanticParameter],
     plan: &WellFoundedPlan<'_>,
     site: &CallSite,
     env: &Environment<'_>,
 ) -> Result<(Vec<SemanticParameter>, SemanticTerm), String> {
-    let map: BTreeMap<String, SemanticTerm> = parameters
+    let (callee_parameters, callee_measure) = callee;
+    let map: BTreeMap<String, SemanticTerm> = callee_parameters
         .iter()
         .map(|parameter| parameter.name.clone())
         .zip(site.arguments.iter().cloned())
@@ -3615,7 +4213,7 @@ fn decrease_obligation(
         }
     }
     let mut statement = SemanticTerm::Lt {
-        left: Box::new(substitute_locals(measure, &map)),
+        left: Box::new(substitute_locals(callee_measure, &map)),
         right: Box::new(measure.clone()),
     };
     for premise in premises.into_iter().rev() {
@@ -3637,7 +4235,8 @@ fn check_well_founded(
     termination: &SemanticTermination,
     env: &Environment<'_>,
 ) -> Result<(), String> {
-    let plan = well_founded_plan(name, type_parameters, parameters, body)?;
+    let group: BTreeSet<String> = env.well_founded_group.keys().cloned().collect();
+    let plan = well_founded_plan(name, &group, type_parameters, parameters, body)?;
     if plan.sites.is_empty() {
         return Err(format!(
             "definition `{name}` declares termination evidence but makes no recursive call"
@@ -3651,8 +4250,15 @@ fn check_well_founded(
         ));
     }
     for (position, (site, evidence)) in plan.sites.iter().zip(&termination.evidence).enumerate() {
-        let (binders, obligation) =
-            decrease_obligation(&termination.measure, parameters, &plan, site, env)?;
+        let (callee_parameters, callee_measure) = &env.well_founded_group[&site.callee];
+        let (binders, obligation) = decrease_obligation(
+            &termination.measure,
+            (callee_parameters, callee_measure),
+            parameters,
+            &plan,
+            site,
+            env,
+        )?;
         let stated = evidence
             .module
             .is_none()
@@ -3687,7 +4293,7 @@ fn recursive_name(
 ) -> bool {
     recursion.is_some_and(|(own, _, _)| own == name)
         || env.recursive_group.contains_key(name)
-        || env.well_founded_self.as_deref() == Some(name)
+        || env.well_founded_group.contains_key(name)
 }
 
 /// Reject a language-1.2-only construct in a language-1.1 module.
@@ -4204,9 +4810,12 @@ fn check_term(
             let used: BTreeSet<String> = used.difference(&bound).cloned().collect();
             let declared: BTreeSet<String> = captures.iter().cloned().collect();
             if used != declared {
+                let names =
+                    |set: &BTreeSet<String>| set.iter().cloned().collect::<Vec<_>>().join(", ");
                 return Err(format!(
-                    "lambda captures must be exactly the enclosing locals its body uses: declared {:?}, used {:?}",
-                    declared, used
+                    "lambda captures must be exactly the enclosing locals its body uses: declared ({}), used ({})",
+                    names(&declared),
+                    names(&used)
                 ));
             }
             // No member of the recursion being checked (the definition
@@ -4356,7 +4965,7 @@ fn require_type(
     if let Some(observed) = observed {
         if &observed != expected {
             return Err(format!(
-                "{context} has type {observed:?}, expected {expected:?}"
+                "{context} has type {observed}, expected {expected}"
             ));
         }
     }
@@ -4399,7 +5008,7 @@ fn infer_primitive(
             Ok(expected)
         } else {
             Err(format!(
-                "primitive {operation:?} result is {result:?}, expected {expected:?}"
+                "primitive {operation:?} result is {result}, expected {expected}"
             ))
         }
     };
@@ -4628,7 +5237,7 @@ fn same_type(
 ) -> Result<Option<SemanticType>, String> {
     match (left, right) {
         (Some(left), Some(right)) if left != right => Err(format!(
-            "{context} has incompatible types {left:?} and {right:?}"
+            "{context} has incompatible types {left} and {right}"
         )),
         (Some(left), _) => Ok(Some(left)),
         (_, Some(right)) => Ok(Some(right)),
@@ -4804,7 +5413,7 @@ fn branch_binder_types(
             fields
         }
         other => {
-            return Err(format!("cannot pattern match value of type {other:?}"));
+            return Err(format!("cannot pattern match value of type {other}"));
         }
     })
 }
@@ -4847,7 +5456,7 @@ fn infer_term(
                     require_type(head, &element, "list head")?;
                     Ok(Some(SemanticType::List { element }))
                 }
-                Some(other) => Err(format!("list tail has non-list type {other:?}")),
+                Some(other) => Err(format!("list tail has non-list type {other}")),
                 None => Ok(None),
             }
         }
@@ -4978,7 +5587,7 @@ fn infer_term(
                 Ok(Some(*result))
             }
             Some(other) => Err(format!(
-                "application of a non-function value of type {other:?}"
+                "application of a non-function value of type {other}"
             )),
             // An application is checked against its head's function type;
             // with none known, its arity and arguments would go unchecked.
@@ -5149,7 +5758,7 @@ fn infer_term(
                     *right
                 }))
             }
-            Some(other) => Err(format!("pair projection of non-product type {other:?}")),
+            Some(other) => Err(format!("pair projection of non-product type {other}")),
             None => Ok(None),
         },
     }
@@ -5541,9 +6150,12 @@ fn check_elimination_proof(
 
 impl SemanticModule {
     /// Decode canonical JSON and enforce all conservative semantic checks.
+    /// `module_prefix` is the project's Lean module prefix, under which the
+    /// backend names every imported declaration.
     pub fn parse(
         text: &str,
         language: &str,
+        module_prefix: &str,
         imports: &[String],
         imported_modules: &BTreeMap<String, &Self>,
     ) -> Result<Self, String> {
@@ -5567,7 +6179,7 @@ impl SemanticModule {
                 "semantic-module JSON member `{path}` is outside the closed schema"
             ));
         }
-        module.validate(language, imports, imported_modules)?;
+        module.validate(language, module_prefix, imports, imported_modules)?;
         Ok(module)
     }
 
@@ -5611,6 +6223,7 @@ impl SemanticModule {
     fn validate(
         &self,
         language: &str,
+        module_prefix: &str,
         imports: &[String],
         imported_modules: &BTreeMap<String, &Self>,
     ) -> Result<(), String> {
@@ -5633,6 +6246,9 @@ impl SemanticModule {
         }
         if self.declarations.is_empty() {
             return Err("a semantic module contains at least one declaration".to_owned());
+        }
+        if language == crate::LANGUAGE_1_2 {
+            check_binder_hygiene(self, module_prefix)?;
         }
         let mut env = Environment {
             language_1_2: language == crate::LANGUAGE_1_2,
@@ -6227,6 +6843,110 @@ impl SemanticModule {
 }
 
 #[cfg(test)]
+mod application_head_tests {
+    use std::collections::BTreeMap;
+
+    use super::{infer_term, Environment, MemberRef, SemanticTerm};
+
+    /// An application whose head has no statically known function type is
+    /// refused rather than left unchecked: here the head is a constructor
+    /// the environment does not know, whose type inference yields nothing.
+    #[test]
+    fn an_application_needs_a_known_function_type() {
+        let head = SemanticTerm::Constructor {
+            constructor: MemberRef {
+                module: None,
+                name: "Unknown.make".to_owned(),
+            },
+            type_arguments: Vec::new(),
+            arguments: Vec::new(),
+        };
+        let env = Environment::default();
+        assert_eq!(infer_term(&head, &BTreeMap::new(), &env), Ok(None));
+        let application = SemanticTerm::Apply {
+            function: Box::new(head),
+            arguments: vec![SemanticTerm::Nat {
+                value: "1".to_owned(),
+            }],
+        };
+        assert_eq!(
+            infer_term(&application, &BTreeMap::new(), &env),
+            Err("application of a value with no statically known function type".to_owned())
+        );
+    }
+}
+
+#[cfg(test)]
+mod alpha_order_tests {
+    use std::collections::BTreeMap;
+
+    use super::{AlphaRenamer, SemanticParameter, SemanticTerm, SemanticType};
+
+    fn lambda(name: &str) -> SemanticTerm {
+        SemanticTerm::Lambda {
+            parameters: vec![SemanticParameter {
+                name: name.to_owned(),
+                r#type: SemanticType::Nat,
+            }],
+            captures: Vec::new(),
+            body: Box::new(SemanticTerm::Var {
+                name: name.to_owned(),
+            }),
+        }
+    }
+
+    fn parameter(term: &SemanticTerm) -> &str {
+        let SemanticTerm::Lambda { parameters, .. } = term else {
+            panic!("a lambda")
+        };
+        &parameters[0].name
+    }
+
+    /// Binders are numbered in evaluation order, whatever order the node's
+    /// serialized members sort in: an application's function (`function`
+    /// sorts after `arguments`) and a conditional's branches (`else_value`
+    /// sorts before `then_value`) are numbered first.
+    #[test]
+    fn binders_are_numbered_in_evaluation_order() {
+        let mut renamer = AlphaRenamer {
+            next: 0,
+            scopes: Vec::new(),
+            types: BTreeMap::new(),
+        };
+        let SemanticTerm::Apply {
+            function,
+            arguments,
+        } = renamer.term(&SemanticTerm::Apply {
+            function: Box::new(lambda("outer")),
+            arguments: vec![lambda("inner")],
+        })
+        else {
+            panic!("an application")
+        };
+        assert_eq!(
+            (parameter(&function), parameter(&arguments[0])),
+            ("_0", "_1")
+        );
+        let SemanticTerm::If {
+            then_value,
+            else_value,
+            ..
+        } = renamer.term(&SemanticTerm::If {
+            condition: Box::new(SemanticTerm::Bool { value: true }),
+            then_value: Box::new(lambda("yes")),
+            else_value: Box::new(lambda("no")),
+        })
+        else {
+            panic!("a conditional")
+        };
+        assert_eq!(
+            (parameter(&then_value), parameter(&else_value)),
+            ("_2", "_3")
+        );
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
@@ -6246,7 +6966,7 @@ mod tests {
 
     #[test]
     fn semantic_bool_match_is_typed_and_exhaustive() {
-        SemanticModule::parse(BOOL_MATCH, "1.1", &[], &BTreeMap::new())
+        SemanticModule::parse(BOOL_MATCH, "1.1", "Test", &[], &BTreeMap::new())
             .expect("both Boolean constructors form a typed exhaustive match");
 
         let nonexhaustive = BOOL_MATCH.replace(
@@ -6254,7 +6974,7 @@ mod tests {
             "",
         );
         assert!(
-            SemanticModule::parse(&nonexhaustive, "1.1", &[], &BTreeMap::new())
+            SemanticModule::parse(&nonexhaustive, "1.1", "Test", &[], &BTreeMap::new())
                 .expect_err("one Boolean branch is not exhaustive")
                 .to_string()
                 .contains("nonexhaustive or mixed match branches")
@@ -6263,7 +6983,7 @@ mod tests {
 
     #[test]
     fn semantic_theorem_policy_defaults_to_exact_empty() {
-        let module = SemanticModule::parse(EMPTY_POLICY, "1.1", &[], &BTreeMap::new())
+        let module = SemanticModule::parse(EMPTY_POLICY, "1.1", "Test", &[], &BTreeMap::new())
             .expect("omitted policy is exact empty");
         let declaration = module.declarations.first().expect("one theorem");
         assert_eq!(declaration.axiom_policy_kind(), "none");
@@ -6273,7 +6993,7 @@ mod tests {
     #[test]
     fn semantic_theorem_policy_round_trips_a_nonempty_exact_set() {
         let source = theorem_with_axioms(r#"["Classical.choice","propext"]"#);
-        let module = SemanticModule::parse(&source, "1.1", &[], &BTreeMap::new())
+        let module = SemanticModule::parse(&source, "1.1", "Test", &[], &BTreeMap::new())
             .expect("sorted exact policy is valid");
         let declaration = module.declarations.first().expect("one theorem");
         assert_eq!(declaration.axiom_policy_kind(), "exact");
@@ -6292,9 +7012,14 @@ mod tests {
             r#"["propext","propext"]"#,
             r#"["bad-name"]"#,
         ] {
-            let error =
-                SemanticModule::parse(&theorem_with_axioms(axioms), "1.1", &[], &BTreeMap::new())
-                    .expect_err("invalid exact policy must fail");
+            let error = SemanticModule::parse(
+                &theorem_with_axioms(axioms),
+                "1.1",
+                "Test",
+                &[],
+                &BTreeMap::new(),
+            )
+            .expect_err("invalid exact policy must fail");
             assert!(
                 error.contains("not sorted, unique, and qualified"),
                 "{error}"
