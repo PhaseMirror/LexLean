@@ -526,6 +526,11 @@ fn conformance_sm_26() {
 }
 
 #[test]
+fn conformance_sm_27() {
+    repo_conformance::cases::run("SM-27");
+}
+
+#[test]
 fn conformance_df_01() {
     repo_conformance::cases::run("DF-01");
 }
@@ -598,6 +603,16 @@ fn conformance_df_14() {
 #[test]
 fn conformance_df_15() {
     repo_conformance::cases::run("DF-15");
+}
+
+#[test]
+fn conformance_df_16() {
+    repo_conformance::cases::run("DF-16");
+}
+
+#[test]
+fn conformance_df_17() {
+    repo_conformance::cases::run("DF-17");
 }
 
 #[test]
@@ -688,6 +703,11 @@ fn conformance_pf_17() {
 #[test]
 fn conformance_pf_18() {
     repo_conformance::cases::run("PF-18");
+}
+
+#[test]
+fn conformance_pf_19() {
+    repo_conformance::cases::run("PF-19");
 }
 
 #[test]

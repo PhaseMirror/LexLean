@@ -75,7 +75,7 @@ pub use ir::semantic::{
     SemanticReflection as SnapshotReflection,
     SemanticReflectionComparison as SnapshotReflectionComparison,
     SemanticReflectionField as SnapshotReflectionField, SemanticTerm as SnapshotTerm,
-    SemanticType as SnapshotType,
+    SemanticTermination as SnapshotTermination, SemanticType as SnapshotType,
 };
 
 use artifact::content_id::tree_digest;

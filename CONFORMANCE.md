@@ -106,6 +106,8 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `DF-13` | `build` | Language 1.2 structural recursion and induction over a recursive inductive use exactly its direct recursive fields, across modules, with one induction hypothesis per recursive field. |
 | `DF-14` | `build` | Language 1.2 generic definitions and theorems take explicit type parameters, every use supplies exactly their type arguments, recursion is never polymorphic, and every written type mentions only declared parameters. |
 | `DF-15` | `build` | An executable language-1.2 definition forms only non-escaping closures and calls only executable definitions; every violation fails before either backend runs. |
+| `DF-16` | `build` | Language 1.2 mutual definition groups recurse structurally over one recursive family, including nested and mutual inductives, and every call between members passes a structurally smaller family binder. |
+| `DF-17` | `build` | Language 1.2 well-founded definitions carry a binder-free natural-number measure and, per recursive call site, a prior theorem stating exactly that call's decrease obligation; linking checks the statements and Lean checks the proofs. |
 
 ## examples
 
@@ -239,6 +241,7 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `PF-16` | `build` | Raw tactics, custom proof nodes, unrestricted automation, and proof holes are rejected. |
 | `PF-17` | `build` | native_decide is never accepted or generated. |
 | `PF-18` | `build` | Lean proof failures remap to the smallest originating LexLean proof or statement span. |
+| `PF-19` | `build` | The language-1.2 linear_arithmetic proof form names only the prior document definitions it unfolds, lowers to one fixed omega script, proves true linear obligations, and is refused by Lean on a false one. |
 
 ## repository
 
@@ -304,6 +307,7 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `SM-24` | `build` | Language 1.2 product types, pairs, projections, and product matches are typed, snapshotted under the v2 schemas, and give identical semantic IDs from distinct roots. |
 | `SM-25` | `build` | Language 1.2 function types, lambdas with exact explicit captures, full applications, and definition references are typed, lowered to fixed Lean, and verified. |
 | `SM-26` | `build` | Language 1.2 snapshots carry a deterministic alpha identity per definition that alpha-equivalent definitions share and any other change alters. |
+| `SM-27` | `build` | Language 1.2 snapshots carry complete recursion evidence (mutual labels, decreasing arguments, measures, and evidence bindings), and changing an evidence binding changes the semantic and alpha identities. |
 
 ## verification
 

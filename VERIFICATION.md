@@ -12,7 +12,7 @@ How this repository's claims are checked, which recipe enforces which rule, and 
 | `model` | `cargo xtask validate-model` | R1 (model is the single source; every model file parsed with unknown-field rejection), R2 (honesty levels and vocabulary, via the meta-gate), R3 (register/scenario/test bijection, Gherkin subset), R4 (`audit-deferral`), R5 (`audit-errors`), R6 (`audit-shipped`, including the shipped crate's normative links), R8 (`audit-generated`, `audit-language-closure`), RP-09 (`audit-no-unsafe`), §27.5 (CONFORMANCE.md and ERRORS.md equal regeneration) |
 | `spec-links` | `cargo xtask validate-spec-links` | RP-07, §27.6: the §31 table and `model/ids.toml` are bijective and byte-consistent |
 | `lint` | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | no tolerated warnings |
-| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 235 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
+| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 239 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
 | `features` | `cargo check --workspace --all-features --all-targets` | every target compiles |
 | `bdd` | `cargo test -p repo-conformance` | R3, §27.7, §27.8: register ↔ scenario ↔ test bijection, the meta-gate, and its own falsifiability test |
 | `examples` | `cargo xtask verify-examples` | §28.6, EX-01: every example directory formats, locks, checks, builds, and verifies with real Lean 4.32.1; when an example commits `expected/verify/`, its normalized verification records must equal it (§29.5) |
@@ -232,7 +232,7 @@ Expected: the committed language-1.2 example no longer checks, and the
 negative fixture of a `let` under language 1.1 is accepted.
 
 ```text
-thread 'conformance_sm_23' panicked at crates/conformance/src/support.rs:318:14:
+thread 'conformance_sm_23' panicked at crates/conformance/src/support.rs:340:14:
 check succeeds: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLT4001"), message: "phase link: `let` is a language-1.2 construct; language 1.1 rejects it", ... }] }
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 227 filtered out
 gate failed: tests/negative/language-1.2-construct-under-1.1: step 1 `check ` exited 0, case.toml expects 1
@@ -291,7 +291,7 @@ structural eliminator. Command: `cargo test -p repo-conformance --test
 conformance -- conformance_df_13`.
 
 ```text
-thread 'conformance_df_13' panicked at crates/conformance/src/support.rs:328:14:
+thread 'conformance_df_13' panicked at crates/conformance/src/support.rs:350:14:
 check fails
 ```
 
@@ -384,6 +384,99 @@ test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 233 filtered out
 
 Removed: the prefix was restored; `conformance_sm_08` passes and pinned Lean
 verifies both the language-1.1 and the language-1.2 projects it builds.
+
+### well-founded decrease check can fail
+
+Planted: the statement comparison of termination evidence was bypassed
+(`(false && stated.2 != obligation)`), so a theorem with the right binders
+but a different statement was accepted as a call's decrease evidence.
+Command: `cargo test -p repo-conformance --test conformance --
+conformance_df_17`. Expected: the forged-evidence mutation links.
+
+```text
+thread 'conformance_df_17' panicked at crates/conformance/src/support.rs:350:14:
+check fails
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 238 filtered out
+```
+
+Removed: the comparison was restored; `conformance_df_17` passes and the
+`recursion-forged-evidence` negative fixture fails with `LLT4001`.
+
+### structural decrease check can fail
+
+Planted: the structural decrease test of a recursive call admitted any
+variable (`SemanticTerm::Var { name } if true || smaller.contains(name)`),
+so a member could call its group on its own argument. Command: `cargo test
+-p repo-conformance --test conformance -- conformance_df_16`. Expected: the
+`isOdd (number)` mutation links.
+
+```text
+thread 'conformance_df_16' panicked at crates/conformance/src/support.rs:350:14:
+check fails
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 238 filtered out
+```
+
+Removed: the test was restored; `conformance_df_16` passes and the
+`recursion-wrong-argument` negative fixture fails with `LLT4001`.
+
+### recursion call graph check can fail
+
+Planted: `check_group_call_graph` returned `Ok(())` at once, so a mutual
+group's members were never required to call into the group or to be
+strongly connected. Commands: `lexlean check` then `lexlean verify` on a copy
+of the `recursion-mutual-member-without-call` negative project, whose
+structural group `Walk` has a member `settle` that calls no member. Expected:
+linking admits the group and Lean, not linking, is the first to refuse it.
+
+```text
+checked 1 module (source 9fb919ed41971b7cf0d6ccb531f9b67442d85c865de79e61a0015a80bcc848bd,
+error[LLV7006]: Lean produced unexpected output for `LanguageTwelve.Main` (warning): unused `termination_by`, function is not recursive
+  --> src/Main.lex.tex:5:32
+```
+
+In a well-founded group the same plant is still refused, by the separate rule
+that a definition with termination evidence makes a recursive call:
+`conformance_df_17` fails with `definition `pong` declares termination
+evidence but makes no recursive call` where it expects the call-graph
+message.
+
+Removed: the check was restored; `recursion-mutual-member-without-call` and
+`recursion-mutual-disconnected` fail in linking with `LLT4001`, and
+`conformance_df_17` passes.
+
+### false termination evidence is refused by verification
+
+Not a plant but the boundary the recursion rules state: linking checks that
+each obligation is stated exactly, and Lean's kernel decides whether it is
+true. The `recursion-false-evidence` negative project states the exact
+obligation of a call `stall (number)` on its own argument, with a
+`linear_arithmetic` proof that cannot hold. Command: `lexlean verify`.
+
+```text
+error[LLV7002]: Lean rejected `LanguageTwelve.Main` (error): omega could not prove the goal:
+error[LLV7002]: Lean rejected `LanguageTwelve.Main` (error): well-founded recursion cannot be used, `LanguageTwelve.Main.stall` does not take any (non-fixed) arguments
+```
+
+Each diagnostic points at its declaration in the source (the evidence
+theorem, then `stall`), through the per-declaration source maps.
+
+### well-founded lowering under match can fail
+
+Planted: a numbered `match` lowered without `(generalizing := false)`, so
+Lean refined the earlier hypotheses and the evidence of `reassociate` no
+longer applied to them (one rejection per evidence application of
+`reassociate` and `prune`). The oracle is Lean itself. Command: `lexlean build &&
+lexlean verify` in `examples/recursion`.
+
+```text
+error[LLV7002]: Lean rejected `Recursion.Main` (error): Application type mismatch: The argument
+error[LLV7002]: Lean rejected `Recursion.Main` (error): Application type mismatch: The argument
+error[LLV7002]: Lean rejected `Recursion.Main` (error): Application type mismatch: The argument
+error[LLV7002]: Lean rejected `Recursion.Main` (error): Application type mismatch: The argument
+```
+
+Removed: the lowering was restored; the recursion example verifies and its
+normalized verification records match `cargo xtask verify-examples`.
 
 ### binder hygiene can fail
 

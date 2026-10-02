@@ -1,4 +1,4 @@
-//! The `proofs` suite: PF-01..PF-18.
+//! The `proofs` suite: PF-01..PF-19.
 //!
 //! Positive forms are asserted against the shared Lean-verified proof
 //! corpus (`support::verified_corpus`): every case first asserts the
@@ -646,6 +646,84 @@ pub(crate) fn run(id: &str) {
                 source.contains("reflexivity") && !covered.is_empty(),
                 "the span covers originating source text, found {covered:?}"
             );
+        }
+        // §17.12: the closed linear-arithmetic proof form.
+        "PF-19" => {
+            let project = P::copy_example("recursion");
+            project.check_ok();
+            let main = support::lean_text(&support::rendered(&project), "Main");
+            assert!(main.contains(
+                "  intros\n  try set_option linter.unusedSimpArgs false in simp only [← Bool.not_eq_true, Nat.beq_eq, Nat.blt_eq, Nat.ble_eq, LexLeanRuntime.subtract, LexLeanRuntime.multiply] at *\n  omega\n"
+            ), "{main}");
+            let _ = support::verify_ok_backed("PF-19", &project);
+            // The form names only definitions to unfold: no tactic name or
+            // term can ride on it, and no unit-variant proof takes a member.
+            P::assert_mutation_rejected(
+                "recursion",
+                "src/Main.lex.tex",
+                r#""proof":{"kind":"linear_arithmetic"}"#,
+                r#""proof":{"kind":"linear_arithmetic","tactic":"norm_num"}"#,
+                "unknown field `tactic`",
+            );
+            P::assert_mutation_rejected(
+                "recursion",
+                "src/Main.lex.tex",
+                r#""proof":{"kind":"decide"}"#,
+                r#""proof":{"kind":"decide","tactic":false}"#,
+                "is outside the closed schema",
+            );
+            // Unfolded definitions are prior document definitions, sorted.
+            P::assert_mutation_rejected(
+                "recursion",
+                "src/Main.lex.tex",
+                r#"{"definitions":[{"name":"weight"}],"kind":"linear_arithmetic"}"#,
+                r#"{"definitions":[{"name":"reassociate"}],"kind":"linear_arithmetic"}"#,
+                "linear_arithmetic unfolds `reassociate`, which is not a prior document definition",
+            );
+            let main_text = project.read("src/Main.lex.tex");
+            assert!(main_text
+                .contains(r#"{"definitions":[{"name":"weight"}],"kind":"linear_arithmetic"}"#));
+            assert!(main.contains("  intros\n  subst_vars\n  try set_option linter.unusedSimpArgs false in simp only [weight, ← Bool.not_eq_true, Nat.beq_eq, Nat.blt_eq, Nat.ble_eq, LexLeanRuntime.subtract, LexLeanRuntime.multiply] at *\n  omega\n"), "{main}");
+            // Language 1.1 rejects the form.
+            let eleven = P::semantic_example();
+            let source = eleven.read("src/Main.lex.tex");
+            let (before, after) = source
+                .split_once(r#""proof":{"kind":"reflexivity"}"#)
+                .expect("a reflexivity proof in the 1.1 fixture");
+            eleven.write(
+                "src/Main.lex.tex",
+                &format!(r#"{before}"proof":{{"kind":"linear_arithmetic"}}{after}"#),
+            );
+            let error = eleven.check_fails_with("LLT4001");
+            assert!(
+                error
+                    .to_string()
+                    .contains("`linear_arithmetic proof` is a language-1.2 construct"),
+                "{error}"
+            );
+            // The form decides, it does not assume: a false linear claim
+            // links (it is well formed) and is refused by real Lean.
+            if support::lean_backed("PF-19") {
+                let wrong = P::copy_example("recursion");
+                let main_source = wrong.read("src/Main.lex.tex");
+                let anchor = r#"{"kind":"theorem","name":"rose_size""#;
+                assert!(main_source.contains(anchor));
+                wrong.write(
+                    "src/Main.lex.tex",
+                    &main_source.replacen(
+                        anchor,
+                        &format!(
+                            r#"{{"axioms":["Quot.sound","propext"],"kind":"theorem","name":"subtraction_always_shrinks","parameters":[{{"name":"number","type":{{"kind":"nat"}}}}],"proof":{{"kind":"linear_arithmetic"}},"statement":{{"kind":"lt","left":{{"arguments":[{{"kind":"var","name":"number"}},{{"kind":"nat","value":"2"}}],"kind":"primitive","operation":"subtract","result":{{"kind":"nat"}}}},"right":{{"kind":"var","name":"number"}}}}}},{anchor}"#
+                        ),
+                        1,
+                    ),
+                );
+                wrong.check_ok();
+                // Verification resolves the toolchain from `ELAN_HOME`, which
+                // other cases override under this lock.
+                let _guard = support::env_lock();
+                wrong.verify_fails_with("LLV7002");
+            }
         }
         other => panic!("no proofs case is wired for {other}"),
     }

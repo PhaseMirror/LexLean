@@ -633,6 +633,12 @@ suite = "semantic-ir"
 statement = "Language 1.2 snapshots carry a deterministic alpha identity per definition that alpha-equivalent definitions share and any other change alters."
 
 [[id]]
+id = "SM-27"
+level = "build"
+suite = "semantic-ir"
+statement = "Language 1.2 snapshots carry complete recursion evidence (mutual labels, decreasing arguments, measures, and evidence bindings), and changing an evidence binding changes the semantic and alpha identities."
+
+[[id]]
 id = "DF-01"
 level = "build"
 suite = "declarations"
@@ -721,6 +727,18 @@ id = "DF-15"
 level = "build"
 suite = "declarations"
 statement = "An executable language-1.2 definition forms only non-escaping closures and calls only executable definitions; every violation fails before either backend runs."
+
+[[id]]
+id = "DF-16"
+level = "build"
+suite = "declarations"
+statement = "Language 1.2 mutual definition groups recurse structurally over one recursive family, including nested and mutual inductives, and every call between members passes a structurally smaller family binder."
+
+[[id]]
+id = "DF-17"
+level = "build"
+suite = "declarations"
+statement = "Language 1.2 well-founded definitions carry a binder-free natural-number measure and, per recursive call site, a prior theorem stating exactly that call's decrease obligation; linking checks the statements and Lean checks the proofs."
 
 [[id]]
 id = "PF-01"
@@ -829,6 +847,12 @@ id = "PF-18"
 level = "build"
 suite = "proofs"
 statement = "Lean proof failures remap to the smallest originating LexLean proof or statement span."
+
+[[id]]
+id = "PF-19"
+level = "build"
+suite = "proofs"
+statement = "The language-1.2 linear_arithmetic proof form names only the prior document definitions it unfolds, lowers to one fixed omega script, proves true linear obligations, and is refused by Lean on a false one."
 
 [[id]]
 id = "LN-01"

@@ -82,6 +82,40 @@ versions, and the entries below say what each tag does and does not claim.
     serialized member order.
   - The 1.2 LaTeX states every parameter with its type and every closure
     with what it binds and captures.
+- Language-1.2 recursion (§17.12): mutual definition groups recurse
+  structurally over one recursive family (naturals, lists, or an inductive
+  group with its containers) and lower with `termination_by structural`;
+  well-founded definitions carry a measure and one statement-exact evidence
+  theorem per call site, checked in linking and proved under Lean. A
+  well-founded call may sit under `if` and `match`: its obligation is
+  quantified over the enclosing match binders and hypotheses, and lowers
+  through `match (generalizing := false) __decreaseN : s` with the evidence
+  applied to `_` for each enclosing binder and substituted by `subst_vars`
+  (`examples/recursion` reassociates and prunes a syntax tree by a weight
+  measure, the pruning under binders its branches ignore). The new `linear_arithmetic` proof form
+  discharges linear obligations and may unfold named prior definitions.
+  Recursion that escapes its check (a group member called inside a lambda or
+  referenced as a value, a mutual label shared by an inductive and a
+  definition group) is rejected; eleven new negative fixtures cover these
+  and the decrease and evidence rules (`DF-16`, `DF-17`, `PF-19`, `SM-27`).
+  Changes after review:
+  - Mutual groups may be well-founded: every member has a measure, and each
+    call's obligation compares the callee's measure at the arguments with
+    the caller's. `ping` and `pong` in `examples/recursion` call each other
+    on the same argument and terminate by their two measures.
+  - Every mutual group's call graph must be strongly connected, with every
+    member calling into the group.
+  - The example adds a structural mutual constant-folding rewriter over
+    `Expr` and `Stmt` that returns the rewritten tree.
+  - A false evidence theorem stating the exact obligation is refused by
+    verification (`recursion-false-evidence`), and SPEC states what linking
+    and verification each establish.
+  - The negative fixture suite requires every diagnostic of a class to
+    carry its prescribed code, and the absolute-path guard no longer
+    mistakes an escaped newline after a colon for a Windows drive.
+- Every semantic-module member must survive into the typed value: an extra
+  member of a unit variant (for example `{"kind":"reflexivity","tactic":...}`)
+  was silently ignored and is now rejected in every language.
 - Language 1.1 definitions now reject a type parameter written inside their
   body: the scope is empty, so such a definition could never elaborate.
 - A semantic-module definition parameter, quantifier, `let`, or lambda binder
@@ -93,7 +127,8 @@ versions, and the entries below say what each tag does and does not claim.
   `Second`, `Lambda`, `Apply`, and `FunctionRef` variants and call type
   arguments, `SnapshotType` gains `Product` and `Function`, declarations gain
   optional `mutual`, `type_parameters`, and `executable` fields, and
-  `SnapshotProof::Apply` gains type arguments; downstream exhaustive
+  `SnapshotProof` gains `Apply` type arguments and `LinearArithmetic`, and
+  definitions gain optional `mutual` and `termination` members; downstream exhaustive
   matches must add them.
 - New conformance IDs `CF-17`, `CF-18`, `GL-17`, `GL-18`, and `SM-23`; new
   example `examples/language-1.2`, verified with real Lean; ten new negative

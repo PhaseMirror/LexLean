@@ -475,6 +475,17 @@ pub enum SemanticReflection {
 pub enum SemanticProof {
     Reflexivity,
     Decide,
+    /// Language 1.2: closed linear natural-number arithmetic. It introduces
+    /// the goal's hypotheses, rewrites the fixed Boolean comparisons
+    /// `Nat.beq`, `Nat.blt`, and `Nat.ble` into propositions, and runs the
+    /// pinned toolchain's `omega` decision procedure. When it names document
+    /// definitions, it first substitutes every hypothesis equating a local
+    /// with a value and unfolds exactly those definitions, so a measure over
+    /// constructors becomes linear.
+    LinearArithmetic {
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        definitions: Vec<MemberRef>,
+    },
     Simplify {
         definitions: Vec<MemberRef>,
     },
@@ -506,6 +517,17 @@ pub enum SemanticProof {
         type_arguments: Vec<SemanticType>,
         arguments: Vec<SemanticTerm>,
     },
+}
+
+/// Language-1.2 well-founded recursion evidence (§17.12): a natural-number
+/// measure over the parameters and, for each recursive call site in
+/// pre-order, a prior theorem whose statement is exactly that call's
+/// decrease obligation.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SemanticTermination {
+    pub measure: SemanticTerm,
+    pub evidence: Vec<MemberRef>,
 }
 
 /// A closed declaration.
@@ -559,6 +581,14 @@ pub enum SemanticDeclaration {
         /// is rejected unless every closure it forms is non-escaping.
         #[serde(default, skip_serializing_if = "core::ops::Not::not")]
         executable: bool,
+        /// Language 1.2: the label of the contiguous group of mutually
+        /// structurally recursive definitions this definition belongs to.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        mutual: Option<String>,
+        /// Language 1.2: well-founded recursion with a measure and one
+        /// evidence theorem per recursive call site.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        termination: Option<SemanticTermination>,
     },
     Theorem {
         name: String,
@@ -952,6 +982,8 @@ impl SemanticDeclaration {
             body,
             axioms,
             executable,
+            mutual,
+            termination,
         } = self
         else {
             return None;
@@ -988,9 +1020,14 @@ impl SemanticDeclaration {
                 .map(|argument| renamer.resolve(argument)),
             result: renamer.ty(result),
             body: renamer.term(body),
+            termination: termination.as_ref().map(|termination| SemanticTermination {
+                measure: renamer.term(&termination.measure),
+                evidence: termination.evidence.clone(),
+            }),
             parameters,
             axioms: axioms.clone(),
             executable: *executable,
+            mutual: mutual.clone(),
         };
         let text = serde_json::to_string(&normalized).expect("definition serializes");
         let canonical = crate::artifact::canonical_json::Json::parse(text.as_bytes())
@@ -1165,6 +1202,7 @@ fn proof_node_count(proof: &SemanticProof) -> u64 {
     1 + match proof {
         SemanticProof::Reflexivity
         | SemanticProof::Decide
+        | SemanticProof::LinearArithmetic { .. }
         | SemanticProof::Congruence
         | SemanticProof::Simplify { .. }
         | SemanticProof::BooleanReflection { .. } => 0,
@@ -1255,14 +1293,67 @@ fn declaration_node_count(declaration: &SemanticDeclaration) -> u64 {
             parameters: values,
             result,
             body,
+            termination,
             ..
-        } => parameters(values) + type_node_count(result) + term_node_count(body),
+        } => {
+            parameters(values)
+                + type_node_count(result)
+                + term_node_count(body)
+                + termination.as_ref().map_or(0, |termination| {
+                    term_node_count(&termination.measure) + termination.evidence.len() as u64
+                })
+        }
         SemanticDeclaration::Theorem {
             parameters: values,
             statement,
             proof,
             ..
         } => parameters(values) + term_node_count(statement) + proof_node_count(proof),
+    }
+}
+
+/// The first source member the typed value dropped, as a JSON path.
+fn ignored_member(
+    source: &serde_json::Value,
+    typed: &serde_json::Value,
+    path: &str,
+) -> Option<String> {
+    match (source, typed) {
+        (serde_json::Value::Object(source), serde_json::Value::Object(typed)) => {
+            // serde's `deny_unknown_fields` rejects an unknown member of a
+            // struct-shaped value, so a member the typed value lacks is
+            // either a field serialized only when it differs from its
+            // default (an empty list or `false`) or an extra member of a
+            // unit variant, which serde ignores. A unit variant serializes to
+            // its tag alone and so admits no other member at all.
+            let unit_variant = typed.len() == 1 && typed.contains_key("kind");
+            for (key, value) in source {
+                let child = format!("{path}.{key}");
+                match typed.get(key) {
+                    Some(kept) => {
+                        if let Some(found) = ignored_member(value, kept, &child) {
+                            return Some(found);
+                        }
+                    }
+                    None => {
+                        let default = matches!(value, serde_json::Value::Bool(false))
+                            || matches!(value, serde_json::Value::Array(items) if items.is_empty());
+                        if unit_variant || !default {
+                            return Some(child);
+                        }
+                    }
+                }
+            }
+            None
+        }
+        (serde_json::Value::Array(source), serde_json::Value::Array(typed)) => source
+            .iter()
+            .zip(typed)
+            .enumerate()
+            .find_map(|(index, (value, kept))| {
+                ignored_member(value, kept, &format!("{path}[{index}]"))
+            }),
+        _ => None,
     }
 }
 
@@ -1638,6 +1729,7 @@ fn proof_terms(proof: &SemanticProof, visit: &mut impl FnMut(&SemanticTerm)) {
     match proof {
         SemanticProof::Reflexivity
         | SemanticProof::Decide
+        | SemanticProof::LinearArithmetic { .. }
         | SemanticProof::Simplify { .. }
         | SemanticProof::Congruence
         | SemanticProof::BooleanReflection { .. } => {}
@@ -1703,6 +1795,7 @@ fn proof_binders(proof: &SemanticProof, visit: &mut impl FnMut(&str)) {
         | SemanticProof::Simplify { .. }
         | SemanticProof::Congruence
         | SemanticProof::BooleanReflection { .. }
+        | SemanticProof::LinearArithmetic { .. }
         | SemanticProof::Apply { .. } => {}
         SemanticProof::Constructor { branches } => {
             for branch in branches {
@@ -1823,7 +1916,14 @@ fn declaration_terms(declaration: &SemanticDeclaration, visit: &mut impl FnMut(&
                 visit_terms(&field.value, visit);
             }
         }
-        SemanticDeclaration::Definition { body, .. } => visit_terms(body, visit),
+        SemanticDeclaration::Definition {
+            body, termination, ..
+        } => {
+            visit_terms(body, visit);
+            if let Some(termination) = termination {
+                visit_terms(&termination.measure, visit);
+            }
+        }
         SemanticDeclaration::Theorem {
             statement, proof, ..
         } => {
@@ -1877,6 +1977,7 @@ fn type_mentions_parameter(ty: &SemanticType, name: &str) -> bool {
 fn proof_type_arguments(proof: &SemanticProof, visit: &mut impl FnMut(&SemanticType)) {
     match proof {
         SemanticProof::Reflexivity
+        | SemanticProof::LinearArithmetic { .. }
         | SemanticProof::Decide
         | SemanticProof::Simplify { .. }
         | SemanticProof::Congruence
@@ -1939,6 +2040,22 @@ struct Environment<'a> {
     /// Language 1.2: the type parameters of the declaration being checked;
     /// a recursive call must pass exactly these.
     current_type_parameters: Vec<String>,
+    /// Language 1.2: the mutual definition group being checked, by member
+    /// name and decreasing-argument position.
+    recursive_group: BTreeMap<String, usize>,
+    /// Language 1.2: the recursive family of that group (§17.12).
+    recursive_family: Option<Family>,
+    /// Language 1.2: the decreasing parameter type of the member being
+    /// checked.
+    current_decreasing_type: Option<SemanticType>,
+    /// Language 1.2: the well-founded definition being checked, which may be
+    /// called only at planned call sites and never referenced as a value.
+    /// The well-founded definitions being checked, standalone or one mutual
+    /// group, with each member's parameters and measure: calls to them are
+    /// recursive, and each call's obligation reads the callee's measure.
+    well_founded_group: BTreeMap<String, (Vec<SemanticParameter>, SemanticTerm)>,
+    /// Language 1.2: local theorems by name, for termination evidence.
+    theorems: BTreeMap<String, (Vec<String>, Vec<SemanticParameter>, SemanticTerm)>,
 }
 
 #[derive(Clone, Default)]
@@ -1956,6 +2073,9 @@ struct TypeInfo {
     /// Language 1.2: a recursive occurrence of the group appears nested
     /// under a container, or the type belongs to a mutual group.
     nested_or_mutual: bool,
+    /// Language 1.2: the environment keys of every member of this type's
+    /// inductive group, itself included.
+    group: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -2794,10 +2914,12 @@ fn register_inductive_group(
             empty.name
         ));
     }
+    let members: Vec<String> = rows.iter().map(|row| row.name.to_owned()).collect();
     for (name, (direct_recursive, nested_or_mutual)) in recursion_flags(rows) {
         if let Some(info) = env.types.get_mut(&name) {
             info.direct_recursive = direct_recursive;
             info.nested_or_mutual = nested_or_mutual;
+            info.group.clone_from(&members);
         }
     }
     Ok(())
@@ -3196,6 +3318,984 @@ fn check_executable_term(
     }
 }
 
+/// The recursive family a mutual definition group decreases over (§17.12):
+/// the naturals, lists of one element type, or one inductive group with its
+/// `List` and `Option` containers.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Family {
+    Nat,
+    List(SemanticType),
+    /// An inductive group at one instantiation of its type parameters.
+    Group(BTreeSet<String>, Vec<SemanticType>),
+}
+
+/// The containers (`List`, `Option`) under which a group's constructors
+/// actually nest a member of the group: exactly those a mutual definition
+/// may recurse through.
+fn group_containers(group: &BTreeSet<String>, env: &Environment<'_>) -> (bool, bool) {
+    let in_group = |ty: &SemanticType| matches!(ty, SemanticType::Named { member, .. } if group.contains(&member_key(member)));
+    let (mut list, mut option) = (false, false);
+    for key in group {
+        let Some(info) = env.types.get(key) else {
+            continue;
+        };
+        for field in info.constructor_types.values().flatten() {
+            match field {
+                SemanticType::List { element } if in_group(element) => list = true,
+                SemanticType::Option { value } if in_group(value) => option = true,
+                _ => {}
+            }
+        }
+    }
+    (list, option)
+}
+
+fn group_key_of(member: &MemberRef, env: &Environment<'_>) -> Option<BTreeSet<String>> {
+    let info = type_info(member, env)?;
+    if info.constructors.is_empty() || !info.fields.is_empty() {
+        return None;
+    }
+    Some(info.group.iter().cloned().collect())
+}
+
+/// The family of one decreasing parameter type.
+fn family_of(ty: &SemanticType, env: &Environment<'_>) -> Option<Family> {
+    match ty {
+        SemanticType::Nat => Some(Family::Nat),
+        SemanticType::Named { member, arguments } => {
+            group_key_of(member, env).map(|group| Family::Group(group, arguments.clone()))
+        }
+        SemanticType::List { element } | SemanticType::Option { value: element } => {
+            if let SemanticType::Named { member, arguments } = element.as_ref() {
+                if let Some(group) = group_key_of(member, env) {
+                    let (list, option) = group_containers(&group, env);
+                    let nested = match ty {
+                        SemanticType::List { .. } => list,
+                        _ => option,
+                    };
+                    return nested.then(|| Family::Group(group, arguments.clone()));
+                }
+            }
+            match ty {
+                SemanticType::List { element } => Some(Family::List(element.as_ref().clone())),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Whether a pattern binder of type `ty` belongs to `family` and is
+/// therefore a structurally smaller subvalue of the matched argument.
+fn in_family(ty: &SemanticType, family: &Family, env: &Environment<'_>) -> bool {
+    match (family, ty) {
+        (Family::Nat, SemanticType::Nat) => true,
+        (Family::List(element), SemanticType::List { element: observed }) => {
+            observed.as_ref() == element
+        }
+        (Family::Group(..), _) => family_of(ty, env).as_ref() == Some(family),
+        _ => false,
+    }
+}
+
+/// Check one definition: signature, scope, body, recursion, typing, and
+/// production eligibility. Shared by standalone definitions and members of
+/// a mutual group (whose group context is already in `env`).
+#[allow(clippy::too_many_lines)]
+fn check_definition(
+    declaration: &SemanticDeclaration,
+    env: &mut Environment<'_>,
+) -> Result<(), String> {
+    let SemanticDeclaration::Definition {
+        name,
+        type_parameters,
+        parameters,
+        result,
+        recursive_argument,
+        body,
+        axioms,
+        executable,
+        mutual,
+        termination,
+    } = declaration
+    else {
+        return Ok(());
+    };
+    if axioms.windows(2).any(|pair| pair[0] >= pair[1])
+        || axioms.iter().any(|axiom| !legal_name(axiom))
+    {
+        return Err(format!(
+            "definition `{name}` axiom policy is not sorted, unique, and qualified"
+        ));
+    }
+    if !type_parameters.is_empty() {
+        require_language_1_2(env, "definition type parameters")?;
+    }
+    if *executable {
+        require_language_1_2(env, "executable definition")?;
+    }
+    if mutual.is_some() {
+        require_language_1_2(env, "mutual definition group")?;
+    }
+    if termination.is_some() {
+        require_language_1_2(env, "well-founded termination evidence")?;
+        if recursive_argument.is_some() {
+            return Err(format!(
+                "definition `{name}` declares both structural and well-founded recursion"
+            ));
+        }
+    }
+    let scope = type_parameter_set(type_parameters)?;
+    let mut binders: BTreeSet<String> = parameters
+        .iter()
+        .map(|parameter| parameter.name.clone())
+        .collect();
+    bound_names(body, &mut binders);
+    check_type_parameter_spelling(type_parameters, &binders, env)?;
+    let locals = check_parameters(parameters, env, &scope)?;
+    check_type(result, env)?;
+    check_type_parameters(result, &scope)?;
+    check_term_type_parameters(body, &scope)?;
+    env.current_type_parameters.clone_from(type_parameters);
+    let info = FunctionInfo {
+        type_parameters: type_parameters.clone(),
+        parameters: parameters
+            .iter()
+            .map(|parameter| parameter.r#type.clone())
+            .collect(),
+        result: result.clone(),
+        executable: *executable,
+    };
+    let recursion = if let Some(argument) = recursive_argument {
+        let index = parameters
+            .iter()
+            .position(|parameter| &parameter.name == argument)
+            .ok_or_else(|| {
+                format!("definition `{name}` names a missing decreasing argument `{argument}`")
+            })?;
+        if env.recursive_family.is_none() && !is_structural_domain(&parameters[index].r#type, env) {
+            return Err(format!(
+                "definition `{name}` decreasing argument `{argument}` is not Nat, List, or a document inductive"
+            ));
+        }
+        // §17.12: one standalone function recurses structurally only over a
+        // self-recursive type; a nested or mutual group has no single
+        // structural eliminator for it, exactly as for induction. A mutual
+        // definition group recurses over such a type as one family.
+        if env.recursive_family.is_none() {
+            if let SemanticType::Named { member, .. } = &parameters[index].r#type {
+                if type_info(member, env).is_some_and(|info| info.nested_or_mutual) {
+                    return Err(format!(
+                        "definition `{name}` decreases on `{argument}` of the nested or mutual type `{}`; standalone structural recursion requires a self-recursive inductive",
+                        member_key(member)
+                    ));
+                }
+            }
+        }
+        if !matches!(
+            body,
+            SemanticTerm::Match { scrutinee, .. }
+                if matches!(scrutinee.as_ref(), SemanticTerm::Var { name } if name == argument)
+        ) {
+            return Err(format!(
+                "definition `{name}` is recursive but its body is not a top-level match on `{argument}`"
+            ));
+        }
+        Some((name.as_str(), index, argument.as_str()))
+    } else {
+        None
+    };
+    // A standalone well-founded definition is a group of one; a mutual
+    // group's members are registered by `check_definition_group`.
+    let standalone = termination.is_some() && mutual.is_none();
+    if let Some(termination) = termination {
+        if standalone {
+            env.well_founded_group.insert(
+                name.clone(),
+                (parameters.clone(), termination.measure.clone()),
+            );
+        }
+        check_measure(name, &termination.measure, parameters, env)?;
+        // Calls of a well-founded definition are ordinary typed calls; their
+        // placement and evidence are checked below.
+        env.functions.insert(name.to_owned(), info.clone());
+    }
+    let checked = check_term(body, &locals, env, recursion, &BTreeSet::new());
+    if standalone && checked.is_err() {
+        env.well_founded_group.clear();
+    }
+    checked?;
+    env.functions.insert(name.to_owned(), info);
+    require_type(
+        infer_term(body, &typed_locals(parameters), env)?,
+        result,
+        &format!("definition `{name}` body"),
+    )?;
+    if let Some(termination) = termination {
+        let outcome = check_well_founded(name, type_parameters, parameters, body, termination, env);
+        if standalone {
+            env.well_founded_group.clear();
+        }
+        outcome?;
+    }
+    if *executable {
+        check_executable(name, parameters, result, body, env)?;
+    }
+    env.current_type_parameters.clear();
+    Ok(())
+}
+
+/// Validate one contiguous mutual definition group (§17.12): at least two
+/// structurally recursive members with identical type parameters, each
+/// decreasing on a value of one recursive family, and every call between
+/// members passing a structurally smaller family binder.
+fn check_definition_group(
+    rows: &[&SemanticDeclaration],
+    label: &str,
+    env: &mut Environment<'_>,
+) -> Result<(), String> {
+    check_name(label, "mutual group")?;
+    if rows.len() < 2 {
+        return Err(format!(
+            "mutual group `{label}` has one member; a standalone definition omits `mutual`"
+        ));
+    }
+    let well_founded = rows
+        .iter()
+        .filter(|row| {
+            matches!(
+                row,
+                SemanticDeclaration::Definition {
+                    termination: Some(_),
+                    ..
+                }
+            )
+        })
+        .count();
+    if well_founded == rows.len() {
+        check_group_call_graph(rows, label)?;
+        return check_well_founded_group(rows, label, env);
+    }
+    if well_founded > 0 {
+        return Err(format!(
+            "mutual group `{label}` mixes structural and well-founded members"
+        ));
+    }
+    let mut members = BTreeMap::new();
+    let mut decreasing_types = Vec::new();
+    let mut first_type_parameters: Option<&Vec<String>> = None;
+    for row in rows {
+        let SemanticDeclaration::Definition {
+            name,
+            type_parameters,
+            parameters,
+            result,
+            recursive_argument,
+            executable,
+            ..
+        } = row
+        else {
+            continue;
+        };
+        if let Some(first) = first_type_parameters {
+            if first != type_parameters {
+                return Err(format!(
+                    "mutual group `{label}` members must declare identical type parameters; `{name}` differs"
+                ));
+            }
+        } else {
+            first_type_parameters = Some(type_parameters);
+        }
+        let argument = recursive_argument.as_ref().ok_or_else(|| {
+            format!("mutual group `{label}` member `{name}` names no decreasing argument")
+        })?;
+        let index = parameters
+            .iter()
+            .position(|parameter| &parameter.name == argument)
+            .ok_or_else(|| {
+                format!("definition `{name}` names a missing decreasing argument `{argument}`")
+            })?;
+        members.insert(name.clone(), index);
+        decreasing_types.push(parameters[index].r#type.clone());
+        // Every member is callable from every member's body.
+        env.functions.insert(
+            name.clone(),
+            FunctionInfo {
+                type_parameters: type_parameters.clone(),
+                parameters: parameters
+                    .iter()
+                    .map(|parameter| parameter.r#type.clone())
+                    .collect(),
+                result: result.clone(),
+                executable: *executable,
+            },
+        );
+    }
+    let mut family = None;
+    for (row, ty) in rows.iter().zip(&decreasing_types) {
+        let observed = family_of(ty, env).ok_or_else(|| {
+            format!(
+                "mutual group `{label}` member `{}` decreases on a type outside every recursive family",
+                row.name()
+            )
+        })?;
+        match &family {
+            None => family = Some(observed),
+            Some(expected) if *expected == observed => {}
+            Some(_) => {
+                return Err(format!(
+                    "mutual group `{label}` members decrease on different recursive families"
+                ));
+            }
+        }
+    }
+    // The call graph is checked once the members and their family are
+    // known, so a group of the wrong shape reports its shape first.
+    check_group_call_graph(rows, label)?;
+    env.recursive_group = members;
+    env.recursive_family = family;
+    let mut outcome = Ok(());
+    for (row, ty) in rows.iter().zip(decreasing_types) {
+        env.current_decreasing_type = Some(ty);
+        outcome = check_definition(row, env);
+        if outcome.is_err() {
+            break;
+        }
+    }
+    env.recursive_group.clear();
+    env.recursive_family = None;
+    env.current_decreasing_type = None;
+    outcome
+}
+
+/// §17.12: the recursion call graph of a mutual group is the calls and
+/// references among its members. Every member calls into the group and the
+/// graph is strongly connected: a member outside every cycle is not
+/// mutually recursive, and Lean refuses its termination clause.
+fn check_group_call_graph(rows: &[&SemanticDeclaration], label: &str) -> Result<(), String> {
+    let members: BTreeSet<String> = rows.iter().map(|row| row.name().to_owned()).collect();
+    let mut edges: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for row in rows {
+        let SemanticDeclaration::Definition { name, body, .. } = row else {
+            return Err(format!(
+                "mutual group `{label}` member `{}` is not a definition",
+                row.name()
+            ));
+        };
+        let mut callees = BTreeSet::new();
+        visit_terms(body, &mut |term| {
+            if let SemanticTerm::Call { function, .. }
+            | SemanticTerm::FunctionRef { function, .. } = term
+            {
+                if function.module.is_none() && members.contains(&function.name) {
+                    callees.insert(function.name.clone());
+                }
+            }
+        });
+        if callees.is_empty() {
+            return Err(format!(
+                "mutual group `{label}` member `{name}` calls no member of its group"
+            ));
+        }
+        edges.insert(name.clone(), callees);
+    }
+    let reach = |forward: bool| {
+        let start = rows[0].name().to_owned();
+        let mut seen = BTreeSet::from([start.clone()]);
+        let mut pending = vec![start];
+        while let Some(current) = pending.pop() {
+            let next: Vec<String> = if forward {
+                edges[&current].iter().cloned().collect()
+            } else {
+                edges
+                    .iter()
+                    .filter(|(_, callees)| callees.contains(&current))
+                    .map(|(caller, _)| caller.clone())
+                    .collect()
+            };
+            for member in next {
+                if seen.insert(member.clone()) {
+                    pending.push(member);
+                }
+            }
+        }
+        seen
+    };
+    for (forward, direction) in [(true, "reach"), (false, "be reached from")] {
+        let seen = reach(forward);
+        if let Some(missing) = members.iter().find(|member| !seen.contains(*member)) {
+            return Err(format!(
+                "mutual group `{label}` is not strongly connected: `{}` does not {direction} `{missing}`",
+                rows[0].name()
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// A mutual group of well-founded definitions (§17.12 rule 3): identical
+/// type parameters, a measure per member, and one evidence theorem per call
+/// site whose obligation compares the callee's measure at the call's
+/// arguments with the caller's measure.
+fn check_well_founded_group(
+    rows: &[&SemanticDeclaration],
+    label: &str,
+    env: &mut Environment<'_>,
+) -> Result<(), String> {
+    let mut first_type_parameters: Option<&Vec<String>> = None;
+    for row in rows {
+        let SemanticDeclaration::Definition {
+            name,
+            type_parameters,
+            parameters,
+            result,
+            executable,
+            termination: Some(termination),
+            ..
+        } = row
+        else {
+            continue;
+        };
+        if let Some(first) = first_type_parameters {
+            if first != type_parameters {
+                return Err(format!(
+                    "mutual group `{label}` members must declare identical type parameters; `{name}` differs"
+                ));
+            }
+        } else {
+            first_type_parameters = Some(type_parameters);
+        }
+        env.functions.insert(
+            name.clone(),
+            FunctionInfo {
+                type_parameters: type_parameters.clone(),
+                parameters: parameters
+                    .iter()
+                    .map(|parameter| parameter.r#type.clone())
+                    .collect(),
+                result: result.clone(),
+                executable: *executable,
+            },
+        );
+        env.well_founded_group.insert(
+            name.clone(),
+            (parameters.clone(), termination.measure.clone()),
+        );
+    }
+    let mut outcome = Ok(());
+    for row in rows {
+        outcome = check_definition(row, env);
+        if outcome.is_err() {
+            break;
+        }
+    }
+    env.well_founded_group.clear();
+    outcome
+}
+
+/// A well-founded measure is a binder-free natural-number term over the
+/// parameters that does not mention the definition it measures.
+fn check_measure(
+    name: &str,
+    measure: &SemanticTerm,
+    parameters: &[SemanticParameter],
+    env: &Environment<'_>,
+) -> Result<(), String> {
+    let mut binder = false;
+    let mut cyclic = false;
+    visit_terms(measure, &mut |term| match term {
+        SemanticTerm::Let { .. }
+        | SemanticTerm::Forall { .. }
+        | SemanticTerm::Lambda { .. }
+        | SemanticTerm::Match { .. } => binder = true,
+        SemanticTerm::Call { function, .. } | SemanticTerm::FunctionRef { function, .. } => {
+            cyclic |= function.module.is_none()
+                && (function.name == name || env.well_founded_group.contains_key(&function.name));
+        }
+        _ => {}
+    });
+    if cyclic {
+        return Err(format!(
+            "the measure of `{name}` refers to `{name}` itself or a member of its group (cyclic measure)"
+        ));
+    }
+    if binder {
+        return Err(format!(
+            "the measure of `{name}` binds a local; a measure is binder-free"
+        ));
+    }
+    let names: BTreeSet<String> = parameters
+        .iter()
+        .map(|parameter| parameter.name.clone())
+        .collect();
+    check_term(measure, &names, env, None, &BTreeSet::new())?;
+    require_type(
+        infer_term(measure, &typed_locals(parameters), env)?,
+        &SemanticType::Nat,
+        &format!("the measure of `{name}`"),
+    )
+}
+
+/// One enclosing node of a recursive call site, outermost first.
+#[derive(Clone, Copy)]
+pub(crate) enum Step {
+    /// The call lies in the `then` (`true`) or `else` (`false`) arm of the
+    /// numbered `if`.
+    If { node: usize, polarity: bool },
+    /// The call lies in branch `branch` of the numbered `match`.
+    Match { node: usize, branch: usize },
+}
+
+impl Step {
+    /// The numbered node this step lies under.
+    pub(crate) const fn node(self) -> usize {
+        match self {
+            Self::If { node, .. } | Self::Match { node, .. } => node,
+        }
+    }
+}
+
+/// A numbered `if` or `match` of a well-founded body.
+pub(crate) enum PlannedNode<'a> {
+    If {
+        condition: &'a SemanticTerm,
+    },
+    Match {
+        scrutinee: &'a SemanticTerm,
+        branches: &'a [SemanticBranch],
+    },
+}
+
+pub(crate) struct CallSite {
+    /// The group member called.
+    pub(crate) callee: String,
+    pub(crate) path: Vec<Step>,
+    pub(crate) arguments: Vec<SemanticTerm>,
+}
+
+/// The fixed hypothesis numbering and call-site order of a well-founded
+/// body (§17.12): every `if` and `match` is numbered in this pre-order, and
+/// both the evidence obligations and the Lean lowering read the same
+/// numbering. `addresses` identifies each numbered node within the borrowed
+/// body for the lowering; it is never dereferenced.
+pub(crate) struct WellFoundedPlan<'a> {
+    pub(crate) nodes: Vec<PlannedNode<'a>>,
+    pub(crate) addresses: Vec<usize>,
+    pub(crate) sites: Vec<CallSite>,
+}
+
+impl WellFoundedPlan<'_> {
+    /// The match binders a call site is under, outermost first; they are
+    /// quantified by its evidence after the definition's parameters.
+    pub(crate) fn binders(&self, site: &CallSite) -> Vec<String> {
+        let mut out = Vec::new();
+        for step in &site.path {
+            if let Step::Match { node, branch } = step {
+                if let PlannedNode::Match { branches, .. } = &self.nodes[*node] {
+                    out.extend(branches[*branch].binders.iter().cloned());
+                }
+            }
+        }
+        out
+    }
+}
+
+fn contains_call(term: &SemanticTerm, group: &BTreeSet<String>) -> bool {
+    let mut found = false;
+    visit_terms(term, &mut |node| {
+        if let SemanticTerm::Call { function, .. } | SemanticTerm::FunctionRef { function, .. } =
+            node
+        {
+            found |= function.module.is_none() && group.contains(&function.name);
+        }
+    });
+    found
+}
+
+/// Plan a well-founded body, rejecting a recursive call in any position
+/// whose decrease obligation could not be stated over the parameters and
+/// the binders of the matches enclosing it.
+pub(crate) fn well_founded_plan<'a>(
+    name: &str,
+    group: &BTreeSet<String>,
+    type_parameters: &[String],
+    parameters: &[SemanticParameter],
+    body: &'a SemanticTerm,
+) -> Result<WellFoundedPlan<'a>, String> {
+    struct Walk<'n> {
+        name: &'n str,
+        group: &'n BTreeSet<String>,
+        own: Vec<SemanticType>,
+        /// The locals an obligation may mention here: the parameters and the
+        /// binders of every enclosing match.
+        allowed: BTreeSet<String>,
+        path: Vec<Step>,
+    }
+    fn mentions_only(term: &SemanticTerm, allowed: &BTreeSet<String>) -> Option<String> {
+        let mut used = BTreeSet::new();
+        free_locals(term, &mut BTreeSet::new(), &mut used);
+        used.difference(allowed).next().cloned()
+    }
+    fn walk<'a>(
+        term: &'a SemanticTerm,
+        state: &mut Walk<'_>,
+        plan: &mut WellFoundedPlan<'a>,
+    ) -> Result<(), String> {
+        let name = state.name;
+        let group = state.group;
+        match term {
+            SemanticTerm::Call {
+                function,
+                type_arguments,
+                arguments,
+            } if function.module.is_none() && group.contains(&function.name) => {
+                let callee = &function.name;
+                if type_arguments.as_slice() != state.own {
+                    return Err(format!(
+                        "recursive call `{callee}` must pass its own type parameters in order; polymorphic recursion is not permitted"
+                    ));
+                }
+                for argument in arguments {
+                    if contains_call(argument, group) {
+                        return Err(format!(
+                            "a recursive call of `{callee}` is nested in another call's argument"
+                        ));
+                    }
+                    if let Some(local) = mentions_only(argument, &state.allowed) {
+                        return Err(format!(
+                            "an argument of a recursive call of `{callee}` mentions `{local}`, which is neither a parameter nor an enclosing match binder"
+                        ));
+                    }
+                }
+                plan.sites.push(CallSite {
+                    callee: callee.clone(),
+                    path: state.path.clone(),
+                    arguments: arguments.clone(),
+                });
+                Ok(())
+            }
+            SemanticTerm::If {
+                condition,
+                then_value,
+                else_value,
+            } => {
+                let node = plan.nodes.len();
+                plan.nodes.push(PlannedNode::If { condition });
+                plan.addresses.push(std::ptr::from_ref(term) as usize);
+                walk(condition, state, plan)?;
+                if contains_call(then_value, group) || contains_call(else_value, group) {
+                    if let Some(local) = mentions_only(condition, &state.allowed) {
+                        return Err(format!(
+                            "a condition enclosing a recursive call of `{name}` mentions `{local}`, which is neither a parameter nor an enclosing match binder"
+                        ));
+                    }
+                }
+                for (polarity, arm) in [(true, then_value), (false, else_value)] {
+                    state.path.push(Step::If { node, polarity });
+                    walk(arm, state, plan)?;
+                    state.path.pop();
+                }
+                Ok(())
+            }
+            SemanticTerm::Match {
+                scrutinee,
+                branches,
+            } => {
+                let node = plan.nodes.len();
+                plan.nodes.push(PlannedNode::Match {
+                    scrutinee,
+                    branches,
+                });
+                plan.addresses.push(std::ptr::from_ref(term) as usize);
+                walk(scrutinee, state, plan)?;
+                let encloses = branches
+                    .iter()
+                    .any(|branch| contains_call(&branch.body, group));
+                if encloses {
+                    if let Some(local) = mentions_only(scrutinee, &state.allowed) {
+                        return Err(format!(
+                            "a match enclosing a recursive call of `{name}` inspects `{local}`, which is neither a parameter nor an enclosing match binder"
+                        ));
+                    }
+                }
+                for (index, branch) in branches.iter().enumerate() {
+                    let added: Vec<&String> = branch.binders.iter().collect();
+                    if encloses {
+                        for binder in &added {
+                            if state.allowed.contains(*binder) {
+                                return Err(format!(
+                                    "match binder `{binder}` enclosing a recursive call of `{name}` repeats a parameter or an enclosing binder"
+                                ));
+                            }
+                        }
+                    }
+                    for binder in &added {
+                        state.allowed.insert((*binder).clone());
+                    }
+                    state.path.push(Step::Match {
+                        node,
+                        branch: index,
+                    });
+                    walk(&branch.body, state, plan)?;
+                    state.path.pop();
+                    for binder in &added {
+                        state.allowed.remove(*binder);
+                    }
+                }
+                Ok(())
+            }
+            SemanticTerm::Lambda { .. } | SemanticTerm::Forall { .. }
+                if contains_call(term, group) =>
+            {
+                Err(format!(
+                    "a recursive call of `{name}` under a lambda or quantifier has no stated decrease obligation"
+                ))
+            }
+            _ => {
+                for child in immediate_subterms(term) {
+                    walk(child, state, plan)?;
+                }
+                Ok(())
+            }
+        }
+    }
+    let mut state = Walk {
+        name,
+        group,
+        own: type_parameters
+            .iter()
+            .map(|parameter| SemanticType::Parameter {
+                name: parameter.clone(),
+            })
+            .collect(),
+        allowed: parameters
+            .iter()
+            .map(|parameter| parameter.name.clone())
+            .collect(),
+        path: Vec::new(),
+    };
+    let mut plan = WellFoundedPlan {
+        nodes: Vec::new(),
+        addresses: Vec::new(),
+        sites: Vec::new(),
+    };
+    walk(body, &mut state, &mut plan)?;
+    Ok(plan)
+}
+
+fn substitute_locals(term: &SemanticTerm, map: &BTreeMap<String, SemanticTerm>) -> SemanticTerm {
+    if let SemanticTerm::Var { name } = term {
+        if let Some(value) = map.get(name) {
+            return value.clone();
+        }
+        return term.clone();
+    }
+    // The measure is binder-free, so substitution never meets a binder.
+    let mut value = serde_json::to_value(term).expect("semantic term serializes");
+    fn rewrite(value: &mut serde_json::Value, map: &BTreeMap<String, SemanticTerm>) {
+        match value {
+            serde_json::Value::Array(items) => items.iter_mut().for_each(|item| rewrite(item, map)),
+            serde_json::Value::Object(object) => {
+                if object.get("kind").and_then(serde_json::Value::as_str) == Some("var") {
+                    if let Some(serde_json::Value::String(name)) = object.get("name") {
+                        if let Some(replacement) = map.get(name) {
+                            *value = serde_json::to_value(replacement).expect("term serializes");
+                            return;
+                        }
+                    }
+                }
+                object.values_mut().for_each(|child| rewrite(child, map));
+            }
+            _ => {}
+        }
+    }
+    rewrite(&mut value, map);
+    serde_json::from_value(value).expect("substituted term deserializes")
+}
+
+/// The value a match branch's pattern denotes, over its binders: the term
+/// an evidence hypothesis equates the scrutinee with.
+fn pattern_value(scrutinee_type: &SemanticType, branch: &SemanticBranch) -> SemanticTerm {
+    let binders: Vec<SemanticTerm> = branch
+        .binders
+        .iter()
+        .map(|binder| SemanticTerm::Var {
+            name: binder.clone(),
+        })
+        .collect();
+    match scrutinee_type {
+        SemanticType::Bool => SemanticTerm::Bool {
+            value: branch.constructor.name == "Bool.true",
+        },
+        SemanticType::Product { .. } => {
+            let mut parts = binders.into_iter();
+            SemanticTerm::Pair {
+                left: Box::new(parts.next().expect("Prod.mk binds two values")),
+                right: Box::new(parts.next().expect("Prod.mk binds two values")),
+            }
+        }
+        _ => SemanticTerm::Constructor {
+            constructor: branch.constructor.clone(),
+            type_arguments: match scrutinee_type {
+                SemanticType::Named { arguments, .. } => arguments.clone(),
+                SemanticType::List { element } => vec![element.as_ref().clone()],
+                SemanticType::Option { value } => vec![value.as_ref().clone()],
+                SemanticType::Result { ok, error } => {
+                    vec![ok.as_ref().clone(), error.as_ref().clone()]
+                }
+                _ => Vec::new(),
+            },
+            arguments: binders,
+        },
+    }
+}
+
+/// The decrease obligation of one call site and the binders it quantifies:
+/// for its enclosing nodes, outermost first, each `if` contributes
+/// `c = b` and each `match` contributes `s = pattern`, then
+/// `measure(args) < measure`. The evidence theorem's parameters are the
+/// definition's parameters followed by the returned binders.
+fn decrease_obligation(
+    measure: &SemanticTerm,
+    callee: (&[SemanticParameter], &SemanticTerm),
+    parameters: &[SemanticParameter],
+    plan: &WellFoundedPlan<'_>,
+    site: &CallSite,
+    env: &Environment<'_>,
+) -> Result<(Vec<SemanticParameter>, SemanticTerm), String> {
+    let (callee_parameters, callee_measure) = callee;
+    let map: BTreeMap<String, SemanticTerm> = callee_parameters
+        .iter()
+        .map(|parameter| parameter.name.clone())
+        .zip(site.arguments.iter().cloned())
+        .collect();
+    let mut typed = typed_locals(parameters);
+    let mut binders = Vec::new();
+    let mut premises = Vec::new();
+    for step in &site.path {
+        match (*step, &plan.nodes[step.node()]) {
+            (Step::If { polarity, .. }, PlannedNode::If { condition }) => {
+                premises.push(SemanticTerm::Eq {
+                    left: Box::new((*condition).clone()),
+                    right: Box::new(SemanticTerm::Bool { value: polarity }),
+                });
+            }
+            (
+                Step::Match { branch, .. },
+                PlannedNode::Match {
+                    scrutinee,
+                    branches,
+                },
+            ) => {
+                let scrutinee_type = infer_term(scrutinee, &typed, env)?.ok_or(
+                    "the scrutinee of a match enclosing a recursive call has no known type",
+                )?;
+                let branch = &branches[branch];
+                let types = branch_binder_types(&scrutinee_type, branch, env)?;
+                for (binder, ty) in branch.binders.iter().zip(types) {
+                    typed.insert(binder.clone(), ty.clone());
+                    binders.push(SemanticParameter {
+                        name: binder.clone(),
+                        r#type: ty,
+                    });
+                }
+                premises.push(SemanticTerm::Eq {
+                    left: Box::new((*scrutinee).clone()),
+                    right: Box::new(pattern_value(&scrutinee_type, branch)),
+                });
+            }
+            (
+                Step::If { .. } | Step::Match { .. },
+                PlannedNode::If { .. } | PlannedNode::Match { .. },
+            ) => {
+                return Err("internal: a well-founded plan step does not name its node".to_owned());
+            }
+        }
+    }
+    let mut statement = SemanticTerm::Lt {
+        left: Box::new(substitute_locals(callee_measure, &map)),
+        right: Box::new(measure.clone()),
+    };
+    for premise in premises.into_iter().rev() {
+        statement = SemanticTerm::Implies {
+            premise: Box::new(premise),
+            conclusion: Box::new(statement),
+        };
+    }
+    Ok((binders, statement))
+}
+
+/// §17.12 well-founded recursion: one statement-exact evidence theorem per
+/// call site, in call-site order.
+fn check_well_founded(
+    name: &str,
+    type_parameters: &[String],
+    parameters: &[SemanticParameter],
+    body: &SemanticTerm,
+    termination: &SemanticTermination,
+    env: &Environment<'_>,
+) -> Result<(), String> {
+    let group: BTreeSet<String> = env.well_founded_group.keys().cloned().collect();
+    let plan = well_founded_plan(name, &group, type_parameters, parameters, body)?;
+    if plan.sites.is_empty() {
+        return Err(format!(
+            "definition `{name}` declares termination evidence but makes no recursive call"
+        ));
+    }
+    if plan.sites.len() != termination.evidence.len() {
+        return Err(format!(
+            "definition `{name}` has {} recursive call site(s) but {} evidence theorem(s)",
+            plan.sites.len(),
+            termination.evidence.len()
+        ));
+    }
+    for (position, (site, evidence)) in plan.sites.iter().zip(&termination.evidence).enumerate() {
+        let (callee_parameters, callee_measure) = &env.well_founded_group[&site.callee];
+        let (binders, obligation) = decrease_obligation(
+            &termination.measure,
+            (callee_parameters, callee_measure),
+            parameters,
+            &plan,
+            site,
+            env,
+        )?;
+        let stated = evidence
+            .module
+            .is_none()
+            .then(|| env.theorems.get(&evidence.name))
+            .flatten()
+            .ok_or_else(|| {
+                format!(
+                    "evidence `{}` for recursive call {position} of `{name}` is not a prior theorem of this module",
+                    member_key(evidence)
+                )
+            })?;
+        let expected_parameters: Vec<SemanticParameter> =
+            parameters.iter().cloned().chain(binders).collect();
+        if stated.0 != type_parameters || stated.1 != expected_parameters || stated.2 != obligation
+        {
+            return Err(format!(
+                "evidence `{}` for recursive call {position} of `{name}` does not state its decrease obligation exactly",
+                evidence.name
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Whether `name` is a member of the recursion being checked: the structural
+/// definition itself, a member of its mutual group, or the well-founded
+/// definition whose body this is.
+fn recursive_name(
+    name: &str,
+    recursion: Option<(&str, usize, &str)>,
+    env: &Environment<'_>,
+) -> bool {
+    recursion.is_some_and(|(own, _, _)| own == name)
+        || env.recursive_group.contains_key(name)
+        || env.well_founded_group.contains_key(name)
+}
+
 /// Reject a language-1.2-only construct in a language-1.1 module.
 fn require_language_1_2(env: &Environment<'_>, construct: &str) -> Result<(), String> {
     if env.language_1_2 {
@@ -3453,7 +4553,12 @@ fn check_term(
                 check_term(argument, locals, env, recursion, smaller)?;
             }
             let recursive_call = if function.module.is_none() {
-                recursion.filter(|(name, _, _)| *name == function.name)
+                match env.recursive_group.get(&function.name) {
+                    Some(decreasing) if recursion.is_some() => {
+                        Some((function.name.as_str(), *decreasing, ""))
+                    }
+                    _ => recursion.filter(|(name, _, _)| *name == function.name),
+                }
             } else {
                 None
             };
@@ -3560,7 +4665,31 @@ fn check_term(
                 if recursion.is_some_and(|(_, _, argument)| {
                     matches!(scrutinee.as_ref(), SemanticTerm::Var { name } if name == argument)
                 }) {
-                    if env.language_1_2 {
+                    if let (Some(family), Some(decreasing)) =
+                        (&env.recursive_family, &env.current_decreasing_type)
+                    {
+                        // §17.12 mutual recursion: every binder of the matched
+                        // constructor that belongs to the group's family is a
+                        // structurally smaller subvalue.
+                        let type_arguments: Vec<SemanticType> =
+                            match Some(decreasing) {
+                                Some(SemanticType::Named { arguments, .. }) => arguments.clone(),
+                                Some(SemanticType::List { element })
+                                | Some(SemanticType::Option { value: element }) => {
+                                    vec![element.as_ref().clone()]
+                                }
+                                _ => Vec::new(),
+                            };
+                        if let Ok(Some((_, fields))) =
+                            constructor_signature(&branch.constructor, &type_arguments, env)
+                        {
+                            for (binder, field) in branch.binders.iter().zip(&fields) {
+                                if in_family(field, family, env) {
+                                    branch_smaller.insert(binder.clone());
+                                }
+                            }
+                        }
+                    } else if env.language_1_2 {
                         for position in
                             structurally_smaller_positions(&branch.constructor, env)
                         {
@@ -3689,20 +4818,27 @@ fn check_term(
                     names(&used)
                 ));
             }
-            if let Some((self_name, _, _)) = recursion {
-                let mut recursive = false;
-                visit_terms(body, &mut |term| {
-                    if let SemanticTerm::Call { function, .. }
-                    | SemanticTerm::FunctionRef { function, .. } = term
+            // No member of the recursion being checked (the definition
+            // itself, any member of its mutual group, or a well-founded
+            // definition) is called or referenced under a lambda, where no
+            // decrease is checked.
+            let mut recursive = None;
+            visit_terms(body, &mut |term| {
+                if let SemanticTerm::Call { function, .. }
+                | SemanticTerm::FunctionRef { function, .. } = term
+                {
+                    if recursive.is_none()
+                        && function.module.is_none()
+                        && recursive_name(&function.name, recursion, env)
                     {
-                        recursive |= function.module.is_none() && function.name == self_name;
+                        recursive = Some(function.name.clone());
                     }
-                });
-                if recursive {
-                    return Err(format!(
-                        "recursive call `{self_name}` inside a lambda is not structurally checked"
-                    ));
                 }
+            });
+            if let Some(member) = recursive {
+                return Err(format!(
+                    "recursive call `{member}` inside a lambda is not structurally checked"
+                ));
             }
             check_term(body, &inner, env, None, &BTreeSet::new())
         }
@@ -3726,9 +4862,7 @@ fn check_term(
         } => {
             require_language_1_2(env, "function_ref")?;
             check_member(function, env)?;
-            if recursion
-                .is_some_and(|(name, _, _)| function.module.is_none() && function.name == name)
-            {
+            if function.module.is_none() && recursive_name(&function.name, recursion, env) {
                 return Err(format!(
                     "recursive definition `{}` cannot be referenced as a value of itself",
                     function.name
@@ -4221,6 +5355,69 @@ fn constructor_signature(
     Ok(None)
 }
 
+/// The types a match branch binds for a scrutinee of `scrutinee_type`.
+fn branch_binder_types(
+    scrutinee_type: &SemanticType,
+    branch: &SemanticBranch,
+    env: &Environment<'_>,
+) -> Result<Vec<SemanticType>, String> {
+    Ok(match scrutinee_type {
+        SemanticType::Bool => match branch.constructor.name.as_str() {
+            "Bool.false" | "Bool.true" => Vec::new(),
+            _ => return Err("Bool match uses a non-Bool constructor".to_owned()),
+        },
+        SemanticType::List { element } => match branch.constructor.name.as_str() {
+            "List.nil" => Vec::new(),
+            "List.cons" => vec![
+                element.as_ref().clone(),
+                SemanticType::List {
+                    element: element.clone(),
+                },
+            ],
+            _ => return Err("list match uses a non-list constructor".to_owned()),
+        },
+        SemanticType::Nat => match branch.constructor.name.as_str() {
+            "Nat.zero" => Vec::new(),
+            "Nat.succ" => vec![SemanticType::Nat],
+            _ => return Err("Nat match uses a non-Nat constructor".to_owned()),
+        },
+        SemanticType::Option { value } => match branch.constructor.name.as_str() {
+            "Option.none" => Vec::new(),
+            "Option.some" => vec![value.as_ref().clone()],
+            _ => return Err("Option match uses a non-Option constructor".to_owned()),
+        },
+        SemanticType::Result { ok, error } => match branch.constructor.name.as_str() {
+            "Result.error" => vec![error.as_ref().clone()],
+            "Result.ok" => vec![ok.as_ref().clone()],
+            _ => return Err("Result match uses a non-Result constructor".to_owned()),
+        },
+        SemanticType::Product { left, right } => match branch.constructor.name.as_str() {
+            "Prod.mk" if branch.constructor.module.is_none() => {
+                vec![left.as_ref().clone(), right.as_ref().clone()]
+            }
+            _ => return Err("product match uses a constructor other than `Prod.mk`".to_owned()),
+        },
+        SemanticType::Named { member, arguments } => {
+            let Some((owner, fields)) = constructor_signature(&branch.constructor, arguments, env)?
+            else {
+                return Err(format!(
+                    "unknown match constructor `{}`",
+                    branch.constructor.name
+                ));
+            };
+            let expected_owner = SemanticType::Named {
+                member: member.clone(),
+                arguments: arguments.clone(),
+            };
+            require_type(Some(owner), &expected_owner, "match constructor")?;
+            fields
+        }
+        other => {
+            return Err(format!("cannot pattern match value of type {other}"));
+        }
+    })
+}
+
 #[allow(clippy::too_many_lines)]
 fn infer_term(
     term: &SemanticTerm,
@@ -4424,78 +5621,10 @@ fn infer_term(
             let mut result = None;
             for branch in branches {
                 let mut branch_locals = locals.clone();
-                let binder_types = match &scrutinee_type {
-                    Some(SemanticType::Bool) => match branch.constructor.name.as_str() {
-                        "Bool.false" | "Bool.true" => Vec::new(),
-                        _ => return Err("Bool match uses a non-Bool constructor".to_owned()),
-                    },
-                    Some(SemanticType::List { element }) => {
-                        match branch.constructor.name.as_str() {
-                            "List.nil" => Vec::new(),
-                            "List.cons" => vec![
-                                element.as_ref().clone(),
-                                SemanticType::List {
-                                    element: element.clone(),
-                                },
-                            ],
-                            _ => return Err("list match uses a non-list constructor".to_owned()),
-                        }
-                    }
-                    Some(SemanticType::Nat) => match branch.constructor.name.as_str() {
-                        "Nat.zero" => Vec::new(),
-                        "Nat.succ" => vec![SemanticType::Nat],
-                        _ => return Err("Nat match uses a non-Nat constructor".to_owned()),
-                    },
-                    Some(SemanticType::Option { value }) => {
-                        match branch.constructor.name.as_str() {
-                            "Option.none" => Vec::new(),
-                            "Option.some" => vec![value.as_ref().clone()],
-                            _ => {
-                                return Err("Option match uses a non-Option constructor".to_owned())
-                            }
-                        }
-                    }
-                    Some(SemanticType::Result { ok, error }) => {
-                        match branch.constructor.name.as_str() {
-                            "Result.error" => vec![error.as_ref().clone()],
-                            "Result.ok" => vec![ok.as_ref().clone()],
-                            _ => {
-                                return Err("Result match uses a non-Result constructor".to_owned())
-                            }
-                        }
-                    }
-                    Some(SemanticType::Product { left, right }) => {
-                        match branch.constructor.name.as_str() {
-                            "Prod.mk" if branch.constructor.module.is_none() => {
-                                vec![left.as_ref().clone(), right.as_ref().clone()]
-                            }
-                            _ => {
-                                return Err("product match uses a constructor other than `Prod.mk`"
-                                    .to_owned())
-                            }
-                        }
-                    }
-                    Some(SemanticType::Named { member, arguments }) => {
-                        let Some((owner, fields)) =
-                            constructor_signature(&branch.constructor, arguments, env)?
-                        else {
-                            return Err(format!(
-                                "unknown match constructor `{}`",
-                                branch.constructor.name
-                            ));
-                        };
-                        let expected_owner = SemanticType::Named {
-                            member: member.clone(),
-                            arguments: arguments.clone(),
-                        };
-                        require_type(Some(owner), &expected_owner, "match constructor")?;
-                        fields
-                    }
-                    Some(other) => {
-                        return Err(format!("cannot pattern match value of type {other}"));
-                    }
-                    None => return Ok(None),
+                let Some(scrutinee_type) = &scrutinee_type else {
+                    return Ok(None);
                 };
+                let binder_types = branch_binder_types(scrutinee_type, branch, env)?;
                 for (binder, binder_type) in branch.binders.iter().zip(binder_types) {
                     branch_locals.insert(binder.clone(), binder_type);
                 }
@@ -4642,6 +5771,25 @@ fn check_proof(
 ) -> Result<(), String> {
     match proof {
         SemanticProof::Reflexivity | SemanticProof::Decide | SemanticProof::Congruence => Ok(()),
+        SemanticProof::LinearArithmetic { definitions } => {
+            require_language_1_2(env, "linear_arithmetic proof")?;
+            if definitions
+                .windows(2)
+                .any(|pair| member_key(&pair[0]) >= member_key(&pair[1]))
+            {
+                return Err("linear_arithmetic definitions are not sorted and unique".to_owned());
+            }
+            for definition in definitions {
+                check_member(definition, env)?;
+                if function_info(definition, env).is_none() {
+                    return Err(format!(
+                        "linear_arithmetic unfolds `{}`, which is not a prior document definition",
+                        member_key(definition)
+                    ));
+                }
+            }
+            Ok(())
+        }
         SemanticProof::BooleanReflection { reflection } => {
             check_boolean_reflection(reflection, locals, env)
         }
@@ -5018,6 +6166,19 @@ impl SemanticModule {
         if canonical != text {
             return Err("semantic-module JSON is not canonical".to_owned());
         }
+        // Serde ignores members of a tagged unit variant (`{"kind":"nat",
+        // "x":1}`), so the closed schema is enforced here: every source
+        // member must survive into the typed value, except an explicitly
+        // written default (an empty list or `false`) that serialization
+        // omits.
+        let source: serde_json::Value = serde_json::from_str(text)
+            .map_err(|error| format!("invalid semantic-module JSON: {error}"))?;
+        let typed = serde_json::to_value(&module).expect("semantic module serializes");
+        if let Some(path) = ignored_member(&source, &typed, "$") {
+            return Err(format!(
+                "semantic-module JSON member `{path}` is outside the closed schema"
+            ));
+        }
         module.validate(language, module_prefix, imports, imported_modules)?;
         Ok(module)
     }
@@ -5094,8 +6255,11 @@ impl SemanticModule {
             imports,
             ..Environment::default()
         };
-        let mut imported_flags: BTreeMap<String, (BTreeMap<String, Vec<bool>>, bool)> =
-            BTreeMap::new();
+        #[allow(clippy::type_complexity)]
+        let mut imported_flags: BTreeMap<
+            String,
+            (BTreeMap<String, Vec<bool>>, bool, Vec<String>),
+        > = BTreeMap::new();
         for import in imports {
             let Some(module) = imported_modules.get(import) else {
                 continue;
@@ -5124,16 +6288,23 @@ impl SemanticModule {
                         Some(label) => imported_groups.entry(Some(label)).or_default().push(row),
                         None => {
                             for (member, (flags, nested)) in recursion_flags(&[row]) {
-                                imported_flags
-                                    .insert(format!("{import}::{member}"), (flags, nested));
+                                let key = format!("{import}::{member}");
+                                imported_flags.insert(key.clone(), (flags, nested, vec![key]));
                             }
                         }
                     }
                 }
             }
             for rows in imported_groups.values() {
+                let members: Vec<String> = rows
+                    .iter()
+                    .map(|row| format!("{import}::{}", row.name))
+                    .collect();
                 for (member, (flags, nested)) in recursion_flags(rows) {
-                    imported_flags.insert(format!("{import}::{member}"), (flags, nested));
+                    imported_flags.insert(
+                        format!("{import}::{member}"),
+                        (flags, nested, members.clone()),
+                    );
                 }
             }
             for declaration in &module.declarations {
@@ -5275,10 +6446,11 @@ impl SemanticModule {
                 }
             }
         }
-        for (key, (flags, nested)) in imported_flags {
+        for (key, (flags, nested, members)) in imported_flags {
             if let Some(info) = env.types.get_mut(&key) {
                 info.direct_recursive = flags;
                 info.nested_or_mutual = nested;
+                info.group = members;
             }
         }
         // §17.12: a mutual group is one contiguous run of inductives sharing
@@ -5288,6 +6460,10 @@ impl SemanticModule {
         for declaration in &self.declarations {
             let label = match declaration {
                 SemanticDeclaration::Inductive {
+                    mutual: Some(label),
+                    ..
+                }
+                | SemanticDeclaration::Definition {
                     mutual: Some(label),
                     ..
                 } => Some(label.as_str()),
@@ -5305,11 +6481,42 @@ impl SemanticModule {
                 open_group = label;
             }
         }
+        // A label names one group of one kind. An inductive group and a
+        // definition group sharing a label would be admitted together by the
+        // first member of either, and the other's members never checked.
+        let mut inductive_labels = BTreeSet::new();
+        let mut definition_labels = BTreeSet::new();
+        for declaration in &self.declarations {
+            match declaration {
+                SemanticDeclaration::Inductive {
+                    mutual: Some(label),
+                    ..
+                } => {
+                    inductive_labels.insert(label.as_str());
+                }
+                SemanticDeclaration::Definition {
+                    mutual: Some(label),
+                    ..
+                } => {
+                    definition_labels.insert(label.as_str());
+                }
+                _ => {}
+            }
+        }
+        if let Some(label) = inductive_labels.intersection(&definition_labels).next() {
+            return Err(format!(
+                "mutual label `{label}` names both an inductive group and a definition group"
+            ));
+        }
         let mut generated_names = BTreeSet::new();
         let mut registered_groups = BTreeSet::new();
         for declaration in &self.declarations {
             let name = declaration.name();
             if let SemanticDeclaration::Inductive {
+                mutual: Some(label),
+                ..
+            }
+            | SemanticDeclaration::Definition {
                 mutual: Some(label),
                 ..
             } = declaration
@@ -5549,98 +6756,26 @@ impl SemanticModule {
                     );
                 }
                 SemanticDeclaration::Definition {
-                    type_parameters,
-                    parameters,
-                    result,
-                    recursive_argument,
-                    body,
-                    axioms,
-                    executable,
+                    mutual: Some(label),
                     ..
-                } => {
-                    if axioms.windows(2).any(|pair| pair[0] >= pair[1])
-                        || axioms.iter().any(|axiom| !legal_name(axiom))
-                    {
-                        return Err(format!(
-                            "definition `{name}` axiom policy is not sorted, unique, and qualified"
-                        ));
-                    }
-                    if !type_parameters.is_empty() {
-                        require_language_1_2(&env, "definition type parameters")?;
-                    }
-                    if *executable {
-                        require_language_1_2(&env, "executable definition")?;
-                    }
-                    let scope = type_parameter_set(type_parameters)?;
-                    let mut binders: BTreeSet<String> = parameters
+                } if env.language_1_2 => {
+                    registered_groups.insert(label.clone());
+                    let rows: Vec<&SemanticDeclaration> = self
+                        .declarations
                         .iter()
-                        .map(|parameter| parameter.name.clone())
+                        .filter(|candidate| {
+                            matches!(candidate, SemanticDeclaration::Definition { mutual: Some(other), .. } if other == label)
+                        })
                         .collect();
-                    bound_names(body, &mut binders);
-                    check_type_parameter_spelling(type_parameters, &binders, &env)?;
-                    let locals = check_parameters(parameters, &env, &scope)?;
-                    check_type(result, &env)?;
-                    check_type_parameters(result, &scope)?;
-                    check_term_type_parameters(body, &scope)?;
-                    env.current_type_parameters.clone_from(type_parameters);
-                    let recursion = if let Some(argument) = recursive_argument {
-                        let index = parameters
-                            .iter()
-                            .position(|parameter| &parameter.name == argument)
-                            .ok_or_else(|| format!("definition `{name}` names a missing decreasing argument `{argument}`"))?;
-                        if !is_structural_domain(&parameters[index].r#type, &env) {
-                            return Err(format!(
-                                "definition `{name}` decreasing argument `{argument}` is not Nat, List, or a document inductive"
-                            ));
+                    for row in rows.iter().skip(1) {
+                        check_declaration_name(row.name(), &env)?;
+                        if !generated_names.insert(row.name().to_owned()) {
+                            return Err(format!("duplicate generated name `{}`", row.name()));
                         }
-                        // §17.12: one standalone function recurses
-                        // structurally only over a self-recursive type; a
-                        // nested or mutual group has no single structural
-                        // eliminator for it, exactly as for induction.
-                        if let SemanticType::Named { member, .. } = &parameters[index].r#type {
-                            if type_info(member, &env).is_some_and(|info| info.nested_or_mutual) {
-                                return Err(format!(
-                                    "definition `{name}` decreases on `{argument}` of the nested or mutual type `{}`; standalone structural recursion requires a self-recursive inductive",
-                                    member_key(member)
-                                ));
-                            }
-                        }
-                        if !matches!(
-                            body,
-                            SemanticTerm::Match { scrutinee, .. }
-                                if matches!(scrutinee.as_ref(), SemanticTerm::Var { name } if name == argument)
-                        ) {
-                            return Err(format!(
-                                "definition `{name}` is recursive but its body is not a top-level match on `{argument}`"
-                            ));
-                        }
-                        Some((name, index, argument.as_str()))
-                    } else {
-                        None
-                    };
-                    check_term(body, &locals, &env, recursion, &BTreeSet::new())?;
-                    env.functions.insert(
-                        name.to_owned(),
-                        FunctionInfo {
-                            type_parameters: type_parameters.clone(),
-                            parameters: parameters
-                                .iter()
-                                .map(|parameter| parameter.r#type.clone())
-                                .collect(),
-                            result: result.clone(),
-                            executable: *executable,
-                        },
-                    );
-                    require_type(
-                        infer_term(body, &typed_locals(parameters), &env)?,
-                        result,
-                        &format!("definition `{name}` body"),
-                    )?;
-                    if *executable {
-                        check_executable(name, parameters, result, body, &env)?;
                     }
-                    env.current_type_parameters.clear();
+                    check_definition_group(&rows, label, &mut env)?;
                 }
+                SemanticDeclaration::Definition { .. } => check_definition(declaration, &mut env)?,
                 SemanticDeclaration::Theorem {
                     type_parameters,
                     parameters,
@@ -5683,6 +6818,14 @@ impl SemanticModule {
                         &format!("theorem `{name}` statement"),
                     )?;
                     check_proof(proof, &typed_locals(parameters), &env)?;
+                    env.theorems.insert(
+                        name.to_owned(),
+                        (
+                            type_parameters.clone(),
+                            parameters.clone(),
+                            statement.clone(),
+                        ),
+                    );
                     env.proof_type_parameters
                         .insert(name.to_owned(), type_parameters.clone());
                     env.proof_rules.insert(

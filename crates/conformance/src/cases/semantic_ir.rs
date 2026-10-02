@@ -1,4 +1,4 @@
-//! The `semantic-ir` suite: SM-01..SM-26.
+//! The `semantic-ir` suite: SM-01..SM-27.
 
 use std::collections::BTreeSet;
 use std::process::Command;
@@ -1871,6 +1871,129 @@ pub(crate) fn run(id: &str) {
                 ),
             );
             assert!(snapshot_of(&P::semantic_example()).alpha_ids().is_empty());
+        }
+        "SM-27" => {
+            let snapshot_of = |project: &P| {
+                project
+                    .engine()
+                    .snapshot(lexlean::CheckRequest {
+                        selection: lexlean::Selection::Entrypoints,
+                    })
+                    .expect("snapshot")
+            };
+            let original = P::copy_example("recursion");
+            let first = snapshot_of(&original);
+            assert_eq!(
+                first.canonical_bytes(),
+                snapshot_of(&P::copy_example("recursion")).canonical_bytes()
+            );
+            let value: serde_json::Value =
+                serde_json::from_slice(&first.canonical_bytes()).expect("snapshot JSON");
+            support::assert_schema("semantic-snapshot-v2", "the recursion snapshot", &value);
+            let main = value["modules"]
+                .as_array()
+                .expect("modules")
+                .iter()
+                .find(|module| module["name"] == "Main")
+                .expect("Main module");
+            let definitions = main["semantic"]["declarations"]
+                .as_array()
+                .expect("declarations");
+            let countdown = definitions
+                .iter()
+                .find(|declaration| declaration["name"] == "countdown")
+                .expect("countdown");
+            assert_eq!(countdown["termination"]["measure"]["name"], "number");
+            assert_eq!(
+                countdown["termination"]["evidence"][0]["name"],
+                "countdown_decreases"
+            );
+            let mutual = definitions
+                .iter()
+                .filter(|declaration| declaration["mutual"] == "SyntaxSize")
+                .count();
+            assert_eq!(mutual, 3, "the snapshot records every group member");
+
+            // Changing only the evidence binding changes both identities.
+            let alpha = |snapshot: &lexlean::SemanticSnapshot, name: &str| {
+                snapshot
+                    .alpha_ids()
+                    .into_iter()
+                    .find(|(_, declaration, _)| declaration == name)
+                    .map(|(_, _, digest)| digest)
+                    .expect("alpha identity")
+            };
+            // Both copies declare the same extra theorem; only one binds it
+            // as the evidence, so every difference is the binding's.
+            let theorem_anchor = r#"{"axioms":["Quot.sound","propext"],"kind":"theorem","name":"countdown_decreases""#;
+            let added_theorem = r#"{"axioms":["Quot.sound","propext"],"kind":"theorem","name":"countdown_shrinks","parameters":[{"name":"number","type":{"kind":"nat"}},{"name":"steps","type":{"kind":"nat"}}],"proof":{"kind":"linear_arithmetic"},"statement":{"conclusion":{"kind":"lt","left":{"arguments":[{"kind":"var","name":"number"},{"kind":"nat","value":"2"}],"kind":"primitive","operation":"subtract","result":{"kind":"nat"}},"right":{"kind":"var","name":"number"}},"kind":"implies","premise":{"kind":"eq","left":{"kind":"blt","left":{"kind":"var","name":"number"},"right":{"kind":"nat","value":"2"}},"right":{"kind":"bool","value":false}}}},"#;
+            let source = original.read("src/Main.lex.tex");
+            assert!(source.contains(theorem_anchor));
+            let with_theorem = source.replacen(
+                theorem_anchor,
+                &format!("{added_theorem}{theorem_anchor}"),
+                1,
+            );
+            let added = P::copy_example("recursion");
+            added.write("src/Main.lex.tex", &with_theorem);
+            let rebound = P::copy_example("recursion");
+            let binding = r#""termination":{"evidence":[{"name":"countdown_decreases"}]"#;
+            assert!(with_theorem.contains(binding));
+            rebound.write(
+                "src/Main.lex.tex",
+                &with_theorem.replacen(
+                    binding,
+                    r#""termination":{"evidence":[{"name":"countdown_shrinks"}]"#,
+                    1,
+                ),
+            );
+            let unbound = snapshot_of(&added);
+            let second = snapshot_of(&rebound);
+            assert_eq!(
+                alpha(&first, "countdown"),
+                alpha(&unbound, "countdown"),
+                "an unused theorem does not touch the definition's identity"
+            );
+            assert_ne!(alpha(&unbound, "countdown"), alpha(&second, "countdown"));
+            assert_ne!(
+                support::checked_project(&added).semantic_id,
+                support::checked_project(&rebound).semantic_id
+            );
+            assert_eq!(alpha(&unbound, "reduce"), alpha(&second, "reduce"));
+
+            // The measure and the mutual label are part of both identities:
+            // `countdown` measured by `number + 0`, with its evidence restated
+            // for that measure, and the `Bounce` group relabelled.
+            let measured = P::copy_example("recursion");
+            let measure_source = source
+                .replacen(
+                    r#""termination":{"evidence":[{"name":"countdown_decreases"}],"measure":{"kind":"var","name":"number"}}"#,
+                    r#""termination":{"evidence":[{"name":"countdown_decreases"}],"measure":{"kind":"add","left":{"kind":"var","name":"number"},"right":{"kind":"nat","value":"0"}}}"#,
+                    1,
+                )
+                .replacen(
+                    r#""statement":{"conclusion":{"kind":"lt","left":{"arguments":[{"kind":"var","name":"number"},{"kind":"nat","value":"2"}],"kind":"primitive","operation":"subtract","result":{"kind":"nat"}},"right":{"kind":"var","name":"number"}}"#,
+                    r#""statement":{"conclusion":{"kind":"lt","left":{"kind":"add","left":{"arguments":[{"kind":"var","name":"number"},{"kind":"nat","value":"2"}],"kind":"primitive","operation":"subtract","result":{"kind":"nat"}},"right":{"kind":"nat","value":"0"}},"right":{"kind":"add","left":{"kind":"var","name":"number"},"right":{"kind":"nat","value":"0"}}}"#,
+                    1,
+                );
+            assert_ne!(measure_source, source, "the measure mutation applies");
+            measured.write("src/Main.lex.tex", &measure_source);
+            let remeasured = snapshot_of(&measured);
+            assert_ne!(alpha(&first, "countdown"), alpha(&remeasured, "countdown"));
+            assert_ne!(
+                support::checked_project(&original).semantic_id,
+                support::checked_project(&measured).semantic_id
+            );
+            let relabelled = P::copy_example("recursion");
+            let label_source = source.replace(r#""mutual":"Bounce""#, r#""mutual":"Rebound""#);
+            assert_eq!(label_source.matches(r#""mutual":"Rebound""#).count(), 2);
+            relabelled.write("src/Main.lex.tex", &label_source);
+            let renamed = snapshot_of(&relabelled);
+            assert_ne!(alpha(&first, "ping"), alpha(&renamed, "ping"));
+            assert_ne!(
+                support::checked_project(&original).semantic_id,
+                support::checked_project(&relabelled).semantic_id
+            );
         }
         other => panic!("no semantic-ir case is wired for {other}"),
     }

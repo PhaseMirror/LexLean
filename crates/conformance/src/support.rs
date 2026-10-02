@@ -121,6 +121,7 @@ fn term(value: &SnapshotTerm) -> usize {
 fn prove(value: &SnapshotProof) -> usize {
     match value {
         SnapshotProof::Reflexivity | SnapshotProof::Decide | SnapshotProof::Congruence => 1,
+        SnapshotProof::LinearArithmetic { definitions } => 1 + definitions.len(),
         SnapshotProof::Simplify { definitions } => definitions.len(),
         SnapshotProof::Constructor { branches } => branches.iter().map(prove).sum(),
         SnapshotProof::Cases { branches, .. } | SnapshotProof::Induction { branches, .. } => branches.iter().map(|v| prove(&v.proof)).sum(),
@@ -256,6 +257,27 @@ impl P {
                 "a link-time failure occurs before any backend writes {output}"
             );
         }
+    }
+
+    /// A copy of a committed example with one exact source replacement, which
+    /// must fail in linking with `message` and leave no backend output.
+    pub fn assert_mutation_rejected(
+        example: &str,
+        file: &str,
+        from: &str,
+        to: &str,
+        message: &str,
+    ) {
+        let copy = Self::copy_example(example);
+        let source = copy.read(file);
+        assert!(source.contains(from), "{example}/{file} lacks {from:?}");
+        copy.write(file, &source.replacen(from, to, 1));
+        let error = copy.check_fails_with("LLT4001");
+        assert!(
+            error.to_string().contains(message),
+            "expected {message:?}, got {error}"
+        );
+        copy.assert_no_backend_output();
     }
 
     /// A fresh copy of the committed language-1.2 example (§17.12).

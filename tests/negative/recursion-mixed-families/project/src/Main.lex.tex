@@ -1,0 +1,7 @@
+\begin{lexlean}{Main}
+\useglossary{lexlean.std.nat@1.2.0}
+\title{Natural number addition}
+\begin{semanticmodule}
+\semanticdata{{"declarations":[{"constructors":[{"fields":[],"name":"leaf"},{"fields":[{"arguments":[],"kind":"named","member":{"name":"Tree"}},{"kind":"nat"},{"arguments":[],"kind":"named","member":{"name":"Tree"}}],"name":"node"}],"kind":"inductive","name":"Tree","parameters":[],"type_parameters":[]},{"body":{"branches":[{"binders":[],"body":{"kind":"nat","value":"0"},"constructor":{"name":"Tree.leaf"}},{"binders":["left","value","right"],"body":{"arguments":[{"kind":"var","name":"value"}],"function":{"name":"countDown"},"kind":"call"},"constructor":{"name":"Tree.node"}}],"kind":"match","scrutinee":{"kind":"var","name":"tree"}},"kind":"definition","mutual":"Mixed","name":"treeDepth","parameters":[{"name":"tree","type":{"arguments":[],"kind":"named","member":{"name":"Tree"}}}],"recursive_argument":"tree","result":{"kind":"nat"}},{"body":{"branches":[{"binders":[],"body":{"kind":"nat","value":"0"},"constructor":{"name":"Nat.zero"}},{"binders":["previous"],"body":{"arguments":[{"kind":"var","name":"previous"}],"function":{"name":"countDown"},"kind":"call"},"constructor":{"name":"Nat.succ"}}],"kind":"match","scrutinee":{"kind":"var","name":"number"}},"kind":"definition","mutual":"Mixed","name":"countDown","parameters":[{"name":"number","type":{"kind":"nat"}}],"recursive_argument":"number","result":{"kind":"nat"}}],"spec":"lexlean/semantic-module/2"}}
+\end{semanticmodule}
+\end{lexlean}
