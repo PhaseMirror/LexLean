@@ -263,11 +263,24 @@ pub struct EffectRow {
     pub sources: BTreeSet<(String, String)>,
 }
 
+/// A natural-number or integer representation crossing a root's boundary,
+/// realized in the target's width: a caller supplies only values inside it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BoundaryRow {
+    /// `parameter <name>` or `result`.
+    pub position: String,
+    /// `nat` or `int`.
+    pub representation: String,
+    pub bits: u32,
+}
+
 /// The eligibility of one root on one target.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TargetRow {
     pub target: String,
     pub effects: Vec<EffectRow>,
+    /// Boundary representations in parameter order, then the result.
+    pub boundary: Vec<BoundaryRow>,
 }
 
 /// The complete eligibility record of one root.
@@ -341,6 +354,11 @@ impl ModuleReport {
                     "targets": root.targets.iter().map(|target| serde_json::json!({
                         "target": target.target,
                         "status": "eligible",
+                        "boundary": target.boundary.iter().map(|row| serde_json::json!({
+                            "position": row.position,
+                            "representation": row.representation,
+                            "bits": row.bits,
+                        })).collect::<Vec<_>>(),
                         "effects": target.effects.iter().map(|effect| serde_json::json!({
                             "effect": effect.effect,
                             "sources": effect.sources.iter().map(|(construct, instance)| serde_json::json!({

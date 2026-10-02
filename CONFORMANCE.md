@@ -228,7 +228,7 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `PD-02` | `build` | Formal-only theorems, propositions, and non-executable definitions coexist with eligible executable production roots, and a module that declares no production root is never analysed for production. |
 | `PD-03` | `build` | A production root's runtime closure contains exactly its transitive computational dependencies across modules at their type instantiations, and its termination evidence is recorded as erased and never realized. |
 | `PD-04` | `build` | Production eligibility depends on the declared target: a construct that requires heap allocation is an admitted effect on a target with allocation and makes the root ineligible on a target without it. |
-| `PD-05` | `build` | A production root fails with LLT4005 before any backend runs when its boundary holds a universe, proposition, type parameter, or function, or its closure reaches a formal-only, erased, non-executable, or unresolved dependency, a literal outside the target width, unavailable allocation, or an effect the root does not admit. |
+| `PD-05` | `build` | A production root fails with LLT4005 before any backend runs when it declares type parameters or is not declared executable, when its boundary holds a universe, proposition, type parameter, or function, directly or in a named type's fields, or when its closure reaches a formal-only construct, a literal outside the target width, unavailable allocation, or an effect the root does not admit. |
 | `PD-06` | `build` | Every production root's eligibility report is a deterministic, schema-valid build artifact recording its runtime closure, realized types, erased dependencies, constructs, and per-target effects with their sources. |
 | `PD-07` | `build` | The eligibility analysis classifies every semantic construct by an explicit exhaustive match, and the exhaustiveness audit rejects a planted wildcard arm, rest pattern, implicit-default binding form, or unnamed IR variant. |
 
@@ -322,8 +322,8 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `SM-26` | `build` | Language 1.2 snapshots carry a deterministic alpha identity per definition that alpha-equivalent definitions share and any other change alters. |
 | `SM-27` | `build` | Language 1.2 snapshots carry complete recursion evidence (mutual labels, decreasing arguments, measures, and evidence bindings), and changing an evidence binding changes the semantic and alpha identities. |
 | `SM-28` | `build` | Language 1.2 finite maps and sets over closed ordered key types, their literals, and their primitive operations are typed, lowered to the fixed ordered-collection runtime, and verified. |
-| `SM-29` | `build` | Reordered equivalent map, set, and graph literals link to byte-identical semantic data and generated artifacts, while duplicate keys, non-literal literal keys, and key types without a canonical order are rejected. |
-| `SM-30` | `build` | Language 1.2 graph literals reference only declared nodes, and successor, reachability, and topological-order queries are deterministic, bounded by the node count, and report a cycle as none. |
+| `SM-29` | `build` | Reordered equivalent map, set, and graph literals link to byte-identical semantic data and generated Lean, LaTeX, and lexicon-closure artifacts, while duplicate keys, non-literal literal keys, and key types without a canonical order are rejected. |
+| `SM-30` | `build` | Language 1.2 graph literals reference only declared nodes, a graph's nodes are its keys and every successor, and successor, reachability, and topological-order queries are deterministic, bounded by the node count, and report a cycle as none. |
 
 ## verification
 

@@ -1,13 +1,15 @@
 //! Deterministic Lean and LaTeX lowering for language-1.1 semantic modules.
 
+use std::collections::BTreeSet;
+
 use crate::artifact::source_map::MapRole;
 use crate::backend::{EmitSource, Emitter};
 use crate::code;
 use crate::diagnostic::Diagnostic;
 use crate::ir::semantic::{
-    MemberRef, SemanticAssignment, SemanticBranch, SemanticDeclaration, SemanticModule,
-    SemanticParameter, SemanticPrimitive, SemanticProof, SemanticProofBranch, SemanticReflection,
-    SemanticReflectionComparison, SemanticReflectionField, SemanticTerm, SemanticTermination,
+    mentions_type_parameter, MemberRef, SemanticAssignment, SemanticBranch, SemanticDeclaration,
+    SemanticModule, SemanticParameter, SemanticPrimitive, SemanticProof, SemanticProofBranch,
+    SemanticReflection, SemanticReflectionComparison, SemanticReflectionField, SemanticTerm,
     SemanticType,
 };
 use crate::link::CheckedModule;
@@ -21,6 +23,10 @@ struct Render<'a> {
     /// Whether this module emits the portable runtime, whose Nat
     /// subtraction and multiplication `linear_arithmetic` unfolds.
     runtime: bool,
+    /// Whether this renders the canonical document, which names a map and
+    /// a set by their own type constructors rather than by the list
+    /// encoding Lean receives (§17.12).
+    document: bool,
 }
 
 /// The generated name of well-founded hypothesis `index`. Semantic names
@@ -357,6 +363,10 @@ impl Render<'_> {
             // §17.12: a map is its canonical ascending entry list and a set
             // its canonical ascending element list; the representation is
             // plain data, so values cross module boundaries unchanged.
+            SemanticType::Map { key, value } if self.document => {
+                format!("Map ({}) ({})", self.ty(key), self.ty(value))
+            }
+            SemanticType::Set { element } if self.document => format!("Set ({})", self.ty(element)),
             SemanticType::Map { key, value } => {
                 format!("List (Prod ({}) ({}))", self.ty(key), self.ty(value))
             }
@@ -401,7 +411,7 @@ impl Render<'_> {
     fn recursive_equations(
         &self,
         name: &str,
-        type_parameters: &[String],
+        type_binders: &str,
         parameters: &[SemanticParameter],
         result: &SemanticType,
         recursive_argument: &str,
@@ -417,11 +427,7 @@ impl Render<'_> {
         if !matches!(scrutinee.as_ref(), SemanticTerm::Var { name } if name == recursive_argument) {
             return None;
         }
-        let mut text = format!(
-            "@[expose] public def {}{} :",
-            identifier(name),
-            self.type_parameters(type_parameters)
-        );
+        let mut text = format!("@[expose] public def {}{type_binders} :", identifier(name));
         for parameter in parameters {
             text.push_str(&format!(
                 " ({} : {}) ->",
@@ -466,6 +472,24 @@ impl Render<'_> {
             text.push_str(&format!("  | {patterns} => {}\n", self.term(&branch.body)));
         }
         Some(text)
+    }
+
+    /// A definition's or theorem's type parameters; one its declaration
+    /// never mentions lowers as `_name`, like an unused value binder.
+    fn scoped_type_parameters(
+        &self,
+        parameters: &[String],
+        declaration: &SemanticDeclaration,
+    ) -> String {
+        parameters
+            .iter()
+            .map(|parameter| {
+                format!(
+                    " ({} : Type)",
+                    bound_name(parameter, mentions_type_parameter(declaration, parameter))
+                )
+            })
+            .collect()
     }
 
     fn type_parameters(&self, parameters: &[String]) -> String {
@@ -1042,20 +1066,32 @@ impl Render<'_> {
 /// evidence application per recursive call site.
 fn well_founded_definition(
     base: &Render<'_>,
-    name: &str,
-    type_parameters: &[String],
-    parameters: &[SemanticParameter],
-    result: &SemanticType,
-    body: &SemanticTerm,
-    termination: &SemanticTermination,
+    group: &BTreeSet<String>,
+    declaration: &SemanticDeclaration,
 ) -> Result<String, Diagnostic> {
-    let plan = crate::ir::semantic::well_founded_plan(name, type_parameters, parameters, body)
-        .map_err(|reason| {
-            Diagnostic::new(
-                code!("LLI9001"),
-                format!("phase lean-backend: unplanned well-founded definition: {reason}"),
-            )
-        })?;
+    let SemanticDeclaration::Definition {
+        name,
+        type_parameters,
+        parameters,
+        result,
+        body,
+        termination: Some(termination),
+        ..
+    } = declaration
+    else {
+        return Err(Diagnostic::new(
+            code!("LLI9001"),
+            "phase lean-backend: a well-founded lowering of a declaration without termination evidence",
+        ));
+    };
+    let plan =
+        crate::ir::semantic::well_founded_plan(name, group, type_parameters, parameters, body)
+            .map_err(|reason| {
+                Diagnostic::new(
+                    code!("LLI9001"),
+                    format!("phase lean-backend: unplanned well-founded definition: {reason}"),
+                )
+            })?;
     let render = Render {
         prefix: base.prefix,
         runtime: base.runtime,
@@ -1065,6 +1101,7 @@ fn well_founded_definition(
             .enumerate()
             .map(|(index, address)| (*address, index))
             .collect(),
+        document: false,
     };
     // A parameter the measure alone mentions is used: `termination_by`
     // references it.
@@ -1139,7 +1176,10 @@ fn uses_collections(module: &SemanticModule) -> bool {
 
 /// The fixed ordered-collection runtime: canonical ascending entry and
 /// element lists keyed by the closed total orders, ordered folds, bounded
-/// iteration, and graph traversal bounded by the node count (§17.12).
+/// iteration, and graph traversal bounded by the node count (§17.12). A
+/// graph's nodes are its keys and every successor, so a successor that was
+/// inserted without its own entry is a node with no successors rather than
+/// a name the traversals disagree about.
 const COLLECTIONS_RUNTIME: &str = r#"
 namespace LexLeanCollections
 
@@ -1237,6 +1277,9 @@ public instance {α β : Type} [Key α] [Key β] : Key (Prod α β) where
 @[expose] public def graphSuccessors {κ : Type} [Key κ] (graph : List (Prod κ (List κ))) (node : κ) : List κ :=
   (lookupEntry node graph).getD []
 
+@[expose] public def graphNodes {κ : Type} [Key κ] (graph : List (Prod κ (List κ))) : List κ :=
+  graph.foldl (fun acc entry => entry.2.foldl (fun inner node => insertElement node inner) (insertElement entry.1 acc)) []
+
 @[expose] public def reachableFrom {κ : Type} [Key κ] (graph : List (Prod κ (List κ))) : Nat -> List κ -> List κ -> List κ
   | 0, _, seen => seen
   | Nat.succ fuel, frontier, seen =>
@@ -1248,7 +1291,7 @@ public instance {α β : Type} [Key α] [Key β] : Key (Prod α β) where
     | _ => reachableFrom graph fuel next (next.foldl (fun acc key => insertElement key acc) seen)
 
 @[expose] public def graphReachable {κ : Type} [Key κ] (graph : List (Prod κ (List κ))) (start : κ) : List κ :=
-  reachableFrom graph (graph.length + 1) [start] [start]
+  reachableFrom graph ((graphNodes graph).length + 1) [start] [start]
 
 @[expose] public def topological {κ : Type} [Key κ] (graph : List (Prod κ (List κ))) : Nat -> List κ -> List κ -> Option (List κ)
   | 0, remaining, order => if remaining.isEmpty then some order.reverse else none
@@ -1258,7 +1301,8 @@ public instance {α β : Type} [Key α] [Key β] : Key (Prod α β) where
     | ready :: _ => topological graph fuel (removeElement ready remaining) (ready :: order)
 
 @[expose] public def graphTopological {κ : Type} [Key κ] (graph : List (Prod κ (List κ))) : Option (List κ) :=
-  topological graph (graph.length + 1) (graph.map Prod.fst) []
+  let nodes := graphNodes graph
+  topological graph (nodes.length + 1) nodes []
 @[expose] public def listFold {α σ : Type} (step : σ -> α -> σ) (initial : σ) (values : List α) : σ :=
   values.foldl step initial
 
@@ -1291,6 +1335,157 @@ fn emit(checked: &CheckedModule, text: &str, kind: &str) -> Emitter {
         node,
     );
     emitter
+}
+
+fn skip_whitespace(bytes: &[u8], mut position: usize) -> usize {
+    while bytes
+        .get(position)
+        .is_some_and(|byte| matches!(byte, b' ' | b'\n' | b'\r' | b'\t'))
+    {
+        position += 1;
+    }
+    position
+}
+
+/// The end of the JSON value starting at `position`.
+fn skip_value(bytes: &[u8], mut position: usize) -> Option<usize> {
+    let (mut depth, mut in_string, mut escaped) = (0usize, false, false);
+    loop {
+        let byte = *bytes.get(position)?;
+        if in_string {
+            position += 1;
+            match byte {
+                _ if escaped => escaped = false,
+                b'\\' => escaped = true,
+                b'"' => {
+                    in_string = false;
+                    if depth == 0 {
+                        return Some(position);
+                    }
+                }
+                _ => {}
+            }
+            continue;
+        }
+        match byte {
+            b'"' => in_string = true,
+            b'{' | b'[' => depth += 1,
+            // A closing bracket at depth zero ends the scalar before it.
+            b'}' | b']' if depth == 0 => return Some(position),
+            b'}' | b']' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(position + 1);
+                }
+            }
+            b',' | b' ' | b'\n' | b'\r' | b'\t' if depth == 0 => return Some(position),
+            _ => {}
+        }
+        position += 1;
+    }
+}
+
+/// The byte range of every element of the `declarations` array of the
+/// module's semantic data in the normalized source, in order.
+fn declaration_spans(source: &str) -> Option<Vec<(usize, usize)>> {
+    let bytes = source.as_bytes();
+    let data = source.find("\\semanticdata{")? + "\\semanticdata{".len();
+    let mut position = skip_whitespace(bytes, data);
+    if bytes.get(position) != Some(&b'{') {
+        return None;
+    }
+    position += 1;
+    loop {
+        position = skip_whitespace(bytes, position);
+        let key_end = skip_value(bytes, position)?;
+        let key = source.get(position..key_end)?;
+        position = skip_whitespace(bytes, key_end);
+        if bytes.get(position) != Some(&b':') {
+            return None;
+        }
+        position = skip_whitespace(bytes, position + 1);
+        if key == "\"declarations\"" {
+            break;
+        }
+        position = skip_whitespace(bytes, skip_value(bytes, position)?);
+        if bytes.get(position) != Some(&b',') {
+            return None;
+        }
+        position += 1;
+    }
+    if bytes.get(position) != Some(&b'[') {
+        return None;
+    }
+    position += 1;
+    let mut spans = Vec::new();
+    loop {
+        position = skip_whitespace(bytes, position);
+        match bytes.get(position)? {
+            b']' => return Some(spans),
+            b',' if !spans.is_empty() => position = skip_whitespace(bytes, position + 1),
+            _ if spans.is_empty() => {}
+            _ => return None,
+        }
+        let end = skip_value(bytes, position)?;
+        spans.push((position, end));
+        position = end;
+    }
+}
+
+/// Language 1.2: one mapping node per declaration, relating its generated
+/// text to its own object in the source, inside the module node that
+/// relates the preamble and closing to the whole module.
+fn emit_declarations(
+    checked: &CheckedModule,
+    text: &str,
+    kind: &str,
+    starts: &[usize],
+    end: usize,
+) -> Result<Emitter, Diagnostic> {
+    let spans = declaration_spans(&checked.normalized)
+        .filter(|spans| spans.len() == starts.len())
+        .ok_or_else(|| {
+            Diagnostic::new(
+                code!("LLI9001"),
+                format!("phase {kind}: the source declarations do not match the rendered ones"),
+            )
+        })?;
+    let origin = || Origin::Metadata {
+        owner: "lexlean.core::semanticdata".to_owned(),
+    };
+    let whole = EmitSource::File(0, checked.normalized.len());
+    let mut emitter = Emitter::new();
+    let module_node = emitter.node(kind);
+    let first = starts.first().copied().unwrap_or(end);
+    emitter.piece(
+        &text[..first],
+        kind,
+        origin(),
+        whole.clone(),
+        MapRole::Declaration,
+        module_node,
+    );
+    for (index, (start, span)) in starts.iter().zip(&spans).enumerate() {
+        let stop = starts.get(index + 1).copied().unwrap_or(end);
+        let node = emitter.node("semantic-declaration");
+        emitter.piece(
+            &text[*start..stop],
+            kind,
+            origin(),
+            EmitSource::File(span.0, span.1),
+            MapRole::Declaration,
+            node,
+        );
+    }
+    emitter.piece(
+        &text[end..],
+        kind,
+        origin(),
+        whole,
+        MapRole::Declaration,
+        module_node,
+    );
+    Ok(emitter)
 }
 
 fn portable_runtime() -> &'static str {
@@ -1620,6 +1815,7 @@ pub fn render_lean(
         prefix: module_prefix,
         hypotheses: std::collections::BTreeMap::new(),
         runtime,
+        document: false,
     };
     let document = &checked.document;
     let mut text = String::from("module\npublic import Init\n");
@@ -1657,7 +1853,9 @@ pub fn render_lean(
         ) => Some(label.as_str()),
         _ => None,
     };
+    let mut starts = Vec::with_capacity(module.declarations.len());
     for (index, declaration) in module.declarations.iter().enumerate() {
+        starts.push(text.len());
         text.push('\n');
         // §17.12: one contiguous mutual group is one Lean `mutual` block.
         let group = group_of(index);
@@ -1765,21 +1963,35 @@ pub fn render_lean(
                 termination,
                 ..
             } => {
-                if let Some(termination) = termination {
-                    text.push_str(&well_founded_definition(
-                        &render,
-                        name,
-                        type_parameters,
-                        parameters,
-                        result,
-                        body,
-                        termination,
-                    )?);
+                let type_binders = render.scoped_type_parameters(type_parameters, declaration);
+                if termination.is_some() {
+                    // The recursion is the definition alone, or every member
+                    // of its mutual group.
+                    let group: BTreeSet<String> = match mutual {
+                        Some(label) => module
+                            .declarations
+                            .iter()
+                            .filter(|other| {
+                                matches!(other, SemanticDeclaration::Definition {
+                                    mutual: Some(other_label),
+                                    ..
+                                } if other_label == label)
+                            })
+                            .map(|other| other.name().to_owned())
+                            .collect(),
+                        None => BTreeSet::from([name.clone()]),
+                    };
+                    // Every type parameter is passed to the evidence in
+                    // `decreasing_by`, so each is used and keeps its name.
+                    text.push_str(&well_founded_definition(&render, &group, declaration)?);
+                    if mutual.is_some() && group_of(index + 1) != group_of(index) {
+                        text.push_str("end\n");
+                    }
                 } else if let Some(recursive_argument) = recursive_argument {
                     let equations = render
                         .recursive_equations(
                             name,
-                            type_parameters,
+                            &type_binders,
                             parameters,
                             result,
                             recursive_argument,
@@ -1820,8 +2032,7 @@ pub fn render_lean(
                 } else {
                     let name = identifier(name);
                     text.push_str(&format!(
-                        "@[expose] public def {name}{}{} : {} := {}\n",
-                        render.type_parameters(type_parameters),
+                        "@[expose] public def {name}{type_binders}{} : {} := {}\n",
                         render.scoped_parameters(parameters, |local| term_uses(body, local)),
                         render.ty(result),
                         render.term(body)
@@ -1846,13 +2057,14 @@ pub fn render_lean(
                 });
                 text.push_str(&format!(
                     "public theorem {name}{}{binders} : {} := by\n{}",
-                    render.type_parameters(type_parameters),
+                    render.scoped_type_parameters(type_parameters, declaration),
                     render.term(statement),
                     render.proof(proof, 1)
                 ));
             }
         }
     }
+    let end = text.len();
     text.push_str("\nend ");
     text.push_str(&identifier(&document.lean_module));
     text.push('\n');
@@ -1862,7 +2074,11 @@ pub fn render_lean(
             "phase lean-backend: semantic lowering produced a comment token",
         ));
     }
-    Ok(emit(checked, &text, "semantic-lean-module"))
+    if module.spec == "lexlean/semantic-module/2" {
+        emit_declarations(checked, &text, "semantic-lean-module", &starts, end)
+    } else {
+        Ok(emit(checked, &text, "semantic-lean-module"))
+    }
 }
 
 fn tex_escape(text: &str) -> String {
@@ -1886,6 +2102,42 @@ fn tex_escape(text: &str) -> String {
     out
 }
 
+/// Language 1.2: a declaration's value parameters with their types, so a
+/// function-typed parameter is visible in the document.
+fn latex_parameters(render: &Render<'_>, parameters: &[SemanticParameter], text: &mut String) {
+    if !parameters.is_empty() {
+        text.push_str(&format!(
+            "\\noindent Parameters: \\texttt{{{}}}.\\par\n",
+            tex_escape(render.parameters(parameters).trim_start())
+        ));
+    }
+}
+
+/// Language 1.2: every closure a definition forms, in pre-order, with the
+/// locals it captures (explicit in the semantics, implicit in Lean's `fun`).
+fn latex_closures(body: &SemanticTerm, text: &mut String) {
+    let mut index = 0;
+    crate::ir::semantic::visit_terms(body, &mut |term| {
+        if let SemanticTerm::Lambda {
+            parameters,
+            captures,
+            ..
+        } = term
+        {
+            index += 1;
+            let names: Vec<&str> = parameters
+                .iter()
+                .map(|parameter| parameter.name.as_str())
+                .collect();
+            text.push_str(&format!(
+                "\\noindent Closure {index}: binds \\texttt{{({})}}, captures \\texttt{{({})}}.\\par\n",
+                tex_escape(&names.join(", ")),
+                tex_escape(&captures.join(", "))
+            ));
+        }
+    });
+}
+
 /// Render the same semantic module as canonical explanatory LaTeX.
 pub fn render_latex(
     checked: &CheckedModule,
@@ -1896,20 +2148,45 @@ pub fn render_latex(
         prefix: module_prefix,
         hypotheses: std::collections::BTreeMap::new(),
         runtime: false,
+        document: true,
     };
     let version_2 = module.spec == "lexlean/semantic-module/2";
     let mut text = String::from(
         "\\documentclass[11pt]{article}\n\\usepackage[T1]{fontenc}\n\\usepackage{amsmath,amssymb}\n\\begin{document}\n\\section*{Semantic declarations}\n",
     );
+    let mut starts = Vec::with_capacity(module.declarations.len());
     for declaration in &module.declarations {
+        starts.push(text.len());
         text.push_str(&format!(
             "\\subsection*{{\\texttt{{{}}}}}\n\\noindent Kind: \\texttt{{{}}}.\\par\n",
             tex_escape(declaration.name()),
             declaration.kind()
         ));
+        // Language 1.2: a parameterized data declaration states the type
+        // parameters its constructor and field types mention.
+        if version_2 {
+            if let SemanticDeclaration::Inductive {
+                type_parameters, ..
+            }
+            | SemanticDeclaration::Structure {
+                type_parameters, ..
+            }
+            | SemanticDeclaration::Class {
+                type_parameters, ..
+            } = declaration
+            {
+                if !type_parameters.is_empty() {
+                    text.push_str(&format!(
+                        "\\noindent Type parameters: \\texttt{{({})}}.\\par\n",
+                        tex_escape(&type_parameters.join(", "))
+                    ));
+                }
+            }
+        }
         match declaration {
             SemanticDeclaration::Definition {
                 type_parameters,
+                parameters,
                 result,
                 body,
                 axioms,
@@ -1923,7 +2200,7 @@ pub fn render_latex(
                 };
                 if version_2 && !type_parameters.is_empty() {
                     text.push_str(&format!(
-                        "\\noindent Type parameters: \\texttt{{{}}}.\\par\n",
+                        "\\noindent Type parameters: \\texttt{{({})}}.\\par\n",
                         tex_escape(&type_parameters.join(", "))
                     ));
                 }
@@ -1963,8 +2240,14 @@ pub fn render_latex(
                         )
                     ));
                 }
+                if version_2 {
+                    latex_parameters(&render, parameters, &mut text);
+                    latex_closures(body, &mut text);
+                }
                 if version_2 && *executable {
-                    text.push_str("\\noindent Execution: production-eligible, non-escaping closures only.\\par\n");
+                    text.push_str(
+                        "\\noindent Execution: executable, non-escaping closures only.\\par\n",
+                    );
                 }
                 if let (
                     true,
@@ -1996,6 +2279,7 @@ pub fn render_latex(
                 statement,
                 axioms,
                 type_parameters,
+                parameters,
                 ..
             } => {
                 let policy = if axioms.is_empty() {
@@ -2005,9 +2289,12 @@ pub fn render_latex(
                 };
                 if version_2 && !type_parameters.is_empty() {
                     text.push_str(&format!(
-                        "\\noindent Type parameters: \\texttt{{{}}}.\\par\n",
+                        "\\noindent Type parameters: \\texttt{{({})}}.\\par\n",
                         tex_escape(&type_parameters.join(", "))
                     ));
+                }
+                if version_2 {
+                    latex_parameters(&render, parameters, &mut text);
                 }
                 text.push_str(&format!(
                     "\\noindent Statement: \\texttt{{{}}}.\\par\n\\noindent Axiom policy: \\texttt{{{}}}.\\par\n",
@@ -2060,8 +2347,41 @@ pub fn render_latex(
             | SemanticDeclaration::Inductive { .. } => {}
         }
     }
+    let end = text.len();
     text.push_str("\\end{document}\n");
-    Ok(emit(checked, &text, "semantic-latex-module"))
+    if version_2 {
+        emit_declarations(checked, &text, "semantic-latex-module", &starts, end)
+    } else {
+        Ok(emit(checked, &text, "semantic-latex-module"))
+    }
+}
+
+#[cfg(test)]
+mod declaration_span_tests {
+    use super::declaration_spans;
+
+    #[test]
+    fn spans_are_the_declaration_objects_whatever_the_layout() {
+        let compact = r#"\semanticdata{{"declarations":[{"name":"a\"}"},{"name":"b","x":[1,{"y":"]"}]}],"spec":"s"}}"#;
+        let spans = declaration_spans(compact).expect("spans");
+        let objects: Vec<&str> = spans
+            .iter()
+            .map(|(start, end)| &compact[*start..*end])
+            .collect();
+        assert_eq!(
+            objects,
+            [r#"{"name":"a\"}"}"#, r#"{"name":"b","x":[1,{"y":"]"}]}"#]
+        );
+        let spaced = "\\semanticdata{{\n  \"version\": 2,\n  \"declarations\": [\n    {\"name\":\"a\"} ,\n    {\"name\":\"b\"}\n  ]\n}}";
+        let spans = declaration_spans(spaced).expect("spans");
+        let objects: Vec<&str> = spans
+            .iter()
+            .map(|(start, end)| &spaced[*start..*end])
+            .collect();
+        assert_eq!(objects, [r#"{"name":"a"}"#, r#"{"name":"b"}"#]);
+        assert_eq!(declaration_spans("\\semanticdata{{\"spec\":1}}"), None);
+        assert_eq!(declaration_spans("no data"), None);
+    }
 }
 
 #[cfg(test)]

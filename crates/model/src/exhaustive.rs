@@ -97,11 +97,114 @@ fn code_of(line: &str) -> String {
                 in_string = true;
                 out.push('"');
             }
+            // A character literal (`'"'`, `'\''`, `'x'`) is blanked whole,
+            // so a quote inside it cannot open a string; a lifetime (`'a`)
+            // has no closing quote and is kept.
+            '\'' => {
+                let rest: String = chars.clone().take(12).collect();
+                let length = if rest.starts_with('\\') {
+                    rest.chars()
+                        .enumerate()
+                        .skip(2)
+                        .find(|(_, next)| *next == '\'')
+                        .map(|(index, _)| index + 1)
+                } else {
+                    rest.chars().nth(1).filter(|next| *next == '\'').map(|_| 2)
+                };
+                match length {
+                    Some(length) => {
+                        out.push_str("' '");
+                        for _ in 0..length {
+                            chars.next();
+                        }
+                    }
+                    None => out.push(character),
+                }
+            }
             '/' if chars.peek() == Some(&'/') => break,
             _ => out.push(character),
         }
     }
     out
+}
+
+/// Whether `text` is a bare binding pattern: an identifier that is not a
+/// literal, optionally bound with `@` or guarded. Such an arm matches
+/// everything its scrutinee can be, exactly like `_`.
+fn is_binding(text: &str) -> bool {
+    let text = text.trim();
+    let head = text
+        .split(" if ")
+        .next()
+        .unwrap_or_default()
+        .split(" @ ")
+        .next()
+        .unwrap_or_default()
+        .trim();
+    let head = head
+        .strip_prefix("ref mut ")
+        .or_else(|| head.strip_prefix("ref "))
+        .or_else(|| head.strip_prefix("mut "))
+        .unwrap_or(head);
+    head == "_"
+        || (!head.is_empty()
+            && head != "true"
+            && head != "false"
+            && head
+                .chars()
+                .next()
+                .is_some_and(|first| first.is_ascii_lowercase() || first == '_')
+            && head
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || character == '_'))
+}
+
+/// The top-level elements of a parenthesized tuple pattern.
+fn tuple_elements(pattern: &str) -> Option<Vec<String>> {
+    let inner = pattern.trim().strip_prefix('(')?.strip_suffix(')')?;
+    let mut elements = Vec::new();
+    let mut depth = 0_usize;
+    let mut current = String::new();
+    for character in inner.chars() {
+        match character {
+            '(' | '[' | '{' => {
+                depth += 1;
+                current.push(character);
+            }
+            ')' | ']' | '}' => {
+                depth = depth.saturating_sub(1);
+                current.push(character);
+            }
+            ',' if depth == 0 => elements.push(std::mem::take(&mut current)),
+            other => current.push(other),
+        }
+    }
+    if !current.trim().is_empty() {
+        elements.push(current);
+    }
+    Some(elements)
+}
+
+/// The default a match arm's pattern takes, if any: the arm's pattern is the
+/// text before `=>`, less a leading `|`. The audited source is `rustfmt`
+/// output, which places each arm on its own line.
+fn default_arm(code: &str) -> Option<&'static str> {
+    let (pattern, _) = code.split_once("=>")?;
+    let pattern = pattern.trim().trim_start_matches('|').trim();
+    if pattern.is_empty() {
+        return None;
+    }
+    for alternative in pattern.split(" | ") {
+        if is_binding(alternative) {
+            return Some("a binding or wildcard catch-all arm");
+        }
+        if let Some(elements) = tuple_elements(alternative) {
+            if elements.iter().any(|element| is_binding(element)) {
+                return Some("a tuple pattern with a binding or wildcard element");
+            }
+        }
+    }
+    None
 }
 
 /// The forbidden pattern forms, each with the reason it is forbidden.
@@ -113,6 +216,32 @@ fn forbidden(code: &str) -> Option<&'static str> {
         .collect();
     if tight.contains("_=>") && (compact.contains(" _ =>") || compact.starts_with("_ =>")) {
         return Some("a wildcard arm");
+    }
+    if let Some(reason) = default_arm(&compact) {
+        return Some(reason);
+    }
+    // The IR derives `PartialEq`, so an equality chain over it classifies
+    // by default in its final `else`.
+    let ir_path = |operand: &str| operand.starts_with("Semantic") && operand.contains("::");
+    let path_character = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == ':';
+    for operator in ["==", "!="] {
+        if compact.match_indices(operator).any(|(start, _)| {
+            let after = compact[start + operator.len()..]
+                .trim_start()
+                .trim_start_matches(['&', '*']);
+            let before = compact[..start].trim_end();
+            let left = before
+                .rsplit(|c: char| !path_character(c))
+                .next()
+                .unwrap_or_default();
+            let right = after
+                .split(|c: char| !path_character(c))
+                .next()
+                .unwrap_or_default();
+            ir_path(left) || ir_path(right)
+        }) {
+            return Some("an equality test on an IR enum");
+        }
     }
     if tight.contains("..}")
         || tight.contains("..)")
@@ -159,21 +288,30 @@ pub fn audit_eligibility(eligibility: &str, semantic: &str) -> Result<(), String
             );
         }
     }
-    let code: String = eligibility
-        .lines()
-        .map(code_of)
-        .collect::<Vec<_>>()
-        .join("\n");
+    // A variant counts as classified only where a match arm names it: a
+    // pattern line starts with the path (after any `|`) and either carries
+    // its `=>`, opens a multi-line struct pattern, or continues into another
+    // alternative. A mention in a list or an expression classifies nothing.
+    let lines: Vec<String> = eligibility.lines().map(code_of).collect();
+    let pattern_line = |index: usize, path: &str| {
+        let line = lines[index].trim();
+        let line = line.strip_prefix('|').map_or(line, str::trim_start);
+        let continues = lines
+            .iter()
+            .skip(index + 1)
+            .find(|next| !next.trim().is_empty())
+            .is_some_and(|next| next.trim_start().starts_with('|'));
+        line.strip_prefix(path).is_some_and(|rest| {
+            !rest
+                .chars()
+                .next()
+                .is_some_and(|next| next.is_ascii_alphanumeric() || next == '_')
+        }) && (line.contains("=>") || line.ends_with('{') || line.ends_with('|') || continues)
+    };
     for name in AUDITED_ENUMS {
         for variant in enum_variants(semantic, name)? {
             let path = format!("{name}::{variant}");
-            let named = code.match_indices(&path).any(|(start, _)| {
-                !code[start + path.len()..]
-                    .chars()
-                    .next()
-                    .is_some_and(|next| next.is_ascii_alphanumeric() || next == '_')
-            });
-            if !named {
+            if !(0..lines.len()).any(|index| pattern_line(index, &path)) {
                 let _ = writeln!(
                     report,
                     "{ELIGIBILITY_SOURCE}: `{path}` has no explicit production disposition"
@@ -194,7 +332,7 @@ mod tests {
 
     const IR: &str = "pub enum SemanticType {\n    Nat,\n    List { element: Box<Self> },\n}\npub enum SemanticTerm {\n    Var { name: String },\n}\npub enum SemanticPrimitive {\n    Length,\n}\npub enum SemanticDeclaration {\n    Theorem {\n        name: String,\n    },\n}\npub enum SemanticInteger {\n    Int,\n}\n";
 
-    const CLEAN: &str = "fn f(t: &SemanticType) { match t { SemanticType::Nat => {} SemanticType::List { element: _ } => {} } }\n// SemanticTerm::Var SemanticPrimitive::Length SemanticDeclaration::Theorem\nconst K: [&str; 1] = [\"_ => .. }\"];\nfn g() { SemanticTerm::Var; SemanticPrimitive::Length; SemanticDeclaration::Theorem; SemanticInteger::Int; }\n";
+    const CLEAN: &str = "fn f(t: &SemanticType) {\n match t {\n SemanticType::Nat => {}\n SemanticType::List { element: _ } => {}\n }\n}\n// _ => .. }\nconst K: [&str; 1] = [\"_ => .. }\"];\nfn g(t: &SemanticTerm, p: SemanticPrimitive, d: &SemanticDeclaration, i: SemanticInteger) {\n match t {\n SemanticTerm::Var { name: _ } => {}\n }\n match p {\n SemanticPrimitive::Length => {}\n }\n match d {\n SemanticDeclaration::Theorem {\n name: _,\n } => {}\n }\n match i {\n SemanticInteger::Int => {}\n }\n}\n";
 
     #[test]
     fn variants_are_read_at_one_indentation_level() {
@@ -219,12 +357,25 @@ mod tests {
             "fn h(t: &SemanticType) -> bool { matches!(t, SemanticType::Nat) }",
             "fn h(t: Option<u8>) { while let Some(_) = t {} }",
             "fn h(t: Option<u8>) { let Some(_) = t else { return }; }",
+            "fn h(t: &SemanticType) { match t { SemanticType::Nat => {}\n _other => {} } }",
+            "fn h(t: &SemanticType) { match t { SemanticType::Nat => {}\n other => {} } }",
+            "fn h(t: &SemanticType) { match t { SemanticType::Nat => {}\n ty if ty.is_nat() => {} } }",
+            "fn h(t: &SemanticType, u: &SemanticType) { match (t, u) {\n (SemanticType::Nat, SemanticType::Nat) => {}\n (_, _) => {} } }",
+            "fn h(t: &SemanticType, u: &SemanticType) { match (t, u) {\n (SemanticType::Nat, other) => {} } }",
+            "fn h(t: &SemanticType) -> bool { *t == SemanticType::Nat }",
+            "fn h(t: &SemanticType) -> bool { SemanticType::Nat != *t }",
+            "fn h() -> char { '\"' } fn k(t: &SemanticType) { match t { _ => {} } }",
         ] {
             let source = format!("{CLEAN}{planted}\n");
             assert!(audit_eligibility(&source, IR).is_err(), "{planted}");
         }
-        let missing = CLEAN.replace("SemanticInteger::Int", "SemanticInteger");
+        let missing = CLEAN.replace(" SemanticInteger::Int => {}\n", "");
         let error = audit_eligibility(&missing, IR).unwrap_err();
+        assert!(error.contains("SemanticInteger::Int"), "{error}");
+        // A mention outside a match arm classifies nothing.
+        let mentioned =
+            format!("{missing}const L: [SemanticInteger; 1] = [\n SemanticInteger::Int,\n];\n");
+        let error = audit_eligibility(&mentioned, IR).unwrap_err();
         assert!(error.contains("SemanticInteger::Int"), "{error}");
     }
 }

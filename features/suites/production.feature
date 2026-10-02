@@ -31,7 +31,7 @@ Feature: production
     And the redeclared root fails with LLT4005 naming `rust-core` and heap allocation and leaves no backend output
 
   @PD-05 @build
-  Scenario: A production root fails with LLT4005 before any backend runs when its boundary holds a universe, proposition, type parameter, or function, or its closure reaches a formal-only, erased, non-executable, or unresolved dependency, a literal outside the target width, unavailable allocation, or an effect the root does not admit.
+  Scenario: A production root fails with LLT4005 before any backend runs when it declares type parameters or is not declared executable, when its boundary holds a universe, proposition, type parameter, or function, directly or in a named type's fields, or when its closure reaches a formal-only construct, a literal outside the target width, unavailable allocation, or an effect the root does not admit.
     Given the nine `production-*` negative fixtures and a copy of the example with `shapeArea`'s admitted `overflow` removed
     When each is checked and built
     Then each fails with LLT4005 naming its violation, its target, and the call path to it, and no build or verification root exists

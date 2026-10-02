@@ -226,17 +226,45 @@ gate failed: RP-07: §31 states 223 required capability IDs but its table has 22
 Planted: the explicit arm `SemanticPrimitive::GraphTopological =>
 "primitive.graph_topological",` in
 `crates/lexlean/src/production/eligibility.rs` replaced by the wildcard
-`_ => "primitive.graph_topological",`. The crate still compiles, because the
-wildcard covers exactly the one variant it replaced, so only the audit can see
-the default. Command: `cargo xtask validate-model`.
+`_ => "primitive.graph_topological",`, and separately by the binding
+catch-all `_other => "primitive.graph_topological",`. Commands: `cargo xtask
+validate-model` and `cargo clippy -p lexlean -- -D warnings`. Expected: both
+the audit and the compiler refuse each default, so neither gate alone is
+load-bearing.
 
 ```text
-gate failed: §17.13: crates/lexlean/src/production/eligibility.rs:105: a wildcard arm would classify constructs by default
+gate failed: §17.13: crates/lexlean/src/production/eligibility.rs:152: a wildcard arm would classify constructs by default
+gate failed: §17.13: crates/lexlean/src/production/eligibility.rs:152: a binding or wildcard catch-all arm would classify constructs by default
+error: wildcard matches only a single variant and will also match any future added variants
+   --> crates/lexlean/src/production/eligibility.rs:152:9
 ```
 
-`conformance_pd_07` plants the same wildcard, a rest pattern, an `if let`,
-and an unnamed `SemanticInteger::UInt64` against the committed source, and
-asserts that the audit reports each one.
+The compiler sees only enum matches, so the audit alone covers a tuple
+default and an equality chain over the IR. `conformance_pd_07` plants, against
+the committed source, the wildcard, the binding catch-all, a rest pattern, an
+`if let`, a tuple pattern `(_, _)`, an `==` test on `SemanticType`, an unnamed
+`SemanticInteger::UInt64`, and a `SemanticPrimitive::GraphTopological` that
+is listed but matched nowhere, and asserts that the audit reports each one.
+Removed: every arm restored; both gates pass.
+
+### production root monomorphism can fail
+
+Planted: the check in `analyse_root` that a root declares no type parameters
+was disabled (`if false && !type_parameters.is_empty()`). Command: `cargo test
+-p repo-conformance --test conformance -- conformance_pd_05`. Expected: the
+`production-phantom-type-parameter` root, whose signature never mentions its
+type parameter, is no longer refused for declaring it; only the walk's second
+check, which refuses a type parameter that survives instantiation, still
+stops it, and the case observes the changed reason.
+
+```text
+thread 'conformance_pd_05' panicked at crates/conformance/src/cases/production.rs:646:17:
+production-phantom-type-parameter: expected "production root declares the type parameters (Item)", got LLT4005: phase production: production root `LanguageTwelve.Main.count` is not eligible for target `rust-std`: the type parameter `Item` is never instantiated in the closure (in `LanguageTwelve.Main.count`, reached by LanguageTwelve.Main.count; 1 violation(s) in total)
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 249 filtered out
+```
+
+Removed: the check was restored; `conformance_pd_05` passes and the fixture
+fails with `LLT4005` naming both violations.
 
 ### production target dependence can fail
 
@@ -344,12 +372,13 @@ check fails
 Planted: the positivity rule in `classify_occurrence` was bypassed (`if false
 && ...`), so a group member inside another document type's arguments was
 admitted. Command: `cargo test -p repo-conformance --test conformance --
-conformance_df_12`. Expected: the mutation that nests `Rose` inside `Tree`
-is no longer rejected for positivity.
+conformance_df_12`. Expected: the mutation that adds an otherwise unused,
+well-formed `Wrap` with a constructor field `Tree (Wrap)` is no longer
+rejected at all; only the positivity rule refused it.
 
 ```text
-thread 'conformance_df_12' panicked at crates/conformance/src/cases/declarations.rs:644:17:
-expected "positivity violation in `Rose.node`", got LLT4001: phase link: constructor `Rose.node` argument has type List { element: Named { ... name: "Rose" ... } }, expected Named { ... name: "Tree" ... }
+thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:360:14:
+check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 230 filtered out
 ```
 
@@ -366,8 +395,8 @@ exact-capture diagnostic (an undeclared use still fails later as an unbound
 local, and an unused declared capture is accepted).
 
 ```text
-thread 'conformance_sm_25' panicked at crates/conformance/src/cases/semantic_ir.rs:1663:17:
-expected "declared {}, used {\"offset\"}", got LLT4001: phase link: unbound local `offset`
+thread 'conformance_sm_25' panicked at crates/conformance/src/cases/semantic_ir.rs:1696:17:
+expected "declared (), used (offset)", got LLT4001: phase link: unbound local `offset`
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 234 filtered out
 ```
 
@@ -383,37 +412,46 @@ call of the wrong arity. Command: `cargo test -p repo-conformance --test
 conformance -- conformance_sm_25 conformance_df_14`.
 
 ```text
-thread 'conformance_df_14' panicked at crates/conformance/src/cases/declarations.rs:826:13:
+thread 'conformance_df_14' panicked at crates/conformance/src/cases/declarations.rs:926:13:
 assertion failed: combinators.contains("mapList (Input) (Output) (transform) (tail)")
-thread 'conformance_sm_25' panicked at crates/conformance/src/cases/semantic_ir.rs:1651:17:
+thread 'conformance_sm_25' panicked at crates/conformance/src/cases/semantic_ir.rs:1684:17:
 missing "HigherOrder.Combinators.mapList (Nat) (Nat) ((fun (value : Nat) => (value + offset))) (values)" in:
 ```
+
+Removed: the type arguments were restored; `conformance_sm_25` and
+`conformance_df_14` pass.
 
 ### closure escape through data can fail
 
 Planted: `holds_function` stopped looking through a document type's field
-types (`false && info.field_types...`), so a record of closures was data
+types (`false && type_info(member, env)...`), so a record of closures was data
 without functions. Command: `cargo test -p repo-conformance --test
 conformance -- conformance_df_15`. The executable `evaluator` that returns a
 `Visitor` of closures is no longer refused for returning a function.
 
 ```text
-thread 'conformance_df_15' panicked at crates/conformance/src/cases/declarations.rs:900:17:
-expected "escaping closure: executable definition `evaluator` returns a function", got LLT4001: phase link: escaping closure in executable definition `evaluator`: a lambda may only be passed directly to an executable function parameter or applied
+thread 'conformance_df_15' panicked at crates/conformance/src/cases/declarations.rs:1040:17:
+expected "escaping closure: executable definition `evaluator` returns a value of type Combinators.Visitor, which holds a function", got LLT4001: phase link: escaping closure in executable definition `evaluator`: a lambda may only be passed directly to an executable function parameter or applied
 ```
+
+Removed: the field types were restored; `conformance_df_15` passes and the
+`escaping-closure-structure` negative fixture fails with `LLT4001`.
 
 ### unused semantic binder lowering can fail
 
 Planted: `bound_name` kept every binder's own name (`if used || true`), so a
 definition parameter, quantifier, `let`, or lambda binder its scope never
 mentions reached Lean unprefixed, where the unused-variable linter warns and
-verification fails with `LLV7006`. Command: `cargo test -p repo-conformance
---test conformance -- conformance_sm_08`.
+verification fails with `LLV7006`; the same holds for a type parameter its
+declaration never mentions. Command: `cargo test -p repo-conformance --test
+conformance -- conformance_sm_08 conformance_df_14`.
 
 ```text
+thread 'conformance_df_14' panicked at crates/conformance/src/cases/declarations.rs:953:17:
+missing "public def keepNat (_Phantom : Type) (value : Nat) : Nat := value\n" in:
 thread 'conformance_sm_08' panicked at crates/conformance/src/cases/semantic_ir.rs:572:17:
 missing "public def constantTrue (_ignored : Nat) : Bool := true" in:
-test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 234 filtered out
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 233 filtered out
 ```
 
 Removed: the prefix was restored; `conformance_sm_08` passes and pinned Lean
@@ -453,6 +491,47 @@ test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 238 filtered out
 Removed: the test was restored; `conformance_df_16` passes and the
 `recursion-wrong-argument` negative fixture fails with `LLT4001`.
 
+### recursion call graph check can fail
+
+Planted: `check_group_call_graph` returned `Ok(())` at once, so a mutual
+group's members were never required to call into the group or to be
+strongly connected. Commands: `lexlean check` then `lexlean verify` on a copy
+of the `recursion-mutual-member-without-call` negative project, whose
+structural group `Walk` has a member `settle` that calls no member. Expected:
+linking admits the group and Lean, not linking, is the first to refuse it.
+
+```text
+checked 1 module (source 9fb919ed41971b7cf0d6ccb531f9b67442d85c865de79e61a0015a80bcc848bd,
+error[LLV7006]: Lean produced unexpected output for `LanguageTwelve.Main` (warning): unused `termination_by`, function is not recursive
+  --> src/Main.lex.tex:5:32
+```
+
+In a well-founded group the same plant is still refused, by the separate rule
+that a definition with termination evidence makes a recursive call:
+`conformance_df_17` fails with `definition `pong` declares termination
+evidence but makes no recursive call` where it expects the call-graph
+message.
+
+Removed: the check was restored; `recursion-mutual-member-without-call` and
+`recursion-mutual-disconnected` fail in linking with `LLT4001`, and
+`conformance_df_17` passes.
+
+### false termination evidence is refused by verification
+
+Not a plant but the boundary the recursion rules state: linking checks that
+each obligation is stated exactly, and Lean's kernel decides whether it is
+true. The `recursion-false-evidence` negative project states the exact
+obligation of a call `stall (number)` on its own argument, with a
+`linear_arithmetic` proof that cannot hold. Command: `lexlean verify`.
+
+```text
+error[LLV7002]: Lean rejected `LanguageTwelve.Main` (error): omega could not prove the goal:
+error[LLV7002]: Lean rejected `LanguageTwelve.Main` (error): well-founded recursion cannot be used, `LanguageTwelve.Main.stall` does not take any (non-fixed) arguments
+```
+
+Each diagnostic points at its declaration in the source (the evidence
+theorem, then `stall`), through the per-declaration source maps.
+
 ### well-founded lowering under match can fail
 
 Planted: a numbered `match` lowered without `(generalizing := false)`, so
@@ -471,6 +550,30 @@ error[LLV7002]: Lean rejected `Recursion.Main` (error): Application type mismatc
 Removed: the lowering was restored; the recursion example verifies and its
 normalized verification records match `cargo xtask verify-examples`.
 
+### binder hygiene can fail
+
+Planted: the language-1.2 call to `check_binder_hygiene` in
+`SemanticModule::validate` was disabled (`if false && ...`). Commands: `cargo
+test -p repo-conformance --test conformance -- conformance_df_12`, and
+`lexlean check` then `lexlean verify` on a copy of the `binder-capture`
+negative project, whose inductive `Box` has a type parameter `Prod` and a
+product field. Expected: the renamed type parameter is admitted, and Lean,
+not linking, is the first to refuse the capture.
+
+```text
+thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:360:14:
+check fails
+
+checked 1 module (source 0eec48d541180c1a6dbf34539884c1063f8a6637964a1f7667a5b6c0f73a4d15, semantic 1fe3fc4d4fa60d781de6ea42be16516d7b6b860a2918f6ed351b40ad6e1e0d2c)
+error[LLV7002]: Lean rejected `LanguageTwelve.Main` (error): Function expected at
+  Prod
+but this term has type
+  Type
+```
+
+Removed: the check was restored; `conformance_df_12` passes and
+`binder-capture` fails in linking with `LLT4001`, before any backend runs.
+
 ### collection ordering determinism can fail
 
 Planted: the canonical normalization of map, set, and graph literals was
@@ -480,7 +583,7 @@ conformance_sm_29`. Expected: reordered equivalent graph literals no longer
 link to one semantic identity.
 
 ```text
-thread 'conformance_sm_29' panicked at crates/conformance/src/cases/semantic_ir.rs:2032:13:
+thread 'conformance_sm_29' panicked at crates/conformance/src/cases/semantic_ir.rs:2114:13:
 assertion `left == right` failed: the semantics do not
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
 ```
@@ -496,7 +599,8 @@ test -p repo-conformance --test conformance -- conformance_sm_29`.
 Expected: the `02` mutation links.
 
 ```text
-thread 'conformance_sm_29' panicked at crates/conformance/src/support.rs:372:14:
+thread 'conformance_sm_29' panicked at crates/conformance/src/support.rs:360:14:
+check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
 ```
 
@@ -514,7 +618,7 @@ build && lexlean verify` in `examples/collections`, where pinned Lean is the
 oracle.
 
 ```text
-thread 'conformance_sm_28' panicked at crates/conformance/src/cases/semantic_ir.rs:1953:17:
+thread 'conformance_sm_28' panicked at crates/conformance/src/cases/semantic_ir.rs:2018:17:
 missing "namespace LexLeanCollections" in:
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
 error[LLV7002]: Lean rejected `Collections.Measure` (error lean.unknownIdentifier): Unknown identifier `LexLeanCollections.mapSize`
@@ -524,12 +628,66 @@ error[LLV7002]: Lean rejected `Collections.Measure` (error): Tactic `decide` fai
 Removed: the primitive case was restored; `conformance_sm_28` passes and the
 collections example verifies.
 
+### graph node set can fail
+
+Planted: `graphTopological` ordered only the graph's keys
+(`let nodes := graph.map Prod.fst`), so a successor inserted without an entry
+of its own was silently dropped from the order. Command: `cargo test -p
+repo-conformance --test conformance -- conformance_sm_30`. Expected: the
+seeded graphs and the 24-node chain, whose last node is such a successor,
+disagree with the independent model.
+
+```text
+thread 'conformance_sm_30' panicked at crates/conformance/src/support.rs:1817:10:
+the module verifies with real Lean: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLV7002"), message: "Lean rejected `Collections.Main` (error): Tactic `decide` proved that the proposition\n  LexLeanCollections.graphTopological
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
+```
+
+Lean refused twelve topological-order theorems. Removed: the node set was
+restored to keys and successors; `conformance_sm_30` passes.
+
+### key order agreement can fail
+
+Planted: linking's `KeyOrder` compared negative integers by magnitude
+(`(true, true) => magnitude` instead of `magnitude.reverse()`), so a literal's
+canonical order disagreed with Lean's `Key Int` instance. Command: `cargo test
+-p repo-conformance --test conformance -- conformance_sm_28`. Expected: the
+`key_order_*` theorems, which state that a linked literal equals Lean's own
+insertion of the source order, fail under verification.
+
+```text
+thread 'conformance_sm_28' panicked at crates/conformance/src/support.rs:1817:10:
+the module verifies with real Lean: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLV7002"), message: "Lean rejected `Collections.Main` (error): Tactic `decide` proved that the proposition\n  [-2, -10, -100, 0, 3, 9, 100] =\n    LexLeanCollections.listFold (fun built element => LexLeanCollections.setInsert built element) []\n      [3, -2, 0, -10, 100, -100, 9]\nis false"
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
+```
+
+Lean refused five theorems, one per signed key type. Removed: the order was
+restored; `conformance_sm_28` passes.
+
+### collection canonical invariant can fail
+
+Planted: the runtime's `setUnion` appended each new element
+(`if containsElement key acc then acc else acc ++ [key]`), so a union was no
+longer strictly ascending. Command: `cargo test -p repo-conformance --test
+conformance -- conformance_sm_28`. Expected: the seeded union theorems,
+whose right-hand sides come from `BTreeSet`, fail under verification.
+
+```text
+thread 'conformance_sm_28' panicked at crates/conformance/src/support.rs:1817:10:
+the module verifies with real Lean: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLV7002"), message: "Lean rejected `Collections.Main` (error): Tactic `decide` proved that the proposition\n  LexLeanCollections.setUnion [1, 2, 3] [0, 5] = [0, 1, 2, 3, 5]\nis false"
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
+```
+
+Lean refused eleven theorems: `op_set_union` and ten of the twelve seeded
+`model_set_union_*` theorems. Removed: the union was restored;
+`conformance_sm_28` passes.
+
 ### fmt-check can fail
 
 Planted: `fn   badly_formatted( ) {}` appended to `crates/model/src/release.rs`. Command: `cargo fmt --all -- --check`. Expected: a formatting diff and a nonzero exit.
 
 ```text
-Diff in crates/model/src/release.rs:563:
+Diff in crates/model/src/release.rs:569:
          );
      }
  }

@@ -5,11 +5,13 @@
 \section*{Semantic declarations}
 \subsection*{\texttt{treeSize}}
 \noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(tree : RecursiveData.Types.Tree (Nat))}.\par
 \noindent Type: \texttt{Nat}.\par
 \noindent Definition: \texttt{(match tree with | RecursiveData.Types.Tree.leaf => 0 | RecursiveData.Types.Tree.node left \_ right => ((treeSize (left) + 1) + treeSize (right)))}.\par
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{mirror}}
 \noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(tree : RecursiveData.Types.Tree (Nat))}.\par
 \noindent Type: \texttt{RecursiveData.Types.Tree (Nat)}.\par
 \noindent Definition: \texttt{(match tree with | RecursiveData.Types.Tree.leaf => RecursiveData.Types.Tree.leaf | RecursiveData.Types.Tree.node left value right => RecursiveData.Types.Tree.node (mirror (right)) (value) (mirror (left)))}.\par
 \noindent Axiom policy: \texttt{none}.\par
@@ -24,10 +26,12 @@
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{mirror\_involutive}}
 \noindent Kind: \texttt{theorem}.\par
+\noindent Parameters: \texttt{(tree : RecursiveData.Types.Tree (Nat))}.\par
 \noindent Statement: \texttt{(mirror (mirror (tree)) = tree)}.\par
 \noindent Axiom policy: \texttt{exact [propext]}.\par
 \subsection*{\texttt{roseLabel}}
 \noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(rose : RecursiveData.Types.Rose (Nat))}.\par
 \noindent Type: \texttt{Nat}.\par
 \noindent Definition: \texttt{(match rose with | RecursiveData.Types.Rose.node label \_ => label)}.\par
 \noindent Axiom policy: \texttt{none}.\par
@@ -37,6 +41,7 @@
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{isLiteral}}
 \noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(expression : RecursiveData.Types.Expr)}.\par
 \noindent Type: \texttt{Bool}.\par
 \noindent Definition: \texttt{(match expression with | RecursiveData.Types.Expr.literal \_ => true | RecursiveData.Types.Expr.plus \_ \_ => false | RecursiveData.Types.Expr.block \_ \_ => false)}.\par
 \noindent Axiom policy: \texttt{none}.\par
@@ -46,6 +51,7 @@
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{outcomeOrZero}}
 \noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(outcome : RecursiveData.Types.Outcome (String) (Nat))}.\par
 \noindent Type: \texttt{Nat}.\par
 \noindent Definition: \texttt{(match outcome with | RecursiveData.Types.Outcome.failure \_ => 0 | RecursiveData.Types.Outcome.success value => value)}.\par
 \noindent Axiom policy: \texttt{none}.\par
@@ -55,11 +61,13 @@
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{swap}}
 \noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(pair : (Prod (Nat) (Bool)))}.\par
 \noindent Type: \texttt{(Prod (Bool) (Nat))}.\par
 \noindent Definition: \texttt{((pair).2, (pair).1)}.\par
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{sumPair}}
 \noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(pair : (Prod (Nat) (Nat)))}.\par
 \noindent Type: \texttt{Nat}.\par
 \noindent Definition: \texttt{(match pair with | Prod.mk left right => (left + right))}.\par
 \noindent Axiom policy: \texttt{none}.\par

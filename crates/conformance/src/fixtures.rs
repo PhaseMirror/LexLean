@@ -601,6 +601,19 @@ pub fn read_expected(dir: &Utf8Path) -> Result<Expected, String> {
     })
 }
 
+/// Whether `line` holds a Windows drive path such as `C:\\`: a lone ASCII
+/// letter, a colon, and a backslash. A colon before an escaped character in
+/// JSON text (`goal:\\n`) follows a word, not a lone letter, and is not one.
+fn has_drive_path(line: &str) -> bool {
+    let bytes = line.as_bytes();
+    (0..bytes.len()).any(|index| {
+        bytes[index].is_ascii_alphabetic()
+            && bytes.get(index + 1) == Some(&b':')
+            && bytes.get(index + 2) == Some(&b'\\')
+            && (index == 0 || !bytes[index - 1].is_ascii_alphanumeric())
+    })
+}
+
 /// Run a fixture and compare it with its committed expectation.
 ///
 /// # Errors
@@ -620,7 +633,7 @@ pub fn check(dir: &Utf8Path) -> Result<Observed, String> {
     for text in observed.expected.files().map(|(_, text)| text) {
         if let Some(line) = text
             .lines()
-            .find(|line| line.contains("/tmp/") || line.contains("/home/") || line.contains(":\\"))
+            .find(|line| line.contains("/tmp/") || line.contains("/home/") || has_drive_path(line))
         {
             return Err(format!(
                 "{dir}: an expected file carries an absolute path: {line}"
@@ -651,6 +664,16 @@ pub fn write(dir: &Utf8Path) -> Result<Observed, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_drive_path_is_a_lone_letter_colon_backslash() {
+        assert!(has_drive_path(r#"{"path":"C:\\Users\\build"}"#));
+        assert!(has_drive_path(r"D:\work"));
+        assert!(!has_drive_path(
+            r#""omega could not prove the goal:\na possible""#
+        ));
+        assert!(!has_drive_path("no path here"));
+    }
 
     #[test]
     fn attestation_ids_normalize_and_short_hex_survives() {

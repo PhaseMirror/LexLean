@@ -5,19 +5,22 @@
 \section*{Semantic declarations}
 \subsection*{\texttt{declare}}
 \noindent Kind: \texttt{definition}.\par
-\noindent Execution: production-eligible, non-escaping closures only.\par
-\noindent Type: \texttt{List (Prod (String) (Nat))}.\par
-\noindent Definition: \texttt{(LexLeanCollections.mapInsert (table) (name) (slot) : List (Prod (String) (Nat)))}.\par
+\noindent Parameters: \texttt{(table : Map (String) (Nat)) (name : String) (slot : Nat)}.\par
+\noindent Execution: executable, non-escaping closures only.\par
+\noindent Type: \texttt{Map (String) (Nat)}.\par
+\noindent Definition: \texttt{(LexLeanCollections.mapInsert (table) (name) (slot) : Map (String) (Nat))}.\par
 \noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
 \subsection*{\texttt{buildTable}}
 \noindent Kind: \texttt{definition}.\par
-\noindent Execution: production-eligible, non-escaping closures only.\par
-\noindent Type: \texttt{List (Prod (String) (Nat))}.\par
-\noindent Definition: \texttt{(LexLeanCollections.listFold ((fun (table : List (Prod (String) (Nat))) (name : String) => declare (table) (name) ((LexLeanCollections.mapSize (table) : Nat)))) (([] : List (Prod (String) (Nat)))) (names) : List (Prod (String) (Nat)))}.\par
+\noindent Parameters: \texttt{(names : List (String))}.\par
+\noindent Closure 1: binds \texttt{(table, name)}, captures \texttt{()}.\par
+\noindent Execution: executable, non-escaping closures only.\par
+\noindent Type: \texttt{Map (String) (Nat)}.\par
+\noindent Definition: \texttt{(LexLeanCollections.listFold ((fun (table : Map (String) (Nat)) (name : String) => declare (table) (name) ((LexLeanCollections.mapSize (table) : Nat)))) (([] : List (Prod (String) (Nat)))) (names) : Map (String) (Nat))}.\par
 \noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
 \subsection*{\texttt{callGraph}}
 \noindent Kind: \texttt{definition}.\par
-\noindent Type: \texttt{List (Prod (String) (List (String)))}.\par
+\noindent Type: \texttt{Map (String) (Set (String))}.\par
 \noindent Definition: \texttt{([("emit", ["report"]), ("lex", []), ("main", ["emit", "parse"]), ("parse", ["lex"]), ("report", ["lex"])] : List (Prod (String) (List (String))))}.\par
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{callOrder}}
@@ -27,7 +30,7 @@
 \noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
 \subsection*{\texttt{reachableFromParse}}
 \noindent Kind: \texttt{definition}.\par
-\noindent Type: \texttt{List (String)}.\par
-\noindent Definition: \texttt{(LexLeanCollections.graphReachable (callGraph) ("parse") : List (String))}.\par
+\noindent Type: \texttt{Set (String)}.\par
+\noindent Definition: \texttt{(LexLeanCollections.graphReachable (callGraph) ("parse") : Set (String))}.\par
 \noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
 \end{document}

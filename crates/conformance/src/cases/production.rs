@@ -7,7 +7,7 @@ use crate::support::{self, P};
 use lexlean::production::eligibility::{
     primitive_index, primitive_key, term_key, type_key, PRIMITIVES, STRUCTURAL_KEYS,
 };
-use lexlean::production::{registry, Disposition};
+use lexlean::production::registry;
 
 const MAIN: &str = "src/Main.lex.tex";
 
@@ -176,6 +176,142 @@ const TERM_SAMPLES: [&str; 41] = [
     r#"{"kind":"graph_literal","node":{"kind":"nat"},"nodes":[],"edges":[]}"#,
 ];
 
+/// Every registry row as it was reviewed: construct key, disposition,
+/// allocation, overflowing representations, and recursion. A changed column
+/// is a change to LexLean's production contract, so it must change here too.
+#[rustfmt::skip]
+const REGISTRY_ROWS: [(&str, &str, bool, &[&str], bool); 129] = [
+    ("type.type", "formal-only", false, &[], false),
+    ("type.parameter", "runtime", false, &[], false),
+    ("type.nat", "runtime", false, &[], false),
+    ("type.bool", "runtime", false, &[], false),
+    ("type.prop", "formal-only", false, &[], false),
+    ("type.unit", "runtime", false, &[], false),
+    ("type.int", "runtime", false, &[], false),
+    ("type.int8", "runtime", false, &[], false),
+    ("type.int16", "runtime", false, &[], false),
+    ("type.int32", "runtime", false, &[], false),
+    ("type.int64", "runtime", false, &[], false),
+    ("type.uint8", "runtime", false, &[], false),
+    ("type.uint16", "runtime", false, &[], false),
+    ("type.uint32", "runtime", false, &[], false),
+    ("type.uint64", "runtime", false, &[], false),
+    ("type.string", "runtime", true, &[], false),
+    ("type.bytes", "runtime", true, &[], false),
+    ("type.ordering", "runtime", false, &[], false),
+    ("type.option", "runtime", false, &[], false),
+    ("type.result", "runtime", false, &[], false),
+    ("type.list", "runtime", true, &[], false),
+    ("type.named", "runtime", false, &[], false),
+    ("type.product", "runtime", false, &[], false),
+    ("type.function", "runtime", false, &[], false),
+    ("type.map", "runtime", true, &[], false),
+    ("type.set", "runtime", true, &[], false),
+    ("term.var", "runtime", false, &[], false),
+    ("term.nat", "runtime", false, &[], false),
+    ("term.integer", "runtime", false, &[], false),
+    ("term.string", "runtime", true, &[], false),
+    ("term.bytes", "runtime", true, &[], false),
+    ("term.primitive", "runtime", false, &[], false),
+    ("term.bool", "runtime", false, &[], false),
+    ("term.unit", "runtime", false, &[], false),
+    ("term.nil", "runtime", true, &[], false),
+    ("term.cons", "runtime", true, &[], false),
+    ("term.record", "runtime", false, &[], false),
+    ("term.constructor", "runtime", false, &[], false),
+    ("term.instance_value", "runtime", false, &[], false),
+    ("term.project", "runtime", false, &[], false),
+    ("term.call", "runtime", false, &[], false),
+    ("term.if", "runtime", false, &[], false),
+    ("term.match", "runtime", false, &[], false),
+    ("term.eq", "formal-only", false, &[], false),
+    ("term.le", "formal-only", false, &[], false),
+    ("term.lt", "formal-only", false, &[], false),
+    ("term.add", "runtime", false, &["nat"], false),
+    ("term.beq", "runtime", false, &[], false),
+    ("term.ble", "runtime", false, &[], false),
+    ("term.blt", "runtime", false, &[], false),
+    ("term.and", "runtime", false, &[], false),
+    ("term.prop_and", "formal-only", false, &[], false),
+    ("term.or", "runtime", false, &[], false),
+    ("term.not", "runtime", false, &[], false),
+    ("term.implies", "formal-only", false, &[], false),
+    ("term.iff", "formal-only", false, &[], false),
+    ("term.forall", "formal-only", false, &[], false),
+    ("term.let", "runtime", false, &[], false),
+    ("term.pair", "runtime", false, &[], false),
+    ("term.first", "runtime", false, &[], false),
+    ("term.second", "runtime", false, &[], false),
+    ("term.lambda", "runtime", false, &[], false),
+    ("term.apply", "runtime", false, &[], false),
+    ("term.function_ref", "runtime", false, &[], false),
+    ("term.map_literal", "runtime", true, &[], false),
+    ("term.set_literal", "runtime", true, &[], false),
+    ("term.graph_literal", "runtime", true, &[], false),
+    ("constructor.nat_succ", "runtime", false, &["nat"], false),
+    ("primitive.subtract", "runtime", false, &["int"], false),
+    ("primitive.multiply", "runtime", false, &["int", "nat"], false),
+    ("primitive.quotient", "runtime", false, &["int"], false),
+    ("primitive.remainder", "runtime", false, &[], false),
+    ("primitive.negate", "runtime", false, &["int"], false),
+    ("primitive.checked_convert", "runtime", false, &[], false),
+    ("primitive.checked_add", "runtime", false, &[], false),
+    ("primitive.checked_subtract", "runtime", false, &[], false),
+    ("primitive.checked_multiply", "runtime", false, &[], false),
+    ("primitive.checked_negate", "runtime", false, &[], false),
+    ("primitive.checked_quotient", "runtime", false, &[], false),
+    ("primitive.bit_and", "runtime", false, &[], false),
+    ("primitive.bit_or", "runtime", false, &[], false),
+    ("primitive.bit_xor", "runtime", false, &[], false),
+    ("primitive.bit_not", "runtime", false, &[], false),
+    ("primitive.shift_left", "runtime", false, &[], false),
+    ("primitive.shift_right", "runtime", false, &[], false),
+    ("primitive.append", "runtime", true, &[], false),
+    ("primitive.length", "runtime", false, &[], false),
+    ("primitive.index", "runtime", false, &[], false),
+    ("primitive.slice", "runtime", true, &[], false),
+    ("primitive.utf8_encode", "runtime", true, &[], false),
+    ("primitive.utf8_decode", "runtime", true, &[], false),
+    ("primitive.compare_bytes", "runtime", false, &[], false),
+    ("primitive.equal", "runtime", false, &[], false),
+    ("primitive.split_exact", "runtime", true, &[], false),
+    ("primitive.join", "runtime", true, &[], false),
+    ("primitive.parse_decimal", "runtime", false, &["int", "nat"], false),
+    ("primitive.format_decimal", "runtime", true, &[], false),
+    ("primitive.map_insert", "runtime", true, &[], false),
+    ("primitive.map_remove", "runtime", true, &[], false),
+    ("primitive.map_lookup", "runtime", true, &[], false),
+    ("primitive.map_contains", "runtime", true, &[], false),
+    ("primitive.map_size", "runtime", true, &[], false),
+    ("primitive.map_keys", "runtime", true, &[], false),
+    ("primitive.map_values", "runtime", true, &[], false),
+    ("primitive.map_entries", "runtime", true, &[], false),
+    ("primitive.map_fold", "runtime", true, &[], false),
+    ("primitive.set_insert", "runtime", true, &[], false),
+    ("primitive.set_remove", "runtime", true, &[], false),
+    ("primitive.set_contains", "runtime", true, &[], false),
+    ("primitive.set_size", "runtime", true, &[], false),
+    ("primitive.set_elements", "runtime", true, &[], false),
+    ("primitive.set_union", "runtime", true, &[], false),
+    ("primitive.set_intersection", "runtime", true, &[], false),
+    ("primitive.set_difference", "runtime", true, &[], false),
+    ("primitive.set_fold", "runtime", true, &[], false),
+    ("primitive.list_fold", "runtime", false, &[], false),
+    ("primitive.iterate", "runtime", false, &[], false),
+    ("primitive.iterate_until", "runtime", false, &[], false),
+    ("primitive.graph_successors", "runtime", true, &[], false),
+    ("primitive.graph_reachable", "runtime", true, &[], false),
+    ("primitive.graph_topological", "runtime", true, &[], false),
+    ("declaration.structure", "runtime", false, &[], false),
+    ("declaration.class", "runtime", false, &[], false),
+    ("declaration.instance", "runtime", false, &[], false),
+    ("declaration.inductive", "runtime", false, &[], false),
+    ("declaration.inductive.recursive", "runtime", true, &[], false),
+    ("declaration.definition", "runtime", false, &[], false),
+    ("declaration.definition.recursive", "runtime", false, &[], true),
+    ("declaration.theorem", "erased", false, &[], false),
+];
+
 /// Run the case for one PD conformance ID.
 ///
 /// # Panics
@@ -291,32 +427,37 @@ pub fn run(id: &str) {
                 .all(|target| target.natural_bits == 64 && target.integer_bits == 64));
             let effects: Vec<&str> = registry.effects.keys().map(String::as_str).collect();
             assert_eq!(effects, ["allocation", "overflow", "recursion"]);
-            let disposition = |key: &str| registry.constructs[key].disposition;
-            for formal in [
-                "type.type",
-                "type.prop",
-                "term.eq",
-                "term.le",
-                "term.lt",
-                "term.prop_and",
-                "term.implies",
-                "term.iff",
-                "term.forall",
-            ] {
-                assert_eq!(disposition(formal), Disposition::FormalOnly, "{formal}");
-            }
-            assert_eq!(disposition("declaration.theorem"), Disposition::Erased);
-            for allocating in [
-                "type.list",
-                "type.string",
-                "type.map",
-                "declaration.inductive.recursive",
-            ] {
-                assert!(registry.constructs[allocating].allocation, "{allocating}");
-            }
-            assert_eq!(registry.constructs["term.add"].overflow, ["nat"]);
-            assert_eq!(registry.constructs["primitive.subtract"].overflow, ["int"]);
-            assert!(registry.constructs["declaration.definition.recursive"].recursion);
+            // Every column of every row, in registry order.
+            let observed: Vec<(String, &str, bool, Vec<String>, bool)> = registry
+                .order
+                .iter()
+                .map(|key| {
+                    let row = &registry.constructs[key];
+                    (
+                        key.clone(),
+                        row.disposition.as_str(),
+                        row.allocation,
+                        row.overflow.clone(),
+                        row.recursion,
+                    )
+                })
+                .collect();
+            let expected: Vec<(String, &str, bool, Vec<String>, bool)> = REGISTRY_ROWS
+                .iter()
+                .map(|(key, disposition, allocation, overflow, recursion)| {
+                    (
+                        (*key).to_owned(),
+                        *disposition,
+                        *allocation,
+                        overflow.iter().map(|value| (*value).to_owned()).collect(),
+                        *recursion,
+                    )
+                })
+                .collect();
+            assert_eq!(
+                observed, expected,
+                "the registry rows are exactly the reviewed rows"
+            );
             // The schemas carry exactly the registered targets and effects.
             for (schema, definition) in [
                 ("semantic-module-v2", "production"),
@@ -494,7 +635,10 @@ pub fn run(id: &str) {
                 ("production-formal-only-dependency", "construct `type.prop` is formal-only"),
                 ("production-literal-width", "literal 18446744073709551616 does not fit the 64-bit nat representation"),
                 ("production-root-not-executable", "`LanguageTwelve.Main.identity` is not declared executable"),
-                ("production-polymorphic-root", "the uninstantiated type parameter `Item`"),
+                ("production-polymorphic-root", "production root declares the type parameters (Item); a root is realized at one type (in `LanguageTwelve.Main.identity`, reached by LanguageTwelve.Main.identity; 4 violation(s) in total)"),
+                ("production-phantom-type-parameter", "production root declares the type parameters (Item)"),
+                ("production-universe-boundary", "root parameter `carrier` holds a type universe"),
+                ("production-named-type-boundary", "root parameter `witness` holds a proposition"),
             ] {
                 let project = P::negative(fixture);
                 let error = project.check_fails_with("LLT4005");
@@ -617,8 +761,10 @@ pub fn run(id: &str) {
                     "{variant}"
                 );
             }
-            // Planted defaults: a wildcard arm replacing an explicit one, a
-            // rest pattern, an `if let`, and an unnamed variant.
+            // Planted defaults: a wildcard or binding arm replacing an
+            // explicit one, a rest pattern, an `if let`, a tuple default, an
+            // equality test on the IR, an unnamed variant, and a variant
+            // listed but never matched.
             let arm = r#"SemanticPrimitive::GraphTopological => "primitive.graph_topological","#;
             assert!(eligibility.contains(arm));
             for (planted, expected) in [
@@ -641,6 +787,25 @@ pub fn run(id: &str) {
                 (
                     eligibility.replace("SemanticInteger::UInt64", "SemanticInteger::UInt32"),
                     "`SemanticInteger::UInt64` has no explicit production disposition",
+                ),
+                (
+                    eligibility.replacen(arm, r#"_other => "primitive.graph_topological","#, 1),
+                    "a binding or wildcard catch-all arm",
+                ),
+                (
+                    format!("{eligibility}\nfn planted(t: &SemanticType, u: &SemanticType) -> u8 {{\n    match (t, u) {{\n        (SemanticType::Nat, SemanticType::Nat) => 0,\n        (_, _) => 1,\n    }}\n}}\n"),
+                    "a tuple pattern with a binding or wildcard element",
+                ),
+                (
+                    format!("{eligibility}\nfn planted(t: &SemanticType) -> bool {{\n    *t == SemanticType::Nat\n}}\n"),
+                    "an equality test on an IR enum",
+                ),
+                (
+                    // Named only in the operation list, classified nowhere.
+                    eligibility
+                        .replacen(arm, "", 1)
+                        .replacen("        SemanticPrimitive::GraphTopological => 52,\n", "", 1),
+                    "`SemanticPrimitive::GraphTopological` has no explicit production disposition",
                 ),
             ] {
                 let error = repo_model::exhaustive::audit_eligibility(&planted, &semantic)
