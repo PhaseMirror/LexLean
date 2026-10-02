@@ -1,0 +1,22 @@
+'Recursion.Main.countdown' depends on axioms: [propext, Quot.sound]
+'Recursion.Main.countdown_decreases' depends on axioms: [propext, Quot.sound]
+'Recursion.Main.countdown_nine' depends on axioms: [propext, Quot.sound]
+'Recursion.Main.exprSize' does not depend on any axioms
+'Recursion.Main.expression_size' does not depend on any axioms
+'Recursion.Main.forestSize' does not depend on any axioms
+'Recursion.Main.isEven' does not depend on any axioms
+'Recursion.Main.isOdd' does not depend on any axioms
+'Recursion.Main.reduce' depends on axioms: [propext, Quot.sound]
+'Recursion.Main.reduce_decreases' depends on axioms: [propext, Quot.sound]
+'Recursion.Main.reduce_twenty_three' depends on axioms: [propext, Quot.sound]
+'Recursion.Main.roseSize' does not depend on any axioms
+'Recursion.Main.rose_size' does not depend on any axioms
+'Recursion.Main.search' depends on axioms: [propext, Quot.sound]
+'Recursion.Main.search_decreases' depends on axioms: [propext, Quot.sound]
+'Recursion.Main.search_first' depends on axioms: [propext, Quot.sound]
+'Recursion.Main.statementSize' does not depend on any axioms
+'Recursion.Main.statementsSize' does not depend on any axioms
+'Recursion.Main.ten_is_even' does not depend on any axioms
+'Recursion.Syntax.Expr' does not depend on any axioms
+'Recursion.Syntax.Rose' does not depend on any axioms
+'Recursion.Syntax.Stmt' does not depend on any axioms

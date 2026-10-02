@@ -1,4 +1,4 @@
-//! The `semantic-ir` suite: SM-01..SM-26.
+//! The `semantic-ir` suite: SM-01..SM-27.
 
 use std::collections::BTreeSet;
 use std::process::Command;
@@ -1840,6 +1840,80 @@ pub(crate) fn run(id: &str) {
                 ),
             );
             assert!(snapshot_of(&P::semantic_example()).alpha_ids().is_empty());
+        }
+        "SM-27" => {
+            let snapshot_of = |project: &P| {
+                project
+                    .engine()
+                    .snapshot(lexlean::CheckRequest {
+                        selection: lexlean::Selection::Entrypoints,
+                    })
+                    .expect("snapshot")
+            };
+            let original = P::copy_example("recursion");
+            let first = snapshot_of(&original);
+            assert_eq!(
+                first.canonical_bytes(),
+                snapshot_of(&P::copy_example("recursion")).canonical_bytes()
+            );
+            let value: serde_json::Value =
+                serde_json::from_slice(&first.canonical_bytes()).expect("snapshot JSON");
+            support::assert_schema("semantic-snapshot-v2", "the recursion snapshot", &value);
+            let main = value["modules"]
+                .as_array()
+                .expect("modules")
+                .iter()
+                .find(|module| module["name"] == "Main")
+                .expect("Main module");
+            let definitions = main["semantic"]["declarations"]
+                .as_array()
+                .expect("declarations");
+            let countdown = definitions
+                .iter()
+                .find(|declaration| declaration["name"] == "countdown")
+                .expect("countdown");
+            assert_eq!(countdown["termination"]["measure"]["name"], "number");
+            assert_eq!(
+                countdown["termination"]["evidence"][0]["name"],
+                "countdown_decreases"
+            );
+            let mutual = definitions
+                .iter()
+                .filter(|declaration| declaration["mutual"] == "SyntaxSize")
+                .count();
+            assert_eq!(mutual, 3, "the snapshot records every group member");
+
+            // Changing only the evidence binding changes both identities.
+            let alpha = |snapshot: &lexlean::SemanticSnapshot, name: &str| {
+                snapshot
+                    .alpha_ids()
+                    .into_iter()
+                    .find(|(_, declaration, _)| declaration == name)
+                    .map(|(_, _, digest)| digest)
+                    .expect("alpha identity")
+            };
+            let rebound = P::copy_example("recursion");
+            let source = rebound.read("src/Main.lex.tex");
+            rebound.write(
+                "src/Main.lex.tex",
+                &source.replacen(
+                    r#"{"axioms":["Quot.sound","propext"],"kind":"theorem","name":"countdown_decreases""#,
+                    r#"{"axioms":["Quot.sound","propext"],"kind":"theorem","name":"countdown_shrinks","parameters":[{"name":"number","type":{"kind":"nat"}},{"name":"steps","type":{"kind":"nat"}}],"proof":{"kind":"linear_arithmetic"},"statement":{"conclusion":{"kind":"lt","left":{"arguments":[{"kind":"var","name":"number"},{"kind":"nat","value":"2"}],"kind":"primitive","operation":"subtract","result":{"kind":"nat"}},"right":{"kind":"var","name":"number"}},"kind":"implies","premise":{"kind":"eq","left":{"kind":"blt","left":{"kind":"var","name":"number"},"right":{"kind":"nat","value":"2"}},"right":{"kind":"bool","value":false}}}},{"axioms":["Quot.sound","propext"],"kind":"theorem","name":"countdown_decreases""#,
+                    1,
+                )
+                .replacen(
+                    r#""termination":{"evidence":[{"name":"countdown_decreases"}]"#,
+                    r#""termination":{"evidence":[{"name":"countdown_shrinks"}]"#,
+                    1,
+                ),
+            );
+            let second = snapshot_of(&rebound);
+            assert_ne!(alpha(&first, "countdown"), alpha(&second, "countdown"));
+            assert_ne!(
+                support::checked_project(&original).semantic_id,
+                support::checked_project(&rebound).semantic_id
+            );
+            assert_eq!(alpha(&first, "reduce"), alpha(&second, "reduce"));
         }
         other => panic!("no semantic-ir case is wired for {other}"),
     }

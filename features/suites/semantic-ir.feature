@@ -185,3 +185,10 @@ Feature: semantic-ir
     When each is snapshotted
     Then both roots give identical snapshots that validate against the v2 schema with one alpha identity per definition
     And renaming binders keeps the alpha identity while changing the semantic identity, swapping operands changes it, and language 1.1 snapshots carry none
+
+  @SM-27 @build
+  Scenario: Language 1.2 snapshots carry complete recursion evidence (mutual labels, decreasing arguments, measures, and evidence bindings), and changing an evidence binding changes the semantic and alpha identities.
+    Given two roots of the committed recursion example and a copy that binds a different but equivalent evidence theorem
+    When each is snapshotted
+    Then both roots give identical v2-valid snapshots recording every mutual member, measure, and evidence binding
+    And the rebinding changes the definition's alpha and semantic identities and leaves the other definitions' alpha identities unchanged

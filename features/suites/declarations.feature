@@ -106,3 +106,17 @@ Feature: declarations
     When copies mark a closure-returning, closure-storing, or data-applying definition executable, or unmark an executable callee
     Then the canonical LaTeX records production eligibility of the accepted definitions
     And every violation fails with LLT4001 naming the escaping closure or the non-executable callee before any build output
+
+  @DF-16 @build
+  Scenario: Language 1.2 mutual definition groups recurse structurally over one recursive family, including nested and mutual inductives, and every call between members passes a structurally smaller family binder.
+    Given the committed recursion example with mutual groups over a nested rose tree, the mutual Expr and Stmt syntax, and the naturals
+    When it is rendered and verified, and copies change a call, a case, a decreasing argument, or a group label
+    Then each group lowers to one Lean mutual block whose members declare structural termination and verify with real Lean
+    And a non-decreasing or out-of-family call, a missing case, a member without a decreasing argument, a one-member group, and mixed families fail with LLT4001 before any build output
+
+  @DF-17 @build
+  Scenario: Language 1.2 well-founded definitions carry a binder-free natural-number measure and, per recursive call site, a prior theorem stating exactly that call's decrease obligation; linking checks the statements and Lean checks the proofs.
+    Given the committed recursion example with three well-founded definitions and their evidence theorems
+    When it is rendered and verified, and copies forge a statement, make the measure cyclic, add evidence, or also declare structural recursion
+    Then the generated Lean binds each condition as a numbered hypothesis and discharges each decreasing goal with one explicit evidence application, and verifies with real Lean
+    And forged, cyclic, miscounted, mixed, and language-1.1 evidence fail with LLT4001 before any build output

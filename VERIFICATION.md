@@ -12,7 +12,7 @@ How this repository's claims are checked, which recipe enforces which rule, and 
 | `model` | `cargo xtask validate-model` | R1 (model is the single source; every model file parsed with unknown-field rejection), R2 (honesty levels and vocabulary, via the meta-gate), R3 (register/scenario/test bijection, Gherkin subset), R4 (`audit-deferral`), R5 (`audit-errors`), R6 (`audit-shipped`, including the shipped crate's normative links), R8 (`audit-generated`, `audit-language-closure`), RP-09 (`audit-no-unsafe`), §27.5 (CONFORMANCE.md and ERRORS.md equal regeneration) |
 | `spec-links` | `cargo xtask validate-spec-links` | RP-07, §27.6: the §31 table and `model/ids.toml` are bijective and byte-consistent |
 | `lint` | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | no tolerated warnings |
-| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 235 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
+| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 239 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
 | `features` | `cargo check --workspace --all-features --all-targets` | every target compiles |
 | `bdd` | `cargo test -p repo-conformance` | R3, §27.7, §27.8: register ↔ scenario ↔ test bijection, the meta-gate, and its own falsifiability test |
 | `examples` | `cargo xtask verify-examples` | §28.6, EX-01: every example directory formats, locks, checks, builds, and verifies with real Lean 4.32.1; when an example commits `expected/verify/`, its normalized verification records must equal it (§29.5) |
@@ -374,6 +374,23 @@ test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 234 filtered out
 
 Removed: the prefix was restored; `conformance_sm_08` passes and pinned Lean
 verifies both the language-1.1 and the language-1.2 projects it builds.
+
+### well-founded decrease check can fail
+
+Planted: the statement comparison of termination evidence was bypassed
+(`(false && stated.2 != obligation)`), so a theorem with the right binders
+but a different statement was accepted as a call's decrease evidence.
+Command: `cargo test -p repo-conformance --test conformance --
+conformance_df_17`. Expected: the forged-evidence mutation links.
+
+```text
+thread 'conformance_df_17' panicked at crates/conformance/src/support.rs:336:14:
+check fails
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 238 filtered out
+```
+
+Removed: the comparison was restored; `conformance_df_17` passes and the
+`recursion-forged-evidence` negative fixture fails with `LLT4001`.
 
 ### fmt-check can fail
 

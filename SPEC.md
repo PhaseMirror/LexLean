@@ -2435,6 +2435,9 @@ backend runs.
 | `lambda`, `apply`, `function_ref` terms | `lexlean/semantic-module/2` | Anonymous functions with explicit captures, full application of a function value, and a document definition as a function value, under the higher-order rules below. |
 | generic definitions and theorems | `lexlean/semantic-module/2` | `type_parameters` on a definition or theorem and `type_arguments` on a `call`, a `function_ref`, or an `apply` proof, under the higher-order rules below. |
 | `executable` definitions | `lexlean/semantic-module/2` | `"executable":true` asserts production eligibility under the higher-order rules below. |
+| `mutual` definition label | `lexlean/semantic-module/2` | `"mutual":"Label"` on a structurally recursive definition places it in a mutual definition group under the recursion rules below. |
+| `termination` evidence | `lexlean/semantic-module/2` | `{"measure":m,"evidence":[theorem...]}` on a definition declares well-founded recursion under the recursion rules below. |
+| `linear_arithmetic` proof | `lexlean/semantic-module/2` | `{"kind":"linear_arithmetic"}`, with no other member, lowers to the fixed script `intros`, `try set_option linter.unusedSimpArgs false in simp only [← Bool.not_eq_true, Nat.beq_eq, Nat.blt_eq, Nat.ble_eq] at *` (adding `LexLeanRuntime.subtract, LexLeanRuntime.multiply` when the module emits the portable runtime), and `omega`. |
 
 #### Recursive data (language 1.2)
 
@@ -2550,6 +2553,56 @@ either backend runs; they do not defer to what Lean would accept.
 7. **Accounting.** Function types, lambda parameter types, type arguments,
    and every subterm are charged to `max_ir_nodes`. Recursive occurrences of
    an inductive group under a function type are rejected by positivity.
+
+#### Recursion (language 1.2)
+
+Termination evidence is semantic data, never tactic or backend text; no
+`partial`, `unsafe`, `sorry`, or source `termination_by` exists.
+
+1. **Structural recursion** of a single definition follows the
+   recursive-data rule 6 above.
+2. **Mutual groups.** Definitions carrying the same `mutual` label form one
+   group: contiguous, at least two members, identical type parameters, each
+   structurally recursive (`recursive_argument`, a top-level match on it, no
+   `termination`). Every member's decreasing type belongs to one *recursive
+   family*: the naturals; the lists of one element type; or one inductive
+   group together with `List` and `Option` of its members. In a member's
+   top-level match, every pattern binder whose type belongs to the family is
+   structurally smaller, and every call to a group member passes a smaller
+   binder in that member's decreasing position. Members see each other; the
+   recursion call graph is exactly these calls. A group lowers to one
+   `mutual ... end` block whose members each declare
+   `termination_by structural x1 ... xn => d`, so Lean must confirm the same
+   structural recursion and no other.
+3. **Well-founded recursion.** A definition with `termination` has no
+   `recursive_argument` and no `mutual`. Its `measure` is a binder-free term
+   of type `Nat` over the parameters that does not mention the definition.
+   Its recursive calls pass the definition's own type parameters, do not
+   occur in another recursive call's argument or under a `match`, `lambda`,
+   or quantifier, and mention only parameters in their arguments and in
+   every enclosing `if` condition. Every `if` of the body is numbered in one
+   fixed pre-order; each call site, in that order, has the *decrease
+   obligation* `c1 = b1 -> ... -> measure[args] < measure` over its enclosing
+   conditions `ci` and branch polarities `bi`, outermost first. `evidence`
+   lists one prior theorem of the same module per call site, in order, whose
+   type parameters and parameters equal the definition's and whose statement
+   equals the obligation exactly. Linking rejects any other evidence; Lean
+   verification checks every evidence proof. A definition whose evidence is
+   not proved is therefore never verified.
+4. **Well-founded lowering.** The definition lowers to
+   `@[expose, semireducible] public def`, each `if` to
+   `match _decreaseN : c with | true => ... | false => ...`, then
+   `termination_by measure` and `decreasing_by all_goals first` with one
+   `| exact evidence T... p... _decreaseI...` per call site. Semireducibility
+   lets closed instances reduce in proofs; the evidence's observed axioms
+   flow into the definition's exact policy.
+5. **Theorem binders** that neither the statement nor the proof mentions
+   are bound as `_name`, so an evidence theorem may take every parameter of
+   its definition without a Lean linter warning.
+6. **Closed members.** Every member of a semantic-module value must survive
+   into the typed value: a member the closed schema does not define, such as
+   an extra member of a unit variant, is rejected in linking in every
+   language.
 
 Routing is fixed by the project language and is never inferred from module
 content, so no byte sequence has two meanings:
@@ -4167,7 +4220,16 @@ Tests MUST establish that LexLean rejects, at minimum:
 - an executable definition that returns a structure of closures;
 - an executable definition that receives a structure of closures;
 - a type parameter spelled like a built-in Lean type;
-- the universe `Type` as an explicit type argument.
+- the universe `Type` as an explicit type argument;
+- a non-decreasing call between mutual definitions;
+- a mutual definition with a missing case;
+- a mutual call on a value that is not a smaller family binder;
+- mutual definitions decreasing on different families;
+- a cyclic well-founded measure;
+- forged well-founded evidence;
+- missing well-founded evidence;
+- a well-founded recursive call under a match;
+- a semantic-module member outside the closed schema.
 
 ### 28.6 Example verification
 
@@ -4532,6 +4594,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `SM-24` | `semantic-ir` | Language 1.2 product types, pairs, projections, and product matches are typed, snapshotted under the v2 schemas, and give identical semantic IDs from distinct roots. | §17.12, §21 |
 | `SM-25` | `semantic-ir` | Language 1.2 function types, lambdas with exact explicit captures, full applications, and definition references are typed, lowered to fixed Lean, and verified. | §17.12, §18 |
 | `SM-26` | `semantic-ir` | Language 1.2 snapshots carry a deterministic alpha identity per definition that alpha-equivalent definitions share and any other change alters. | §17.12, §21 |
+| `SM-27` | `semantic-ir` | Language 1.2 snapshots carry complete recursion evidence (mutual labels, decreasing arguments, measures, and evidence bindings), and changing an evidence binding changes the semantic and alpha identities. | §17.12, §21 |
 | `DF-01` | `declarations` | A valid type-definition sentence emits one nonrecursive sort-valued Lean def linked to its document entry. | §15.7, §18.6 |
 | `DF-02` | `declarations` | A valid term-definition sentence emits one nonrecursive explicitly typed Lean def. | §15.7, §18.6 |
 | `DF-03` | `declarations` | A valid predicate-definition sentence emits one nonrecursive Prop-valued Lean def. | §15.7, §18.6 |
@@ -4547,6 +4610,8 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `DF-13` | `declarations` | Language 1.2 structural recursion and induction over a recursive inductive use exactly its direct recursive fields, across modules, with one induction hypothesis per recursive field. | §17.12 |
 | `DF-14` | `declarations` | Language 1.2 generic definitions and theorems take explicit type parameters, every use supplies exactly their type arguments, recursion is never polymorphic, and every written type mentions only declared parameters. | §17.12 |
 | `DF-15` | `declarations` | An executable language-1.2 definition forms only non-escaping closures and calls only executable definitions; every violation fails before either backend runs. | §17.12 |
+| `DF-16` | `declarations` | Language 1.2 mutual definition groups recurse structurally over one recursive family, including nested and mutual inductives, and every call between members passes a structurally smaller family binder. | §17.12 |
+| `DF-17` | `declarations` | Language 1.2 well-founded definitions carry a binder-free natural-number measure and, per recursive call site, a prior theorem stating exactly that call's decrease obligation; linking checks the statements and Lean checks the proofs. | §17.12 |
 | `PF-01` | `proofs` | Assume and exact-style simple proof sentences create scoped introductions and exact proof nodes. | §16.2 |
 | `PF-02` | `proofs` | Simple Apply is accepted only when its declared signature yields exactly one residual premise. | §16.2 |
 | `PF-03` | `proofs` | Structured apply requires every numbered residual premise exactly once and in signature order. | §16.6 |
@@ -4565,6 +4630,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `PF-16` | `proofs` | Raw tactics, custom proof nodes, unrestricted automation, and proof holes are rejected. | §16.12 |
 | `PF-17` | `proofs` | native_decide is never accepted or generated. | §16.12, §18.2 |
 | `PF-18` | `proofs` | Lean proof failures remap to the smallest originating LexLean proof or statement span. | §20.4 |
+| `PF-19` | `proofs` | The language-1.2 linear_arithmetic proof form takes no argument, lowers to one fixed omega script, proves true linear obligations, and is refused by Lean on a false one. | §17.12, §16 |
 | `LN-01` | `lean-backend` | Each generated Lean file has the exact module, import, option, namespace, declaration, and end structure. | §18.1 |
 | `LN-02` | `lean-backend` | Imports are explicit, deduplicated, sorted, and every external global is fully qualified. | §18.3 |
 | `LN-03` | `lean-backend` | Generated Lean contains no comments, documentation, prose-bearing strings, or copied source prose. | §18.2 |

@@ -57,6 +57,16 @@ versions, and the entries below say what each tag does and does not claim.
   `Option`, and passed in or out of a structure), polymorphic ambiguity and
   recursion, recursion under a lambda, formal callees, a captured type name,
   and a universe type argument.
+- Language-1.2 recursion (§17.12): mutual definition groups recurse
+  structurally over one recursive family (naturals, lists, or an inductive
+  group with its containers) and lower with `termination_by structural`;
+  well-founded definitions carry a measure and one statement-exact evidence
+  theorem per call site, checked in linking and proved under Lean; the new
+  `linear_arithmetic` proof form discharges linear obligations (`DF-16`,
+  `DF-17`, `PF-19`, `SM-27`, `examples/recursion`).
+- Every semantic-module member must survive into the typed value: an extra
+  member of a unit variant (for example `{"kind":"reflexivity","tactic":...}`)
+  was silently ignored and is now rejected in every language.
 - Language 1.1 definitions now reject a type parameter written inside their
   body: the scope is empty, so such a definition could never elaborate.
 - A semantic-module definition parameter, quantifier, `let`, or lambda binder
@@ -68,7 +78,8 @@ versions, and the entries below say what each tag does and does not claim.
   `Second`, `Lambda`, `Apply`, and `FunctionRef` variants and call type
   arguments, `SnapshotType` gains `Product` and `Function`, declarations gain
   optional `mutual`, `type_parameters`, and `executable` fields, and
-  `SnapshotProof::Apply` gains type arguments; downstream exhaustive
+  `SnapshotProof` gains `Apply` type arguments and `LinearArithmetic`, and
+  definitions gain optional `mutual` and `termination` members; downstream exhaustive
   matches must add them.
 - New conformance IDs `CF-17`, `CF-18`, `GL-17`, `GL-18`, and `SM-23`; new
   example `examples/language-1.2`, verified with real Lean; ten new negative

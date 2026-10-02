@@ -7,13 +7,26 @@ use crate::diagnostic::Diagnostic;
 use crate::ir::semantic::{
     MemberRef, SemanticAssignment, SemanticBranch, SemanticDeclaration, SemanticModule,
     SemanticParameter, SemanticPrimitive, SemanticProof, SemanticProofBranch, SemanticReflection,
-    SemanticReflectionComparison, SemanticReflectionField, SemanticTerm, SemanticType,
+    SemanticReflectionComparison, SemanticReflectionField, SemanticTerm, SemanticTermination,
+    SemanticType,
 };
 use crate::link::CheckedModule;
 use crate::source::coverage::Origin;
 
 struct Render<'a> {
     prefix: &'a str,
+    /// §17.12: in a well-founded definition, each `if` (by node address)
+    /// lowers to a dependent match binding its numbered hypothesis.
+    hypotheses: std::collections::BTreeMap<usize, usize>,
+    /// Whether this module emits the portable runtime, whose Nat
+    /// subtraction and multiplication `linear_arithmetic` unfolds.
+    runtime: bool,
+}
+
+/// The generated name of well-founded hypothesis `index`. Semantic names
+/// begin with an ASCII letter, so no source local can capture it.
+fn hypothesis(index: usize) -> String {
+    format!("_decrease{index}")
 }
 
 // Semantic names are validated data, not Lean tokens. Quoting a reserved
@@ -594,12 +607,21 @@ impl Render<'_> {
                 condition,
                 then_value,
                 else_value,
-            } => format!(
-                "(if {} then {} else {})",
-                self.term(condition),
-                self.term(then_value),
-                self.term(else_value)
-            ),
+            } => match self.hypotheses.get(&(std::ptr::from_ref(term) as usize)) {
+                Some(index) => format!(
+                    "(match {} : {} with | true => {} | false => {})",
+                    hypothesis(*index),
+                    self.term(condition),
+                    self.term(then_value),
+                    self.term(else_value)
+                ),
+                None => format!(
+                    "(if {} then {} else {})",
+                    self.term(condition),
+                    self.term(then_value),
+                    self.term(else_value)
+                ),
+            },
             SemanticTerm::Match {
                 scrutinee,
                 branches,
@@ -716,6 +738,14 @@ impl Render<'_> {
         match proof {
             SemanticProof::Reflexivity => format!("{pad}rfl\n"),
             SemanticProof::Decide => format!("{pad}decide\n"),
+            SemanticProof::LinearArithmetic => format!(
+                "{pad}intros\n{pad}try set_option linter.unusedSimpArgs false in simp only [← Bool.not_eq_true, Nat.beq_eq, Nat.blt_eq, Nat.ble_eq{}] at *\n{pad}omega\n",
+                if self.runtime {
+                    ", LexLeanRuntime.subtract, LexLeanRuntime.multiply"
+                } else {
+                    ""
+                }
+            ),
             SemanticProof::Simplify { definitions } => format!(
                 "{pad}simp only [{}]\n",
                 definitions
@@ -839,6 +869,61 @@ impl Render<'_> {
             }
         }
     }
+}
+
+/// §17.12 well-founded lowering: a semireducible definition whose `if`
+/// nodes bind numbered hypotheses, the declared measure, and one explicit
+/// evidence application per recursive call site.
+fn well_founded_definition(
+    base: &Render<'_>,
+    name: &str,
+    type_parameters: &[String],
+    parameters: &[SemanticParameter],
+    result: &SemanticType,
+    body: &SemanticTerm,
+    termination: &SemanticTermination,
+) -> Result<String, Diagnostic> {
+    let plan = crate::ir::semantic::well_founded_plan(name, type_parameters, parameters, body)
+        .map_err(|reason| {
+            Diagnostic::new(
+                code!("LLI9001"),
+                format!("phase lean-backend: unplanned well-founded definition: {reason}"),
+            )
+        })?;
+    let render = Render {
+        prefix: base.prefix,
+        runtime: base.runtime,
+        hypotheses: plan
+            .nodes
+            .iter()
+            .enumerate()
+            .map(|(index, node)| (*node as usize, index))
+            .collect(),
+    };
+    let mut text = format!(
+        "@[expose, semireducible] public def {}{}{} : {} := {}\ntermination_by {}\ndecreasing_by all_goals first",
+        identifier(name),
+        render.type_parameters(type_parameters),
+        render.parameters(parameters),
+        render.ty(result),
+        render.term(body),
+        render.term(&termination.measure)
+    );
+    for (site, evidence) in plan.sites.iter().zip(&termination.evidence) {
+        let mut application = format!(" | exact {}", render.member(evidence));
+        for parameter in type_parameters {
+            application.push_str(&format!(" ({})", identifier(parameter)));
+        }
+        for parameter in parameters {
+            application.push_str(&format!(" ({})", identifier(&parameter.name)));
+        }
+        for (index, _) in &site.path {
+            application.push_str(&format!(" ({})", hypothesis(*index)));
+        }
+        text.push_str(&application);
+    }
+    text.push('\n');
+    Ok(text)
 }
 
 fn emit(checked: &CheckedModule, text: &str, kind: &str) -> Emitter {
@@ -1177,8 +1262,13 @@ pub fn render_lean(
     module: &SemanticModule,
     module_prefix: &str,
 ) -> Result<Emitter, Diagnostic> {
+    let runtime = serde_json::to_string(module)
+        .expect("semantic module serialization")
+        .contains("\"kind\":\"primitive\"");
     let render = Render {
         prefix: module_prefix,
+        hypotheses: std::collections::BTreeMap::new(),
+        runtime,
     };
     let document = &checked.document;
     let mut text = String::from("module\npublic import Init\n");
@@ -1197,17 +1287,20 @@ pub fn render_lean(
     );
     text.push_str(&identifier(&document.lean_module));
     text.push('\n');
-    if serde_json::to_string(module)
-        .expect("semantic module serialization")
-        .contains("\"kind\":\"primitive\"")
-    {
+    if runtime {
         text.push_str(portable_runtime());
     }
     let group_of = |index: usize| match module.declarations.get(index) {
-        Some(SemanticDeclaration::Inductive {
-            mutual: Some(label),
-            ..
-        }) => Some(label.as_str()),
+        Some(
+            SemanticDeclaration::Inductive {
+                mutual: Some(label),
+                ..
+            }
+            | SemanticDeclaration::Definition {
+                mutual: Some(label),
+                ..
+            },
+        ) => Some(label.as_str()),
         _ => None,
     };
     for (index, declaration) in module.declarations.iter().enumerate() {
@@ -1314,9 +1407,21 @@ pub fn render_lean(
                 result,
                 body,
                 recursive_argument,
+                mutual,
+                termination,
                 ..
             } => {
-                if let Some(recursive_argument) = recursive_argument {
+                if let Some(termination) = termination {
+                    text.push_str(&well_founded_definition(
+                        &render,
+                        name,
+                        type_parameters,
+                        parameters,
+                        result,
+                        body,
+                        termination,
+                    )?);
+                } else if let Some(recursive_argument) = recursive_argument {
                     let equations = render
                         .recursive_equations(
                             name,
@@ -1333,6 +1438,22 @@ pub fn render_lean(
                             )
                         })?;
                     text.push_str(&equations);
+                    if mutual.is_some() {
+                        // §17.12: a mutual group is structurally recursive by
+                        // construction; Lean must confirm exactly that.
+                        let binders = parameters
+                            .iter()
+                            .map(|parameter| identifier(&parameter.name))
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        text.push_str(&format!(
+                            "termination_by structural {binders} => {}\n",
+                            identifier(recursive_argument)
+                        ));
+                        if group_of(index + 1) != group_of(index) {
+                            text.push_str("end\n");
+                        }
+                    }
                 } else {
                     let name = identifier(name);
                     text.push_str(&format!(
@@ -1353,10 +1474,27 @@ pub fn render_lean(
                 ..
             } => {
                 let name = identifier(name);
+                // A parameter neither the statement nor the proof mentions
+                // (as a termination-evidence theorem's may be) is bound
+                // anonymously, so Lean's unused-variable linter stays quiet;
+                // every other binder keeps its exact name.
+                let proof_text = serde_json::to_string(proof).expect("proof serializes");
+                let binders = parameters
+                    .iter()
+                    .map(|parameter| {
+                        let used = term_uses(statement, &parameter.name)
+                            || proof_text.contains(&format!("\"{}\"", parameter.name));
+                        format!(
+                            " ({}{} : {})",
+                            if used { "" } else { "_" },
+                            identifier(&parameter.name),
+                            render.ty(&parameter.r#type)
+                        )
+                    })
+                    .collect::<String>();
                 text.push_str(&format!(
-                    "public theorem {name}{}{} : {} := by\n{}",
+                    "public theorem {name}{}{binders} : {} := by\n{}",
                     render.type_parameters(type_parameters),
-                    render.parameters(parameters),
                     render.term(statement),
                     render.proof(proof, 1)
                 ));
@@ -1404,6 +1542,8 @@ pub fn render_latex(
 ) -> Result<Emitter, Diagnostic> {
     let render = Render {
         prefix: module_prefix,
+        hypotheses: std::collections::BTreeMap::new(),
+        runtime: false,
     };
     let version_2 = module.spec == "lexlean/semantic-module/2";
     let mut text = String::from(
@@ -1433,6 +1573,42 @@ pub fn render_latex(
                     text.push_str(&format!(
                         "\\noindent Type parameters: \\texttt{{{}}}.\\par\n",
                         tex_escape(&type_parameters.join(", "))
+                    ));
+                }
+                if let (
+                    true,
+                    SemanticDeclaration::Definition {
+                        mutual: Some(label),
+                        recursive_argument: Some(argument),
+                        ..
+                    },
+                ) = (version_2, declaration)
+                {
+                    text.push_str(&format!(
+                        "\\noindent Mutual recursion group \\texttt{{{}}}, decreasing on \\texttt{{{}}}.\\par\n",
+                        tex_escape(label),
+                        tex_escape(argument)
+                    ));
+                }
+                if let (
+                    true,
+                    SemanticDeclaration::Definition {
+                        termination: Some(termination),
+                        ..
+                    },
+                ) = (version_2, declaration)
+                {
+                    text.push_str(&format!(
+                        "\\noindent Well-founded measure: \\texttt{{{}}}; decrease evidence per call: \\texttt{{{}}}.\\par\n",
+                        tex_escape(&render.term(&termination.measure)),
+                        tex_escape(
+                            &termination
+                                .evidence
+                                .iter()
+                                .map(|evidence| render.member(evidence))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )
                     ));
                 }
                 if version_2 && *executable {

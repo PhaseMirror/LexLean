@@ -1,4 +1,4 @@
-//! The `declarations` suite: DF-01..DF-15.
+//! The `declarations` suite: DF-01..DF-17.
 
 use lexlean::ir::declaration::{DeclBody, DeclKind};
 
@@ -938,6 +938,127 @@ pub(crate) fn run(id: &str) {
                 r#""executable":true,"kind":"definition","name":"mapList""#,
                 r#""kind":"definition","name":"mapList""#,
                 "executable definition `addAll` calls non-executable `Combinators::mapList`",
+            );
+        }
+        // §17.12: mutual structural recursion over one recursive family.
+        "DF-16" => {
+            let project = P::copy_example("recursion");
+            project.check_ok();
+            let rendered = support::rendered(&project);
+            let main = support::lean_text(&rendered, "Main");
+            for expected in [
+                "mutual\n@[expose] public def roseSize (Item : Type) : (rose : Recursion.Syntax.Rose (Item)) -> Nat\n",
+                "  | List.cons head tail => (roseSize (Item) (head) + forestSize (Item) (tail))\ntermination_by structural forest => forest\nend\n",
+                "  | Recursion.Syntax.Stmt.assign _ value => (exprSize (value) + 1)\n",
+                "termination_by structural number => number\nend\n",
+            ] {
+                assert!(main.contains(expected), "missing {expected:?} in:\n{main}");
+            }
+            let tex = support::tex_text(&rendered, "Main");
+            assert!(tex.contains(
+                "Mutual recursion group \\texttt{SyntaxSize}, decreasing on \\texttt{expression}."
+            ));
+            let _ = support::verify_ok_backed("DF-16", &project);
+            let reject = |from: &str, to: &str, message: &str| {
+                P::assert_mutation_rejected("recursion", "src/Main.lex.tex", from, to, message);
+            };
+            // A non-decreasing call between members.
+            reject(
+                r#""arguments":[{"kind":"var","name":"previous"}],"function":{"name":"isOdd"}"#,
+                r#""arguments":[{"kind":"var","name":"number"}],"function":{"name":"isOdd"}"#,
+                "recursive call `isOdd` is not on a structurally smaller value",
+            );
+            // A call on a binder outside the family (the rose's label).
+            reject(
+                r#""arguments":[{"kind":"var","name":"children"}],"function":{"name":"forestSize"}"#,
+                r#""arguments":[{"element":{"arguments":[{"kind":"parameter","name":"Item"}],"kind":"named","member":{"module":"Syntax","name":"Rose"}},"kind":"nil"}],"function":{"name":"forestSize"}"#,
+                "recursive call `forestSize` is not on a structurally smaller value",
+            );
+            // A missing case, a member without a decreasing argument, a
+            // one-member group, and different families.
+            reject(
+                r#"{"binders":[],"body":{"kind":"bool","value":false},"constructor":{"name":"Nat.zero"}},"#,
+                "",
+                "nonexhaustive or mixed match branches",
+            );
+            reject(
+                r#""mutual":"Parity","name":"isOdd","parameters":[{"name":"number","type":{"kind":"nat"}}],"recursive_argument":"number""#,
+                r#""mutual":"Parity","name":"isOdd","parameters":[{"name":"number","type":{"kind":"nat"}}]"#,
+                "mutual group `Parity` member `isOdd` names no decreasing argument",
+            );
+            reject(
+                r#""mutual":"Parity","name":"isOdd""#,
+                r#""mutual":"Other","name":"isOdd""#,
+                "has one member; a standalone definition omits `mutual`",
+            );
+            reject(
+                r#""mutual":"Parity","name":"isEven""#,
+                r#""mutual":"SyntaxSize","name":"isEven""#,
+                "mutual group `SyntaxSize` members decrease on different recursive families",
+            );
+        }
+        // §17.12: well-founded recursion with statement-exact evidence.
+        "DF-17" => {
+            let project = P::copy_example("recursion");
+            project.check_ok();
+            let rendered = support::rendered(&project);
+            let main = support::lean_text(&rendered, "Main");
+            for expected in [
+                "@[expose, semireducible] public def countdown (number : Nat) (steps : Nat) : Nat := (match _decrease0 : (Nat.blt (number) (2)) with | true => steps | false => countdown ((LexLeanRuntime.subtract (number) (2) : Nat)) ((steps + 1)))\ntermination_by number\ndecreasing_by all_goals first | exact countdown_decreases (number) (steps) (_decrease0)\n",
+                "decreasing_by all_goals first | exact search_decreases (target) (low) (high) (_decrease0) (_decrease1)\n",
+                "public theorem countdown_decreases (number : Nat) (_steps : Nat) :",
+            ] {
+                assert!(main.contains(expected), "missing {expected:?} in:\n{main}");
+            }
+            let tex = support::tex_text(&rendered, "Main");
+            assert!(tex.contains("Well-founded measure:"), "{tex}");
+            if let Some(verified) = support::verify_ok_backed("DF-17", &project) {
+                let _ = verified;
+            }
+            let reject = |from: &str, to: &str, message: &str| {
+                P::assert_mutation_rejected("recursion", "src/Main.lex.tex", from, to, message);
+            };
+            // Forged evidence: a theorem whose statement is not the call's
+            // decrease obligation.
+            reject(
+                r#""statement":{"conclusion":{"kind":"lt","left":{"arguments":[{"kind":"var","name":"number"},{"kind":"nat","value":"2"}]"#,
+                r#""statement":{"conclusion":{"kind":"lt","left":{"arguments":[{"kind":"var","name":"number"},{"kind":"nat","value":"1"}]"#,
+                "does not state its decrease obligation exactly",
+            );
+            // A cyclic measure.
+            reject(
+                r#""termination":{"evidence":[{"name":"countdown_decreases"}],"measure":{"kind":"var","name":"number"}}"#,
+                r#""termination":{"evidence":[{"name":"countdown_decreases"}],"measure":{"arguments":[{"kind":"var","name":"number"},{"kind":"var","name":"steps"}],"function":{"name":"countdown"},"kind":"call"}}"#,
+                "refers to `countdown` itself (cyclic measure)",
+            );
+            // Missing evidence and a non-parameter argument.
+            reject(
+                r#""termination":{"evidence":[{"name":"countdown_decreases"}]"#,
+                r#""termination":{"evidence":[{"name":"countdown_decreases"},{"name":"countdown_decreases"}]"#,
+                "has 1 recursive call site(s) but 2 evidence theorem(s)",
+            );
+
+            // Both structural and well-founded recursion.
+            reject(
+                r#""name":"countdown","parameters":[{"name":"number","type":{"kind":"nat"}},{"name":"steps","type":{"kind":"nat"}}],"result":{"kind":"nat"}"#,
+                r#""name":"countdown","parameters":[{"name":"number","type":{"kind":"nat"}},{"name":"steps","type":{"kind":"nat"}}],"recursive_argument":"number","result":{"kind":"nat"}"#,
+                "declares both structural and well-founded recursion",
+            );
+            // Language 1.1 has no termination evidence.
+            let eleven = P::semantic_example();
+            let support_source = eleven.read("src/Support.lex.tex");
+            eleven.write(
+                "src/Support.lex.tex",
+                &support_source.replacen(
+                    r#""name":"remoteEnabled","parameters":[],"result":{"kind":"bool"}"#,
+                    r#""name":"remoteEnabled","parameters":[],"result":{"kind":"bool"},"termination":{"evidence":[{"name":"missing"}],"measure":{"kind":"nat","value":"0"}}"#,
+                    1,
+                ),
+            );
+            let error = eleven.check_fails_with("LLT4001");
+            assert!(
+                error.to_string().contains("is a language-1.2 construct"),
+                "{error}"
             );
         }
         other => panic!("no declarations case is wired for {other}"),

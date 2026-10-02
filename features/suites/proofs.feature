@@ -130,3 +130,10 @@ Feature: proofs
     Then it fails with LLV7002
     And the diagnostic's primary span points into `Main.lex.tex`
     And the span covers nonempty originating source text of that module
+
+  @PF-19 @build
+  Scenario: The language-1.2 linear_arithmetic proof form takes no argument, lowers to one fixed omega script, proves true linear obligations, and is refused by Lean on a false one.
+    Given the committed recursion example whose decrease evidence is proved by linear_arithmetic
+    When it is rendered and verified, a copy adds a member to the form, a language-1.1 module uses it, and a copy states a false linear claim
+    Then the generated Lean is the fixed intros, Boolean-comparison rewriting, and omega script and verifies
+    And the extra member and the language-1.1 use fail with LLT4001 and the false claim checks but fails verification with LLV7002

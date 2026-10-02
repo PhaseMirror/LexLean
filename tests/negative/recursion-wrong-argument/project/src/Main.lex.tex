@@ -1,0 +1,7 @@
+\begin{lexlean}{Main}
+\useglossary{lexlean.std.nat@1.2.0}
+\title{Natural number addition}
+\begin{semanticmodule}
+\semanticdata{{"declarations":[{"constructors":[{"fields":[{"kind":"nat"},{"element":{"arguments":[],"kind":"named","member":{"name":"Rose"}},"kind":"list"}],"name":"node"}],"kind":"inductive","name":"Rose","parameters":[],"type_parameters":[]},{"body":{"branches":[{"binders":["label","children"],"body":{"arguments":[{"element":{"arguments":[],"kind":"named","member":{"name":"Rose"}},"kind":"nil"}],"function":{"name":"forestLabel"},"kind":"call"},"constructor":{"name":"Rose.node"}}],"kind":"match","scrutinee":{"kind":"var","name":"rose"}},"kind":"definition","mutual":"Labels","name":"roseLabel","parameters":[{"name":"rose","type":{"arguments":[],"kind":"named","member":{"name":"Rose"}}}],"recursive_argument":"rose","result":{"kind":"nat"}},{"body":{"branches":[{"binders":[],"body":{"kind":"nat","value":"0"},"constructor":{"name":"List.nil"}},{"binders":["head","tail"],"body":{"arguments":[{"kind":"var","name":"head"}],"function":{"name":"roseLabel"},"kind":"call"},"constructor":{"name":"List.cons"}}],"kind":"match","scrutinee":{"kind":"var","name":"forest"}},"kind":"definition","mutual":"Labels","name":"forestLabel","parameters":[{"name":"forest","type":{"element":{"arguments":[],"kind":"named","member":{"name":"Rose"}},"kind":"list"}}],"recursive_argument":"forest","result":{"kind":"nat"}}],"spec":"lexlean/semantic-module/2"}}
+\end{semanticmodule}
+\end{lexlean}

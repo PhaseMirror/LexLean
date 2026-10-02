@@ -1,0 +1,105 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\begin{document}
+\section*{Semantic declarations}
+\subsection*{\texttt{roseSize}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type parameters: \texttt{Item}.\par
+\noindent Mutual recursion group \texttt{RoseSize}, decreasing on \texttt{rose}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match rose with | Recursion.Syntax.Rose.node \_ children => (1 + forestSize (Item) (children)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{forestSize}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type parameters: \texttt{Item}.\par
+\noindent Mutual recursion group \texttt{RoseSize}, decreasing on \texttt{forest}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match forest with | List.nil => 0 | List.cons head tail => (roseSize (Item) (head) + forestSize (Item) (tail)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{exprSize}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Mutual recursion group \texttt{SyntaxSize}, decreasing on \texttt{expression}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match expression with | Recursion.Syntax.Expr.literal \_ => 1 | Recursion.Syntax.Expr.plus left right => ((exprSize (left) + exprSize (right)) + 1) | Recursion.Syntax.Expr.block statements result => (statementsSize (statements) + exprSize (result)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{statementsSize}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Mutual recursion group \texttt{SyntaxSize}, decreasing on \texttt{statements}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match statements with | List.nil => 0 | List.cons head tail => (statementSize (head) + statementsSize (tail)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{statementSize}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Mutual recursion group \texttt{SyntaxSize}, decreasing on \texttt{statement}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match statement with | Recursion.Syntax.Stmt.assign \_ value => (exprSize (value) + 1) | Recursion.Syntax.Stmt.sequence first second => (statementSize (first) + statementSize (second)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{isEven}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Mutual recursion group \texttt{Parity}, decreasing on \texttt{number}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match number with | Nat.zero => true | Nat.succ previous => isOdd (previous))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{isOdd}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Mutual recursion group \texttt{Parity}, decreasing on \texttt{number}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match number with | Nat.zero => false | Nat.succ previous => isEven (previous))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{countdown\_decreases}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(((Nat.blt (number) (2)) = false) -> ((LexLeanRuntime.subtract (number) (2) : Nat) < number))}.\par
+\noindent Axiom policy: \texttt{exact [Quot.sound, propext]}.\par
+\subsection*{\texttt{countdown}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Well-founded measure: \texttt{number}; decrease evidence per call: \texttt{countdown\_decreases}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(if (Nat.blt (number) (2)) then steps else countdown ((LexLeanRuntime.subtract (number) (2) : Nat)) ((steps + 1)))}.\par
+\noindent Axiom policy: \texttt{exact [Quot.sound, propext]}.\par
+\subsection*{\texttt{reduce\_decreases}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(((Nat.beq (bound) (0)) = false) -> (((Nat.blt (value) (bound)) = false) -> ((LexLeanRuntime.subtract (value) (bound) : Nat) < value)))}.\par
+\noindent Axiom policy: \texttt{exact [Quot.sound, propext]}.\par
+\subsection*{\texttt{reduce}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Well-founded measure: \texttt{value}; decrease evidence per call: \texttt{reduce\_decreases}.\par
+\noindent Execution: production-eligible, non-escaping closures only.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(if (Nat.beq (bound) (0)) then value else (if (Nat.blt (value) (bound)) then value else reduce ((LexLeanRuntime.subtract (value) (bound) : Nat)) (bound)))}.\par
+\noindent Axiom policy: \texttt{exact [Quot.sound, propext]}.\par
+\subsection*{\texttt{search\_decreases}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(((Nat.blt (low) (high)) = true) -> (((Nat.ble (target) ((low + low))) = false) -> ((LexLeanRuntime.subtract (high) ((low + 1)) : Nat) < (LexLeanRuntime.subtract (high) (low) : Nat))))}.\par
+\noindent Axiom policy: \texttt{exact [Quot.sound, propext]}.\par
+\subsection*{\texttt{search}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Well-founded measure: \texttt{(LexLeanRuntime.subtract (high) (low) : Nat)}; decrease evidence per call: \texttt{search\_decreases}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(if (Nat.blt (low) (high)) then (if (Nat.ble (target) ((low + low))) then low else search (target) ((low + 1)) (high)) else high)}.\par
+\noindent Axiom policy: \texttt{exact [Quot.sound, propext]}.\par
+\subsection*{\texttt{rose\_size}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(roseSize (Nat) (Recursion.Syntax.Rose.node (1) ((Recursion.Syntax.Rose.node (2) (([] : List (Recursion.Syntax.Rose (Nat)))) :: (Recursion.Syntax.Rose.node (3) (([] : List (Recursion.Syntax.Rose (Nat)))) :: ([] : List (Recursion.Syntax.Rose (Nat))))))) = 3)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{expression\_size}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(exprSize (Recursion.Syntax.Expr.block ((Recursion.Syntax.Stmt.assign ("x") (Recursion.Syntax.Expr.literal (1)) :: ([] : List (Recursion.Syntax.Stmt)))) (Recursion.Syntax.Expr.plus (Recursion.Syntax.Expr.literal (2)) (Recursion.Syntax.Expr.literal (3)))) = 5)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{ten\_is\_even}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(isEven (10) = true)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{countdown\_nine}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(countdown (9) (0) = 4)}.\par
+\noindent Axiom policy: \texttt{exact [Quot.sound, propext]}.\par
+\subsection*{\texttt{reduce\_twenty\_three}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(reduce (23) (5) = 3)}.\par
+\noindent Axiom policy: \texttt{exact [Quot.sound, propext]}.\par
+\subsection*{\texttt{search\_first}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(search (7) (0) (10) = 4)}.\par
+\noindent Axiom policy: \texttt{exact [Quot.sound, propext]}.\par
+\end{document}
