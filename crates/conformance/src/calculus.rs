@@ -2582,20 +2582,23 @@ pub fn files() -> BTreeMap<String, Vec<u8>> {
 }
 
 /// The directories whose every file is generated.
-const GENERATED_DIRECTORIES: [&str; 3] = [
+const GENERATED_DIRECTORIES: [&str; 4] = [
     "compiler/fixtures",
+    "compiler/gnaf",
     "compiler/rust/rust-core",
     "compiler/rust/rust-std",
 ];
 
-/// Compare (or, with `write`, rewrite) the generated files.
+/// Compare (or, with `write`, rewrite) the generated files of the calculus
+/// (§17.14) and of the GNAF model and requests over it (§17.15).
 ///
 /// # Errors
 ///
 /// Returns the first generated file whose committed bytes differ, or a
 /// committed fixture no generator produces.
 pub fn check(root: &Path, write: bool) -> Result<usize, String> {
-    let files = files();
+    let mut files = files();
+    files.extend(crate::gnaf::files());
     for directory in GENERATED_DIRECTORIES {
         let Ok(entries) = std::fs::read_dir(root.join(directory)) else {
             continue;
@@ -2607,7 +2610,7 @@ pub fn check(root: &Path, write: bool) -> Result<usize, String> {
                     std::fs::remove_file(entry.path())
                         .map_err(|error| format!("{relative}: {error}"))?;
                 } else {
-                    return Err(format!("{relative} is not a generated calculus file"));
+                    return Err(format!("{relative} is not a generated file"));
                 }
             }
         }
