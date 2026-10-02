@@ -1,4 +1,4 @@
-//! The `semantic-ir` suite: SM-01..SM-27.
+//! The `semantic-ir` suite: SM-01..SM-30.
 
 use std::collections::BTreeSet;
 use std::process::Command;
@@ -1993,6 +1993,264 @@ pub(crate) fn run(id: &str) {
             assert_ne!(
                 support::checked_project(&original).semantic_id,
                 support::checked_project(&relabelled).semantic_id
+            );
+        }
+        "SM-28" => {
+            let project = P::copy_example("collections");
+            project.check_ok();
+            let rendered = support::rendered(&project);
+            let tables = support::lean_text(&rendered, "Tables");
+            for expected in [
+                "public def declare (table : List (Prod (String) (Nat))) (name : String) (slot : Nat) : List (Prod (String) (Nat)) := (LexLeanCollections.mapInsert (table) (name) (slot) : List (Prod (String) (Nat)))",
+                "namespace LexLeanCollections",
+                "public class Key (α : Type) where",
+            ] {
+                assert!(tables.contains(expected), "missing {expected:?} in:\n{tables}");
+            }
+            // A module that only measures an imported table writes no
+            // collection type or literal, yet calls the runtime: it emits its
+            // own copy, and pinned Lean verifies it.
+            let measure = support::lean_text(&rendered, "Measure");
+            for expected in [
+                "namespace LexLeanCollections",
+                "(LexLeanCollections.mapSize (Collections.Tables.buildTable (",
+            ] {
+                assert!(
+                    measure.contains(expected),
+                    "missing {expected:?} in:\n{measure}"
+                );
+            }
+            // Every operation agrees with an independent ordered-map model
+            // on seeded sequences, under Lean (§17.12 item 2).
+            let model = [
+                super::collections_model::map_theorems(),
+                super::collections_model::set_theorems(),
+            ]
+            .concat();
+            assert_eq!(model.len(), 86, "every seeded case states its theorems");
+            super::collections_model::with_theorems(&project, model);
+            let main = support::lean_text(&support::rendered(&project), "Main");
+            for expected in [
+                "theorem model_map_15 ",
+                "theorem model_set_difference_11 ",
+                "theorem model_string_set_5 ",
+            ] {
+                assert!(main.contains(expected), "missing {expected:?}");
+            }
+            let _ = support::verify_ok_backed("SM-28", &project);
+            let reject = |file: &str, from: &str, to: &str, message: &str| {
+                P::assert_mutation_rejected("collections", file, from, to, message);
+            };
+            // Operations are typed against their collection.
+            reject(
+                "src/Tables.lex.tex",
+                r#""operation":"map_insert","result":{"key":{"kind":"string"},"kind":"map","value":{"kind":"nat"}}"#,
+                r#""operation":"map_insert","result":{"key":{"kind":"string"},"kind":"map","value":{"kind":"bool"}}"#,
+                "primitive MapInsert result",
+            );
+            reject(
+                "src/Tables.lex.tex",
+                r#"{"arguments":[{"kind":"var","name":"table"}],"kind":"primitive","operation":"map_size""#,
+                r#"{"arguments":[{"kind":"var","name":"name"}],"kind":"primitive","operation":"map_size""#,
+                "primitive MapSize requires a map",
+            );
+            // Language 1.1 has no collections.
+            let eleven = P::semantic_example();
+            let support_source = eleven.read("src/Support.lex.tex");
+            eleven.write(
+                "src/Support.lex.tex",
+                &support_source.replacen(
+                    r#""body":{"kind":"bool","value":true},"kind":"definition","name":"remoteEnabled","parameters":[],"result":{"kind":"bool"}"#,
+                    r#""body":{"element":{"kind":"nat"},"elements":[],"kind":"set_literal"},"kind":"definition","name":"remoteEnabled","parameters":[],"result":{"element":{"kind":"nat"},"kind":"set"}"#,
+                    1,
+                ),
+            );
+            let error = eleven.check_fails_with("LLT4001");
+            assert!(
+                error.to_string().contains("is a language-1.2 construct"),
+                "{error}"
+            );
+        }
+        "SM-29" => {
+            // Reordered equivalent literals denote byte-identical linked data
+            // and generated artifacts.
+            let original = P::copy_example("collections");
+            let reordered = P::copy_example("collections");
+            let source = reordered.read("src/Tables.lex.tex");
+            let shuffled = source
+                .replacen(
+                    r#"{"kind":"string","value":"main"},{"kind":"string","value":"parse"}"#,
+                    r#"{"kind":"string","value":"parse"},{"kind":"string","value":"main"}"#,
+                    1,
+                )
+                .replacen(
+                    r#"{"source":{"kind":"string","value":"main"},"target":{"kind":"string","value":"parse"}},{"source":{"kind":"string","value":"main"},"target":{"kind":"string","value":"emit"}}"#,
+                    r#"{"source":{"kind":"string","value":"main"},"target":{"kind":"string","value":"emit"}},{"source":{"kind":"string","value":"main"},"target":{"kind":"string","value":"parse"}}"#,
+                    1,
+                );
+            assert_ne!(shuffled, source, "the reordering applies");
+            reordered.write("src/Tables.lex.tex", &shuffled);
+            // Map and set literals reorder the same way.
+            let main_source = reordered.read("src/Main.lex.tex");
+            let main_shuffled = main_source
+                .replacen(
+                    r#"{"key":{"kind":"string","value":"b"},"value":{"kind":"nat","value":"2"}},{"key":{"kind":"string","value":"a"},"value":{"kind":"nat","value":"1"}}"#,
+                    r#"{"key":{"kind":"string","value":"a"},"value":{"kind":"nat","value":"1"}},{"key":{"kind":"string","value":"b"},"value":{"kind":"nat","value":"2"}}"#,
+                    1,
+                )
+                .replacen(
+                    r#"{"kind":"nat","value":"3"},{"kind":"nat","value":"1"},{"kind":"nat","value":"2"}"#,
+                    r#"{"kind":"nat","value":"2"},{"kind":"nat","value":"3"},{"kind":"nat","value":"1"}"#,
+                    1,
+                );
+            assert_ne!(
+                main_shuffled, main_source,
+                "the map and set reordering applies"
+            );
+            reordered.write("src/Main.lex.tex", &main_shuffled);
+            let first = support::checked_project(&original);
+            let second = support::checked_project(&reordered);
+            assert_ne!(first.source_id, second.source_id, "the sources differ");
+            assert_eq!(
+                first.semantic_id, second.semantic_id,
+                "the semantics do not"
+            );
+            // The snapshot differs only in the members that record the
+            // source: its source identity and each module's source record.
+            let without_source = |project: &P| {
+                let snapshot = project
+                    .engine()
+                    .snapshot(lexlean::CheckRequest {
+                        selection: lexlean::Selection::Entrypoints,
+                    })
+                    .expect("snapshot");
+                let mut value: serde_json::Value =
+                    serde_json::from_slice(&snapshot.canonical_bytes()).expect("snapshot JSON");
+                let object = value.as_object_mut().expect("snapshot object");
+                assert!(object.remove("source_id").is_some(), "source identity");
+                for module in object
+                    .get_mut("modules")
+                    .and_then(serde_json::Value::as_array_mut)
+                    .expect("snapshot modules")
+                {
+                    let module = module.as_object_mut().expect("snapshot module");
+                    assert!(module.remove("source").is_some(), "module source");
+                }
+                value
+            };
+            assert_eq!(without_source(&original), without_source(&reordered));
+            // Every published artifact except the manifest, source maps, and
+            // coverage, which record source positions, is byte-identical.
+            let artifacts = |project: &P| {
+                let built = project.build_ok();
+                let directory = project.build_dir(&built.build_id.expect("build id"));
+                support::file_set(&directory)
+                    .into_iter()
+                    .map(|path| {
+                        let bytes =
+                            std::fs::read(directory.join(&path).as_std_path()).expect("artifact");
+                        (path, bytes)
+                    })
+                    .collect::<std::collections::BTreeMap<_, _>>()
+            };
+            let (left, right) = (artifacts(&original), artifacts(&reordered));
+            assert_eq!(
+                left.keys().collect::<Vec<_>>(),
+                right.keys().collect::<Vec<_>>(),
+                "the same artifacts are published"
+            );
+            let mut compared = 0;
+            for (path, bytes) in &left {
+                if path == "manifest.json"
+                    || path.starts_with("maps/")
+                    || path.starts_with("coverage/")
+                {
+                    continue;
+                }
+                assert!(bytes == &right[path], "{path} differs");
+                compared += 1;
+            }
+            assert_eq!(
+                compared, 9,
+                "three modules' Lean, LaTeX, and lexicon closures"
+            );
+            let reject = |from: &str, to: &str, message: &str| {
+                P::assert_mutation_rejected("collections", "src/Main.lex.tex", from, to, message);
+            };
+            // A duplicate key, a non-literal key, and an unordered key type.
+            reject(
+                r#"{"key":{"kind":"nat","value":"2"},"value":{"kind":"bool","value":false}}"#,
+                r#"{"key":{"kind":"nat","value":"1"},"value":{"kind":"bool","value":false}}"#,
+                "duplicate map key in a map literal",
+            );
+            reject(
+                r#"{"key":{"kind":"nat","value":"2"},"value":{"kind":"bool","value":false}}"#,
+                r#"{"key":{"arguments":[],"function":{"module":"Tables","name":"callOrder"},"kind":"call"},"value":{"kind":"bool","value":false}}"#,
+                "must be a literal value",
+            );
+            reject(
+                r#""key":{"kind":"nat"},"kind":"map_literal","value":{"kind":"bool"}"#,
+                r#""key":{"kind":"unit"},"kind":"map_literal","value":{"kind":"bool"}"#,
+                "has no canonical order",
+            );
+            // A literal key is checked as a term before it is ordered: a
+            // noncanonical spelling or an out-of-range fixed-width value has
+            // no position in the canonical order.
+            reject(
+                r#"{"key":{"kind":"nat","value":"2"},"value":{"kind":"bool","value":false}}"#,
+                r#"{"key":{"kind":"nat","value":"02"},"value":{"kind":"bool","value":false}}"#,
+                "noncanonical natural literal `02`",
+            );
+            reject(
+                r#"{"kind":"integer","representation":"uint8","value":"255"}"#,
+                r#"{"kind":"integer","representation":"uint8","value":"256"}"#,
+                "integer literal `256` is outside UInt8 [0, 255]",
+            );
+        }
+        "SM-30" => {
+            let project = P::copy_example("collections");
+            project.check_ok();
+            let tables = support::lean_text(&support::rendered(&project), "Tables");
+            assert!(tables.contains(
+                r#"public def callGraph : List (Prod (String) (List (String))) := ([("emit", ["report"]), ("lex", []), ("main", ["emit", "parse"]), ("parse", ["lex"]), ("report", ["lex"])] : List (Prod (String) (List (String))))"#
+            ), "{tables}");
+            // Seeded graphs, including successors without entries of their
+            // own and a chain as deep as its node count allows, agree with a
+            // direct breadth-first search and Kahn's algorithm under Lean.
+            super::collections_model::with_theorems(
+                &project,
+                super::collections_model::graph_theorems(),
+            );
+            let main = support::lean_text(&support::rendered(&project), "Main");
+            for expected in [
+                "theorem model_graph_chain_reachable ",
+                "theorem model_graph_chain_topological ",
+            ] {
+                assert!(main.contains(expected), "missing {expected:?}");
+            }
+            let _ = support::verify_ok_backed("SM-30", &project);
+            let reject = |from: &str, to: &str, message: &str| {
+                P::assert_mutation_rejected("collections", "src/Tables.lex.tex", from, to, message);
+            };
+            reject(
+                r#""target":{"kind":"string","value":"report"}"#,
+                r#""target":{"kind":"string","value":"render"}"#,
+                "graph edge target is not a declared node",
+            );
+            reject(
+                r#"{"source":{"kind":"string","value":"main"},"target":{"kind":"string","value":"emit"}}"#,
+                r#"{"source":{"kind":"string","value":"main"},"target":{"kind":"string","value":"parse"}}"#,
+                "duplicate edge in a graph literal",
+            );
+            reject(
+                r#"{"kind":"string","value":"lex"},{"kind":"string","value":"emit"}"#,
+                r#"{"kind":"string","value":"lex"},{"kind":"string","value":"lex"}"#,
+                "duplicate node in a graph literal",
+            );
+            reject(
+                r#""operation":"graph_reachable","result":{"element":{"kind":"string"},"kind":"set"}"#,
+                r#""operation":"graph_reachable","result":{"element":{"kind":"nat"},"kind":"set"}"#,
+                "primitive GraphReachable result",
             );
         }
         other => panic!("no semantic-ir case is wired for {other}"),

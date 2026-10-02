@@ -639,6 +639,24 @@ suite = "semantic-ir"
 statement = "Language 1.2 snapshots carry complete recursion evidence (mutual labels, decreasing arguments, measures, and evidence bindings), and changing an evidence binding changes the semantic and alpha identities."
 
 [[id]]
+id = "SM-28"
+level = "build"
+suite = "semantic-ir"
+statement = "Language 1.2 finite maps and sets over closed ordered key types, their literals, and their primitive operations are typed, lowered to the fixed ordered-collection runtime, and verified."
+
+[[id]]
+id = "SM-29"
+level = "build"
+suite = "semantic-ir"
+statement = "Reordered equivalent map, set, and graph literals link to byte-identical semantic data and generated Lean, LaTeX, and lexicon-closure artifacts, while duplicate keys, non-literal literal keys, and key types without a canonical order are rejected."
+
+[[id]]
+id = "SM-30"
+level = "build"
+suite = "semantic-ir"
+statement = "Language 1.2 graph literals reference only declared nodes, a graph's nodes are its keys and every successor, and successor, reachability, and topological-order queries are deterministic, bounded by the node count, and report a cycle as none."
+
+[[id]]
 id = "DF-01"
 level = "build"
 suite = "declarations"
@@ -739,6 +757,12 @@ id = "DF-17"
 level = "build"
 suite = "declarations"
 statement = "Language 1.2 well-founded definitions carry a binder-free natural-number measure and, per recursive call site, a prior theorem stating exactly that call's decrease obligation; linking checks the statements and Lean checks the proofs."
+
+[[id]]
+id = "DF-18"
+level = "build"
+suite = "declarations"
+statement = "Language 1.2 state threading is explicit: ordered folds and bounded iteration pass the state through a direct closure, executable definitions may use them, and every iteration carries a natural-number bound."
 
 [[id]]
 id = "PF-01"

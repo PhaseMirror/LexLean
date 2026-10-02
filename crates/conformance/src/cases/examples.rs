@@ -171,7 +171,7 @@ pub(crate) fn run(id: &str) {
         // exactly the one prescribed diagnostic code.
         "EX-07" => {
             let root = support::repo_root();
-            let prescribed: [(&str, &str); 81] = [
+            let prescribed: [(&str, &str); 92] = [
                 ("unknown-word", "LLL1004"),
                 ("unknown-symbol", "LLL1004"),
                 ("unknown-control", "LLL1004"),
@@ -257,6 +257,18 @@ pub(crate) fn run(id: &str) {
                 ("recursion-mutual-mixed", "LLT4001"),
                 ("recursion-mutual-cyclic-measure", "LLT4001"),
                 ("recursion-false-evidence", "LLV7002"),
+                // §17.12: collections fail closed before any backend.
+                ("collection-duplicate-key", "LLT4001"),
+                ("collection-unordered-key", "LLT4001"),
+                ("collection-nonliteral-key", "LLT4001"),
+                ("collection-noncanonical-key", "LLT4001"),
+                ("collection-out-of-range-key", "LLT4001"),
+                ("graph-invalid-reference", "LLT4001"),
+                ("graph-duplicate-edge", "LLT4001"),
+                ("collection-fold-type-mismatch", "LLT4001"),
+                ("collection-unbounded-iteration", "LLT4001"),
+                ("collection-literal-limit", "LLS8002"),
+                ("collection-under-1.1", "LLT4001"),
             ];
             let negative_root = root.join("tests/negative");
             let mut classes: Vec<String> = std::fs::read_dir(negative_root.as_std_path())

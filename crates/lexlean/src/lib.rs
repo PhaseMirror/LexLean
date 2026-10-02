@@ -68,8 +68,9 @@ pub use error::{ErrorClass, LexLeanError};
 pub use ir::semantic::{
     MemberRef as SnapshotMemberRef, SemanticAssignment as SnapshotAssignment,
     SemanticBranch as SnapshotBranch, SemanticConstructor as SnapshotConstructor,
-    SemanticDeclaration as SnapshotSemanticDeclaration, SemanticField as SnapshotField,
-    SemanticInteger as SnapshotInteger, SemanticModule as SnapshotSemanticModule,
+    SemanticDeclaration as SnapshotSemanticDeclaration, SemanticEdge as SnapshotEdge,
+    SemanticField as SnapshotField, SemanticInteger as SnapshotInteger,
+    SemanticMapEntry as SnapshotMapEntry, SemanticModule as SnapshotSemanticModule,
     SemanticParameter as SnapshotParameter, SemanticPrimitive as SnapshotPrimitive,
     SemanticProof as SnapshotProof, SemanticProofBranch as SnapshotProofBranch,
     SemanticReflection as SnapshotReflection,

@@ -76,6 +76,8 @@ fn ty(value: &SnapshotType) -> usize {
         SnapshotType::Named { arguments, .. } => arguments.iter().map(ty).sum(),
         SnapshotType::Product { left, right } => ty(left) + ty(right),
         SnapshotType::Function { parameters, result } => parameters.iter().map(ty).sum::<usize>() + ty(result),
+        SnapshotType::Map { key, value } => ty(key) + ty(value),
+        SnapshotType::Set { element } => ty(element),
     }
 }
 
@@ -115,6 +117,14 @@ fn term(value: &SnapshotTerm) -> usize {
         }
         SnapshotTerm::Apply { function, arguments } => term(function) + arguments.iter().map(term).sum::<usize>(),
         SnapshotTerm::FunctionRef { type_arguments, .. } => type_arguments.iter().map(ty).sum(),
+        SnapshotTerm::MapLiteral { key, value, entries } => {
+            ty(key) + ty(value) + entries.iter().map(|v| term(&v.key) + term(&v.value)).sum::<usize>()
+        }
+        SnapshotTerm::SetLiteral { element, elements } => ty(element) + elements.iter().map(term).sum::<usize>(),
+        SnapshotTerm::GraphLiteral { node, nodes, edges } => {
+            ty(node) + nodes.iter().map(term).sum::<usize>()
+                + edges.iter().map(|v| term(&v.source) + term(&v.target)).sum::<usize>()
+        }
     }
 }
 

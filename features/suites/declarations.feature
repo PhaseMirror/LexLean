@@ -120,3 +120,10 @@ Feature: declarations
     When it is rendered and verified, and copies forge a statement, make the measure cyclic, add evidence, or also declare structural recursion
     Then the generated Lean binds each condition as a numbered hypothesis and discharges each decreasing goal with one explicit evidence application, and verifies with real Lean
     And forged, cyclic, miscounted, mixed, and language-1.1 evidence fail with LLT4001 before any build output
+
+  @DF-18 @build
+  Scenario: Language 1.2 state threading is explicit: ordered folds and bounded iteration pass the state through a direct closure, executable definitions may use them, and every iteration carries a natural-number bound.
+    Given the committed collections example whose executable ancestor closure iterates a set of facts to a fixed point within a bound
+    When it is rendered and verified, and copies drop the bound or mistype a fold step
+    Then the generated Lean passes the step as a lambda to the fixed iteration runtime and the kernel computes the closure and its convergence flag
+    And the unbounded iteration and the mistyped step fail with LLT4001 before any build output

@@ -23,6 +23,10 @@ struct Render<'a> {
     /// Whether this module emits the portable runtime, whose Nat
     /// subtraction and multiplication `linear_arithmetic` unfolds.
     runtime: bool,
+    /// Whether this renders the canonical document, which names a map and
+    /// a set by their own type constructors rather than by the list
+    /// encoding Lean receives (§17.12).
+    document: bool,
 }
 
 /// The generated name of well-founded hypothesis `index`. Semantic names
@@ -205,6 +209,18 @@ fn term_uses(term: &SemanticTerm, local: &str) -> bool {
                 || arguments.iter().any(|argument| term_uses(argument, local))
         }
         SemanticTerm::FunctionRef { .. } => false,
+        SemanticTerm::MapLiteral { entries, .. } => entries
+            .iter()
+            .any(|entry| term_uses(&entry.key, local) || term_uses(&entry.value, local)),
+        SemanticTerm::SetLiteral { elements, .. } => {
+            elements.iter().any(|element| term_uses(element, local))
+        }
+        SemanticTerm::GraphLiteral { nodes, edges, .. } => {
+            nodes.iter().any(|node| term_uses(node, local))
+                || edges
+                    .iter()
+                    .any(|edge| term_uses(&edge.source, local) || term_uses(&edge.target, local))
+        }
         SemanticTerm::Record { fields, .. } => fields
             .iter()
             .any(|assignment| term_uses(&assignment.value, local)),
@@ -344,6 +360,17 @@ impl Render<'_> {
                 out.push_str(&format!("({}))", self.ty(result)));
                 out
             }
+            // §17.12: a map is its canonical ascending entry list and a set
+            // its canonical ascending element list; the representation is
+            // plain data, so values cross module boundaries unchanged.
+            SemanticType::Map { key, value } if self.document => {
+                format!("Map ({}) ({})", self.ty(key), self.ty(value))
+            }
+            SemanticType::Set { element } if self.document => format!("Set ({})", self.ty(element)),
+            SemanticType::Map { key, value } => {
+                format!("List (Prod ({}) ({}))", self.ty(key), self.ty(value))
+            }
+            SemanticType::Set { element } => format!("List ({})", self.ty(element)),
         }
     }
 
@@ -564,6 +591,44 @@ impl Render<'_> {
             SemanticPrimitive::Join => "join",
             SemanticPrimitive::ParseDecimal => "parseDecimal",
             SemanticPrimitive::FormatDecimal => "formatDecimal",
+            collection => {
+                let name = match collection {
+                    SemanticPrimitive::MapInsert => "mapInsert",
+                    SemanticPrimitive::MapRemove => "mapRemove",
+                    SemanticPrimitive::MapLookup => "mapLookup",
+                    SemanticPrimitive::MapContains => "mapContains",
+                    SemanticPrimitive::MapSize => "mapSize",
+                    SemanticPrimitive::MapKeys => "mapKeys",
+                    SemanticPrimitive::MapValues => "mapValues",
+                    SemanticPrimitive::MapEntries => "mapEntries",
+                    SemanticPrimitive::MapFold => "mapFold",
+                    SemanticPrimitive::SetInsert => "setInsert",
+                    SemanticPrimitive::SetRemove => "setRemove",
+                    SemanticPrimitive::SetContains => "setContains",
+                    SemanticPrimitive::SetSize => "setSize",
+                    SemanticPrimitive::SetElements => "setElements",
+                    SemanticPrimitive::SetUnion => "setUnion",
+                    SemanticPrimitive::SetIntersection => "setIntersection",
+                    SemanticPrimitive::SetDifference => "setDifference",
+                    SemanticPrimitive::SetFold => "setFold",
+                    SemanticPrimitive::ListFold => "listFold",
+                    SemanticPrimitive::Iterate => "iterate",
+                    SemanticPrimitive::IterateUntil => "iterateUntil",
+                    SemanticPrimitive::GraphSuccessors => "graphSuccessors",
+                    SemanticPrimitive::GraphReachable => "graphReachable",
+                    _ => "graphTopological",
+                };
+                let mut out = format!("(LexLeanCollections.{name}");
+                for argument in arguments {
+                    out.push_str(" (");
+                    out.push_str(&self.term(argument));
+                    out.push(')');
+                }
+                out.push_str(" : ");
+                out.push_str(&self.ty(result));
+                out.push(')');
+                return out;
+            }
         };
         let mut out = format!("(LexLeanRuntime.{operation}");
         for argument in arguments {
@@ -774,6 +839,51 @@ impl Render<'_> {
                 out.push(')');
                 out
             }
+            SemanticTerm::MapLiteral {
+                key,
+                value,
+                entries,
+            } => format!(
+                "([{}] : List (Prod ({}) ({})))",
+                entries
+                    .iter()
+                    .map(|entry| format!(
+                        "({}, {})",
+                        self.term(&entry.key),
+                        self.term(&entry.value)
+                    ))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                self.ty(key),
+                self.ty(value)
+            ),
+            SemanticTerm::SetLiteral { element, elements } => format!(
+                "([{}] : List ({}))",
+                elements
+                    .iter()
+                    .map(|element| self.term(element))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                self.ty(element)
+            ),
+            SemanticTerm::GraphLiteral { node, nodes, edges } => format!(
+                "([{}] : List (Prod ({}) (List ({}))))",
+                nodes
+                    .iter()
+                    .map(|source| {
+                        let targets = edges
+                            .iter()
+                            .filter(|edge| edge.source == *source)
+                            .map(|edge| self.term(&edge.target))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        format!("({}, [{targets}])", self.term(source))
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                self.ty(node),
+                self.ty(node)
+            ),
         }
     }
 
@@ -991,6 +1101,7 @@ fn well_founded_definition(
             .enumerate()
             .map(|(index, address)| (*address, index))
             .collect(),
+        document: false,
     };
     // A parameter the measure alone mentions is used: `termination_by`
     // references it.
@@ -1030,6 +1141,185 @@ fn well_founded_definition(
     text.push('\n');
     Ok(text)
 }
+
+/// Whether a module needs the fixed ordered-collection runtime (§17.12): it
+/// writes a collection type or literal, or applies any collection primitive.
+/// The primitive alone suffices, because a module that only measures or
+/// folds a collection imported from another module still calls the runtime,
+/// and the importer's runtime lives in the importer's namespace.
+fn uses_collections(module: &SemanticModule) -> bool {
+    fn walk(value: &serde_json::Value) -> bool {
+        match value {
+            serde_json::Value::Array(items) => items.iter().any(walk),
+            serde_json::Value::Object(object) => {
+                let kind = object.get("kind").and_then(serde_json::Value::as_str);
+                let collection = match kind {
+                    Some("map" | "set" | "map_literal" | "set_literal" | "graph_literal") => true,
+                    Some("primitive") => object
+                        .get("operation")
+                        .and_then(|operation| {
+                            serde_json::from_value::<SemanticPrimitive>(operation.clone()).ok()
+                        })
+                        .is_some_and(SemanticPrimitive::language_1_2),
+                    _ => false,
+                };
+                collection || object.values().any(walk)
+            }
+            serde_json::Value::Null
+            | serde_json::Value::Bool(_)
+            | serde_json::Value::Number(_)
+            | serde_json::Value::String(_) => false,
+        }
+    }
+    walk(&serde_json::to_value(module).expect("semantic module serialization"))
+}
+
+/// The fixed ordered-collection runtime: canonical ascending entry and
+/// element lists keyed by the closed total orders, ordered folds, bounded
+/// iteration, and graph traversal bounded by the node count (§17.12). A
+/// graph's nodes are its keys and every successor, so a successor that was
+/// inserted without its own entry is a node with no successors rather than
+/// a name the traversals disagree about.
+const COLLECTIONS_RUNTIME: &str = r#"
+namespace LexLeanCollections
+
+public class Key (α : Type) where
+  compare : α -> α -> Ordering
+
+@[expose] public def compareCodes : List Char -> List Char -> Ordering
+  | [], [] => .eq
+  | [], _ :: _ => .lt
+  | _ :: _, [] => .gt
+  | left :: lefts, right :: rights =>
+    match Ord.compare left.val.toNat right.val.toNat with
+    | .eq => compareCodes lefts rights
+    | other => other
+
+public instance : Key Nat where compare := Ord.compare
+public instance : Key Int where compare := Ord.compare
+public instance : Key Bool where compare := Ord.compare
+public instance : Key Int8 where compare left right := Ord.compare left.toInt right.toInt
+public instance : Key Int16 where compare left right := Ord.compare left.toInt right.toInt
+public instance : Key Int32 where compare left right := Ord.compare left.toInt right.toInt
+public instance : Key Int64 where compare left right := Ord.compare left.toInt right.toInt
+public instance : Key UInt8 where compare left right := Ord.compare left.toNat right.toNat
+public instance : Key UInt16 where compare left right := Ord.compare left.toNat right.toNat
+public instance : Key UInt32 where compare left right := Ord.compare left.toNat right.toNat
+public instance : Key UInt64 where compare left right := Ord.compare left.toNat right.toNat
+public instance : Key String where compare left right := compareCodes left.toList right.toList
+public instance {α β : Type} [Key α] [Key β] : Key (Prod α β) where
+  compare left right := match Key.compare left.1 right.1 with
+    | .eq => Key.compare left.2 right.2
+    | other => other
+
+@[expose] public def insertEntry {κ ν : Type} [Key κ] (key : κ) (value : ν) : List (Prod κ ν) -> List (Prod κ ν)
+  | [] => [(key, value)]
+  | (other, stored) :: rest => match Key.compare key other with
+    | .lt => (key, value) :: (other, stored) :: rest
+    | .eq => (key, value) :: rest
+    | .gt => (other, stored) :: insertEntry key value rest
+
+@[expose] public def removeEntry {κ ν : Type} [Key κ] (key : κ) : List (Prod κ ν) -> List (Prod κ ν)
+  | [] => []
+  | (other, stored) :: rest => match Key.compare key other with
+    | .lt => (other, stored) :: rest
+    | .eq => rest
+    | .gt => (other, stored) :: removeEntry key rest
+
+@[expose] public def lookupEntry {κ ν : Type} [Key κ] (key : κ) : List (Prod κ ν) -> Option ν
+  | [] => none
+  | (other, stored) :: rest => match Key.compare key other with
+    | .lt => none
+    | .eq => some stored
+    | .gt => lookupEntry key rest
+
+@[expose] public def insertElement {κ : Type} [Key κ] (key : κ) : List κ -> List κ
+  | [] => [key]
+  | other :: rest => match Key.compare key other with
+    | .lt => key :: other :: rest
+    | .eq => other :: rest
+    | .gt => other :: insertElement key rest
+
+@[expose] public def removeElement {κ : Type} [Key κ] (key : κ) : List κ -> List κ
+  | [] => []
+  | other :: rest => match Key.compare key other with
+    | .lt => other :: rest
+    | .eq => rest
+    | .gt => other :: removeElement key rest
+
+@[expose] public def containsElement {κ : Type} [Key κ] (key : κ) : List κ -> Bool
+  | [] => false
+  | other :: rest => match Key.compare key other with
+    | .lt => false
+    | .eq => true
+    | .gt => containsElement key rest
+
+@[expose] public def mapInsert {κ ν : Type} [Key κ] (map : List (Prod κ ν)) (key : κ) (value : ν) : List (Prod κ ν) := insertEntry key value map
+@[expose] public def mapRemove {κ ν : Type} [Key κ] (map : List (Prod κ ν)) (key : κ) : List (Prod κ ν) := removeEntry key map
+@[expose] public def mapLookup {κ ν : Type} [Key κ] (map : List (Prod κ ν)) (key : κ) : Option ν := lookupEntry key map
+@[expose] public def mapContains {κ ν : Type} [Key κ] (map : List (Prod κ ν)) (key : κ) : Bool := (lookupEntry key map).isSome
+@[expose] public def mapSize {κ ν : Type} (map : List (Prod κ ν)) : Nat := map.length
+@[expose] public def mapKeys {κ ν : Type} (map : List (Prod κ ν)) : List κ := map.map Prod.fst
+@[expose] public def mapValues {κ ν : Type} (map : List (Prod κ ν)) : List ν := map.map Prod.snd
+@[expose] public def mapEntries {κ ν : Type} (map : List (Prod κ ν)) : List (Prod κ ν) := map
+@[expose] public def mapFold {κ ν β : Type} (step : β -> κ -> ν -> β) (initial : β) (map : List (Prod κ ν)) : β :=
+  map.foldl (fun state entry => step state entry.1 entry.2) initial
+
+@[expose] public def setInsert {κ : Type} [Key κ] (set : List κ) (key : κ) : List κ := insertElement key set
+@[expose] public def setRemove {κ : Type} [Key κ] (set : List κ) (key : κ) : List κ := removeElement key set
+@[expose] public def setContains {κ : Type} [Key κ] (set : List κ) (key : κ) : Bool := containsElement key set
+@[expose] public def setSize {κ : Type} (set : List κ) : Nat := set.length
+@[expose] public def setElements {κ : Type} (set : List κ) : List κ := set
+@[expose] public def setUnion {κ : Type} [Key κ] (left right : List κ) : List κ := right.foldl (fun acc key => insertElement key acc) left
+@[expose] public def setIntersection {κ : Type} [Key κ] (left right : List κ) : List κ := left.filter (fun key => containsElement key right)
+@[expose] public def setDifference {κ : Type} [Key κ] (left right : List κ) : List κ := left.filter (fun key => !containsElement key right)
+
+@[expose] public def graphSuccessors {κ : Type} [Key κ] (graph : List (Prod κ (List κ))) (node : κ) : List κ :=
+  (lookupEntry node graph).getD []
+
+@[expose] public def graphNodes {κ : Type} [Key κ] (graph : List (Prod κ (List κ))) : List κ :=
+  graph.foldl (fun acc entry => entry.2.foldl (fun inner node => insertElement node inner) (insertElement entry.1 acc)) []
+
+@[expose] public def reachableFrom {κ : Type} [Key κ] (graph : List (Prod κ (List κ))) : Nat -> List κ -> List κ -> List κ
+  | 0, _, seen => seen
+  | Nat.succ fuel, frontier, seen =>
+    let next := frontier.foldl (fun acc node =>
+      (graphSuccessors graph node).foldl (fun acc2 succ =>
+        if containsElement succ seen || containsElement succ acc2 then acc2 else insertElement succ acc2) acc) []
+    match next with
+    | [] => seen
+    | _ => reachableFrom graph fuel next (next.foldl (fun acc key => insertElement key acc) seen)
+
+@[expose] public def graphReachable {κ : Type} [Key κ] (graph : List (Prod κ (List κ))) (start : κ) : List κ :=
+  reachableFrom graph ((graphNodes graph).length + 1) [start] [start]
+
+@[expose] public def topological {κ : Type} [Key κ] (graph : List (Prod κ (List κ))) : Nat -> List κ -> List κ -> Option (List κ)
+  | 0, remaining, order => if remaining.isEmpty then some order.reverse else none
+  | Nat.succ fuel, remaining, order =>
+    match remaining.filter (fun node => remaining.all (fun other => !containsElement node (graphSuccessors graph other))) with
+    | [] => if remaining.isEmpty then some order.reverse else none
+    | ready :: _ => topological graph fuel (removeElement ready remaining) (ready :: order)
+
+@[expose] public def graphTopological {κ : Type} [Key κ] (graph : List (Prod κ (List κ))) : Option (List κ) :=
+  let nodes := graphNodes graph
+  topological graph (nodes.length + 1) nodes []
+@[expose] public def listFold {α σ : Type} (step : σ -> α -> σ) (initial : σ) (values : List α) : σ :=
+  values.foldl step initial
+
+@[expose] public def setFold {κ σ : Type} (step : σ -> κ -> σ) (initial : σ) (set : List κ) : σ :=
+  set.foldl step initial
+
+@[expose] public def iterate {σ : Type} (step : σ -> σ) : Nat -> σ -> σ
+  | 0, state => state
+  | Nat.succ count, state => iterate step count (step state)
+
+@[expose] public def iterateUntil {σ : Type} (step : σ -> Option σ) : Nat -> σ -> Prod σ Bool
+  | 0, state => (state, false)
+  | Nat.succ fuel, state => match step state with
+    | none => (state, true)
+    | some next => iterateUntil step fuel next
+end LexLeanCollections
+"#;
 
 fn emit(checked: &CheckedModule, text: &str, kind: &str) -> Emitter {
     let mut emitter = Emitter::new();
@@ -1525,6 +1815,7 @@ pub fn render_lean(
         prefix: module_prefix,
         hypotheses: std::collections::BTreeMap::new(),
         runtime,
+        document: false,
     };
     let document = &checked.document;
     let mut text = String::from("module\npublic import Init\n");
@@ -1545,6 +1836,9 @@ pub fn render_lean(
     text.push('\n');
     if runtime {
         text.push_str(portable_runtime());
+    }
+    if uses_collections(module) {
+        text.push_str(COLLECTIONS_RUNTIME);
     }
     let group_of = |index: usize| match module.declarations.get(index) {
         Some(
@@ -1854,6 +2148,7 @@ pub fn render_latex(
         prefix: module_prefix,
         hypotheses: std::collections::BTreeMap::new(),
         runtime: false,
+        document: true,
     };
     let version_2 = module.spec == "lexlean/semantic-module/2";
     let mut text = String::from(

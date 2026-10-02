@@ -113,6 +113,34 @@ versions, and the entries below say what each tag does and does not claim.
   - The negative fixture suite requires every diagnostic of a class to
     carry its prescribed code, and the absolute-path guard no longer
     mistakes an escaped newline after a colon for a Windows drive.
+- Language-1.2 ordered collections (§17.12): `map` and `set` types over
+  closed ordered key types, canonical map/set/graph literals (reordered
+  source links to identical semantic data), insertion/lookup/set-algebra
+  operations, ordered folds, bounded iteration, and graph successors,
+  reachability, and topological order, all over the fixed
+  `LexLeanCollections` runtime, which every module applying a collection
+  primitive emits (`SM-28`, `SM-29`, `SM-30`, `DF-18`). Literal keys are
+  checked as terms before they are ordered. `examples/collections` proves
+  each of the 24 operations under Lean and, for every key type (negative and
+  fixed-width integers, Booleans, non-ASCII strings, pairs), that linking's
+  canonical order equals Lean's own insertion order. Ten new negative
+  fixtures cover duplicate, unordered, non-literal, noncanonical, and
+  out-of-range keys, graph references and duplicate edges, fold typing,
+  unbounded iteration, and collections under language 1.1.
+  Changes after review:
+  - A graph's nodes are its keys and every successor, so a successor
+    inserted without an entry of its own is a node with no successors;
+    reachability and topological order now agree on it.
+  - `SM-28` and `SM-30` check every operation, under Lean, against an
+    independent `BTreeMap`/`BTreeSet` model on seeded operation sequences,
+    including a chain as deep as its node count allows.
+  - `SM-29` compares the snapshot and every published artifact that does
+    not record source positions.
+  - Operation costs are stated, `iterate_until`'s bound is named as fuel,
+    and an oversized collection literal is `LLS8002`
+    (`collection-literal-limit`).
+  - Literal normalization walks the typed module instead of a JSON round
+    trip, and the canonical document names map and set types.
 - Every semantic-module member must survive into the typed value: an extra
   member of a unit variant (for example `{"kind":"reflexivity","tactic":...}`)
   was silently ignored and is now rejected in every language.
@@ -123,13 +151,16 @@ versions, and the entries below say what each tag does and does not claim.
   checked and built but failed verification with `LLV7006` on pinned Lean's
   unused-variable warning; only Lean text that never verified changes
   (`SM-08`).
-- The public snapshot DTO `SnapshotTerm` gains the `Let`, `Pair`, `First`,
-  `Second`, `Lambda`, `Apply`, and `FunctionRef` variants and call type
-  arguments, `SnapshotType` gains `Product` and `Function`, declarations gain
-  optional `mutual`, `type_parameters`, and `executable` fields, and
-  `SnapshotProof` gains `Apply` type arguments and `LinearArithmetic`, and
-  definitions gain optional `mutual` and `termination` members; downstream exhaustive
-  matches must add them.
+- The public snapshot DTO grows with language 1.2. `SnapshotTerm` gains
+  `Let`, `Pair`, `First`, `Second`, `Lambda`, `Apply`, `FunctionRef`,
+  `MapLiteral`, `SetLiteral`, and `GraphLiteral` (with `SnapshotMapEntry` and
+  `SnapshotEdge`) and call type arguments; `SnapshotType` gains `Product`,
+  `Function`, `Map`, and `Set`; `SnapshotPrimitive` gains the collection
+  operations; inductives gain `mutual`; definitions gain `type_parameters`,
+  `executable`, `mutual`, and `termination` (`SnapshotTermination`);
+  theorems gain `type_parameters`; `SnapshotProof` gains `Apply` type
+  arguments and `LinearArithmetic`. Downstream exhaustive matches must add
+  them.
 - New conformance IDs `CF-17`, `CF-18`, `GL-17`, `GL-18`, and `SM-23`; new
   example `examples/language-1.2`, verified with real Lean; ten new negative
   fixtures for version mismatches in both directions, a package of another
