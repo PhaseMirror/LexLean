@@ -838,6 +838,150 @@ fn lookup() -> Json {
     )
 }
 
+/// The number of bindings a lookup of `name` examines before it finds
+/// one: what reading a local costs beyond its own step.
+fn depth() -> Json {
+    recursive(
+        "environment",
+        definition(
+            "depth",
+            vec![
+                parameter("environment", environment_t()),
+                parameter("name", nat_t()),
+            ],
+            nat_t(),
+            list_match(
+                var("environment"),
+                nat(0),
+                "entry",
+                "rest",
+                ite(
+                    beq(first(var("entry")), var("name")),
+                    nat(0),
+                    add(nat(1), call("depth", vec![var("rest"), var("name")])),
+                ),
+            ),
+        ),
+    )
+}
+
+/// A value's weight: one per node, and a string's characters or a byte
+/// string's bytes. Every primitive is charged the weights of its operands
+/// and of its result, so no primitive's work goes uncounted (§17.14).
+fn weight(s: &Semantics) -> Json {
+    let one_more_than = |term: Json| add(nat(1), term);
+    let of = |binder: &str| call("weight", vec![var(binder)]);
+    let of_all = |binder: &str| call("weights", vec![var(binder)]);
+    let tag = s.ignored();
+    let callee = s.ignored();
+    let cases = vec![
+        on(
+            "string",
+            &["text"],
+            one_more_than(prim("length", vec![var("text")], nat_t())),
+        ),
+        on(
+            "bytes",
+            &["octets"],
+            one_more_than(prim("length", vec![var("octets")], nat_t())),
+        ),
+        on("some", &["inner"], one_more_than(of("inner"))),
+        on("ok", &["inner"], one_more_than(of("inner"))),
+        on("error", &["inner"], one_more_than(of("inner"))),
+        on("list", &["items"], one_more_than(of_all("items"))),
+        on(
+            "pair",
+            &["left", "right"],
+            one_more_than(add(of("left"), of("right"))),
+        ),
+        on("adt", &[&tag, "fields"], one_more_than(of_all("fields"))),
+        on(
+            "closure",
+            &[&callee, "captured"],
+            one_more_than(of_all("captured")),
+        ),
+    ];
+    axioms(
+        CLASSICAL,
+        mutual(
+            "Weight",
+            recursive(
+                "value",
+                definition(
+                    "weight",
+                    vec![parameter("value", value_t())],
+                    nat_t(),
+                    s.value_match(var("value"), cases, nat(1)),
+                ),
+            ),
+        ),
+    )
+}
+
+/// The weights of a list of values.
+fn weights() -> Json {
+    axioms(
+        CLASSICAL,
+        mutual(
+            "Weight",
+            recursive(
+                "values",
+                definition(
+                    "weights",
+                    vec![parameter("values", values_t())],
+                    nat_t(),
+                    list_match(
+                        var("values"),
+                        nat(0),
+                        "head",
+                        "tail",
+                        add(
+                            call("weight", vec![var("head")]),
+                            call("weights", vec![var("tail")]),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+}
+
+/// A primitive's outcome charged `extra` steps and, when it produced a
+/// value, that value's weight.
+fn charge_result() -> Json {
+    axioms(
+        CLASSICAL,
+        definition(
+            "chargeResult",
+            vec![
+                parameter("result", outcome_t()),
+                parameter("extra", nat_t()),
+            ],
+            outcome_t(),
+            outcome_match(
+                var("result"),
+                Family::One,
+                (
+                    &["computed", "steps"],
+                    produced(
+                        var("computed"),
+                        add(
+                            add(var("steps"), var("extra")),
+                            call("weight", vec![var("computed")]),
+                        ),
+                    ),
+                ),
+                (
+                    &["steps"],
+                    outcome("overflow", vec![add(var("steps"), var("extra"))]),
+                ),
+                stuck(),
+                exhausted(),
+            ),
+        ),
+    )
+}
+
 /// Bind names to values pairwise; a length mismatch is `none`.
 fn bind_all(s: &Semantics) -> Json {
     recursive(
@@ -2048,8 +2192,11 @@ fn one_more(steps: &str) -> Json {
     add(var(steps), nat(1))
 }
 
-/// One step per evaluated node, call, and primitive (§17.14), charged on
-/// top of the steps its operands took.
+/// One step per evaluated node, charged on top of the steps its operands
+/// took, and every operation the evaluator performs beyond it (§17.14): the
+/// bindings a local's lookup examines, each arm a match tries, a closure's
+/// captures passed on application, the fields a projection skips, and a
+/// primitive's operand and result weights.
 #[allow(clippy::too_many_lines)]
 fn expression_cases(s: &Semantics) -> Vec<Case> {
     let environment = || var("environment");
@@ -2066,7 +2213,10 @@ fn expression_cases(s: &Semantics) -> Vec<Case> {
                 call("lookup", vec![environment(), var("name")]),
                 stuck(),
                 "found",
-                produced(var("found"), nat(1)),
+                produced(
+                    var("found"),
+                    add(nat(1), call("depth", vec![environment(), var("name")])),
+                ),
             ),
         ),
         on(
@@ -2208,7 +2358,10 @@ fn expression_cases(s: &Semantics) -> Vec<Case> {
                                     vec![var("captured"), var("operandValues")],
                                     values_t(),
                                 ),
-                                add(add(var("targetSteps"), var("operandSteps")), nat(1)),
+                                add(
+                                    add(add(var("targetSteps"), var("operandSteps")), nat(1)),
+                                    prim("length", vec![var("captured")], nat_t()),
+                                ),
                             ),
                         ),
                     )],
@@ -2224,10 +2377,13 @@ fn expression_cases(s: &Semantics) -> Vec<Case> {
                 eval_list(var("operands")),
                 ["operandValues", "operandSteps"],
                 call(
-                    "addSteps",
+                    "chargeResult",
                     vec![
                         call("primitive", vec![var("operation"), var("operandValues")]),
-                        one_more("operandSteps"),
+                        add(
+                            one_more("operandSteps"),
+                            call("weights", vec![var("operandValues")]),
+                        ),
                     ],
                 ),
             ),
@@ -2288,7 +2444,10 @@ fn expression_cases(s: &Semantics) -> Vec<Case> {
                             ),
                             stuck(),
                             "selected",
-                            produced(var("selected"), one_more("innerSteps")),
+                            produced(
+                                var("selected"),
+                                add(one_more("innerSteps"), var("position")),
+                            ),
                         ),
                     )],
                     stuck(),
@@ -2385,7 +2544,7 @@ fn evaluation(s: &Semantics) -> [Json; 3] {
         ),
     );
     // The first arm whose shape the scrutinee has is taken; none is stuck,
-    // which an exhaustive match never is.
+    // which an exhaustive match never is. Each arm tried is one step.
     let eval_arms_definition = definition(
         "evalArms",
         evaluation_parameters(parameter("scrutinee", value_t()))
@@ -2408,13 +2567,19 @@ fn evaluation(s: &Semantics) -> [Json; 3] {
                         option_match(
                             call("destruct", vec![var("shape"), var("scrutinee")]),
                             call(
-                                "evalArms",
+                                "addSteps",
                                 vec![
-                                    var("remaining"),
-                                    var("program"),
-                                    environment(),
-                                    var("scrutinee"),
-                                    var("rest"),
+                                    call(
+                                        "evalArms",
+                                        vec![
+                                            var("remaining"),
+                                            var("program"),
+                                            environment(),
+                                            var("scrutinee"),
+                                            var("rest"),
+                                        ],
+                                    ),
+                                    nat(1),
                                 ],
                             ),
                             "fields",
@@ -2425,7 +2590,7 @@ fn evaluation(s: &Semantics) -> [Json; 3] {
                                 ),
                                 stuck(),
                                 "extended",
-                                eval(var("extended"), var("body")),
+                                call("addSteps", vec![eval(var("extended"), var("body")), nat(1)]),
                             ),
                         ),
                     )],
@@ -2499,6 +2664,7 @@ pub fn semantics_module() -> String {
     declarations.extend(outcome_types());
     declarations.push(add_steps());
     declarations.push(lookup());
+    declarations.push(depth());
     declarations.push(bind_all(&s));
     declarations.push(nat_result());
     declarations.push(int_result());
@@ -2508,6 +2674,9 @@ pub fn semantics_module() -> String {
     declarations.extend(key_orders());
     declarations.push(compare_value(&s));
     declarations.push(compare_values(&s));
+    declarations.push(weight(&s));
+    declarations.push(weights());
+    declarations.push(charge_result());
     declarations.push(destruct(&s));
     declarations.push(construct(&s));
     declarations.push(from_strings());

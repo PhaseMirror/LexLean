@@ -585,21 +585,23 @@ fn prim_type(operation: &Prim, types: &[Ty]) -> Result<Ty, String> {
     }
 }
 
-/// Primitive applications whose LexLean meaning Lean's kernel cannot decide
-/// by reduction from a module file under pinned Lean 4.32.1: their Lean
-/// definitions (`String.splitOn`, `String.toInt?`, `ByteArray.toList`,
-/// `ByteArray` equality, `String.toUTF8`, `String.intercalate`, `Nat.repr`)
-/// recurse by well-founded recursion or are not exposed to module files.
-/// A fixture that applies one is decided by Lean's evaluator instead
-/// (§17.14).
-pub const KERNEL_OPAQUE: [&str; 7] = [
+/// Primitive applications whose LexLean meaning a `reflexivity` proof
+/// cannot establish from a module file under pinned Lean 4.32.1: Lean's
+/// elaborator checks such a proof by definitional unfolding before the
+/// kernel sees it, and does not unfold the definitions these reach
+/// (`String.splitOn`, `String.toInt?`, `ByteArray.toList`, `String.toUTF8`,
+/// `String.intercalate`, `Nat.repr`), which recurse by well-founded
+/// recursion or are not exposed to module files. LexLean's proof language
+/// has no kernel-only decision, so a fixture that applies one is decided by
+/// Lean's evaluator instead (§17.14). Byte equality is not among them: the
+/// kernel decides it.
+pub const KERNEL_OPAQUE: [&str; 6] = [
     "split_exact",
     "parse_decimal",
     "format_decimal",
     "compare_bytes",
     "utf8_encode",
     "join",
-    "equal:bytes",
 ];
 
 /// The [`KERNEL_OPAQUE`] applications a valid program contains.
@@ -673,12 +675,6 @@ pub fn kernel_opaque(program: &Program) -> Result<BTreeSet<&'static str>, String
                     Prim::CompareBytes => Some("compare_bytes"),
                     Prim::Utf8Encode => Some("utf8_encode"),
                     Prim::Join => Some("join"),
-                    Prim::Equal => match operands.first() {
-                        Some(first) if checker.expr(first, scope)? == Ty::Bytes => {
-                            Some("equal:bytes")
-                        }
-                        _ => None,
-                    },
                     _ => None,
                 };
                 out.extend(opaque);

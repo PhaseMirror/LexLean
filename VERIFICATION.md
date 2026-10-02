@@ -23,7 +23,7 @@ How this repository's claims are checked, which recipe enforces which rule, and 
 Outside `vv`:
 
 - `just fixtures` (`cargo xtask check-fixtures`) runs every §28.2 fixture under `tests/fixtures/` and `tests/negative/` through the CLI entry point and compares exit code, canonical command result, diagnostics, artifact list, and platform-independent hashes with `expected/`. `just fixtures-write` is the only rewrite path.
-- `just calculus` (`cargo xtask check-calculus`) compares every committed target fixture under `compiler/fixtures/`, the generated `TargetFixtures` module, and the calculus modules `TargetSyntax`, `TargetSemantics`, `TargetOracle`, and `Main`, and the project configuration with what the hand-written fixture set and the calculus's definition in `crates/conformance/src/calculus_source.rs` render (§17.14); `just test` enforces the same comparison through `conformance_tc_03`. `just calculus-write` is the only rewrite path.
+- `just calculus` (`cargo xtask check-calculus`) compares every committed target fixture under `compiler/fixtures/`, the generated `TargetFixtures` module, the calculus modules `TargetSyntax`, `TargetSemantics`, `TargetOracle`, and `Main`, the project configuration, and every fixture's Rust rendering under `compiler/rust/rust-core/` and `compiler/rust/rust-std/` with what the hand-written fixture set, the calculus's definition in `crates/conformance/src/calculus_source.rs`, and the renderer produce (§17.14); `just test` enforces the same comparison through `conformance_tc_03`. `just calculus-write` is the only rewrite path.
 - `just verify-write` (`cargo xtask verify-examples --write`) is the only path that rewrites `examples/*/expected/verify/`.
 - `just release` runs `vv` and then `cargo xtask release-check` (RP-12): every §30.3 artifact by content, the §30.4 completion criteria, and the crate-packaging round trip (`cargo package`, extract, offline build, `--version` equal to the in-repository binary). It is refused until 1.0.0.
 
@@ -753,7 +753,7 @@ renders.
 gate failed: compiler/fixtures/sum-to.json differs from its generator; run `cargo xtask check-calculus --write`
 ```
 
-Removed: the fixture was restored; `cargo xtask check-calculus` reports 79
+Removed: the fixture was restored; `cargo xtask check-calculus` reports 208
 generated files equal to their generator.
 
 ### check-calculus covers the calculus modules
@@ -768,7 +768,7 @@ renders.
 gate failed: compiler/src/TargetSemantics.lex.tex differs from its generator; run `cargo xtask check-calculus --write`
 ```
 
-Removed: the committed module was restored; the gate reports 79 generated
+Removed: the committed module was restored; the gate reports 208 generated
 files equal to their generator.
 
 ### calculus kernel oracle can fail

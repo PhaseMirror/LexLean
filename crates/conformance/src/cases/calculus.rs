@@ -14,6 +14,138 @@ use serde_json::{json, Value as Json};
 use crate::calculus::{self as fixtures, Case};
 use crate::support::{self, repo_root, P};
 
+/// Run every fixture program on seeded random well-typed arguments at
+/// fuels up to the stated one, asserting no run is stuck; the number of
+/// runs.
+fn progress_runs(cases: &[Case]) -> usize {
+    let mut seed = 0x9e37_79b9_7f4a_7c15_u64;
+    let mut runs = 0;
+    for case in cases {
+        let fixture = &case.fixture;
+        let entry = &fixture.program.functions[usize::try_from(fixture.entry).expect("entry")];
+        for _ in 0..8 {
+            let Some(arguments) = entry
+                .types
+                .iter()
+                .map(|ty| random_value(&fixture.program, ty, &mut seed, 3))
+                .collect::<Option<Vec<Value>>>()
+            else {
+                break;
+            };
+            check::check_arguments(&fixture.program, fixture.entry, &arguments)
+                .expect("a generated argument is well typed");
+            for fuel in (0..=fixture.fuel).step_by(7).chain([fixture.fuel]) {
+                let outcome = interp::run(&fixture.program, fuel, fixture.entry, &arguments);
+                assert_ne!(
+                    outcome,
+                    Outcome::Stuck,
+                    "{}: stuck on {arguments:?} with fuel {fuel}",
+                    fixture.name
+                );
+                runs += 1;
+            }
+        }
+    }
+    runs
+}
+
+/// The next value of a xorshift generator.
+fn next(seed: &mut u64) -> u64 {
+    *seed ^= *seed << 13;
+    *seed ^= *seed >> 7;
+    *seed ^= *seed << 17;
+    *seed
+}
+
+/// A random value of `ty`, or `None` for a function type, which has no
+/// literal. Numbers favour the edges of their range.
+fn random_value(program: &Program, ty: &target::Ty, seed: &mut u64, depth: u32) -> Option<Value> {
+    use target::Ty;
+    let number = |seed: &mut u64, low: i128, high: i128| -> i128 {
+        match next(seed) % 4 {
+            0 => low,
+            1 => high,
+            _ => low + i128::from(next(seed) % 64).min(high - low),
+        }
+    };
+    let pick = |seed: &mut u64, count: u64| next(seed) % count.max(1);
+    Some(match ty {
+        Ty::Unit => Value::Unit,
+        Ty::Bool => Value::Bool {
+            value: next(seed) % 2 == 0,
+        },
+        Ty::Nat => Value::Nat {
+            value: number(seed, 0, i128::from(u64::MAX)).to_string(),
+        },
+        Ty::Int => Value::Int {
+            value: number(seed, i128::from(i64::MIN), i128::from(i64::MAX)).to_string(),
+        },
+        Ty::Fixed { width } => {
+            let (low, high) = width.range();
+            let value = number(seed, low, high).to_string();
+            serde_json::from_value(json!({"kind": width.name(), "value": value})).ok()?
+        }
+        Ty::String => Value::String {
+            value: ["", "a", "a,b", "-12", "007", "é,", "9223372036854775808"]
+                [usize::try_from(pick(seed, 7)).ok()?]
+            .to_owned(),
+        },
+        Ty::Bytes => Value::Bytes {
+            hex: ["", "00", "ff01", "c3a9", "c3"][usize::try_from(pick(seed, 5)).ok()?].to_owned(),
+        },
+        Ty::Ordering => {
+            let order = ["lt", "eq", "gt"][usize::try_from(pick(seed, 3)).ok()?];
+            serde_json::from_value(json!({"kind": "ordering", "value": order})).ok()?
+        }
+        Ty::Option { value } => {
+            if depth == 0 || next(seed) % 3 == 0 {
+                Value::None
+            } else {
+                Value::Some {
+                    value: Box::new(random_value(program, value, seed, depth - 1)?),
+                }
+            }
+        }
+        Ty::Result { ok, error } => {
+            if next(seed) % 2 == 0 {
+                Value::Ok {
+                    value: Box::new(random_value(program, ok, seed, depth.saturating_sub(1))?),
+                }
+            } else {
+                Value::Error {
+                    value: Box::new(random_value(program, error, seed, depth.saturating_sub(1))?),
+                }
+            }
+        }
+        Ty::List { element } => Value::List {
+            items: (0..if depth == 0 { 0 } else { pick(seed, 5) })
+                .map(|_| random_value(program, element, seed, depth - 1))
+                .collect::<Option<_>>()?,
+        },
+        Ty::Pair { left, right } => Value::Pair {
+            left: Box::new(random_value(program, left, seed, depth)?),
+            right: Box::new(random_value(program, right, seed, depth)?),
+        },
+        Ty::Adt { index } => {
+            let constructors = &program.adts[usize::try_from(*index).ok()?].constructors;
+            // At depth zero, a constructor without fields if there is one.
+            let choice = if depth == 0 {
+                constructors.iter().position(Vec::is_empty).unwrap_or(0)
+            } else {
+                usize::try_from(pick(seed, constructors.len() as u64)).ok()?
+            };
+            Value::Adt {
+                constructor: choice as u64,
+                fields: constructors[choice]
+                    .iter()
+                    .map(|field| random_value(program, field, seed, depth.saturating_sub(1)))
+                    .collect::<Option<_>>()?,
+            }
+        }
+        Ty::Fn { .. } => return None,
+    })
+}
+
 /// The committed fixtures, read from disk exactly as published.
 fn committed() -> Vec<(PathBuf, Vec<u8>, Fixture)> {
     let dir = repo_root().join("compiler/fixtures");
@@ -123,9 +255,9 @@ fn program_json(name: &str) -> Json {
     serde_json::to_value(&fixture.program).expect("program serializes")
 }
 
-/// The Lean evaluator's outcome for every fixture, read from the verified
-/// compiler's oleans: `#eval` runs the generated definitions as compiled by
-/// pinned Lean.
+/// The Lean evaluator's outcome for every fixture: the generated sources
+/// that verification published are compiled again by the same pinned Lean
+/// (the published oleans carry no compiled code), and `#eval` runs them.
 fn lean_evaluations(verified: &camino::Utf8Path, cases: &[Case]) -> BTreeMap<String, Json> {
     let toolchain = support::real_elan_home()
         .join("toolchains")
@@ -198,6 +330,24 @@ fn lean_evaluations(verified: &camino::Utf8Path, cases: &[Case]) -> BTreeMap<Str
         );
     }
     out
+}
+
+/// Every fixture whose outcome under Lean's evaluator differs from the
+/// outcome it states, with both.
+fn evaluator_disagreements(evaluated: &BTreeMap<String, Json>, cases: &[Case]) -> Vec<String> {
+    cases
+        .iter()
+        .filter_map(|case| {
+            let stated = serde_json::to_value(&case.fixture.expected).expect("outcome");
+            let observed = evaluated.get(&case.fixture.name);
+            (observed != Some(&stated)).then(|| {
+                format!(
+                    "{}: Lean evaluates {observed:?}, the fixture states {stated}",
+                    case.fixture.name
+                )
+            })
+        })
+        .collect()
 }
 
 /// Prints a denotation outcome in the fixtures' exact JSON form.
@@ -321,48 +471,125 @@ fn mutate_insert(program: &Program, entry: usize) -> Program {
     out
 }
 
+/// The rustc the toolchain file pins (`RUSTC-1-97-1`).
+const RUSTC_VERSION: &str = "rustc 1.97.1 (8bab26f4f 2026-07-14)";
+
 fn rustc() -> String {
     std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_owned())
 }
 
-/// Compile a rendered harness with rustc and return what it prints.
-fn run_rust(source: &str, dir: &Path, name: &str) -> String {
-    let file = dir.join(format!("{name}.rs"));
-    let binary = dir.join(format!("{name}{}", std::env::consts::EXE_SUFFIX));
-    std::fs::write(&file, source).expect("rendered source");
-    let compiled = std::process::Command::new(rustc())
-        .args([
-            "--edition",
-            "2021",
-            "-D",
-            "warnings",
-            "-C",
-            "opt-level=0",
-            "--crate-name",
-            "fixture",
-            "-o",
-        ])
-        .arg(&binary)
-        .arg(&file)
+fn rustc_version() -> String {
+    let output = std::process::Command::new(rustc())
+        .arg("--version")
         .output()
         .expect("rustc runs");
-    assert!(
-        compiled.status.success(),
-        "{name}: rustc rejects the rendering:\n{}",
-        String::from_utf8_lossy(&compiled.stderr)
+    String::from_utf8(output.stdout)
+        .expect("utf8")
+        .trim()
+        .to_owned()
+}
+
+/// A rendered fixture: its library crate, its harness, and what the
+/// denotation says it prints and how many steps it takes.
+#[derive(Clone)]
+struct Job {
+    name: String,
+    library: String,
+    harness: String,
+    observed: Json,
+    steps: u64,
+}
+
+/// Compile a job's library crate and harness with warnings denied, run the
+/// harness, and return the value it prints and the work it counted.
+fn run_rust(job: &Job, dir: &Path) -> (Json, u64) {
+    let library = dir.join(format!("{}_library.rs", job.name));
+    let rlib = dir.join(format!("lib{}.rlib", job.name));
+    let harness = dir.join(format!("{}_main.rs", job.name));
+    let binary = dir.join(format!("{}{}", job.name, std::env::consts::EXE_SUFFIX));
+    std::fs::write(&library, &job.library).expect("library source");
+    std::fs::write(&harness, &job.harness).expect("harness source");
+    let compile = |arguments: &[&std::ffi::OsStr], what: &str| {
+        let compiled = std::process::Command::new(rustc())
+            .args(["--edition", "2021", "-D", "warnings", "-C", "opt-level=0"])
+            .args(arguments)
+            .output()
+            .expect("rustc runs");
+        assert!(
+            compiled.status.success(),
+            "{}: rustc rejects the {what}:\n{}",
+            job.name,
+            String::from_utf8_lossy(&compiled.stderr)
+        );
+    };
+    compile(
+        &[
+            "--crate-type".as_ref(),
+            "rlib".as_ref(),
+            "--crate-name".as_ref(),
+            "program".as_ref(),
+            "-o".as_ref(),
+            rlib.as_os_str(),
+            library.as_os_str(),
+        ],
+        "library",
+    );
+    let extern_program = format!("program={}", rlib.display());
+    compile(
+        &[
+            "--crate-name".as_ref(),
+            "harness".as_ref(),
+            "--extern".as_ref(),
+            extern_program.as_ref(),
+            "-o".as_ref(),
+            binary.as_os_str(),
+            harness.as_os_str(),
+        ],
+        "harness",
     );
     let ran = std::process::Command::new(&binary)
         .output()
         .expect("the rendered program runs");
     assert!(
         ran.status.success(),
-        "{name}: the rendered program fails:\n{}",
+        "{}: the rendered program fails:\n{}",
+        job.name,
         String::from_utf8_lossy(&ran.stderr)
     );
-    String::from_utf8(ran.stdout)
-        .expect("utf8")
-        .trim_end()
-        .to_owned()
+    let stdout = String::from_utf8(ran.stdout).expect("utf8");
+    let mut lines = stdout.lines();
+    let printed = lines.next().expect("the outcome line");
+    let work = lines
+        .next()
+        .and_then(|line| line.strip_prefix("work "))
+        .and_then(|count| count.parse().ok())
+        .unwrap_or_else(|| panic!("{}: no work line in {stdout}", job.name));
+    (
+        serde_json::from_str(printed)
+            .unwrap_or_else(|error| panic!("{}: {error}: {printed}", job.name)),
+        work,
+    )
+}
+
+/// Run every job, eight at a time.
+fn run_jobs(jobs: &[Job], dir: &Path) -> BTreeMap<String, (Json, u64)> {
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = jobs
+            .chunks(jobs.len().div_ceil(8).max(1))
+            .map(|chunk| {
+                scope.spawn(move || {
+                    chunk
+                        .iter()
+                        .map(|job| (job.name.clone(), run_rust(job, dir)))
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .flat_map(|handle| handle.join().expect("thread"))
+            .collect()
+    })
 }
 
 /// Whether a value holds a closure, which Rust does not observe.
@@ -446,6 +673,43 @@ pub fn run(id: &str) {
                 renamed * 2 > all.len(),
                 "most fixtures bind locals, so renaming is exercised ({renamed})"
             );
+            // Schemas are self-contained, so the fixture schema carries the
+            // program schema's definitions; they may not drift apart.
+            assert_eq!(
+                fixture_schema["$defs"], program_schema["$defs"],
+                "the fixture and program schemas define the calculus identically"
+            );
+            // The schemas refuse what the closed form refuses.
+            let (_, _, sample) = &all[0];
+            let sample = serde_json::to_value(sample).expect("fixture");
+            for (what, edit) in [
+                (
+                    "an unknown expression kind",
+                    &(|json: &mut Json| {
+                        json["program"]["functions"][0]["body"] = json!({"kind": "loop"})
+                    }) as &dyn Fn(&mut Json),
+                ),
+                ("a missing step count", &|json: &mut Json| {
+                    json["expected"] = json!({"kind": "value", "value": {"kind": "unit"}})
+                }),
+                ("an unknown width", &|json: &mut Json| {
+                    json["program"]["functions"][0]["result"] =
+                        json!({"kind": "fixed", "width": "u128"})
+                }),
+                ("an extra member", &|json: &mut Json| {
+                    json["extra"] = json!(true)
+                }),
+                ("a negative fuel", &|json: &mut Json| {
+                    json["fuel"] = json!(-1)
+                }),
+            ] {
+                let mut json = sample.clone();
+                edit(&mut json);
+                assert!(
+                    !crate::schema::validate(&fixture_schema, &json).is_empty(),
+                    "the fixture schema accepts {what}"
+                );
+            }
             // A change that is not a renaming changes the identity.
             let program: Program =
                 serde_json::from_value(program_json("closures")).expect("program");
@@ -455,6 +719,22 @@ pub fn run(id: &str) {
                 operands: vec![Expr::Var { name: 0 }, Expr::Var { name: 1 }],
             };
             assert_ne!(swapped.id().expect("bound"), program.id().expect("bound"));
+            // An ill-typed program has neither a canonical form nor an
+            // identity.
+            let mut ill_typed = program.clone();
+            ill_typed.functions[2].body = Expr::Prim {
+                operation: target::Prim::IntNeg,
+                operands: vec![Expr::Var { name: 0 }],
+            };
+            for error in [
+                ill_typed
+                    .canonical()
+                    .map(|_| ())
+                    .expect_err("no canonical form"),
+                ill_typed.id().map(|_| ()).expect_err("no identity"),
+            ] {
+                assert!(error.contains("primitive IntNeg"), "{error}");
+            }
             // Identity is the SHA-256 of the canonical bytes.
             assert_eq!(
                 program.id().expect("bound"),
@@ -664,7 +944,7 @@ pub fn run(id: &str) {
             );
             // A valid program loads and renders; an invalid one does neither.
             let valid = target::load(&bytes(&base)).expect("loads");
-            assert!(target::render(&valid)
+            assert!(target::render(&valid, rust::Profile::Std)
                 .expect("renders")
                 .starts_with("#![forbid(unsafe_code)]"));
             let invalid: Program = serde_json::from_value({
@@ -673,7 +953,8 @@ pub fn run(id: &str) {
                 json
             })
             .expect("well formed");
-            let error = target::render(&invalid).expect_err("an invalid program has no rendering");
+            let error = target::render(&invalid, rust::Profile::Std)
+                .expect_err("an invalid program has no rendering");
             support::expect_code(&error, "LLB6005");
         }
         // §17.14: the denotation is a kernel-checked LexLean definition and
@@ -698,6 +979,22 @@ pub fn run(id: &str) {
                 // are its only failures.
                 assert_ne!(case.fixture.expected, Outcome::Stuck, "{id}");
             }
+            // The same on seeded random well-typed arguments at every fuel
+            // up to the stated one: build evidence for the progress
+            // property, not a proof of it.
+            // The interpreter recurses once per unit of fuel, so the sample
+            // runs on a stack sized for the largest stated fuel.
+            let sampled = cases.clone();
+            let runs = std::thread::Builder::new()
+                .stack_size(1 << 30)
+                .spawn(move || progress_runs(&sampled))
+                .expect("thread")
+                .join()
+                .expect("no fixture program is stuck");
+            assert!(
+                runs > 10_000,
+                "the progress property is sampled ({runs} runs)"
+            );
             assert!(
                 opaque > 0 && opaque < cases.len() / 4,
                 "kernel-opaque fixtures are the exception ({opaque})"
@@ -737,19 +1034,34 @@ pub fn run(id: &str) {
             let verified = support::verified_compiler();
             let evaluated = lean_evaluations(&verified.outcome.root, &cases);
             assert_eq!(evaluated.len(), cases.len());
-            for case in &cases {
-                let expected = serde_json::to_value(&case.fixture.expected).expect("outcome");
-                assert_eq!(
-                    evaluated[&case.fixture.name], expected,
-                    "{}: Lean's evaluator and the interpreter disagree",
-                    case.fixture.name
-                );
-            }
-            // The comparison detects a planted discrepancy.
-            let first = &cases[0];
-            let mut wrong = serde_json::to_value(&first.fixture.expected).expect("outcome");
-            wrong["steps"] = json!(9_999_999);
-            assert_ne!(evaluated[&first.fixture.name], wrong);
+            let disagreements = evaluator_disagreements(&evaluated, &cases);
+            assert!(
+                disagreements.is_empty(),
+                "Lean's evaluator and the interpreter disagree: {disagreements:#?}"
+            );
+            // The same comparison refuses an evaluator-only fixture whose
+            // stated outcome is one step off, as an interpreter that
+            // mischarged one primitive would state it.
+            let mut planted = cases.clone();
+            let opaque = planted
+                .iter_mut()
+                .find(|case| !fixtures::kernel_reducible(&case.fixture))
+                .expect("an evaluator-only fixture");
+            let name = opaque.fixture.name.clone();
+            opaque.fixture.expected = match &opaque.fixture.expected {
+                Outcome::Value { value, steps } => Outcome::Value {
+                    value: value.clone(),
+                    steps: steps + 1,
+                },
+                Outcome::Overflow { steps } => Outcome::Overflow { steps: steps + 1 },
+                other => panic!("{name} has no step count: {other:?}"),
+            };
+            let planted_disagreements = evaluator_disagreements(&evaluated, &planted);
+            assert_eq!(planted_disagreements.len(), 1, "{planted_disagreements:#?}");
+            assert!(
+                planted_disagreements[0].starts_with(&format!("{name}: ")),
+                "{planted_disagreements:#?}"
+            );
         }
         // §17.14: every library template realizes LexLean's own primitive.
         "TC-05" => {
@@ -835,6 +1147,25 @@ pub fn run(id: &str) {
                 .collect();
             assert!(runtime.len() > 100, "the registry has runtime rows");
             realization::check_table(&runtime).expect("the realization table");
+            // A construct requires heap allocation exactly when its
+            // realization does (§17.13, §17.14).
+            let disagreements: Vec<String> = registry["construct"]
+                .as_array()
+                .expect("constructs")
+                .iter()
+                .filter(|row| row["disposition"].as_str() == Some("runtime"))
+                .filter_map(|row| {
+                    let key = row["key"].as_str().expect("key");
+                    let registered = row["allocation"].as_bool().expect("allocation");
+                    let realized = realization::construct_allocates(key).expect("realization");
+                    (registered != realized)
+                        .then(|| format!("{key}: registry {registered}, realization {realized}"))
+                })
+                .collect();
+            assert!(
+                disagreements.is_empty(),
+                "allocation disagreements: {disagreements:#?}"
+            );
             // A dropped row and an unknown reference are both caught.
             let mut short = runtime.clone();
             short.insert("term.invented".to_owned());
@@ -875,120 +1206,215 @@ pub fn run(id: &str) {
                 missing.is_empty(),
                 "calculus elements no fixture exercises: {missing:?}"
             );
-            for kind in target::IntKind::ALL {
-                assert!(
-                    fixtures::cases().iter().any(|case| serde_json::to_string(
-                        &case.fixture.program
-                    )
-                    .expect("json")
-                    .contains(&format!("\"width\":\"{}\"", kind.name()))),
-                    "fixed width {} is exercised",
-                    kind.name()
-                );
+            // Every fixed-width primitive at every width it admits, read from
+            // the fixtures' typed programs.
+            let mut pairs = BTreeSet::new();
+            for case in fixtures::cases() {
+                pairs.extend(realization::fixed_uses(&case.fixture.program).expect("well typed"));
             }
+            let missing: Vec<_> = realization::fixed_pairs()
+                .difference(&pairs)
+                .cloned()
+                .collect();
+            assert!(
+                missing.is_empty(),
+                "(primitive, width) pairs no fixture exercises: {missing:?}"
+            );
+            assert!(
+                pairs.is_subset(&realization::fixed_pairs()),
+                "a fixture applies a primitive at a width the calculus does not admit"
+            );
         }
-        // §17.14: the Rust profile reproduces every observable outcome, and
-        // a planted renderer discrepancy is detected.
+        // §17.14: both Rust profiles reproduce every observable outcome
+        // within the denotation's step count, `rust-core` exactly when the
+        // program needs no heap, and planted renderer discrepancies are
+        // detected.
         "TC-07" => {
+            let version = rustc_version();
+            assert!(
+                version.starts_with(RUSTC_VERSION),
+                "the pinned rustc is the oracle (RUSTC-1-97-1), found {version}"
+            );
             let cases = fixtures::cases();
             let dir = tempfile::Builder::new()
                 .prefix("lexlean-calculus-rust-")
                 .tempdir()
                 .expect("tempdir");
-            let mut rendered = Vec::new();
+            let mut jobs: Vec<Job> = Vec::new();
+            let mut unobservable = BTreeSet::new();
+            let mut core = 0;
             for case in &cases {
                 let fixture = &case.fixture;
-                let observed = match &fixture.expected {
-                    Outcome::Value { value, .. } if observable(value) => {
-                        rust::observable(&fixture.expected)
+                let allocates = realization::program_allocates(&fixture.program);
+                for profile in rust::Profile::ALL {
+                    let library = match rust::render(&fixture.program, profile) {
+                        Ok(library) => library,
+                        Err(reason) => {
+                            assert_eq!(profile, rust::Profile::Core, "{}: {reason}", fixture.name);
+                            assert!(
+                                reason.contains(
+                                    "requires heap allocation, which rust-core does not provide"
+                                ),
+                                "{}: {reason}",
+                                fixture.name
+                            );
+                            assert!(
+                                allocates,
+                                "{}: rust-core refuses a program that needs no heap: {reason}",
+                                fixture.name
+                            );
+                            continue;
+                        }
+                    };
+                    let header = match profile {
+                        rust::Profile::Core => {
+                            assert!(
+                                !allocates,
+                                "{}: rust-core renders a program that needs the heap",
+                                fixture.name
+                            );
+                            core += 1;
+                            for heap in ["std::", "alloc", "extern crate", "Vec", "String", "Rc"] {
+                                assert!(!library.contains(heap), "{}: {heap}", fixture.name);
+                            }
+                            "#![no_std]\n#![forbid(unsafe_code)]\n"
+                        }
+                        rust::Profile::Std => "#![forbid(unsafe_code)]\n",
+                    };
+                    assert!(library.starts_with(header), "{}", fixture.name);
+                    for forbidden in [
+                        "unsafe {",
+                        "unreachable!",
+                        "panic!",
+                        "#![allow",
+                        "#[allow",
+                        "Box",
+                        ".to_vec(",
+                        ".insert(",
+                    ] {
+                        assert!(
+                            !library.contains(forbidden),
+                            "{}: the rendering contains `{forbidden}`",
+                            fixture.name
+                        );
                     }
-                    Outcome::Overflow { .. } => rust::observable(&fixture.expected),
-                    _ => None,
-                };
-                let Some(observed) = observed else { continue };
-                let source =
-                    rust::render_harness(&fixture.program, fixture.entry, &fixture.arguments)
-                        .unwrap_or_else(|reason| panic!("{}: {reason}", fixture.name));
+                    let steps = match &fixture.expected {
+                        Outcome::Value { value, steps } if observable(value) => *steps,
+                        Outcome::Overflow { steps } => *steps,
+                        _ => {
+                            unobservable.insert(fixture.name.clone());
+                            continue;
+                        }
+                    };
+                    let harness = rust::render_harness(
+                        &fixture.program,
+                        profile,
+                        fixture.entry,
+                        &fixture.arguments,
+                    )
+                    .unwrap_or_else(|reason| panic!("{}: {reason}", fixture.name));
+                    jobs.push(Job {
+                        name: format!(
+                            "{}_{}",
+                            crate::calculus::identifier(&fixture.name),
+                            profile.target().replace('-', "_")
+                        ),
+                        library,
+                        harness,
+                        observed: rust::observable(&fixture.expected).expect("observable"),
+                        steps,
+                    });
+                }
+            }
+            // Only a closure-valued, exhausted, or stuck outcome escapes Rust.
+            for name in &unobservable {
+                let case = cases
+                    .iter()
+                    .find(|case| &case.fixture.name == name)
+                    .expect("case");
                 assert!(
-                    source.starts_with("#![forbid(unsafe_code)]"),
-                    "{}",
-                    fixture.name
+                    match &case.fixture.expected {
+                        Outcome::Value { value, .. } => !observable(value),
+                        Outcome::Overflow { .. } => false,
+                        Outcome::Stuck | Outcome::Exhausted => true,
+                    },
+                    "{name} is observable"
                 );
-                assert!(
-                    !source.contains("unsafe {")
-                        && !source.contains("unreachable!")
-                        && !source.contains("panic!"),
-                    "{}",
-                    fixture.name
-                );
-                rendered.push((fixture.name.clone(), source, observed));
             }
             assert!(
-                rendered.len() + 3 >= cases.len(),
-                "only closure-valued and exhausted fixtures are unobservable in Rust"
+                core >= 10 && core < cases.len(),
+                "rust-core renders the fixtures without heap values and only those ({core})"
             );
-            let outputs: Vec<(String, String)> = std::thread::scope(|scope| {
-                let handles: Vec<_> = rendered
-                    .chunks(rendered.len().div_ceil(8))
-                    .map(|chunk| {
-                        let dir = dir.path();
-                        scope.spawn(move || {
-                            chunk
-                                .iter()
-                                .map(|(name, source, _)| {
-                                    (
-                                        name.clone(),
-                                        run_rust(source, dir, &crate::calculus::identifier(name)),
-                                    )
-                                })
-                                .collect::<Vec<_>>()
-                        })
-                    })
-                    .collect();
-                handles
-                    .into_iter()
-                    .flat_map(|handle| handle.join().expect("thread"))
-                    .collect()
-            });
-            let by_name: BTreeMap<String, String> = outputs.into_iter().collect();
-            for (name, _, observed) in &rendered {
-                let printed: Json = serde_json::from_str(&by_name[name])
-                    .unwrap_or_else(|error| panic!("{name}: {error}: {}", by_name[name]));
+            let outputs = run_jobs(&jobs, dir.path());
+            for job in &jobs {
+                let (printed, work) = &outputs[&job.name];
                 assert_eq!(
-                    &printed, observed,
-                    "{name}: the Rust rendering and the denotation disagree"
+                    printed, &job.observed,
+                    "{}: the Rust rendering and the denotation disagree",
+                    job.name
+                );
+                assert!(
+                    *work <= job.steps,
+                    "{}: the rendering worked {work} units for {} steps",
+                    job.name,
+                    job.steps
                 );
             }
-            // Planted renderer discrepancies: a wrapping addition and a
-            // Euclidean quotient each change an observable outcome.
-            for (name, from, to) in [
+            // Planted discrepancies: a wrapping addition and a Euclidean
+            // quotient each change an observable outcome; an append that
+            // copies its right operand per element keeps the value and
+            // breaks the work bound.
+            let plants = [
                 (
-                    "nat-overflow-add",
+                    "natOverflowAdd_rust_core",
                     "a.checked_add(b).ok_or(Overflow)",
                     "Ok(a.wrapping_add(b))",
+                    false,
                 ),
                 (
-                    "int-arithmetic",
+                    "intArithmetic_rust_std",
                     "a.checked_div(b).ok_or(Overflow)",
                     "a.checked_div_euclid(b).ok_or(Overflow)",
+                    false,
                 ),
-            ] {
-                let (_, source, observed) = rendered
-                    .iter()
-                    .find(|(candidate, _, _)| candidate == name)
-                    .expect("rendered");
-                assert!(source.contains(from), "{name}: the plant site exists");
-                let planted = source.replacen(from, to, 1);
-                let printed: Json = serde_json::from_str(&run_rust(
-                    &planted,
-                    dir.path(),
-                    &format!("planted_{}", crate::calculus::identifier(name)),
-                ))
-                .expect("json");
-                assert_ne!(
-                    &printed, observed,
-                    "{name}: the planted discrepancy is detected"
-                );
+                (
+                    "listAppendLong_rust_std",
+                    "pub fn append_list<T: Clone>(a: List<T>, b: List<T>) -> R<List<T>> { Ok(List::onto(a.items(), b)) }",
+                    "pub fn append_list<T: Clone>(a: List<T>, b: List<T>) -> R<List<T>> { let mut out = b; for item in a.items().into_iter().rev() { tick(1); out = List::cons(item, List::onto(out.items(), List::nil())); } Ok(out) }",
+                    true,
+                ),
+            ];
+            let planted: Vec<Job> = plants
+                .iter()
+                .map(|(name, from, to, _)| {
+                    let job = jobs
+                        .iter()
+                        .find(|job| job.name == *name)
+                        .unwrap_or_else(|| panic!("{name} is rendered"));
+                    assert!(job.library.contains(from), "{name}: the plant site exists");
+                    Job {
+                        name: format!("planted_{name}"),
+                        library: job.library.replacen(from, to, 1),
+                        ..job.clone()
+                    }
+                })
+                .collect();
+            let planted_outputs = run_jobs(&planted, dir.path());
+            for ((name, _, _, work_only), job) in plants.iter().zip(&planted) {
+                let (printed, work) = &planted_outputs[&job.name];
+                if *work_only {
+                    assert_eq!(printed, &job.observed, "{name}: the plant keeps the value");
+                    assert!(
+                        *work > job.steps,
+                        "{name}: the quadratic append is detected ({work} units, {} steps)",
+                        job.steps
+                    );
+                } else {
+                    assert_ne!(
+                        printed, &job.observed,
+                        "{name}: the planted discrepancy is detected"
+                    );
+                }
             }
         }
         other => panic!("no calculus case is wired for {other}"),

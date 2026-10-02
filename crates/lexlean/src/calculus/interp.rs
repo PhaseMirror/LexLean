@@ -29,7 +29,8 @@ pub enum Rv {
     Closure(u64, Vec<Rv>),
 }
 
-/// A runtime outcome; steps count evaluated nodes exactly as the denotation.
+/// A runtime outcome; steps are charged exactly as the denotation charges
+/// them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Out {
     Value(Rv, u64),
@@ -48,6 +49,42 @@ enum Outs {
 fn add_steps(outcome: Out, extra: u64) -> Out {
     match outcome {
         Out::Value(value, steps) => Out::Value(value, steps + extra),
+        Out::Overflow(steps) => Out::Overflow(steps + extra),
+        other => other,
+    }
+}
+
+/// `weight`: one per node, and a string's characters or a byte string's
+/// bytes.
+fn weight(value: &Rv) -> u64 {
+    match value {
+        Rv::Str(text) => 1 + text.chars().count() as u64,
+        Rv::Bytes(octets) => 1 + octets.len() as u64,
+        Rv::Some(inner) | Rv::Ok(inner) | Rv::Err(inner) => 1 + weight(inner),
+        Rv::List(items) | Rv::Adt(_, items) | Rv::Closure(_, items) => 1 + weights(items),
+        Rv::Pair(left, right) => 1 + weight(left) + weight(right),
+        Rv::Unit
+        | Rv::Bool(_)
+        | Rv::Nat(_)
+        | Rv::Int(_)
+        | Rv::Fixed(..)
+        | Rv::Ord(_)
+        | Rv::None => 1,
+    }
+}
+
+fn weights(values: &[Rv]) -> u64 {
+    values.iter().map(weight).sum()
+}
+
+/// `chargeResult`: a primitive's outcome charged `extra` steps and its
+/// value's weight.
+fn charge_result(outcome: Out, extra: u64) -> Out {
+    match outcome {
+        Out::Value(value, steps) => {
+            let charged = steps + extra + weight(&value);
+            Out::Value(value, charged)
+        }
         Out::Overflow(steps) => Out::Overflow(steps + extra),
         other => other,
     }
@@ -134,7 +171,12 @@ fn primitive(operation: &Prim, values: &[Rv]) -> Out {
         }
         (Prim::CheckedAdd, [Fixed(k, a), Fixed(l, b)]) if k == l => option(fixed_value(*k, a + b)),
         (Prim::CheckedSub, [Fixed(k, a), Fixed(l, b)]) if k == l => option(fixed_value(*k, a - b)),
-        (Prim::CheckedMul, [Fixed(k, a), Fixed(l, b)]) if k == l => option(fixed_value(*k, a * b)),
+        // Two 64-bit magnitudes can multiply past `i128`; such a product is
+        // outside every width.
+        (Prim::CheckedMul, [Fixed(k, a), Fixed(l, b)]) if k == l => option(
+            a.checked_mul(*b)
+                .and_then(|product| fixed_value(*k, product)),
+        ),
         (Prim::CheckedQuot, [Fixed(k, a), Fixed(l, b)]) if k == l => option(if *b == 0 {
             None
         } else {
@@ -341,11 +383,14 @@ fn construct(shape: Shape, values: Vec<Rv>) -> Out {
 
 type Env = Vec<(u64, Rv)>;
 
-fn lookup(env: &Env, name: u64) -> Option<Rv> {
+/// The innermost binding of `name` and the number of bindings examined
+/// before it (`depth`).
+fn lookup(env: &Env, name: u64) -> Option<(Rv, u64)> {
     env.iter()
         .rev()
-        .find(|(bound, _)| *bound == name)
-        .map(|(_, value)| value.clone())
+        .enumerate()
+        .find(|(_, (bound, _))| *bound == name)
+        .map(|(depth, (_, value))| (value.clone(), depth as u64))
 }
 
 fn bind_all(names: &[u64], values: Vec<Rv>, env: &Env) -> Option<Env> {
@@ -401,7 +446,7 @@ impl Interp<'_> {
                 to_runtime(value).map_or(Out::Stuck, |value| Out::Value(value, 1))
             }
             Expr::Var { name } => {
-                lookup(env, *name).map_or(Out::Stuck, |value| Out::Value(value, 1))
+                lookup(env, *name).map_or(Out::Stuck, |(value, depth)| Out::Value(value, 1 + depth))
             }
             Expr::Let {
                 name, bound, body, ..
@@ -452,9 +497,10 @@ impl Interp<'_> {
                     Self::propagate_list(
                         self.eval_list(remaining, env, operands),
                         |values, steps| {
+                            let passed = captured.len() as u64;
                             let mut all = captured;
                             all.extend(values);
-                            self.call(remaining, function, all, target_steps + steps + 1)
+                            self.call(remaining, function, all, target_steps + steps + 1 + passed)
                         },
                     )
                 })
@@ -463,7 +509,7 @@ impl Interp<'_> {
                 operation,
                 operands,
             } => Self::propagate_list(self.eval_list(remaining, env, operands), |values, steps| {
-                add_steps(primitive(operation, &values), steps + 1)
+                charge_result(primitive(operation, &values), steps + 1 + weights(&values))
             }),
             Expr::First { value } => Self::propagate(
                 self.eval(remaining, env, value),
@@ -486,7 +532,7 @@ impl Interp<'_> {
                         .ok()
                         .and_then(|position| fields.get(position))
                         .map_or(Out::Stuck, |selected| {
-                            Out::Value(selected.clone(), steps + 1)
+                            Out::Value(selected.clone(), steps + 1 + index)
                         }),
                     _ => Out::Stuck,
                 },
@@ -523,11 +569,12 @@ impl Interp<'_> {
         let Some((arm, rest)) = arms.split_first() else {
             return Out::Stuck;
         };
+        // Each arm tried is one step.
         match destruct(arm.shape, value) {
-            None => self.eval_arms(remaining, env, value, rest),
+            None => add_steps(self.eval_arms(remaining, env, value, rest), 1),
             Some(fields) => match bind_all(&arm.binders, fields, env) {
                 None => Out::Stuck,
-                Some(extended) => self.eval(remaining, &extended, &arm.body),
+                Some(extended) => add_steps(self.eval(remaining, &extended, &arm.body), 1),
             },
         }
     }

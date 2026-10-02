@@ -2791,8 +2791,8 @@ Termination evidence is semantic data, never tactic or backend text; no
 6. **Runtime.** In language 1.2 every definition of the emitted portable
    runtime is exposed (`@[expose, noinline]` where language 1.1 has
    `@[noinline]`), so a definition imported from another module reduces in
-   the kernel through the primitives it applies; compiled code is unchanged,
-   and the language-1.1 runtime text is frozen. A module that writes a
+   the kernel through the primitives it applies; `noinline` is kept, and the
+   language-1.1 runtime text is frozen. A module that writes a
    collection type or literal, or
    applies any collection primitive (including one applied only to a
    collection imported from another module), emits the fixed
@@ -2893,7 +2893,12 @@ and coexist with executable roots in the same module.
   `declaration.definition.recursive`, and `constructor.nat_succ`) with its
   `disposition` (`runtime`, `formal-only`, or `erased`), whether it requires
   `allocation`, the representations (`nat`, `int`) for which its result may
-  `overflow`, and whether it implies `recursion`.
+  `overflow`, and whether it implies `recursion`. A construct requires
+  allocation when its values live on the heap (strings, byte strings, lists,
+  maps, sets, a type that contains itself) or when it builds new heap
+  storage; reading, comparing, measuring, or folding storage that already
+  exists requires none, since the type of that storage already does. Each
+  runtime row's `allocation` equals its realization's (§17.14).
 
 The registry is language data: it is embedded and hashed into the
 language-1.2 compiler-semantics ID, so changing a disposition changes
@@ -3019,10 +3024,11 @@ closure literal is not. `lexlean::calculus::load` reads a program, checks
 every rule, and returns its canonical form; any malformed member or violated
 rule is `LLB6005`, and nothing is repaired or guessed.
 
-**Canonical form and identity.** The canonical form renames every local of a
-function to its first-binding order (parameters, then binders in evaluation
-order), so alpha-equivalent programs have byte-identical canonical JSON
-(§21.7). A program's identity is the SHA-256 of its canonical bytes.
+**Canonical form and identity.** The canonical form of a valid program renames
+every local of a function to its first-binding order (parameters, then
+binders in evaluation order), so alpha-equivalent programs have
+byte-identical canonical JSON (§21.7). A program's identity is the SHA-256 of
+its canonical bytes. An invalid program has neither.
 
 **Denotation.** `TargetSemantics.run fuel program entry arguments` binds the
 entry's parameters and evaluates its body by `eval`, structural recursion on
@@ -3032,15 +3038,33 @@ closure's captures before its operands. Every primitive is defined by
 reference to the language-1.2 primitive of the same meaning, so a value of
 the calculus means what LexLean says it means, and `compare` is LexLean's own
 map key order. The result is an `Outcome`: a value with its exact step count,
-`overflow` with its step count, `stuck`, or `exhausted`. One step is charged
-per evaluated node, call, and primitive, and nothing else runs: no hidden or
-free runtime operation exists outside this accounting. A primitive
-application is one step whatever the size of its operands; the count is the
-calculus's evaluation-step accounting, not a measure of machine work, and a
-claim about machine resources needs a machine contract of its own. A `nat` or `int`
-result outside its realization is `overflow`, never a wrapped or truncated
-value; a valid program is never `stuck`; `exhausted` reports only that the
-fuel bounded the evaluation and is not an observation of the program.
+`overflow` with its step count, `stuck`, or `exhausted`.
+
+**Cost.** The step count charges every operation the evaluator performs, so
+no runtime operation is free:
+
+- each evaluated node is one step, on top of the steps of its operands;
+- reading a local is one step more per binding the lookup examines before
+  it finds the local's;
+- a `match` is one step more per arm it tries, the taken arm included;
+- `apply` is one step more per capture it passes;
+- `field` is one step more per field it skips;
+- a primitive is one step more per unit of *weight* of its operands and of
+  its result. A value's weight is one per node, plus a string's characters
+  and a byte string's bytes, so every primitive whose work grows with its
+  operands (append, length, index, slice, encoding, decoding, comparison,
+  split, join, formatting, parsing) is charged in proportion.
+
+The charge is exact for the denotation: the reference interpreter charges
+the same, and the kernel confirms each kernel-reducible fixture's step count.
+It bounds the work of the Rust renderings below, each of which realizes every
+step with work at most its charge. A `nat` or `int` result outside its
+realization is `overflow`, never a wrapped or truncated value. The static
+rules are designed so that a valid program is never `stuck`; the conformance
+suite checks this on every fixture program at its stated arguments and at
+seeded random well-typed arguments under sampled fuels, which is build
+evidence, not a proof. `exhausted` reports only that the fuel bounded the
+evaluation and is not an observation of the program.
 
 **Realizations.** `lexlean::calculus::realization::TABLE` maps every construct
 whose production disposition (§17.13) is `runtime` to the calculus elements
@@ -3049,9 +3073,17 @@ registry's runtime rows are in bijection and that every reference exists. A
 map is its ascending entry list `List (Pair K V)`, a set its ascending element
 list, and a graph its map from node to successor set, exactly the
 representation of §17.12; every collection, fold, iteration, and graph
-primitive is a library template (`lexlean::calculus::library`) that
-transcribes the `LexLeanCollections` definition clause for clause over
-`compare`, instantiated monomorphically. Lean's `&&` and `||` do not evaluate
+primitive is a library template (`lexlean::calculus::library`) written as a
+transcription of the `LexLeanCollections` definition over `compare`,
+instantiated monomorphically. Agreement with LexLean is checked pointwise:
+each template's fixtures state, and the kernel decides, that its outcome
+equals LexLean's own primitive on that input, which is evidence on those
+inputs, not a proof for all inputs. A construct requires allocation exactly
+when its realization does: its values are strings, byte strings, lists, or a
+type that holds itself behind a heap handle (`indirection`), or it builds
+such a value; reading, comparing, measuring, or folding existing storage
+allocates nothing. The conformance suite checks every runtime row's
+`allocation` against its realization. Lean's `&&` and `||` do not evaluate
 a decided right operand, so they are realized by `cond`. A type parameter is
 realized by its closed type argument (§17.13).
 
@@ -3059,48 +3091,75 @@ realized by its closed type argument (§17.13).
 (`lexlean/target-fixture/1`, `schemas/target-fixture.schema.json`) each name a
 program, an entry, arguments, fuel, and the expected outcome computed by the
 reference interpreter, a step-for-step transcription of `eval`. Together they
-use every type, literal, expression, shape, primitive, fixed width, and
-template. The generated module `TargetFixtures` (`cargo xtask check-calculus`
+use every type, literal, expression, shape, primitive, and template, and
+every fixed-width primitive at every width it admits. The generated module `TargetFixtures` (`cargo xtask check-calculus`
 compares it and every fixture with its generator byte for byte) defines each
 fixture's evaluation and states:
 
-1. for every fixture whose primitives the kernel reduces, that the
-   evaluation reduces to the expected outcome, steps included; Lean's kernel
-   decides it by `rfl`. The kernel cannot reduce, from a module file under
-   pinned Lean, `split_exact` and `parse_decimal` (`String.splitOn` and
-   `String.toInt?` recurse well-foundedly), `compare_bytes` and byte
-   equality (`ByteArray.toList` and `ByteArray` equality likewise),
-   `utf8_encode`, `join`, and `format_decimal`; fixtures applying them are
-   decided by Lean's evaluator instead;
+1. for every fixture whose primitives a `reflexivity` proof can reduce, that
+   the evaluation reduces to the expected outcome, steps included, which
+   Lean checks by `rfl`. Lean's elaborator checks such a proof by
+   definitional unfolding before the kernel sees it, and from a module file
+   under pinned Lean it does not unfold what `split_exact`, `parse_decimal`
+   (`String.splitOn`, `String.toInt?`), `compare_bytes`
+   (`ByteArray.toList`), `utf8_encode`, `join`, and `format_decimal` reach,
+   which recurse well-foundedly or are not exposed. LexLean's proof
+   language has no kernel-only decision, so fixtures applying them are
+   decided by Lean's evaluator instead; byte equality is decided by the
+   kernel;
 2. for every library fixture, that the realization's outcome equals the
    value LexLean's own collection primitive computes on the same input,
    decided by the kernel.
 
-Lean's evaluator, running the verified modules, reproduces every fixture's
-outcome, steps included. A wrong expected outcome or a mutated template is
-rejected by Lean.
+Lean's evaluator, running the published generated sources compiled again by
+the same pinned Lean (the published oleans carry no compiled code),
+reproduces every fixture's outcome, steps included. A wrong expected outcome
+or a mutated template is rejected by Lean, and an evaluator-only fixture
+stated one step off is refused.
 
-**Rust profile.** The reference rendering (`lexlean::calculus::rust`) realizes
-the `rust-std` target of §17.13 as one safe Rust 2021 source file under
-`#![forbid(unsafe_code)]` using only the standard library: `nat` is `u64` and `int` is `i64`, each operation checked
-and every out-of-range result the explicit `Err(Overflow)` propagated by `?`;
-the fixed widths are the native integer types with `checked_*` operations;
-lists are `Vec`, strings `String`, bytes `Vec<u8>`, orderings
-`std::cmp::Ordering`; ADTs are enums with boxed fields; function values are
-defunctionalized into one enum per function type, and values are cloned on
-use, so ownership never changes an observable value. Calls are Rust calls
-with no tail-call or stack-depth guarantee, evaluation is single-threaded
-and sequential, the functions form no stable ABI, and heap exhaustion aborts
-the process. Observable behavior is the printed value or `overflow`; steps
-and fuel are not observable. The claim covers exactly programs of this
-calculus rendered this way: no other Rust construct (unsafe code, foreign
-functions, threads, asynchronous code, floating point, interior
-mutability, input and output beyond the harness) is within it. Every fixture
-with an observable outcome is rendered, compiled by `rustc` with warnings
-denied, and run; its output must equal the denotation's, and a planted
-renderer discrepancy must be detected. This is `build` evidence for the
-rendering, not a proof of it; preservation of meaning from LexLean through
-the calculus to Rust is a separate obligation.
+**Rust profiles.** The reference renderings (`lexlean::calculus::rust`)
+realize the two machine profiles of §17.13, each as one safe Rust 2021
+library crate under `#![forbid(unsafe_code)]` that declares no lint
+exception:
+
+- `rust-core` is `#![no_std]` and declares no `extern crate`, so neither
+  `alloc` nor `std` is linked and nothing is allocated. It renders exactly
+  the programs that need no heap: a program whose realization requires
+  allocation (a string, a byte string, a list, or a type that holds itself)
+  is refused with the reason, never approximated.
+- `rust-std` uses the standard library. A string and a byte string are
+  immutable shared buffers (`Rc<str>`, `Rc<[u8]>`), a list is a persistent
+  list of shared cells, so building and taking apart a cell is constant
+  work, and an ADT field or a closure capture whose type holds its owner is
+  boxed behind `Rc`, and nothing else is.
+
+In both, `nat` is `u64` and `int` is `i64`, each operation checked and every
+out-of-range result the explicit `Err(Overflow)` propagated by `?`; the
+fixed widths are the native integer types with `checked_*` operations;
+orderings are `core::cmp::Ordering`; ADTs are enums; function values are
+defunctionalized into one enum per function type; and using a local clones a
+handle or a value of fixed size, never a structure, so ownership never
+changes an observable value and no step does hidden work. Every loop of the
+runtime counts its iterations and every bulk copy counts its length in a
+work counter, and on every fixture with an observable outcome the count
+never exceeds the denotation's steps; the release of a list, whose cells were each counted when built, is
+not counted again. Calls are Rust calls with no tail-call or stack-depth
+guarantee, evaluation is single-threaded and sequential, the functions form
+no stable ABI, and heap exhaustion aborts the process. Observable behavior is
+the printed value or `overflow`; steps, fuel, and the work count are not
+observable. The claim covers exactly programs of this calculus rendered this
+way: no other Rust construct (unsafe code, foreign functions, threads,
+asynchronous code, floating point, interior mutability, input and output
+beyond the harness) is within it. Every fixture's rendering in each profile
+that admits it is committed under `compiler/rust/<target>/` and compared with
+the renderer by `cargo xtask check-calculus`. Every fixture with an
+observable outcome is rendered, compiled by the pinned `rustc` 1.97.1
+(`RUSTC-1-97-1`, an authority this repository cites) with warnings denied,
+linked with a harness, and run; its output must equal the denotation's, its
+work count must not exceed the steps, and planted value and work
+discrepancies must be detected. This is `build` evidence for the renderings,
+not a proof of them; preservation of meaning from LexLean through the
+calculus to Rust is a separate obligation.
 
 ## 18. Lean backend
 
@@ -4474,7 +4533,7 @@ Rows sort by code. Unknown fields, duplicate codes, invalid class/exit combinati
 | `LLR3001`–`LLR3999` | lexicon packages, references, imports, and resolution |
 | `LLT4001`–`LLT4999` | conservative elaboration, signatures, and linking |
 | `LLF5001`–`LLF5999` | definitions and structured proofs |
-| `LLB6001`–`LLB6999` | Lean/LaTeX/PDF lowering and artifact construction |
+| `LLB6001`–`LLB6999` | Lean/LaTeX/PDF lowering, target realization, and artifact construction |
 | `LLV7001`–`LLV7999` | toolchain, Lean, replay, audit, and verification |
 | `LLS8001`–`LLS8999` | filesystem security, networking, child policy, and limits |
 | `LLI9001`–`LLI9999` | internal invariants |
@@ -5370,13 +5429,13 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `NE-04` | `extraction` | Every constant the extraction adapter uses is registered exactly once, as a call with its exact signature and pinned source identity, a type with its exact constructors, or plumbing; each extraction compares every signature structurally and the adapter's constants with the registry under pinned Lean, the adapter runs no LCNF pass, and drift of a signature, a constructor list, the adapter's constants, its output, or the Lean identity fails with LLV7012. | §22.10, §26.3 |
 | `NE-05` | `extraction` | A dependency dropped from Lean's extracted facts or from the production-eligibility closure fails extraction with LLV7011 before any compiler input is published. | §22.10, §26.3 |
 | `NE-06` | `extraction` | A proof-only dependency presented as a runtime closure member fails extraction with LLV7011 before any compiler input is published. | §22.10, §26.3 |
-| `TC-01` | `calculus` | Hand-constructed target programs have canonical bytes and a SHA-256 content identity, alpha-equivalent programs canonicalize to identical bytes and identity, and every committed fixture validates against the target schemas. | §17.14, §21.7 |
+| `TC-01` | `calculus` | Hand-constructed target programs have canonical bytes and a SHA-256 content identity, alpha-equivalent programs canonicalize to identical bytes and identity, an ill-typed program has neither, and every committed fixture validates against the target schemas. | §17.14, §21.7 |
 | `TC-02` | `calculus` | Every malformed target program or violated static rule fails closed with LLB6005, and an invalid program has neither a canonical form nor a rendering. | §17.14, §26.3 |
-| `TC-03` | `calculus` | The calculus denotation is a kernel-checked LexLean definition, Lean's kernel reduces every kernel-reducible fixture to its expected outcome with its exact step count, no valid fixture is stuck, and a wrong expected outcome is rejected by Lean. | §17.14 |
-| `TC-04` | `calculus` | Lean's evaluator, running the verified calculus modules, reproduces every fixture's expected outcome and step count, including fixtures whose primitives the kernel cannot reduce. | §17.14 |
+| `TC-03` | `calculus` | The calculus denotation is a kernel-checked LexLean definition that charges every evaluator operation, Lean's kernel reduces every kernel-reducible fixture to its expected outcome with its exact step count, no fixture program is stuck on its stated arguments or on seeded random well-typed arguments at any sampled fuel, and a wrong expected outcome is rejected by Lean. | §17.14 |
+| `TC-04` | `calculus` | Lean's evaluator, running the published calculus sources compiled again by pinned Lean, reproduces every fixture's expected outcome and step count, including fixtures a reflexivity proof cannot decide, and the comparison refuses a fixture stated one step off. | §17.14 |
 | `TC-05` | `calculus` | Every realization library template has a fixture whose outcome the kernel proves equal to the value LexLean's own collection primitive computes, committed instances equal their templates, and a mutated template is rejected by Lean. | §17.12, §17.14 |
-| `TC-06` | `calculus` | Every runtime construct of the production registry has exactly one realization row naming existing calculus elements, and the fixtures exercise every calculus type, literal, expression, shape, primitive, fixed width, and template. | §17.13, §17.14 |
-| `TC-07` | `calculus` | Every fixture with an observable outcome renders to safe Rust that rustc compiles with warnings denied and that prints exactly the denotation's value or overflow, and a planted renderer discrepancy is detected. | §17.14 |
+| `TC-06` | `calculus` | Every runtime construct of the production registry has exactly one realization row naming existing calculus elements and requires allocation exactly when its realization does, and the fixtures exercise every calculus type, literal, expression, shape, primitive, and template, and every fixed-width primitive at every width it admits. | §17.13, §17.14 |
+| `TC-07` | `calculus` | Every fixture with an observable outcome renders to a safe Rust library crate in rust-std, and in rust-core exactly when it needs no heap, that the pinned rustc compiles with warnings denied, that prints exactly the denotation's value or overflow, and whose counted work never exceeds the denotation's steps; planted value and work discrepancies are detected. | §17.14 |
 
 **Total required capability IDs:** 263.
 

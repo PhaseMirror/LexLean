@@ -1492,7 +1492,7 @@ fn emit_declarations(
 /// definition exposed (§17.12). An unexposed definition's body is invisible
 /// to every other module under Lean's module system, so a definition
 /// imported from another module could not reduce through the primitives it
-/// applies; `noinline` is kept, so compiled code is unchanged.
+/// applies. `noinline` is kept on every definition that had it.
 fn portable_runtime_1_2() -> &'static str {
     static RUNTIME: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     RUNTIME.get_or_init(|| {
