@@ -23,7 +23,7 @@ How this repository's claims are checked, which recipe enforces which rule, and 
 Outside `vv`:
 
 - `just fixtures` (`cargo xtask check-fixtures`) runs every §28.2 fixture under `tests/fixtures/` and `tests/negative/` through the CLI entry point and compares exit code, canonical command result, diagnostics, artifact list, and platform-independent hashes with `expected/`. `just fixtures-write` is the only rewrite path.
-- `just calculus` (`cargo xtask check-calculus`) compares every committed target fixture under `compiler/fixtures/`, the generated `TargetFixtures` module, the calculus modules `TargetSyntax`, `TargetSemantics`, `TargetOracle`, and `Main`, the project configuration, and every fixture's Rust rendering under `compiler/rust/rust-core/` and `compiler/rust/rust-std/` with what the hand-written fixture set, the calculus's definition in `crates/conformance/src/calculus_source.rs`, and the renderer produce (§17.14); `just test` enforces the same comparison through `conformance_tc_03`. `just calculus-write` is the only rewrite path.
+- `just calculus` (`cargo xtask check-calculus`) compares every committed target fixture under `compiler/fixtures/`, the generated `TargetFixtures` module, the calculus modules `TargetSyntax`, `TargetSemantics`, `TargetOracle`, and `Main`, the project configuration, and every fixture's Rust package under `compiler/rust/rust-core/` and `compiler/rust/rust-std/` and every negative package manifest under `compiler/rust/negative/` with what the hand-written fixture set, the calculus's definition in `crates/conformance/src/calculus_source.rs`, and the renderer produce (§17.14); `just test` enforces the same comparison through `conformance_tc_03`. `just calculus-write` is the only rewrite path.
 - `just verify-write` (`cargo xtask verify-examples --write`) is the only path that rewrites `examples/*/expected/verify/`.
 - `just release` runs `vv` and then `cargo xtask release-check` (RP-12): every §30.3 artifact by content, the §30.4 completion criteria, and the crate-packaging round trip (`cargo package`, extract, offline build, `--version` equal to the in-repository binary). It is refused until 1.0.0.
 
@@ -928,6 +928,108 @@ is not definitionally equal to the right-hand side
 ```
 
 `compare_bytes` stays evaluator-only.
+
+### rust construct correspondence can fail
+
+Planted: the correspondence row of `call:runtime:nat_add` was deleted from
+`crates/lexlean/src/calculus/rust/validate.rs`. Command: `cargo test -p
+repo-conformance --test conformance -- conformance_rb_01`. Expected: every
+rendering that adds naturals emits a construct with no target-semantics
+correspondence.
+
+```text
+thread 'conformance_rb_01' (18572) panicked at crates/conformance/src/cases/rust_backend.rs:242:40:
+adt-evaluation (rust-std): the construct `call:runtime:nat_add` has no target-semantics correspondence
+```
+
+Removed: the row was restored; `conformance_rb_01` passes.
+
+### rust identifier collision can fail
+
+Planted: the package check admitted Rust keywords as exported names
+(`KEYWORDS.contains(&name) && name.is_empty()`). Command: `cargo test -p
+repo-conformance --test conformance -- conformance_rb_02`. Expected: the
+committed negative manifest exporting `match` is packaged.
+
+```text
+thread 'conformance_rb_02' (2095) panicked at crates/conformance/src/cases/rust_backend.rs:101:51:
+the manifest is refused: Package { files: {"Cargo.toml": [91, 112, 97, 99, 107, 97, 103, 101, 93, ...
+```
+
+Removed: the check was restored; `conformance_rb_02` passes.
+
+### rust ownership mismatch can fail
+
+Planted: the package check let an export copy a parameter of any type
+(`Passing::Copy => ...`). Command: `cargo test -p repo-conformance --test
+conformance -- conformance_rb_03`. Expected: the negative manifest copying
+a list parameter is packaged.
+
+```text
+thread 'conformance_rb_03' (2716) panicked at crates/conformance/src/cases/rust_backend.rs:101:51:
+the manifest is refused: Package { files: {"Cargo.toml": [91, 112, 97, 99, 107, 97, 103, 101, 93, ...
+```
+
+Removed: the check was restored; `conformance_rb_03` passes.
+
+### rust boundary type check can fail
+
+Planted: the package check never found a function value at an export's
+boundary. Command: `cargo test -p repo-conformance --test conformance --
+conformance_rb_04`. Expected: the negative manifest exporting a function
+that takes a closure is packaged.
+
+```text
+thread 'conformance_rb_04' (3358) panicked at crates/conformance/src/cases/rust_backend.rs:101:51:
+the manifest is refused: Package { files: {"Cargo.toml": [91, 112, 97, 99, 107, 97, 103, 101, 93, ...
+```
+
+Removed: the check was restored; `conformance_rb_04` passes.
+
+### rust declared failure check can fail
+
+Planted: the package check admitted an export declaring no errors for a
+function that can overflow. Command: `cargo test -p repo-conformance --test
+conformance -- conformance_rb_05`. Expected: the negative manifest
+`arithmetic-undeclared-overflow` is packaged.
+
+```text
+thread 'conformance_rb_05' (3997) panicked at crates/conformance/src/cases/rust_backend.rs:101:51:
+the manifest is refused: Package { files: {"Cargo.toml": [91, 112, 97, 99, 107, 97, 103, 101, 93, ...
+```
+
+Removed: the check was restored; `conformance_rb_05` passes.
+
+### rust package lint gate can fail
+
+Planted: the committed `compiler/rust/rust-std/nat-arithmetic/Cargo.toml`
+set Clippy's default lints to `allow`. Command: `cargo test -p
+repo-conformance --test conformance -- conformance_rb_06`. Expected: the
+package with a planted clone of a `Copy` value passes Clippy. Setting the
+group to `warn` instead is not a weakening: the package's
+`[lints.rust] warnings = "deny"` makes every Clippy warning an error, and
+that plant is refused like the original.
+
+```text
+thread 'conformance_rb_06' (19149) panicked at crates/conformance/src/cases/rust_backend.rs:584:13:
+the planted lint is refused
+```
+
+Removed: the manifest was restored; `conformance_rb_06` passes.
+
+### rust provenance binding can fail
+
+Planted: the provenance hashed only the core runtime for every profile.
+Command: `cargo test -p repo-conformance --test conformance --
+conformance_rb_07`. Expected: a `rust-std` package's provenance no longer
+equals the committed one.
+
+```text
+thread 'conformance_rb_07' (17867) panicked at crates/conformance/src/cases/rust_backend.rs:678:21:
+assertion `left == right` failed: /home/user/wt-24/compiler/rust/rust-std/adt-evaluation/provenance.json
+```
+
+Removed: the hash was restored; `conformance_rb_07` passes.
 
 ### language-1.2 imported runtime reduction can fail
 

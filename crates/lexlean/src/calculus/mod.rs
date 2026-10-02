@@ -58,6 +58,20 @@ pub fn render(program: &Program, profile: rust::Profile) -> Result<String, LexLe
     rust::render(program, profile).map_err(|reason| rejected(&reason))
 }
 
+/// Render a package of a target program: the Rust library crate of its
+/// profile with the exported functions its manifest
+/// (`lexlean/rust-package/1`) declares, the Cargo manifest, and the
+/// provenance (`lexlean/rust-provenance/1`), by relative path.
+///
+/// # Errors
+///
+/// `LLB6005` when the manifest is malformed, its program invalid, its
+/// interface misstates the program, or its profile cannot render it.
+pub fn package(bytes: &[u8]) -> Result<rust::package::Package, LexLeanError> {
+    let manifest = rust::package::Manifest::parse(bytes).map_err(|reason| rejected(&reason))?;
+    rust::package::package(&manifest).map_err(|reason| rejected(&reason))
+}
+
 /// The schema tag of a target program.
 pub const PROGRAM_SPEC: &str = "lexlean/target-program/1";
 

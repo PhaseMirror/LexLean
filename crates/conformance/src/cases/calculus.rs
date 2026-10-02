@@ -1379,8 +1379,8 @@ pub fn run(id: &str) {
                 ),
                 (
                     "listAppendLong_rust_std",
-                    "pub fn append_list<T: Clone>(a: List<T>, b: List<T>) -> R<List<T>> { Ok(List::onto(a.items(), b)) }",
-                    "pub fn append_list<T: Clone>(a: List<T>, b: List<T>) -> R<List<T>> { let mut out = b; for item in a.items().into_iter().rev() { tick(1); out = List::cons(item, List::onto(out.items(), List::nil())); } Ok(out) }",
+                    "pub fn append_list<T: Clone>(a: List<T>, b: List<T>) -> List<T> { List::onto(a.items(), b) }",
+                    "pub fn append_list<T: Clone>(a: List<T>, b: List<T>) -> List<T> { let mut out = b; for item in a.items().into_iter().rev() { tick(1); out = List::cons(item, List::onto(out.items(), List::nil())); } out }",
                     true,
                 ),
             ];

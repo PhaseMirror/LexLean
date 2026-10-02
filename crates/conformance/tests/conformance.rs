@@ -1319,3 +1319,38 @@ fn conformance_tc_06() {
 fn conformance_tc_07() {
     repo_conformance::cases::run("TC-07");
 }
+
+#[test]
+fn conformance_rb_01() {
+    repo_conformance::cases::run("RB-01");
+}
+
+#[test]
+fn conformance_rb_02() {
+    repo_conformance::cases::run("RB-02");
+}
+
+#[test]
+fn conformance_rb_03() {
+    repo_conformance::cases::run("RB-03");
+}
+
+#[test]
+fn conformance_rb_04() {
+    repo_conformance::cases::run("RB-04");
+}
+
+#[test]
+fn conformance_rb_05() {
+    repo_conformance::cases::run("RB-05");
+}
+
+#[test]
+fn conformance_rb_06() {
+    repo_conformance::cases::run("RB-06");
+}
+
+#[test]
+fn conformance_rb_07() {
+    repo_conformance::cases::run("RB-07");
+}

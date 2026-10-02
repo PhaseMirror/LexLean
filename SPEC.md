@@ -307,6 +307,7 @@ The completed repository MUST have this layout. Additional files are allowed onl
 │   ├── lean-toolchain
 │   ├── lexlean.lock
 │   ├── lexlean.toml
+│   ├── rust/
 │   └── src/
 ├── crates/
 │   ├── lexlean/
@@ -330,7 +331,13 @@ The completed repository MUST have this layout. Additional files are allowed onl
 │   │       │   ├── library.rs
 │   │       │   ├── mod.rs
 │   │       │   ├── realization.rs
-│   │       │   ├── rust.rs
+│   │       │   ├── rust/
+│   │       │   │   ├── ast.rs
+│   │       │   │   ├── lower.rs
+│   │       │   │   ├── mod.rs
+│   │       │   │   ├── package.rs
+│   │       │   │   ├── runtime.rs
+│   │       │   │   └── validate.rs
 │   │       │   └── term.rs
 │   │       ├── cli.rs
 │   │       ├── config.rs
@@ -440,6 +447,8 @@ The completed repository MUST have this layout. Additional files are allowed onl
 │   ├── production-eligibility.schema.json
 │   ├── project.schema.json
 │   ├── project-v2.schema.json
+│   ├── rust-package.schema.json
+│   ├── rust-provenance.schema.json
 │   ├── semantic-snapshot.schema.json
 │   ├── semantic-snapshot-v2.schema.json
 │   ├── semantic-module.schema.json
@@ -3161,6 +3170,105 @@ discrepancies must be detected. This is `build` evidence for the renderings,
 not a proof of them; preservation of meaning from LexLean through the
 calculus to Rust is a separate obligation.
 
+### 17.16 Rust backend
+
+The Rust backend renders target programs (§17.14) to Rust without making Rust
+text the source of any meaning: a program is lowered to a closed Rust AST,
+the AST is checked, and only then printed. `lexlean::calculus::rust` is the
+backend; `lexlean::calculus::package` is its entry point for packages.
+
+**AST.** The AST (`rust::ast`) has no node for arbitrary text. Every
+identifier is generated from a closed kind and an index (`v<n>` for a local
+of the program, `m<n>` for a match scrutinee, `a<n>` for a primitive operand,
+`c<n>` for an applied closure, `r<n>` and `h<n>` for a value taken out of a
+box or a pair, `k<n>` and `p<n>` for a closure's captures and parameters,
+`f<n>` for a program function) or is an exported name the package manifest
+declares. Every called function is a program function or a runtime item of
+the closed table `rust::runtime::Item`; every type is a calculus type or one
+of the representation types `Rc<T>` (a field or capture whose type holds its
+owner), `R<T>` (a fallible result), and `&T` (a borrowed export parameter).
+The printer lays out every item, block, and arm in one fixed way, so the
+rendering's bytes are canonical without a formatter.
+
+**Failure typing.** A function can overflow exactly when its body reaches a
+primitive or successor that can (`nat_add`, `nat_mul`, `int_add`, `int_sub`,
+`int_mul`, `int_neg`, `int_quot`, `parse_decimal` at `int`, `succ`), a call to
+a function that can, or an application of a function type one of whose
+closures can: the least fixed point of these rules. A function that can
+overflow returns `R<T>` and every call to it ends in `?`, except in tail
+position, where its result is returned as it is; any other function returns
+its value and no call to it propagates. The length of a sequence cannot
+exceed `2^64 - 1` on any machine that holds it, so `length` cannot overflow.
+
+**Checks.** Before printing, `rust::validate` refuses, as `LLB6005`:
+
+1. *hygiene*: a name used but not bound, or bound twice in one function,
+   and an item declared twice;
+2. *ownership*: a value moved twice, or read after it was moved, on any
+   path; branches are alternatives;
+3. *hidden allocation*: in `rust-core`, any heap type, heap runtime
+   function, string or byte string literal, list construction or match, or
+   box;
+4. *arithmetic*: a fallible call that does not propagate outside tail
+   position, an infallible call that propagates, a fallible function's tail
+   that is not a fallible value, and a function that propagates a failure
+   its result type does not carry;
+5. *correspondence*: a construct with no row in `validate::CORRESPONDENCE`,
+   or whose row names no calculus element (§17.14) or structural
+   realization (`function`, `overflow`, `indirection`, `export`) the program
+   uses.
+
+**Packages.** A package manifest (`lexlean/rust-package/1`,
+`schemas/rust-package.schema.json`) names a crate and its version (three
+canonical decimals), a profile, a target program, the exported functions, and
+the identities of the LexLean semantic objects the program realizes (`sources`:
+lowercase SHA-256 hex, strictly ascending). Each export names a program
+function, its Rust name, how it takes each parameter (`own`; `borrow`, by
+shared reference; or `copy`, only for a `Copy` type: a scalar, or an option,
+result, or pair of `Copy` types), and whether it can fail (`none` or
+`overflow`). A package is refused, as `LLB6005`, when:
+
+- an exported name is not a lowercase snake-case identifier of at most 64
+  characters, is a Rust keyword, has the shape of a generated name, or is
+  declared by the runtime; a name is exported twice; or the crate name is a
+  sysroot crate or `harness` (*identifier collision*);
+- an export copies a parameter whose type is not `Copy` (*ownership
+  mismatch*);
+- an export's boundary holds a function value, which no Rust caller can
+  construct (*unsupported type*);
+- an export's declared errors differ from its function's (*arithmetic
+  mismatch*);
+- the profile is `rust-core` and the program needs heap allocation (*hidden
+  allocation*); or
+- the manifest is malformed, its program invalid, or an export's arity wrong.
+
+A package is three files. `src/lib.rs` is the rendering with one public
+wrapper per export. `Cargo.toml` declares the crate, edition 2021, no
+dependencies, and its lint gate: `unsafe_code` forbidden, rustc warnings
+denied, and every Clippy lint of the default set denied except
+`type_complexity`, whose advice to alias a type would introduce a name with
+no calculus counterpart, and `manual_unwrap_or` and
+`manual_unwrap_or_default`, whose advice would replace the program's own
+match by an idiom. `provenance.json`
+(`lexlean/rust-provenance/1`, `schemas/rust-provenance.schema.json`) binds the
+crate's name and version, the profile, the program's identity, the language-1.2
+compiler-semantics ID (§21.2), the SHA-256 of the runtime the profile carries,
+the sources, the exports, and the SHA-256 of `Cargo.toml` and `src/lib.rs`.
+`language/semantics-1.2.toml` versions the backend (`rust_backend`), so a
+change to any rendering changes LexLean's identity.
+
+**Evidence.** Every fixture whose entry takes and returns first-order data is
+committed as a package under `compiler/rust/<target>/<fixture>/` in each
+profile that admits it, exporting its entry as `run`, with two more that pass
+parameters by reference and by copy; the negative manifests and their stated
+errors are committed under `compiler/rust/negative/`. `cargo xtask
+check-calculus` compares all of them with the generator. The conformance
+suite builds every package offline in one workspace under its lint gate,
+calls each export from a separate crate, and compares the printed outcome
+with the denotation's; renders every package twice under two roots and
+compares the bytes; and validates every manifest and provenance against its
+schema.
+
 ## 18. Lean backend
 
 ### 18.1 Output contract
@@ -3644,7 +3752,9 @@ tree. The language-1.1 ID excludes the files introduced solely for 1.2:
 `schemas/compiler-input.schema.json`,
 `schemas/lexicon-v2.schema.json`, `schemas/lock-1.1.schema.json`,
 `schemas/lock-v2.schema.json`, `schemas/production-eligibility.schema.json`,
-`schemas/project-v2.schema.json`, `schemas/semantic-module-v2.schema.json`,
+`schemas/project-v2.schema.json`, `schemas/rust-package.schema.json`,
+`schemas/rust-provenance.schema.json`,
+`schemas/semantic-module-v2.schema.json`,
 `schemas/semantic-snapshot-v2.schema.json`,
 `schemas/target-fixture.schema.json`, and
 `schemas/target-program.schema.json`. The language-1.0 ID additionally
@@ -5436,8 +5546,15 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `TC-05` | `calculus` | Every realization library template has a fixture whose outcome the kernel proves equal to the value LexLean's own collection primitive computes, committed instances equal their templates, and a mutated template is rejected by Lean. | §17.12, §17.14 |
 | `TC-06` | `calculus` | Every runtime construct of the production registry has exactly one realization row naming existing calculus elements and requires allocation exactly when its realization does, and the fixtures exercise every calculus type, literal, expression, shape, primitive, and template, and every fixed-width primitive at every width it admits. | §17.13, §17.14 |
 | `TC-07` | `calculus` | Every fixture with an observable outcome renders to a safe Rust library crate in rust-std, and in rust-core exactly when it needs no heap, that the pinned rustc compiles with warnings denied, that prints exactly the denotation's value or overflow, and whose counted work never exceeds the denotation's steps; planted value and work discrepancies are detected. | §17.14 |
+| `RB-01` | `rust-backend` | Every Rust rendering is built as a closed AST whose every construct corresponds to an element of the target program it realizes, every correspondence row is exercised, and a construct the program does not justify is refused. | §17.16 |
+| `RB-02` | `rust-backend` | An exported name that is not a lowercase snake-case identifier, is a Rust keyword, imitates a generated name, or is declared by the runtime, a name exported twice, and an unavailable crate name each fail with LLB6005, and a crate binding one name twice in a function is refused. | §17.16, §26.3 |
+| `RB-03` | `rust-backend` | An export that copies a parameter whose type is not Copy fails with LLB6005, and a crate that moves a value twice or reads it after moving it is refused. | §17.16, §26.3 |
+| `RB-04` | `rust-backend` | A package whose boundary holds a function value, or whose rust-core program needs the heap, fails with LLB6005, and a rust-core crate naming any heap type, runtime function, or construct is refused. | §17.13, §17.16 |
+| `RB-05` | `rust-backend` | A function that can overflow returns R<T> and every call to it propagates, any other returns its value, an export whose declared errors differ from its function's fails with LLB6005, and a crate that drops, invents, or misreturns a failure is refused. | §17.16 |
+| `RB-06` | `rust-backend` | Every committed package builds offline under its declared gates, rustc warnings and Clippy's default lints denied with three documented exceptions, and its exported function, called from a separate crate, prints exactly the denotation's observable outcome; a planted lint and a planted semantic mutation are detected. | §17.16 |
+| `RB-07` | `rust-backend` | Packages are deterministic and content-addressed: two renderings written under two roots are byte-identical to each other and to the committed package, every manifest and provenance validates against its schema, and the provenance binds the SHA-256 of each file, the program identity, the runtime, the sources, and the language-1.2 compiler-semantics ID. | §17.16, §21.7 |
 
-**Total required capability IDs:** 263.
+**Total required capability IDs:** 270.
 
 No row may be downgraded to `some-true` or `open`. Upstream Lean facts are ledger/authority rows, not substitutions for these build behaviors.
 

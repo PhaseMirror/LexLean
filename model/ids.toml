@@ -1585,3 +1585,45 @@ id = "TC-07"
 level = "build"
 suite = "calculus"
 statement = "Every fixture with an observable outcome renders to a safe Rust library crate in rust-std, and in rust-core exactly when it needs no heap, that the pinned rustc compiles with warnings denied, that prints exactly the denotation's value or overflow, and whose counted work never exceeds the denotation's steps; planted value and work discrepancies are detected."
+
+[[id]]
+id = "RB-01"
+level = "build"
+suite = "rust-backend"
+statement = "Every Rust rendering is built as a closed AST whose every construct corresponds to an element of the target program it realizes, every correspondence row is exercised, and a construct the program does not justify is refused."
+
+[[id]]
+id = "RB-02"
+level = "build"
+suite = "rust-backend"
+statement = "An exported name that is not a lowercase snake-case identifier, is a Rust keyword, imitates a generated name, or is declared by the runtime, a name exported twice, and an unavailable crate name each fail with LLB6005, and a crate binding one name twice in a function is refused."
+
+[[id]]
+id = "RB-03"
+level = "build"
+suite = "rust-backend"
+statement = "An export that copies a parameter whose type is not Copy fails with LLB6005, and a crate that moves a value twice or reads it after moving it is refused."
+
+[[id]]
+id = "RB-04"
+level = "build"
+suite = "rust-backend"
+statement = "A package whose boundary holds a function value, or whose rust-core program needs the heap, fails with LLB6005, and a rust-core crate naming any heap type, runtime function, or construct is refused."
+
+[[id]]
+id = "RB-05"
+level = "build"
+suite = "rust-backend"
+statement = "A function that can overflow returns R<T> and every call to it propagates, any other returns its value, an export whose declared errors differ from its function's fails with LLB6005, and a crate that drops, invents, or misreturns a failure is refused."
+
+[[id]]
+id = "RB-06"
+level = "build"
+suite = "rust-backend"
+statement = "Every committed package builds offline under its declared gates, rustc warnings and Clippy's default lints denied with three documented exceptions, and its exported function, called from a separate crate, prints exactly the denotation's observable outcome; a planted lint and a planted semantic mutation are detected."
+
+[[id]]
+id = "RB-07"
+level = "build"
+suite = "rust-backend"
+statement = "Packages are deterministic and content-addressed: two renderings written under two roots are byte-identical to each other and to the committed package, every manifest and provenance validates against its schema, and the provenance binds the SHA-256 of each file, the program identity, the runtime, the sources, and the language-1.2 compiler-semantics ID."

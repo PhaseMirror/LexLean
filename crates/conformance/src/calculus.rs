@@ -19,7 +19,7 @@ use std::path::Path;
 
 use lexlean::calculus::library::Template;
 use lexlean::calculus::{
-    interp, rust, term, Adt, Arm, Expr, Fixture, Function, IntKind, OrderingValue, Outcome, Prim,
+    interp, term, Adt, Arm, Expr, Fixture, Function, IntKind, OrderingValue, Outcome, Prim,
     Program, Shape, Ty, Value, FIXTURE_SPEC, PROGRAM_SPEC,
 };
 use serde_json::{json, Value as Json};
@@ -2561,32 +2561,16 @@ pub fn files() -> BTreeMap<String, Vec<u8>> {
         "compiler/src/TargetFixtures.lex.tex".to_owned(),
         fixtures_module(&cases).into_bytes(),
     );
-    // Each fixture's program as each Rust profile renders it, so a change to
-    // either rendering is a reviewed change to committed bytes.
-    for case in &cases {
-        for profile in rust::Profile::ALL {
-            if let Ok(source) = rust::render(&case.fixture.program, profile) {
-                out.insert(
-                    format!(
-                        "compiler/rust/{}/{}.rs",
-                        profile.target(),
-                        case.fixture.name
-                    ),
-                    source.into_bytes(),
-                );
-            }
-        }
-    }
+    // Each fixture's package in each Rust profile that admits it, and the
+    // negative package manifests, so a change to a rendering is a reviewed
+    // change to committed bytes.
+    out.extend(crate::rust_packages::files());
     out.extend(crate::calculus_source::files());
     out
 }
 
-/// The directories whose every file is generated.
-const GENERATED_DIRECTORIES: [&str; 3] = [
-    "compiler/fixtures",
-    "compiler/rust/rust-core",
-    "compiler/rust/rust-std",
-];
+/// The directories whose every file, at any depth, is generated.
+const GENERATED_DIRECTORIES: [&str; 2] = ["compiler/fixtures", "compiler/rust"];
 
 /// Compare (or, with `write`, rewrite) the generated files.
 ///
@@ -2597,11 +2581,17 @@ const GENERATED_DIRECTORIES: [&str; 3] = [
 pub fn check(root: &Path, write: bool) -> Result<usize, String> {
     let files = files();
     for directory in GENERATED_DIRECTORIES {
-        let Ok(entries) = std::fs::read_dir(root.join(directory)) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let relative = format!("{directory}/{}", entry.file_name().to_string_lossy());
+        for entry in walkdir::WalkDir::new(root.join(directory))
+            .into_iter()
+            .flatten()
+            .filter(|entry| entry.file_type().is_file())
+        {
+            let relative = entry
+                .path()
+                .strip_prefix(root)
+                .map_err(|error| error.to_string())?
+                .to_string_lossy()
+                .replace('\\', "/");
             if !files.contains_key(&relative) {
                 if write {
                     std::fs::remove_file(entry.path())

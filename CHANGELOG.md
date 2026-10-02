@@ -261,6 +261,28 @@ versions, and the entries below say what each tag does and does not claim.
     interpreter's checked fixed-width multiplication overflowed `i128` and
     panicked on two large 64-bit operands; it is now checked.
   - An ill-typed program has no canonical form and no identity.
+- The canonical Rust backend (§17.16). A target program is lowered to a
+  closed Rust AST (`lexlean::calculus::rust::ast`) and checked before it is
+  printed into canonical bytes:
+  - identifiers are generated from closed kinds, and each is bound once per
+    function;
+  - every value is moved at most once;
+  - `rust-core` names no heap type, runtime function, or construct;
+  - failure is typed exactly: a function that can overflow returns `R<T>`
+    and every call to it propagates, and any other returns its value;
+  - every construct corresponds to an element of the program it realizes.
+
+  Packages (`lexlean::calculus::package`, manifests `lexlean/rust-package/1`,
+  provenance `lexlean/rust-provenance/1`) add exported functions with
+  checked names, passing modes (`own`, `borrow`, `copy`), and declared
+  failure modes. Each package also carries a Cargo manifest whose lint table
+  is the package's gate, and provenance binding every file's SHA-256, the
+  program identity, the runtime, the sources, and the language-1.2
+  compiler-semantics ID. `language/semantics-1.2.toml` gains `rust_backend`.
+  Every fixture is committed as a package in each profile that admits it,
+  along with negative manifests for identifier collisions, ownership
+  mismatch, unsupported boundary types, hidden allocation, and arithmetic
+  mismatch (`RB-01`..`RB-07`).
 - The language-1.2 portable runtime exposes every definition, so a
   definition imported from another module reduces in the kernel through the
   primitives it applies. The 1.2 `lean_backend` version is bumped, and the
