@@ -25,6 +25,8 @@ pub mod artifact;
 #[doc(hidden)]
 pub mod backend;
 #[doc(hidden)]
+pub mod calculus;
+#[doc(hidden)]
 pub mod cli;
 #[doc(hidden)]
 pub mod config;
@@ -159,6 +161,8 @@ fn is_v1_2_file(path: &str) -> bool {
         || path == crate::production::REGISTRY_PATH
         || path.starts_with("language/lcnf-1.2/")
         || path == "schemas/compiler-input.schema.json"
+        || path == "schemas/target-fixture.schema.json"
+        || path == "schemas/target-program.schema.json"
 }
 
 /// The compiler-semantics ID for one selected language. Language 1.0 excludes

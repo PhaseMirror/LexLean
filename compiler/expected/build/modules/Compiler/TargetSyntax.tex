@@ -1,0 +1,157 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\begin{document}
+\section*{Semantic declarations}
+\subsection*{\texttt{IntKind}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{u8}: \texttt{()}.\par
+\noindent Constructor \texttt{u16}: \texttt{()}.\par
+\noindent Constructor \texttt{u32}: \texttt{()}.\par
+\noindent Constructor \texttt{u64}: \texttt{()}.\par
+\noindent Constructor \texttt{i8}: \texttt{()}.\par
+\noindent Constructor \texttt{i16}: \texttt{()}.\par
+\noindent Constructor \texttt{i32}: \texttt{()}.\par
+\noindent Constructor \texttt{i64}: \texttt{()}.\par
+\subsection*{\texttt{Order}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{less}: \texttt{()}.\par
+\noindent Constructor \texttt{same}: \texttt{()}.\par
+\noindent Constructor \texttt{more}: \texttt{()}.\par
+\subsection*{\texttt{Ty}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{unit}: \texttt{()}.\par
+\noindent Constructor \texttt{bool}: \texttt{()}.\par
+\noindent Constructor \texttt{nat}: \texttt{()}.\par
+\noindent Constructor \texttt{int}: \texttt{()}.\par
+\noindent Constructor \texttt{fixed}: \texttt{(IntKind)}.\par
+\noindent Constructor \texttt{string}: \texttt{()}.\par
+\noindent Constructor \texttt{bytes}: \texttt{()}.\par
+\noindent Constructor \texttt{ordering}: \texttt{()}.\par
+\noindent Constructor \texttt{option}: \texttt{(Ty)}.\par
+\noindent Constructor \texttt{result}: \texttt{(Ty, Ty)}.\par
+\noindent Constructor \texttt{list}: \texttt{(Ty)}.\par
+\noindent Constructor \texttt{pair}: \texttt{(Ty, Ty)}.\par
+\noindent Constructor \texttt{adt}: \texttt{(Nat)}.\par
+\noindent Constructor \texttt{fn}: \texttt{(List (Ty), Ty)}.\par
+\subsection*{\texttt{Value}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{unit}: \texttt{()}.\par
+\noindent Constructor \texttt{bool}: \texttt{(Bool)}.\par
+\noindent Constructor \texttt{nat}: \texttt{(Nat)}.\par
+\noindent Constructor \texttt{int}: \texttt{(Int)}.\par
+\noindent Constructor \texttt{u8}: \texttt{(UInt8)}.\par
+\noindent Constructor \texttt{u16}: \texttt{(UInt16)}.\par
+\noindent Constructor \texttt{u32}: \texttt{(UInt32)}.\par
+\noindent Constructor \texttt{u64}: \texttt{(UInt64)}.\par
+\noindent Constructor \texttt{i8}: \texttt{(Int8)}.\par
+\noindent Constructor \texttt{i16}: \texttt{(Int16)}.\par
+\noindent Constructor \texttt{i32}: \texttt{(Int32)}.\par
+\noindent Constructor \texttt{i64}: \texttt{(Int64)}.\par
+\noindent Constructor \texttt{string}: \texttt{(String)}.\par
+\noindent Constructor \texttt{bytes}: \texttt{(ByteArray)}.\par
+\noindent Constructor \texttt{ordering}: \texttt{(Order)}.\par
+\noindent Constructor \texttt{none}: \texttt{()}.\par
+\noindent Constructor \texttt{some}: \texttt{(Value)}.\par
+\noindent Constructor \texttt{ok}: \texttt{(Value)}.\par
+\noindent Constructor \texttt{error}: \texttt{(Value)}.\par
+\noindent Constructor \texttt{list}: \texttt{(List (Value))}.\par
+\noindent Constructor \texttt{pair}: \texttt{(Value, Value)}.\par
+\noindent Constructor \texttt{adt}: \texttt{(Nat, List (Value))}.\par
+\noindent Constructor \texttt{closure}: \texttt{(Nat, List (Value))}.\par
+\subsection*{\texttt{Shape}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{none}: \texttt{()}.\par
+\noindent Constructor \texttt{some}: \texttt{()}.\par
+\noindent Constructor \texttt{ok}: \texttt{()}.\par
+\noindent Constructor \texttt{error}: \texttt{()}.\par
+\noindent Constructor \texttt{nil}: \texttt{()}.\par
+\noindent Constructor \texttt{cons}: \texttt{()}.\par
+\noindent Constructor \texttt{zero}: \texttt{()}.\par
+\noindent Constructor \texttt{succ}: \texttt{()}.\par
+\noindent Constructor \texttt{pair}: \texttt{()}.\par
+\noindent Constructor \texttt{true}: \texttt{()}.\par
+\noindent Constructor \texttt{false}: \texttt{()}.\par
+\noindent Constructor \texttt{unit}: \texttt{()}.\par
+\noindent Constructor \texttt{lt}: \texttt{()}.\par
+\noindent Constructor \texttt{eq}: \texttt{()}.\par
+\noindent Constructor \texttt{gt}: \texttt{()}.\par
+\noindent Constructor \texttt{adt}: \texttt{(Nat)}.\par
+\subsection*{\texttt{Prim}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{natAdd}: \texttt{()}.\par
+\noindent Constructor \texttt{natSub}: \texttt{()}.\par
+\noindent Constructor \texttt{natMul}: \texttt{()}.\par
+\noindent Constructor \texttt{natQuot}: \texttt{()}.\par
+\noindent Constructor \texttt{natRem}: \texttt{()}.\par
+\noindent Constructor \texttt{natEq}: \texttt{()}.\par
+\noindent Constructor \texttt{natLe}: \texttt{()}.\par
+\noindent Constructor \texttt{natLt}: \texttt{()}.\par
+\noindent Constructor \texttt{intAdd}: \texttt{()}.\par
+\noindent Constructor \texttt{intSub}: \texttt{()}.\par
+\noindent Constructor \texttt{intMul}: \texttt{()}.\par
+\noindent Constructor \texttt{intNeg}: \texttt{()}.\par
+\noindent Constructor \texttt{intQuot}: \texttt{()}.\par
+\noindent Constructor \texttt{intRem}: \texttt{()}.\par
+\noindent Constructor \texttt{checkedAdd}: \texttt{()}.\par
+\noindent Constructor \texttt{checkedSub}: \texttt{()}.\par
+\noindent Constructor \texttt{checkedMul}: \texttt{()}.\par
+\noindent Constructor \texttt{checkedNeg}: \texttt{()}.\par
+\noindent Constructor \texttt{checkedQuot}: \texttt{()}.\par
+\noindent Constructor \texttt{bitAnd}: \texttt{()}.\par
+\noindent Constructor \texttt{bitOr}: \texttt{()}.\par
+\noindent Constructor \texttt{bitXor}: \texttt{()}.\par
+\noindent Constructor \texttt{bitNot}: \texttt{()}.\par
+\noindent Constructor \texttt{shiftLeft}: \texttt{()}.\par
+\noindent Constructor \texttt{shiftRight}: \texttt{()}.\par
+\noindent Constructor \texttt{equal}: \texttt{()}.\par
+\noindent Constructor \texttt{boolNot}: \texttt{()}.\par
+\noindent Constructor \texttt{boolAnd}: \texttt{()}.\par
+\noindent Constructor \texttt{boolOr}: \texttt{()}.\par
+\noindent Constructor \texttt{append}: \texttt{()}.\par
+\noindent Constructor \texttt{length}: \texttt{()}.\par
+\noindent Constructor \texttt{index}: \texttt{()}.\par
+\noindent Constructor \texttt{slice}: \texttt{()}.\par
+\noindent Constructor \texttt{utf8Encode}: \texttt{()}.\par
+\noindent Constructor \texttt{utf8Decode}: \texttt{()}.\par
+\noindent Constructor \texttt{compareBytes}: \texttt{()}.\par
+\noindent Constructor \texttt{splitExact}: \texttt{()}.\par
+\noindent Constructor \texttt{join}: \texttt{()}.\par
+\noindent Constructor \texttt{formatDecimal}: \texttt{()}.\par
+\noindent Constructor \texttt{compare}: \texttt{()}.\par
+\noindent Constructor \texttt{convert}: \texttt{(IntKind)}.\par
+\noindent Constructor \texttt{parseDecimal}: \texttt{(Ty)}.\par
+\subsection*{\texttt{Expr}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Mutual group: \texttt{Code}.\par
+\noindent Constructor \texttt{value}: \texttt{(Ty, Value)}.\par
+\noindent Constructor \texttt{var}: \texttt{(Nat)}.\par
+\noindent Constructor \texttt{let}: \texttt{(Nat, Ty, Expr, Expr)}.\par
+\noindent Constructor \texttt{cond}: \texttt{(Expr, Expr, Expr)}.\par
+\noindent Constructor \texttt{match}: \texttt{(Ty, Expr, List (Arm))}.\par
+\noindent Constructor \texttt{build}: \texttt{(Shape, Ty, List (Expr))}.\par
+\noindent Constructor \texttt{call}: \texttt{(Nat, List (Expr))}.\par
+\noindent Constructor \texttt{closure}: \texttt{(Nat, List (Expr))}.\par
+\noindent Constructor \texttt{apply}: \texttt{(Expr, List (Expr))}.\par
+\noindent Constructor \texttt{prim}: \texttt{(Prim, List (Expr))}.\par
+\noindent Constructor \texttt{first}: \texttt{(Expr)}.\par
+\noindent Constructor \texttt{second}: \texttt{(Expr)}.\par
+\noindent Constructor \texttt{field}: \texttt{(Expr, Nat)}.\par
+\subsection*{\texttt{Arm}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Mutual group: \texttt{Code}.\par
+\noindent Constructor \texttt{arm}: \texttt{(Shape, List (Nat), Expr)}.\par
+\subsection*{\texttt{Adt}}
+\noindent Kind: \texttt{structure}.\par
+\noindent Field \texttt{constructors}: \texttt{List (List (Ty))}.\par
+\subsection*{\texttt{Function}}
+\noindent Kind: \texttt{structure}.\par
+\noindent Field \texttt{parameters}: \texttt{List (Nat)}.\par
+\noindent Field \texttt{types}: \texttt{List (Ty)}.\par
+\noindent Field \texttt{result}: \texttt{Ty}.\par
+\noindent Field \texttt{body}: \texttt{Expr}.\par
+\subsection*{\texttt{Program}}
+\noindent Kind: \texttt{structure}.\par
+\noindent Field \texttt{adts}: \texttt{List (Adt)}.\par
+\noindent Field \texttt{functions}: \texttt{List (Function)}.\par
+\end{document}

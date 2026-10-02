@@ -36,6 +36,13 @@ title = "PDF-provider protocol failure"
 statement = "PDF-provider protocol failure."
 
 [[error]]
+code = "LLB6005"
+class = "language"
+exit = 1
+title = "Target realization program invalid or unrenderable"
+statement = "A production-realization target program is malformed, violates the calculus's static rules, or cannot be rendered faithfully to the Rust profile."
+
+[[error]]
 code = "LLC0001"
 class = "cli-configuration"
 exit = 2

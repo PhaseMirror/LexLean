@@ -38,6 +38,18 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `AR-13` | `build` | Two clean builds in different absolute directories produce byte-identical platform-independent artifacts. |
 | `AR-14` | `build` | Platform-independent build evidence is distinguished from platform-bound oleans, process records, PDF bytes, and attestations. |
 
+## calculus
+
+| ID | Level | Statement |
+| --- | --- | --- |
+| `TC-01` | `build` | Hand-constructed target programs have canonical bytes and a SHA-256 content identity, alpha-equivalent programs canonicalize to identical bytes and identity, and every committed fixture validates against the target schemas. |
+| `TC-02` | `build` | Every malformed target program or violated static rule fails closed with LLB6005, and an invalid program has neither a canonical form nor a rendering. |
+| `TC-03` | `build` | The calculus denotation is a kernel-checked LexLean definition, Lean's kernel reduces every kernel-reducible fixture to its expected outcome with its exact step count, no valid fixture is stuck, and a wrong expected outcome is rejected by Lean. |
+| `TC-04` | `build` | Lean's evaluator, running the verified calculus modules, reproduces every fixture's expected outcome and step count, including fixtures whose primitives the kernel cannot reduce. |
+| `TC-05` | `build` | Every realization library template has a fixture whose outcome the kernel proves equal to the value LexLean's own collection primitive computes, committed instances equal their templates, and a mutated template is rejected by Lean. |
+| `TC-06` | `build` | Every runtime construct of the production registry has exactly one realization row naming existing calculus elements, and the fixtures exercise every calculus type, literal, expression, shape, primitive, fixed width, and template. |
+| `TC-07` | `build` | Every fixture with an observable outcome renders to safe Rust that rustc compiles with warnings denied and that prints exactly the denotation's value or overflow, and a planted renderer discrepancy is detected. |
+
 ## cli-api
 
 | ID | Level | Statement |

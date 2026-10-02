@@ -299,6 +299,15 @@ The completed repository MUST have this layout. Additional files are allowed onl
 ├── lean-toolchain
 ├── rust-toolchain.toml
 ├── rustfmt.toml
+├── compiler/
+│   ├── expected/
+│   ├── fixtures/
+│   ├── lake-manifest.json
+│   ├── lakefile.toml
+│   ├── lean-toolchain
+│   ├── lexlean.lock
+│   ├── lexlean.toml
+│   └── src/
 ├── crates/
 │   ├── lexlean/
 │   │   ├── Cargo.toml
@@ -315,6 +324,14 @@ The completed repository MUST have this layout. Additional files are allowed onl
 │   │       │   ├── lean.rs
 │   │       │   ├── mod.rs
 │   │       │   └── pdf.rs
+│   │       ├── calculus/
+│   │       │   ├── check.rs
+│   │       │   ├── interp.rs
+│   │       │   ├── library.rs
+│   │       │   ├── mod.rs
+│   │       │   ├── realization.rs
+│   │       │   ├── rust.rs
+│   │       │   └── term.rs
 │   │       ├── cli.rs
 │   │       ├── config.rs
 │   │       ├── diagnostic.rs
@@ -426,7 +443,9 @@ The completed repository MUST have this layout. Additional files are allowed onl
 │   ├── semantic-snapshot-v2.schema.json
 │   ├── semantic-module.schema.json
 │   ├── semantic-module-v2.schema.json
-│   └── source-map.schema.json
+│   ├── source-map.schema.json
+│   ├── target-fixture.schema.json
+│   └── target-program.schema.json
 ├── tests/
 │   ├── fixtures/
 │   ├── golden/
@@ -2691,7 +2710,12 @@ Termination evidence is semantic data, never tactic or backend text; no
    function argument. Every iteration has a bound; no ambient mutable state
    exists. A lambda or function reference passed as a step is in a closure
    position, so executable definitions may use these combinators.
-6. **Runtime.** A module that writes a collection type or literal, or
+6. **Runtime.** In language 1.2 every definition of the emitted portable
+   runtime is exposed (`@[expose, noinline]` where language 1.1 has
+   `@[noinline]`), so a definition imported from another module reduces in
+   the kernel through the primitives it applies; compiled code is unchanged,
+   and the language-1.1 runtime text is frozen. A module that writes a
+   collection type or literal, or
    applies any collection primitive (including one applied only to a
    collection imported from another module), emits the fixed
    `LexLeanCollections` runtime in its own namespace:
@@ -2751,7 +2775,10 @@ references from `1.1.0` to `1.2.0`, and regenerating the lock with
 `lexlean lock`. Every language-1.1 value is a valid language-1.2 value with
 the same meaning, so the migration changes identities (the compiler-semantics
 ID, the lock, and every source and semantic ID) but not generated Lean
-declarations. No command migrates a project implicitly: building an
+declarations; the generated text differs only in the exposure attributes of
+the portable runtime (rule 6 under *Collections and state threading*), which
+change no definition, type, or compiled code. No command migrates a project
+implicitly: building an
 unmigrated project under a newer compiler keeps its declared language and its
 historical identities and artifact bytes.
 
@@ -2860,6 +2887,133 @@ no wildcard arm, rest pattern, `if let`, `while let`, `let`-`else`, or
 `cargo xtask validate-model` (audit-production) rejects any such default and
 any unnamed variant, so a new construct cannot reach production without its
 disposition.
+
+### 17.14 Production realization calculus
+
+Production compilation targets one closed calculus, defined before any
+optimizer and independently of every renderer. The calculus is LexLean: the
+language-1.2 project `compiler/` defines its syntax (`TargetSyntax`), its
+denotation (`TargetSemantics`), encoders of LexLean collection values
+(`TargetOracle`), and the statements about its fixtures (`TargetFixtures`).
+Lean elaborates, replays, and axiom-audits these modules like any other
+LexLean program, and `compiler/` passes the verify, golden, and
+reproducibility gates of §28.6. No meaning is read from rendered Rust text.
+
+**Programs.** A program (`lexlean/target-program/1`,
+`schemas/target-program.schema.json`) is a list of algebraic data types, each
+a non-empty list of constructors given by their field types, and a list of
+monomorphic functions, each with parameter names, parameter types, a result
+type, and a body. Types are `unit`, `bool`, `nat`, `int`, the fixed widths
+`u8`..`u64` and `i8`..`i64`, `string`, `bytes`, `ordering`, `option`,
+`result`, `list`, `pair`, an indexed ADT, and `fn` with at least one
+parameter. Expressions are a literal, a local, `let`, `cond`, an exhaustive
+`match` over constructor shapes, `build` of a shape, a direct `call`, a
+`closure` of a function over a proper prefix of its parameters, `apply`, a
+primitive `prim`, `first`, `second`, and `field` of a single-constructor ADT.
+The primitives are natural and integer arithmetic and comparison, checked
+fixed-width arithmetic, bitwise operations and shifts, scalar equality,
+Boolean connectives, append, length, index, and slice, UTF-8 encoding and
+decoding, byte comparison, exact split and join, decimal formatting and
+parsing, fixed-width conversion, and `compare`, the total key order of
+§17.12 (numeric, `false` before `true`, strings by scalar sequence, pairs
+lexicographically) returning an `ordering`. Locals are natural numbers
+scoped lexically; there is no mutable state, no reference, and no aliasing:
+every value is an immutable tree, and a byte string is an immutable buffer.
+
+**Static rules.** A program is valid exactly when every type names declared
+ADTs, every local is bound, every `call`, `closure`, `apply`, `build`, and
+primitive receives exactly the operand types of its signature, every match is
+exhaustive and has no unreachable arm, every arm binds exactly its shape's
+fields once, every function's body has its result type, and every literal has
+its type and lies in its realization: `nat` in `[0, 2^64)`, `int` and the
+fixed widths in their two's complement ranges, all spelled as canonical
+decimals, bytes as lowercase hexadecimal. An ordering literal is admitted; a
+closure literal is not. `lexlean::calculus::load` reads a program, checks
+every rule, and returns its canonical form; any malformed member or violated
+rule is `LLB6005`, and nothing is repaired or guessed.
+
+**Canonical form and identity.** The canonical form renames every local of a
+function to its first-binding order (parameters, then binders in evaluation
+order), so alpha-equivalent programs have byte-identical canonical JSON
+(§21.7). A program's identity is the SHA-256 of its canonical bytes.
+
+**Denotation.** `TargetSemantics.run fuel program entry arguments` binds the
+entry's parameters and evaluates its body by `eval`, structural recursion on
+`fuel`. Operands evaluate left to right; a call evaluates its operands, then
+the callee's body in a fresh environment of its parameters; `apply` passes a
+closure's captures before its operands. Every primitive is defined by
+reference to the language-1.2 primitive of the same meaning, so a value of
+the calculus means what LexLean says it means, and `compare` is LexLean's own
+map key order. The result is an `Outcome`: a value with its exact step count,
+`overflow` with its step count, `stuck`, or `exhausted`. One step is charged
+per evaluated node, call, and primitive, and nothing else runs: no hidden or
+free runtime operation exists outside this accounting. A primitive
+application is one step whatever the size of its operands; the count is the
+calculus's evaluation-step accounting, not a measure of machine work, and a
+claim about machine resources needs a machine contract of its own. A `nat` or `int`
+result outside its realization is `overflow`, never a wrapped or truncated
+value; a valid program is never `stuck`; `exhausted` reports only that the
+fuel bounded the evaluation and is not an observation of the program.
+
+**Realizations.** `lexlean::calculus::realization::TABLE` maps every construct
+whose production disposition (§17.13) is `runtime` to the calculus elements
+realizing it, and the conformance suite checks that the table and the
+registry's runtime rows are in bijection and that every reference exists. A
+map is its ascending entry list `List (Pair K V)`, a set its ascending element
+list, and a graph its map from node to successor set, exactly the
+representation of §17.12; every collection, fold, iteration, and graph
+primitive is a library template (`lexlean::calculus::library`) that
+transcribes the `LexLeanCollections` definition clause for clause over
+`compare`, instantiated monomorphically. Lean's `&&` and `||` do not evaluate
+a decided right operand, so they are realized by `cond`. A type parameter is
+realized by its closed type argument (§17.13).
+
+**Fixtures.** The hand-constructed programs under `compiler/fixtures/`
+(`lexlean/target-fixture/1`, `schemas/target-fixture.schema.json`) each name a
+program, an entry, arguments, fuel, and the expected outcome computed by the
+reference interpreter, a step-for-step transcription of `eval`. Together they
+use every type, literal, expression, shape, primitive, fixed width, and
+template. The generated module `TargetFixtures` (`cargo xtask check-calculus`
+compares it and every fixture with its generator byte for byte) defines each
+fixture's evaluation and states:
+
+1. for every fixture whose primitives the kernel reduces, that the
+   evaluation reduces to the expected outcome, steps included; Lean's kernel
+   decides it by `rfl`. The kernel cannot reduce, from a module file under
+   pinned Lean, `split_exact` and `parse_decimal` (`String.splitOn` and
+   `String.toInt?` recurse well-foundedly), `compare_bytes` and byte
+   equality (`ByteArray.toList` and `ByteArray` equality likewise),
+   `utf8_encode`, `join`, and `format_decimal`; fixtures applying them are
+   decided by Lean's evaluator instead;
+2. for every library fixture, that the realization's outcome equals the
+   value LexLean's own collection primitive computes on the same input,
+   decided by the kernel.
+
+Lean's evaluator, running the verified modules, reproduces every fixture's
+outcome, steps included. A wrong expected outcome or a mutated template is
+rejected by Lean.
+
+**Rust profile.** The reference rendering (`lexlean::calculus::rust`) realizes
+the `rust-std` target of §17.13 as one safe Rust 2021 source file under
+`#![forbid(unsafe_code)]` using only the standard library: `nat` is `u64` and `int` is `i64`, each operation checked
+and every out-of-range result the explicit `Err(Overflow)` propagated by `?`;
+the fixed widths are the native integer types with `checked_*` operations;
+lists are `Vec`, strings `String`, bytes `Vec<u8>`, orderings
+`std::cmp::Ordering`; ADTs are enums with boxed fields; function values are
+defunctionalized into one enum per function type, and values are cloned on
+use, so ownership never changes an observable value. Calls are Rust calls
+with no tail-call or stack-depth guarantee, evaluation is single-threaded
+and sequential, the functions form no stable ABI, and heap exhaustion aborts
+the process. Observable behavior is the printed value or `overflow`; steps
+and fuel are not observable. The claim covers exactly programs of this
+calculus rendered this way: no other Rust construct (unsafe code, foreign
+functions, threads, asynchronous code, floating point, interior
+mutability, input and output beyond the harness) is within it. Every fixture
+with an observable outcome is rendered, compiled by `rustc` with warnings
+denied, and run; its output must equal the denotation's, and a planted
+renderer discrepancy must be detected. This is `build` evidence for the
+rendering, not a proof of it; preservation of meaning from LexLean through
+the calculus to Rust is a separate obligation.
 
 ## 18. Lean backend
 
@@ -3343,8 +3497,10 @@ tree. The language-1.1 ID excludes the files introduced solely for 1.2:
 `schemas/compiler-input.schema.json`,
 `schemas/lexicon-v2.schema.json`, `schemas/lock-1.1.schema.json`,
 `schemas/lock-v2.schema.json`, `schemas/production-eligibility.schema.json`,
-`schemas/project-v2.schema.json`, `schemas/semantic-module-v2.schema.json`, and
-`schemas/semantic-snapshot-v2.schema.json`. The language-1.0 ID additionally
+`schemas/project-v2.schema.json`, `schemas/semantic-module-v2.schema.json`,
+`schemas/semantic-snapshot-v2.schema.json`,
+`schemas/target-fixture.schema.json`, and
+`schemas/target-program.schema.json`. The language-1.0 ID additionally
 excludes the files introduced solely for 1.1: `language/bootstrap-1.1.toml`,
 `language/semantics-1.1.toml`, `language/core-1.1/`,
 `language/std/{bool,int,nat}-1.1/`, `schemas/semantic-module.schema.json`,
@@ -4221,6 +4377,7 @@ The initial registry MUST include at least these exact codes and meanings:
 | `LLB6002` | LaTeX lowering or renderer-token coverage failure. |
 | `LLB6003` | Artifact hash, schema, or atomic publication failure. |
 | `LLB6004` | PDF-provider protocol failure. |
+| `LLB6005` | Target realization program invalid or unrenderable (§17.14). |
 | `LLV7001` | Lean/Lake/leanchecker version or executable mismatch. |
 | `LLV7002` | Generated Lean elaboration or compilation failure. |
 | `LLV7003` | `leanchecker` replay failure. |
@@ -4543,7 +4700,7 @@ Tests MUST establish that LexLean rejects, at minimum:
 
 ### 28.6 Example verification
 
-Every directory under `examples/` is discovered rather than listed. Each example MUST include its lock and expected platform-independent build outputs. `cargo xtask verify-examples` runs `fmt --check`, `lock --check`, `check`, `build`, and `verify`.
+Every directory under `examples/` is discovered rather than listed. Each example MUST include its lock and expected platform-independent build outputs. `cargo xtask verify-examples` runs `fmt --check`, `lock --check`, `check`, `build`, and `verify`. The `compiler/` project (§17.14) passes the same gates as an example.
 
 ---
 
@@ -5056,8 +5213,15 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `NE-04` | `extraction` | Every Lean operation the extraction uses has a registry row with its exact signature and pinned source identity, every row is probed under pinned Lean on each extraction, the adapter runs no LCNF pass, and a drifted signature or Lean identity fails with LLV7012. | §22.10, §26.3 |
 | `NE-05` | `extraction` | A dependency dropped from Lean's extracted closure, from its declarations, or from the production-eligibility closure fails extraction with LLV7011 before any compiler input is published. | §22.10, §26.3 |
 | `NE-06` | `extraction` | A proof-only dependency presented as a runtime closure member fails extraction with LLV7011 before any compiler input is published. | §22.10, §26.3 |
+| `TC-01` | `calculus` | Hand-constructed target programs have canonical bytes and a SHA-256 content identity, alpha-equivalent programs canonicalize to identical bytes and identity, and every committed fixture validates against the target schemas. | §17.14, §21.7 |
+| `TC-02` | `calculus` | Every malformed target program or violated static rule fails closed with LLB6005, and an invalid program has neither a canonical form nor a rendering. | §17.14, §26.3 |
+| `TC-03` | `calculus` | The calculus denotation is a kernel-checked LexLean definition, Lean's kernel reduces every kernel-reducible fixture to its expected outcome with its exact step count, no valid fixture is stuck, and a wrong expected outcome is rejected by Lean. | §17.14 |
+| `TC-04` | `calculus` | Lean's evaluator, running the verified calculus modules, reproduces every fixture's expected outcome and step count, including fixtures whose primitives the kernel cannot reduce. | §17.14 |
+| `TC-05` | `calculus` | Every realization library template has a fixture whose outcome the kernel proves equal to the value LexLean's own collection primitive computes, committed instances equal their templates, and a mutated template is rejected by Lean. | §17.12, §17.14 |
+| `TC-06` | `calculus` | Every runtime construct of the production registry has exactly one realization row naming existing calculus elements, and the fixtures exercise every calculus type, literal, expression, shape, primitive, fixed width, and template. | §17.13, §17.14 |
+| `TC-07` | `calculus` | Every fixture with an observable outcome renders to safe Rust that rustc compiles with warnings denied and that prints exactly the denotation's value or overflow, and a planted renderer discrepancy is detected. | §17.14 |
 
-**Total required capability IDs:** 256.
+**Total required capability IDs:** 263.
 
 No row may be downgraded to `some-true` or `open`. Upstream Lean facts are ledger/authority rows, not substitutions for these build behaviors.
 

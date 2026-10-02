@@ -1,0 +1,1082 @@
+//! The realization library (SPEC.md §17.14): every language-1.2 collection
+//! and state-threading primitive realized as target functions.
+//!
+//! A map `K -> V` is realized as its strictly ascending entry list
+//! `List (Pair K V)`, a set as its ascending element list, and a graph as a
+//! map from node to successor set, exactly the representation the generated
+//! Lean runtime `LexLeanCollections` uses (§17.12). Each template transcribes
+//! the corresponding runtime definition clause for clause, comparing keys
+//! with the calculus `compare` primitive, so a realization neither adds nor
+//! reorders work. Templates are monomorphic: an instance is fixed by its
+//! type arguments, as production closures are monomorphized (§17.13).
+
+use super::{Arm, Expr, Function, Prim, Shape, Ty};
+
+/// A library template.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Template {
+    MapInsert,
+    MapRemove,
+    MapLookup,
+    MapContains,
+    MapKeys,
+    MapValues,
+    MapFold,
+    SetInsert,
+    SetRemove,
+    SetContains,
+    SetUnion,
+    SetIntersection,
+    SetDifference,
+    SetFold,
+    ListFold,
+    Iterate,
+    IterateUntil,
+    GraphSuccessors,
+    GraphReachable,
+    GraphTopological,
+}
+
+impl Template {
+    /// Every template.
+    pub const ALL: [Self; 20] = [
+        Self::MapInsert,
+        Self::MapRemove,
+        Self::MapLookup,
+        Self::MapContains,
+        Self::MapKeys,
+        Self::MapValues,
+        Self::MapFold,
+        Self::SetInsert,
+        Self::SetRemove,
+        Self::SetContains,
+        Self::SetUnion,
+        Self::SetIntersection,
+        Self::SetDifference,
+        Self::SetFold,
+        Self::ListFold,
+        Self::Iterate,
+        Self::IterateUntil,
+        Self::GraphSuccessors,
+        Self::GraphReachable,
+        Self::GraphTopological,
+    ];
+
+    /// The template's name, as the realization table and fixtures spell it.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::MapInsert => "map_insert",
+            Self::MapRemove => "map_remove",
+            Self::MapLookup => "map_lookup",
+            Self::MapContains => "map_contains",
+            Self::MapKeys => "map_keys",
+            Self::MapValues => "map_values",
+            Self::MapFold => "map_fold",
+            Self::SetInsert => "set_insert",
+            Self::SetRemove => "set_remove",
+            Self::SetContains => "set_contains",
+            Self::SetUnion => "set_union",
+            Self::SetIntersection => "set_intersection",
+            Self::SetDifference => "set_difference",
+            Self::SetFold => "set_fold",
+            Self::ListFold => "list_fold",
+            Self::Iterate => "iterate",
+            Self::IterateUntil => "iterate_until",
+            Self::GraphSuccessors => "graph_successors",
+            Self::GraphReachable => "graph_reachable",
+            Self::GraphTopological => "graph_topological",
+        }
+    }
+
+    /// The template named `name`.
+    #[must_use]
+    pub fn named(name: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|template| template.name() == name)
+    }
+
+    /// The number of type arguments: the key (or element, or node, or
+    /// state) type, then the value type, then the fold state.
+    #[must_use]
+    pub const fn arity(self) -> usize {
+        match self {
+            Self::MapInsert
+            | Self::MapRemove
+            | Self::MapLookup
+            | Self::MapContains
+            | Self::MapKeys
+            | Self::MapValues
+            | Self::SetFold
+            | Self::ListFold => 2,
+            Self::MapFold => 3,
+            Self::SetInsert
+            | Self::SetRemove
+            | Self::SetContains
+            | Self::SetUnion
+            | Self::SetIntersection
+            | Self::SetDifference
+            | Self::Iterate
+            | Self::IterateUntil
+            | Self::GraphSuccessors
+            | Self::GraphReachable
+            | Self::GraphTopological => 1,
+        }
+    }
+
+    /// The functions of one instance placed at function index `at`. The
+    /// first function is the entry; the rest are its helpers, which the
+    /// instance carries with it.
+    ///
+    /// # Errors
+    ///
+    /// Returns the reason the type arguments do not fit the template.
+    pub fn instantiate(self, types: &[Ty], at: u64) -> Result<Vec<Function>, String> {
+        if types.len() != self.arity() {
+            return Err(format!(
+                "template {} takes {} type argument(s), received {}",
+                self.name(),
+                self.arity(),
+                types.len()
+            ));
+        }
+        let mut builder = Builder {
+            at,
+            functions: Vec::new(),
+        };
+        match self {
+            Self::MapInsert => {
+                builder.map_insert(&types[0], &types[1]);
+            }
+            Self::MapRemove => {
+                builder.map_remove(&types[0], &types[1]);
+            }
+            Self::MapLookup => {
+                builder.map_lookup(&types[0], &types[1]);
+            }
+            Self::MapContains => {
+                builder.map_contains(&types[0], &types[1]);
+            }
+            Self::MapKeys => {
+                builder.map_project(&types[0], &types[1], true);
+            }
+            Self::MapValues => {
+                builder.map_project(&types[0], &types[1], false);
+            }
+            Self::MapFold => {
+                builder.map_fold(&types[0], &types[1], &types[2]);
+            }
+            Self::SetInsert => {
+                builder.set_insert(&types[0]);
+            }
+            Self::SetRemove => {
+                builder.set_remove(&types[0]);
+            }
+            Self::SetContains => {
+                builder.set_contains(&types[0]);
+            }
+            Self::SetUnion => {
+                builder.set_union(&types[0]);
+            }
+            Self::SetIntersection => {
+                builder.set_filter(&types[0], true);
+            }
+            Self::SetDifference => {
+                builder.set_filter(&types[0], false);
+            }
+            Self::SetFold | Self::ListFold => {
+                builder.list_fold(&types[0], &types[1]);
+            }
+            Self::Iterate => {
+                builder.iterate(&types[0]);
+            }
+            Self::IterateUntil => {
+                builder.iterate_until(&types[0]);
+            }
+            Self::GraphSuccessors => {
+                builder.graph_successors(&types[0]);
+            }
+            Self::GraphReachable => {
+                builder.graph_reachable(&types[0]);
+            }
+            Self::GraphTopological => {
+                builder.graph_topological(&types[0]);
+            }
+        }
+        Ok(builder.functions)
+    }
+}
+
+fn list(element: &Ty) -> Ty {
+    Ty::List {
+        element: Box::new(element.clone()),
+    }
+}
+
+fn pair(left: &Ty, right: &Ty) -> Ty {
+    Ty::Pair {
+        left: Box::new(left.clone()),
+        right: Box::new(right.clone()),
+    }
+}
+
+fn option(value: &Ty) -> Ty {
+    Ty::Option {
+        value: Box::new(value.clone()),
+    }
+}
+
+fn function_type(parameters: &[Ty], result: &Ty) -> Ty {
+    Ty::Fn {
+        parameters: parameters.to_vec(),
+        result: Box::new(result.clone()),
+    }
+}
+
+fn var(name: u64) -> Expr {
+    Expr::Var { name }
+}
+
+fn call(function: u64, operands: Vec<Expr>) -> Expr {
+    Expr::Call { function, operands }
+}
+
+fn prim(operation: Prim, operands: Vec<Expr>) -> Expr {
+    Expr::Prim {
+        operation,
+        operands,
+    }
+}
+
+fn build(shape: Shape, ty: &Ty, operands: Vec<Expr>) -> Expr {
+    Expr::Build {
+        shape,
+        ty: ty.clone(),
+        operands,
+    }
+}
+
+fn arm(shape: Shape, binders: Vec<u64>, body: Expr) -> Arm {
+    Arm {
+        shape,
+        binders,
+        body,
+    }
+}
+
+fn matching(ty: &Ty, scrutinee: Expr, arms: Vec<Arm>) -> Expr {
+    Expr::Match {
+        ty: ty.clone(),
+        scrutinee: Box::new(scrutinee),
+        arms,
+    }
+}
+
+fn cond(condition: Expr, then_branch: Expr, else_branch: Expr) -> Expr {
+    Expr::Cond {
+        condition: Box::new(condition),
+        then_branch: Box::new(then_branch),
+        else_branch: Box::new(else_branch),
+    }
+}
+
+fn first(value: Expr) -> Expr {
+    Expr::First {
+        value: Box::new(value),
+    }
+}
+
+fn second(value: Expr) -> Expr {
+    Expr::Second {
+        value: Box::new(value),
+    }
+}
+
+fn apply(target: Expr, operands: Vec<Expr>) -> Expr {
+    Expr::Apply {
+        target: Box::new(target),
+        operands,
+    }
+}
+
+fn boolean(value: bool) -> Expr {
+    build(
+        if value { Shape::True } else { Shape::False },
+        &Ty::Bool,
+        Vec::new(),
+    )
+}
+
+fn cons(ty: &Ty, head: Expr, tail: Expr) -> Expr {
+    build(Shape::Cons, ty, vec![head, tail])
+}
+
+fn nil(ty: &Ty) -> Expr {
+    build(Shape::Nil, ty, Vec::new())
+}
+
+/// `match compare(key, other) with lt => less | eq => equal | gt => greater`.
+fn by_order(result: &Ty, key: Expr, other: Expr, less: Expr, equal: Expr, greater: Expr) -> Expr {
+    matching(
+        result,
+        prim(Prim::Compare, vec![key, other]),
+        vec![
+            arm(Shape::Lt, Vec::new(), less),
+            arm(Shape::Eq, Vec::new(), equal),
+            arm(Shape::Gt, Vec::new(), greater),
+        ],
+    )
+}
+
+/// Collects one instance's functions. Each method pushes its entry first and
+/// returns its index, so a helper's index is known before its caller's body
+/// is complete.
+struct Builder {
+    at: u64,
+    functions: Vec<Function>,
+}
+
+impl Builder {
+    /// Reserve the next function index.
+    fn reserve(&mut self) -> u64 {
+        let index = self.at + self.functions.len() as u64;
+        self.functions.push(Function {
+            parameters: Vec::new(),
+            types: Vec::new(),
+            result: Ty::Unit,
+            body: Expr::Var { name: 0 },
+        });
+        index
+    }
+
+    fn define(&mut self, index: u64, types: Vec<Ty>, result: Ty, body: Expr) {
+        let position = usize::try_from(index - self.at).expect("a reserved index");
+        self.functions[position] = Function {
+            parameters: (0..types.len() as u64).collect(),
+            types,
+            result,
+            body,
+        };
+    }
+
+    /// `insertEntry key value entries`.
+    fn map_insert(&mut self, key: &Ty, value: &Ty) -> u64 {
+        let this = self.reserve();
+        let entry = pair(key, value);
+        let entries = list(&entry);
+        // 0 entries, 1 key, 2 value; 3 head, 4 tail.
+        let new_entry = || build(Shape::Pair, &entry, vec![var(1), var(2)]);
+        let body = matching(
+            &entries,
+            var(0),
+            vec![
+                arm(
+                    Shape::Nil,
+                    Vec::new(),
+                    cons(&entries, new_entry(), nil(&entries)),
+                ),
+                arm(
+                    Shape::Cons,
+                    vec![3, 4],
+                    by_order(
+                        &entries,
+                        var(1),
+                        first(var(3)),
+                        cons(&entries, new_entry(), var(0)),
+                        cons(&entries, new_entry(), var(4)),
+                        cons(&entries, var(3), call(this, vec![var(4), var(1), var(2)])),
+                    ),
+                ),
+            ],
+        );
+        self.define(
+            this,
+            vec![entries.clone(), key.clone(), value.clone()],
+            entries,
+            body,
+        );
+        this
+    }
+
+    /// `removeEntry key entries`.
+    fn map_remove(&mut self, key: &Ty, value: &Ty) -> u64 {
+        let this = self.reserve();
+        let entries = list(&pair(key, value));
+        let body = matching(
+            &entries,
+            var(0),
+            vec![
+                arm(Shape::Nil, Vec::new(), nil(&entries)),
+                arm(
+                    Shape::Cons,
+                    vec![2, 3],
+                    by_order(
+                        &entries,
+                        var(1),
+                        first(var(2)),
+                        var(0),
+                        var(3),
+                        cons(&entries, var(2), call(this, vec![var(3), var(1)])),
+                    ),
+                ),
+            ],
+        );
+        self.define(this, vec![entries.clone(), key.clone()], entries, body);
+        this
+    }
+
+    /// `lookupEntry key entries`.
+    fn map_lookup(&mut self, key: &Ty, value: &Ty) -> u64 {
+        let this = self.reserve();
+        let entries = list(&pair(key, value));
+        let found = option(value);
+        let body = matching(
+            &found,
+            var(0),
+            vec![
+                arm(
+                    Shape::Nil,
+                    Vec::new(),
+                    build(Shape::None, &found, Vec::new()),
+                ),
+                arm(
+                    Shape::Cons,
+                    vec![2, 3],
+                    by_order(
+                        &found,
+                        var(1),
+                        first(var(2)),
+                        build(Shape::None, &found, Vec::new()),
+                        build(Shape::Some, &found, vec![second(var(2))]),
+                        call(this, vec![var(3), var(1)]),
+                    ),
+                ),
+            ],
+        );
+        self.define(this, vec![entries, key.clone()], found, body);
+        this
+    }
+
+    /// `(lookupEntry key entries).isSome`.
+    fn map_contains(&mut self, key: &Ty, value: &Ty) -> u64 {
+        let this = self.reserve();
+        let lookup = self.map_lookup(key, value);
+        let body = matching(
+            &Ty::Bool,
+            call(lookup, vec![var(0), var(1)]),
+            vec![
+                arm(Shape::None, Vec::new(), boolean(false)),
+                arm(Shape::Some, vec![2], boolean(true)),
+            ],
+        );
+        self.define(
+            this,
+            vec![list(&pair(key, value)), key.clone()],
+            Ty::Bool,
+            body,
+        );
+        this
+    }
+
+    /// `entries.map Prod.fst` or `entries.map Prod.snd`.
+    fn map_project(&mut self, key: &Ty, value: &Ty, keys: bool) -> u64 {
+        let this = self.reserve();
+        let element = if keys { key } else { value };
+        let result = list(element);
+        let projected = if keys { first(var(1)) } else { second(var(1)) };
+        let body = matching(
+            &result,
+            var(0),
+            vec![
+                arm(Shape::Nil, Vec::new(), nil(&result)),
+                arm(
+                    Shape::Cons,
+                    vec![1, 2],
+                    cons(&result, projected, call(this, vec![var(2)])),
+                ),
+            ],
+        );
+        self.define(this, vec![list(&pair(key, value))], result, body);
+        this
+    }
+
+    /// `entries.foldl (fun state entry => step state entry.1 entry.2) initial`.
+    fn map_fold(&mut self, key: &Ty, value: &Ty, state: &Ty) -> u64 {
+        let this = self.reserve();
+        let step = function_type(&[state.clone(), key.clone(), value.clone()], state);
+        // 0 step, 1 state, 2 entries; 3 head, 4 tail.
+        let body = matching(
+            state,
+            var(2),
+            vec![
+                arm(Shape::Nil, Vec::new(), var(1)),
+                arm(
+                    Shape::Cons,
+                    vec![3, 4],
+                    call(
+                        this,
+                        vec![
+                            var(0),
+                            apply(var(0), vec![var(1), first(var(3)), second(var(3))]),
+                            var(4),
+                        ],
+                    ),
+                ),
+            ],
+        );
+        self.define(
+            this,
+            vec![step, state.clone(), list(&pair(key, value))],
+            state.clone(),
+            body,
+        );
+        this
+    }
+
+    /// `insertElement key elements`.
+    fn set_insert(&mut self, key: &Ty) -> u64 {
+        let this = self.reserve();
+        let set = list(key);
+        let body = matching(
+            &set,
+            var(0),
+            vec![
+                arm(Shape::Nil, Vec::new(), cons(&set, var(1), nil(&set))),
+                arm(
+                    Shape::Cons,
+                    vec![2, 3],
+                    by_order(
+                        &set,
+                        var(1),
+                        var(2),
+                        cons(&set, var(1), var(0)),
+                        var(0),
+                        cons(&set, var(2), call(this, vec![var(3), var(1)])),
+                    ),
+                ),
+            ],
+        );
+        self.define(this, vec![set.clone(), key.clone()], set, body);
+        this
+    }
+
+    /// `removeElement key elements`.
+    fn set_remove(&mut self, key: &Ty) -> u64 {
+        let this = self.reserve();
+        let set = list(key);
+        let body = matching(
+            &set,
+            var(0),
+            vec![
+                arm(Shape::Nil, Vec::new(), nil(&set)),
+                arm(
+                    Shape::Cons,
+                    vec![2, 3],
+                    by_order(
+                        &set,
+                        var(1),
+                        var(2),
+                        var(0),
+                        var(3),
+                        cons(&set, var(2), call(this, vec![var(3), var(1)])),
+                    ),
+                ),
+            ],
+        );
+        self.define(this, vec![set.clone(), key.clone()], set, body);
+        this
+    }
+
+    /// `containsElement key elements`.
+    fn set_contains(&mut self, key: &Ty) -> u64 {
+        let this = self.reserve();
+        let body = matching(
+            &Ty::Bool,
+            var(0),
+            vec![
+                arm(Shape::Nil, Vec::new(), boolean(false)),
+                arm(
+                    Shape::Cons,
+                    vec![2, 3],
+                    by_order(
+                        &Ty::Bool,
+                        var(1),
+                        var(2),
+                        boolean(false),
+                        boolean(true),
+                        call(this, vec![var(3), var(1)]),
+                    ),
+                ),
+            ],
+        );
+        self.define(this, vec![list(key), key.clone()], Ty::Bool, body);
+        this
+    }
+
+    /// `right.foldl (fun acc key => insertElement key acc) left`.
+    fn set_union(&mut self, key: &Ty) -> u64 {
+        let this = self.reserve();
+        let insert = self.set_insert(key);
+        let set = list(key);
+        // 0 left (the accumulator), 1 right; 2 head, 3 tail.
+        let body = matching(
+            &set,
+            var(1),
+            vec![
+                arm(Shape::Nil, Vec::new(), var(0)),
+                arm(
+                    Shape::Cons,
+                    vec![2, 3],
+                    call(this, vec![call(insert, vec![var(0), var(2)]), var(3)]),
+                ),
+            ],
+        );
+        self.define(this, vec![set.clone(), set.clone()], set, body);
+        this
+    }
+
+    /// `left.filter (fun key => containsElement key right)`, or its negation.
+    fn set_filter(&mut self, key: &Ty, keep_contained: bool) -> u64 {
+        let this = self.reserve();
+        let contains = self.set_contains(key);
+        let set = list(key);
+        // 0 left, 1 right; 2 head, 3 tail.
+        let rest = || call(this, vec![var(3), var(1)]);
+        let kept = cons(&set, var(2), rest());
+        let (when_contained, otherwise) = if keep_contained {
+            (kept, rest())
+        } else {
+            (rest(), kept)
+        };
+        let body = matching(
+            &set,
+            var(0),
+            vec![
+                arm(Shape::Nil, Vec::new(), nil(&set)),
+                arm(
+                    Shape::Cons,
+                    vec![2, 3],
+                    cond(
+                        call(contains, vec![var(1), var(2)]),
+                        when_contained,
+                        otherwise,
+                    ),
+                ),
+            ],
+        );
+        self.define(this, vec![set.clone(), set.clone()], set, body);
+        this
+    }
+
+    /// `values.foldl step initial`.
+    fn list_fold(&mut self, element: &Ty, state: &Ty) -> u64 {
+        let this = self.reserve();
+        let step = function_type(&[state.clone(), element.clone()], state);
+        let body = matching(
+            state,
+            var(2),
+            vec![
+                arm(Shape::Nil, Vec::new(), var(1)),
+                arm(
+                    Shape::Cons,
+                    vec![3, 4],
+                    call(
+                        this,
+                        vec![var(0), apply(var(0), vec![var(1), var(3)]), var(4)],
+                    ),
+                ),
+            ],
+        );
+        self.define(
+            this,
+            vec![step, state.clone(), list(element)],
+            state.clone(),
+            body,
+        );
+        this
+    }
+
+    /// `iterate step count state`.
+    fn iterate(&mut self, state: &Ty) -> u64 {
+        let this = self.reserve();
+        let step = function_type(std::slice::from_ref(state), state);
+        // 0 step, 1 count, 2 state; 3 predecessor.
+        let body = matching(
+            state,
+            var(1),
+            vec![
+                arm(Shape::Zero, Vec::new(), var(2)),
+                arm(
+                    Shape::Succ,
+                    vec![3],
+                    call(this, vec![var(0), var(3), apply(var(0), vec![var(2)])]),
+                ),
+            ],
+        );
+        self.define(
+            this,
+            vec![step, Ty::Nat, state.clone()],
+            state.clone(),
+            body,
+        );
+        this
+    }
+
+    /// `iterateUntil step fuel state`.
+    fn iterate_until(&mut self, state: &Ty) -> u64 {
+        let this = self.reserve();
+        let stepped = option(state);
+        let step = function_type(std::slice::from_ref(state), &stepped);
+        let result = pair(state, &Ty::Bool);
+        // 0 step, 1 fuel, 2 state; 3 predecessor, 4 next.
+        let finished = |reached: bool| build(Shape::Pair, &result, vec![var(2), boolean(reached)]);
+        let body = matching(
+            &result,
+            var(1),
+            vec![
+                arm(Shape::Zero, Vec::new(), finished(false)),
+                arm(
+                    Shape::Succ,
+                    vec![3],
+                    matching(
+                        &result,
+                        apply(var(0), vec![var(2)]),
+                        vec![
+                            arm(Shape::None, Vec::new(), finished(true)),
+                            arm(
+                                Shape::Some,
+                                vec![4],
+                                call(this, vec![var(0), var(3), var(4)]),
+                            ),
+                        ],
+                    ),
+                ),
+            ],
+        );
+        self.define(this, vec![step, Ty::Nat, state.clone()], result, body);
+        this
+    }
+
+    /// `(lookupEntry node graph).getD []`.
+    fn graph_successors(&mut self, node: &Ty) -> u64 {
+        let this = self.reserve();
+        let nodes = list(node);
+        let lookup = self.map_lookup(node, &nodes);
+        let body = matching(
+            &nodes,
+            call(lookup, vec![var(0), var(1)]),
+            vec![
+                arm(Shape::None, Vec::new(), nil(&nodes)),
+                arm(Shape::Some, vec![2], var(2)),
+            ],
+        );
+        self.define(
+            this,
+            vec![list(&pair(node, &nodes)), node.clone()],
+            nodes,
+            body,
+        );
+        this
+    }
+
+    /// `reachableFrom graph (graph.length + 1) [start] [start]`.
+    fn graph_reachable(&mut self, node: &Ty) -> u64 {
+        let this = self.reserve();
+        let rounds = self.reserve();
+        let frontier = self.reserve();
+        let successors_into = self.reserve();
+        let successors = self.graph_successors(node);
+        let contains = self.set_contains(node);
+        let insert = self.set_insert(node);
+        let union = self.set_union(node);
+        let nodes = list(node);
+        let graph = list(&pair(node, &nodes));
+        let singleton = || cons(&nodes, var(1), nil(&nodes));
+        // graphReachable: 0 graph, 1 start.
+        let bound = prim(
+            Prim::NatAdd,
+            vec![
+                prim(Prim::Length, vec![var(0)]),
+                Expr::Value {
+                    ty: Ty::Nat,
+                    value: super::Value::Nat {
+                        value: "1".to_owned(),
+                    },
+                },
+            ],
+        );
+        self.define(
+            this,
+            vec![graph.clone(), node.clone()],
+            nodes.clone(),
+            call(rounds, vec![var(0), bound, singleton(), singleton()]),
+        );
+        // reachableFrom: 0 graph, 1 fuel, 2 frontier, 3 seen; 4 fuel', 5 next, 6 7 its cons.
+        let next = call(frontier, vec![var(0), var(3), var(2), nil(&nodes)]);
+        let body = matching(
+            &nodes,
+            var(1),
+            vec![
+                arm(Shape::Zero, Vec::new(), var(3)),
+                arm(
+                    Shape::Succ,
+                    vec![4],
+                    Expr::Let {
+                        name: 5,
+                        ty: nodes.clone(),
+                        bound: Box::new(next),
+                        body: Box::new(matching(
+                            &nodes,
+                            var(5),
+                            vec![
+                                arm(Shape::Nil, Vec::new(), var(3)),
+                                arm(
+                                    Shape::Cons,
+                                    vec![6, 7],
+                                    call(
+                                        rounds,
+                                        vec![
+                                            var(0),
+                                            var(4),
+                                            var(5),
+                                            call(union, vec![var(3), var(5)]),
+                                        ],
+                                    ),
+                                ),
+                            ],
+                        )),
+                    },
+                ),
+            ],
+        );
+        self.define(
+            rounds,
+            vec![graph.clone(), Ty::Nat, nodes.clone(), nodes.clone()],
+            nodes.clone(),
+            body,
+        );
+        // The frontier fold: 0 graph, 1 seen, 2 frontier, 3 acc; 4 node, 5 rest.
+        let body = matching(
+            &nodes,
+            var(2),
+            vec![
+                arm(Shape::Nil, Vec::new(), var(3)),
+                arm(
+                    Shape::Cons,
+                    vec![4, 5],
+                    call(
+                        frontier,
+                        vec![
+                            var(0),
+                            var(1),
+                            var(5),
+                            call(
+                                successors_into,
+                                vec![var(1), call(successors, vec![var(0), var(4)]), var(3)],
+                            ),
+                        ],
+                    ),
+                ),
+            ],
+        );
+        self.define(
+            frontier,
+            vec![graph, nodes.clone(), nodes.clone(), nodes.clone()],
+            nodes.clone(),
+            body,
+        );
+        // The successor fold: 0 seen, 1 successors, 2 acc; 3 succ, 4 rest.
+        let unseen = cond(
+            call(contains, vec![var(0), var(3)]),
+            var(2),
+            cond(
+                call(contains, vec![var(2), var(3)]),
+                var(2),
+                call(insert, vec![var(2), var(3)]),
+            ),
+        );
+        let body = matching(
+            &nodes,
+            var(1),
+            vec![
+                arm(Shape::Nil, Vec::new(), var(2)),
+                arm(
+                    Shape::Cons,
+                    vec![3, 4],
+                    call(successors_into, vec![var(0), var(4), unseen]),
+                ),
+            ],
+        );
+        self.define(
+            successors_into,
+            vec![nodes.clone(), nodes.clone(), nodes.clone()],
+            nodes,
+            body,
+        );
+        this
+    }
+
+    /// `topological graph (graph.length + 1) (graph.map Prod.fst) []`.
+    fn graph_topological(&mut self, node: &Ty) -> u64 {
+        let this = self.reserve();
+        let rounds = self.reserve();
+        let ready = self.reserve();
+        let unreached = self.reserve();
+        let reverse = self.reserve();
+        let keys = self.map_project(node, &list(node), true);
+        let successors = self.graph_successors(node);
+        let contains = self.set_contains(node);
+        let remove = self.set_remove(node);
+        let nodes = list(node);
+        let graph = list(&pair(node, &nodes));
+        let order = option(&nodes);
+        let bound = prim(
+            Prim::NatAdd,
+            vec![
+                prim(Prim::Length, vec![var(0)]),
+                Expr::Value {
+                    ty: Ty::Nat,
+                    value: super::Value::Nat {
+                        value: "1".to_owned(),
+                    },
+                },
+            ],
+        );
+        self.define(
+            this,
+            vec![graph.clone()],
+            order.clone(),
+            call(
+                rounds,
+                vec![var(0), bound, call(keys, vec![var(0)]), nil(&nodes)],
+            ),
+        );
+        // topological: 0 graph, 1 fuel, 2 remaining, 3 order; 4 fuel', 5 6 ready cons.
+        let finished = || {
+            matching(
+                &order,
+                var(2),
+                vec![
+                    arm(
+                        Shape::Nil,
+                        Vec::new(),
+                        build(
+                            Shape::Some,
+                            &order,
+                            vec![call(reverse, vec![var(3), nil(&nodes)])],
+                        ),
+                    ),
+                    arm(
+                        Shape::Cons,
+                        vec![7, 8],
+                        build(Shape::None, &order, Vec::new()),
+                    ),
+                ],
+            )
+        };
+        let body = matching(
+            &order,
+            var(1),
+            vec![
+                arm(Shape::Zero, Vec::new(), finished()),
+                arm(
+                    Shape::Succ,
+                    vec![4],
+                    matching(
+                        &order,
+                        call(ready, vec![var(0), var(2), var(2)]),
+                        vec![
+                            arm(Shape::Nil, Vec::new(), finished()),
+                            arm(
+                                Shape::Cons,
+                                vec![5, 6],
+                                call(
+                                    rounds,
+                                    vec![
+                                        var(0),
+                                        var(4),
+                                        call(remove, vec![var(2), var(5)]),
+                                        cons(&nodes, var(5), var(3)),
+                                    ],
+                                ),
+                            ),
+                        ],
+                    ),
+                ),
+            ],
+        );
+        self.define(
+            rounds,
+            vec![graph.clone(), Ty::Nat, nodes.clone(), nodes.clone()],
+            order,
+            body,
+        );
+        // The ready filter: 0 graph, 1 remaining, 2 candidates; 3 node, 4 rest.
+        let rest = || call(ready, vec![var(0), var(1), var(4)]);
+        let body = matching(
+            &nodes,
+            var(2),
+            vec![
+                arm(Shape::Nil, Vec::new(), nil(&nodes)),
+                arm(
+                    Shape::Cons,
+                    vec![3, 4],
+                    cond(
+                        call(unreached, vec![var(0), var(3), var(1)]),
+                        cons(&nodes, var(3), rest()),
+                        rest(),
+                    ),
+                ),
+            ],
+        );
+        self.define(
+            ready,
+            vec![graph.clone(), nodes.clone(), nodes.clone()],
+            nodes.clone(),
+            body,
+        );
+        // `remaining.all (fun other => !containsElement node (graphSuccessors graph other))`:
+        // 0 graph, 1 node, 2 others; 3 other, 4 rest.
+        let body = matching(
+            &Ty::Bool,
+            var(2),
+            vec![
+                arm(Shape::Nil, Vec::new(), boolean(true)),
+                arm(
+                    Shape::Cons,
+                    vec![3, 4],
+                    cond(
+                        call(
+                            contains,
+                            vec![call(successors, vec![var(0), var(3)]), var(1)],
+                        ),
+                        boolean(false),
+                        call(unreached, vec![var(0), var(1), var(4)]),
+                    ),
+                ),
+            ],
+        );
+        self.define(
+            unreached,
+            vec![graph, node.clone(), nodes.clone()],
+            Ty::Bool,
+            body,
+        );
+        // `order.reverse`, onto an accumulator: 0 items, 1 acc; 2 head, 3 tail.
+        let body = matching(
+            &nodes,
+            var(0),
+            vec![
+                arm(Shape::Nil, Vec::new(), var(1)),
+                arm(
+                    Shape::Cons,
+                    vec![2, 3],
+                    call(reverse, vec![var(3), cons(&nodes, var(2), var(1))]),
+                ),
+            ],
+        );
+        self.define(reverse, vec![nodes.clone(), nodes.clone()], nodes, body);
+        this
+    }
+}

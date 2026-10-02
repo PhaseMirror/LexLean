@@ -118,6 +118,28 @@ versions, and the entries below say what each tag does and does not claim.
   Verification publishes the canonical, root-independent
   `production/compiler-input.json` (`lexlean/compiler-input/1`, schema
   `compiler-input`) and records it in the attestation (`NE-01`..`NE-06`).
+- The production realization calculus (§17.14), the closed target of
+  production compilation. It is defined as LexLean in the new `compiler/`
+  project: syntax, a kernel-checked denotation with exact step accounting
+  and explicit overflow, and generated fixture theorems. The host side,
+  `lexlean::calculus`, provides:
+  - the closed JSON form `lexlean/target-program/1`, with canonical bytes
+    and content identity under alpha-renaming;
+  - the static rules, failing closed with the new `LLB6005`;
+  - a reference interpreter;
+  - a realization library that transcribes every collection primitive;
+  - a realization table covering every runtime construct of the production
+    registry;
+  - the reference Rust rendering under `#![forbid(unsafe_code)]`.
+
+  The hand-constructed fixtures are confirmed three ways: Lean's kernel (or,
+  for the few primitives the kernel cannot reduce, Lean's evaluator),
+  LexLean's own collection primitives, and `rustc`
+  (`TC-01`..`TC-07`, `cargo xtask check-calculus`).
+- The language-1.2 portable runtime exposes every definition, so a
+  definition imported from another module reduces in the kernel through the
+  primitives it applies; the 1.2 `lean_backend` version is now `11`, and the
+  frozen language-1.1 runtime is unchanged.
 - Every semantic-module member must survive into the typed value: an extra
   member of a unit variant (for example `{"kind":"reflexivity","tactic":...}`)
   was silently ignored and is now rejected in every language.

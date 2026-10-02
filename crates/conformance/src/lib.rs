@@ -8,6 +8,7 @@
 
 #![deny(missing_docs)]
 
+pub mod calculus;
 pub mod cases;
 pub mod fixtures;
 pub mod meta;

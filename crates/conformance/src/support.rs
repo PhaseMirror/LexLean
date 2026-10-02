@@ -257,6 +257,24 @@ impl P {
         Self { temp, root }
     }
 
+    /// A fresh copy of the `compiler` project, which defines the production
+    /// realization calculus (§17.14), without build output or oracles.
+    #[must_use]
+    pub fn compiler() -> Self {
+        let temp = tempfile::Builder::new()
+            .prefix("lexlean-compiler-case-")
+            .tempdir()
+            .expect("tempdir");
+        let source = repo_root().join("compiler");
+        assert!(
+            source.is_dir(),
+            "the committed compiler project is required"
+        );
+        copy_tree(source.as_std_path(), temp.path(), &[".lexlean", "expected"]);
+        let root = Utf8PathBuf::from_path_buf(temp.path().to_path_buf()).expect("utf8 tempdir");
+        Self { temp, root }
+    }
+
     /// Assert that a link-time failure also refuses `build` and leaves no
     /// backend output (§17.12). `check` alone never runs a backend, so the
     /// assertion is made against the command that would: the §21.8 mutation
@@ -1661,6 +1679,34 @@ pub fn verified_corpus() -> &'static VerifiedFixture {
             })
             .unwrap_or_else(|error| {
                 panic!("the proof corpus verifies under pinned Lean 4.32.1: {error:#?}")
+            });
+        let attestation: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(outcome.root.join("attestation.json").as_std_path())
+                .expect("attestation exists"),
+        )
+        .expect("attestation parses");
+        VerifiedFixture {
+            project,
+            outcome,
+            attestation,
+        }
+    })
+}
+
+/// The one shared verified run of the `compiler` project: the calculus,
+/// its denotation, and every fixture theorem, under pinned Lean.
+pub fn verified_compiler() -> &'static VerifiedFixture {
+    static FIXTURE: OnceLock<VerifiedFixture> = OnceLock::new();
+    FIXTURE.get_or_init(|| {
+        let _guard = env_lock();
+        let project = P::compiler();
+        let outcome = project
+            .engine()
+            .verify(VerifyRequest {
+                selection: Selection::Entrypoints,
+            })
+            .unwrap_or_else(|error| {
+                panic!("the compiler project verifies under pinned Lean 4.32.1: {error:#?}")
             });
         let attestation: serde_json::Value = serde_json::from_slice(
             &std::fs::read(outcome.root.join("attestation.json").as_std_path())
