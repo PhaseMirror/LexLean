@@ -274,7 +274,7 @@ no-allocation target admitted allocation as an effect. Command: `cargo test -p
 repo-conformance --test conformance -- conformance_pd_04 conformance_pd_05`.
 
 ```text
-thread 'conformance_pd_05' panicked at crates/conformance/src/cases/production.rs:502:17:
+thread 'conformance_pd_05' panicked at crates/conformance/src/cases/production.rs:646:17:
 production-unbounded-type: expected "construct `type.list` requires heap allocation, which target `rust-core` does not provide", got LLT4005: phase production: production root `LanguageTwelve.Main.first` is not eligible for target `rust-core`: effect mismatch: construct `type.list` realizes effect `allocation`, which the root does not admit (in `LanguageTwelve.Main.first`, reached by LanguageTwelve.Main.first; 1 violation(s) in total)
 thread 'conformance_pd_04' panicked at crates/conformance/src/support.rs:372:14:
 check fails
