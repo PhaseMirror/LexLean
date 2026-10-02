@@ -335,27 +335,27 @@ public theorem countdown_decreases (number : Nat) (_steps : Nat) : (((Nat.blt (n
   try set_option linter.unusedSimpArgs false in simp only [← Bool.not_eq_true, Nat.beq_eq, Nat.blt_eq, Nat.ble_eq, LexLeanRuntime.subtract, LexLeanRuntime.multiply] at *
   omega
 
-@[expose, semireducible] public def countdown (number : Nat) (steps : Nat) : Nat := (match _decrease0 : (Nat.blt (number) (2)) with | true => steps | false => countdown ((LexLeanRuntime.subtract (number) (2) : Nat)) ((steps + 1)))
+@[expose, semireducible] public def countdown (number : Nat) (steps : Nat) : Nat := (match (generalizing := false) _decrease0 : (Nat.blt (number) (2)) with | true => steps | false => countdown ((LexLeanRuntime.subtract (number) (2) : Nat)) ((steps + 1)))
 termination_by number
-decreasing_by all_goals first | exact countdown_decreases (number) (steps) (_decrease0)
+decreasing_by all_goals first | (have _evidence := countdown_decreases (number) (steps) (_decrease0); subst_vars; exact _evidence)
 
 public theorem reduce_decreases (value : Nat) (bound : Nat) : (((Nat.beq (bound) (0)) = false) -> (((Nat.blt (value) (bound)) = false) -> ((LexLeanRuntime.subtract (value) (bound) : Nat) < value))) := by
   intros
   try set_option linter.unusedSimpArgs false in simp only [← Bool.not_eq_true, Nat.beq_eq, Nat.blt_eq, Nat.ble_eq, LexLeanRuntime.subtract, LexLeanRuntime.multiply] at *
   omega
 
-@[expose, semireducible] public def reduce (value : Nat) (bound : Nat) : Nat := (match _decrease0 : (Nat.beq (bound) (0)) with | true => value | false => (match _decrease1 : (Nat.blt (value) (bound)) with | true => value | false => reduce ((LexLeanRuntime.subtract (value) (bound) : Nat)) (bound)))
+@[expose, semireducible] public def reduce (value : Nat) (bound : Nat) : Nat := (match (generalizing := false) _decrease0 : (Nat.beq (bound) (0)) with | true => value | false => (match (generalizing := false) _decrease1 : (Nat.blt (value) (bound)) with | true => value | false => reduce ((LexLeanRuntime.subtract (value) (bound) : Nat)) (bound)))
 termination_by value
-decreasing_by all_goals first | exact reduce_decreases (value) (bound) (_decrease0) (_decrease1)
+decreasing_by all_goals first | (have _evidence := reduce_decreases (value) (bound) (_decrease0) (_decrease1); subst_vars; exact _evidence)
 
 public theorem search_decreases (target : Nat) (low : Nat) (high : Nat) : (((Nat.blt (low) (high)) = true) -> (((Nat.ble (target) ((low + low))) = false) -> ((LexLeanRuntime.subtract (high) ((low + 1)) : Nat) < (LexLeanRuntime.subtract (high) (low) : Nat)))) := by
   intros
   try set_option linter.unusedSimpArgs false in simp only [← Bool.not_eq_true, Nat.beq_eq, Nat.blt_eq, Nat.ble_eq, LexLeanRuntime.subtract, LexLeanRuntime.multiply] at *
   omega
 
-@[expose, semireducible] public def search (target : Nat) (low : Nat) (high : Nat) : Nat := (match _decrease0 : (Nat.blt (low) (high)) with | true => (match _decrease1 : (Nat.ble (target) ((low + low))) with | true => low | false => search (target) ((low + 1)) (high)) | false => high)
+@[expose, semireducible] public def search (target : Nat) (low : Nat) (high : Nat) : Nat := (match (generalizing := false) _decrease0 : (Nat.blt (low) (high)) with | true => (match (generalizing := false) _decrease1 : (Nat.ble (target) ((low + low))) with | true => low | false => search (target) ((low + 1)) (high)) | false => high)
 termination_by (LexLeanRuntime.subtract (high) (low) : Nat)
-decreasing_by all_goals first | exact search_decreases (target) (low) (high) (_decrease0) (_decrease1)
+decreasing_by all_goals first | (have _evidence := search_decreases (target) (low) (high) (_decrease0) (_decrease1); subst_vars; exact _evidence)
 
 public theorem rose_size : (roseSize (Nat) (Recursion.Syntax.Rose.node (1) ((Recursion.Syntax.Rose.node (2) (([] : List (Recursion.Syntax.Rose (Nat)))) :: (Recursion.Syntax.Rose.node (3) (([] : List (Recursion.Syntax.Rose (Nat)))) :: ([] : List (Recursion.Syntax.Rose (Nat))))))) = 3) := by
   rfl
@@ -373,6 +373,29 @@ public theorem reduce_twenty_three : (reduce (23) (5) = 3) := by
   decide
 
 public theorem search_first : (search (7) (0) (10) = 4) := by
+  decide
+
+@[expose] public def weight : (term : Recursion.Syntax.Term) -> Nat
+  | Recursion.Syntax.Term.literal _ => 1
+  | Recursion.Syntax.Term.plus left right => (((weight (left) + weight (left)) + weight (right)) + 1)
+
+public theorem reassociate_literal (term : Recursion.Syntax.Term) (left : Recursion.Syntax.Term) (right : Recursion.Syntax.Term) (value : Nat) : ((term = Recursion.Syntax.Term.plus (left) (right)) -> ((left = Recursion.Syntax.Term.literal (value)) -> (weight (right) < weight (term)))) := by
+  intros
+  subst_vars
+  try set_option linter.unusedSimpArgs false in simp only [weight, ← Bool.not_eq_true, Nat.beq_eq, Nat.blt_eq, Nat.ble_eq, LexLeanRuntime.subtract, LexLeanRuntime.multiply] at *
+  omega
+
+public theorem reassociate_plus (term : Recursion.Syntax.Term) (left : Recursion.Syntax.Term) (right : Recursion.Syntax.Term) (inner : Recursion.Syntax.Term) (rest : Recursion.Syntax.Term) : ((term = Recursion.Syntax.Term.plus (left) (right)) -> ((left = Recursion.Syntax.Term.plus (inner) (rest)) -> (weight (Recursion.Syntax.Term.plus (inner) (Recursion.Syntax.Term.plus (rest) (right))) < weight (term)))) := by
+  intros
+  subst_vars
+  try set_option linter.unusedSimpArgs false in simp only [weight, ← Bool.not_eq_true, Nat.beq_eq, Nat.blt_eq, Nat.ble_eq, LexLeanRuntime.subtract, LexLeanRuntime.multiply] at *
+  omega
+
+@[expose, semireducible] public def reassociate (term : Recursion.Syntax.Term) : Recursion.Syntax.Term := (match (generalizing := false) _decrease0 : term with | Recursion.Syntax.Term.literal value => Recursion.Syntax.Term.literal (value) | Recursion.Syntax.Term.plus left right => (match (generalizing := false) _decrease1 : left with | Recursion.Syntax.Term.literal value => Recursion.Syntax.Term.plus (Recursion.Syntax.Term.literal (value)) (reassociate (right)) | Recursion.Syntax.Term.plus inner rest => reassociate (Recursion.Syntax.Term.plus (inner) (Recursion.Syntax.Term.plus (rest) (right)))))
+termination_by weight (term)
+decreasing_by all_goals first | (have _evidence := reassociate_literal (term) (left) (right) (value) (_decrease0) (_decrease1); subst_vars; exact _evidence) | (have _evidence := reassociate_plus (term) (left) (right) (inner) (rest) (_decrease0) (_decrease1); subst_vars; exact _evidence)
+
+public theorem reassociate_weight : (weight (reassociate (Recursion.Syntax.Term.plus (Recursion.Syntax.Term.plus (Recursion.Syntax.Term.literal (1)) (Recursion.Syntax.Term.literal (2))) (Recursion.Syntax.Term.literal (3)))) = 7) := by
   decide
 
 end Recursion.Main

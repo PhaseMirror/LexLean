@@ -241,7 +241,7 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `PF-16` | `build` | Raw tactics, custom proof nodes, unrestricted automation, and proof holes are rejected. |
 | `PF-17` | `build` | native_decide is never accepted or generated. |
 | `PF-18` | `build` | Lean proof failures remap to the smallest originating LexLean proof or statement span. |
-| `PF-19` | `build` | The language-1.2 linear_arithmetic proof form takes no argument, lowers to one fixed omega script, proves true linear obligations, and is refused by Lean on a false one. |
+| `PF-19` | `build` | The language-1.2 linear_arithmetic proof form names only the prior document definitions it unfolds, lowers to one fixed omega script, proves true linear obligations, and is refused by Lean on a false one. |
 
 ## repository
 

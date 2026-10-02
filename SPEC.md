@@ -2437,7 +2437,7 @@ backend runs.
 | `executable` definitions | `lexlean/semantic-module/2` | `"executable":true` asserts production eligibility under the higher-order rules below. |
 | `mutual` definition label | `lexlean/semantic-module/2` | `"mutual":"Label"` on a structurally recursive definition places it in a mutual definition group under the recursion rules below. |
 | `termination` evidence | `lexlean/semantic-module/2` | `{"measure":m,"evidence":[theorem...]}` on a definition declares well-founded recursion under the recursion rules below. |
-| `linear_arithmetic` proof | `lexlean/semantic-module/2` | `{"kind":"linear_arithmetic"}`, with no other member, lowers to the fixed script `intros`, `try set_option linter.unusedSimpArgs false in simp only [← Bool.not_eq_true, Nat.beq_eq, Nat.blt_eq, Nat.ble_eq] at *` (adding `LexLeanRuntime.subtract, LexLeanRuntime.multiply` when the module emits the portable runtime), and `omega`. |
+| `linear_arithmetic` proof | `lexlean/semantic-module/2` | `{"kind":"linear_arithmetic"}`, optionally with `definitions`, a strictly sorted list of prior document definitions and no other member. Without definitions it lowers to the fixed script `intros`, `try set_option linter.unusedSimpArgs false in simp only [← Bool.not_eq_true, Nat.beq_eq, Nat.blt_eq, Nat.ble_eq] at *` (adding `LexLeanRuntime.subtract, LexLeanRuntime.multiply` when the module emits the portable runtime), and `omega`; with definitions, `subst_vars` follows `intros` and the definitions lead the `simp only` list, so hypotheses equating a local with a constructor value are substituted and a measure over them unfolds to linear arithmetic. |
 
 #### Recursive data (language 1.2)
 
@@ -2566,34 +2566,54 @@ Termination evidence is semantic data, never tactic or backend text; no
    structurally recursive (`recursive_argument`, a top-level match on it, no
    `termination`). Every member's decreasing type belongs to one *recursive
    family*: the naturals; the lists of one element type; or one inductive
-   group together with `List` and `Option` of its members. In a member's
+   group at one instantiation of its type parameters, together with `List`
+   or `Option` of its members exactly when the group's constructors nest a
+   member under that container. In a member's
    top-level match, every pattern binder whose type belongs to the family is
    structurally smaller, and every call to a group member passes a smaller
    binder in that member's decreasing position. Members see each other; the
    recursion call graph is exactly these calls. A group lowers to one
    `mutual ... end` block whose members each declare
    `termination_by structural x1 ... xn => d`, so Lean must confirm the same
-   structural recursion and no other.
+   structural recursion and no other. A label names one group of one kind:
+   a label carried by both an inductive group and a definition group is
+   rejected. No member of the group being checked is called or referenced
+   under a lambda, and none is referenced as a value.
 3. **Well-founded recursion.** A definition with `termination` has no
    `recursive_argument` and no `mutual`. Its `measure` is a binder-free term
    of type `Nat` over the parameters that does not mention the definition.
    Its recursive calls pass the definition's own type parameters, do not
-   occur in another recursive call's argument or under a `match`, `lambda`,
-   or quantifier, and mention only parameters in their arguments and in
-   every enclosing `if` condition. Every `if` of the body is numbered in one
-   fixed pre-order; each call site, in that order, has the *decrease
-   obligation* `c1 = b1 -> ... -> measure[args] < measure` over its enclosing
-   conditions `ci` and branch polarities `bi`, outermost first. `evidence`
-   lists one prior theorem of the same module per call site, in order, whose
-   type parameters and parameters equal the definition's and whose statement
-   equals the obligation exactly. Linking rejects any other evidence; Lean
+   occur in another recursive call's argument or under a `lambda` or
+   quantifier, and the definition is never referenced as a value. A call's
+   arguments, and every enclosing `if` condition and `match` scrutinee,
+   mention only parameters and the binders of enclosing matches, and those
+   binders repeat no parameter or other enclosing binder. Every `if` and
+   `match` of the body is numbered in one fixed pre-order; each call site,
+   in that order, has the *decrease obligation*
+   `h1 -> ... -> measure[args] < measure` over its enclosing nodes, outermost
+   first, where an `if` contributes `c = b` for its condition `c` and branch
+   polarity `b`, and a `match` contributes `s = v` for its scrutinee `s` and
+   the value `v` the branch's pattern denotes over its binders (a Boolean
+   literal, a pair for `Prod.mk`, and otherwise the constructor applied to
+   the binders at the scrutinee type's arguments). `evidence` lists one
+   prior theorem of the same module per call site, in order, whose type
+   parameters equal the definition's, whose parameters are the definition's
+   followed by every enclosing match binder with its type, outermost first,
+   and whose statement equals the obligation exactly. Linking rejects any other evidence; Lean
    verification checks every evidence proof. A definition whose evidence is
    not proved is therefore never verified.
 4. **Well-founded lowering.** The definition lowers to
    `@[expose, semireducible] public def`, each `if` to
-   `match _decreaseN : c with | true => ... | false => ...`, then
-   `termination_by measure` and `decreasing_by all_goals first` with one
-   `| exact evidence T... p... _decreaseI...` per call site. Semireducibility
+   `match (generalizing := false) _decreaseN : c with | true => ... | false => ...`,
+   each `match` to `match (generalizing := false) _decreaseN : s with ...`,
+   then `termination_by measure` and `decreasing_by all_goals first` with one
+   `| (have _evidence := evidence T... p... b... _decreaseI...; subst_vars; exact _evidence)`
+   per call site, passing the enclosing match binders `b` and the hypotheses
+   of its enclosing nodes. `generalizing := false` keeps every earlier
+   hypothesis stated over the parameters, exactly as the evidence states it;
+   Lean still refines the decreasing goal by each match on a variable, and
+   `subst_vars` applies the same substitutions to the evidence, so the
+   evidence closes the goal it was stated for and no other. Semireducibility
    lets closed instances reduce in proofs; the evidence's observed axioms
    flow into the definition's exact policy.
 5. **Theorem binders** that neither the statement nor the proof mentions
@@ -4228,8 +4248,11 @@ Tests MUST establish that LexLean rejects, at minimum:
 - a cyclic well-founded measure;
 - forged well-founded evidence;
 - missing well-founded evidence;
-- a well-founded recursive call under a match;
-- a semantic-module member outside the closed schema.
+- well-founded evidence that omits the match enclosing its call;
+- a semantic-module member outside the closed schema;
+- a mutual label shared by an inductive group and a definition group;
+- a call to another member of a mutual group under a lambda;
+- a well-founded definition referring to itself as a value.
 
 ### 28.6 Example verification
 
@@ -4630,7 +4653,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `PF-16` | `proofs` | Raw tactics, custom proof nodes, unrestricted automation, and proof holes are rejected. | §16.12 |
 | `PF-17` | `proofs` | native_decide is never accepted or generated. | §16.12, §18.2 |
 | `PF-18` | `proofs` | Lean proof failures remap to the smallest originating LexLean proof or statement span. | §20.4 |
-| `PF-19` | `proofs` | The language-1.2 linear_arithmetic proof form takes no argument, lowers to one fixed omega script, proves true linear obligations, and is refused by Lean on a false one. | §17.12, §16 |
+| `PF-19` | `proofs` | The language-1.2 linear_arithmetic proof form names only the prior document definitions it unfolds, lowers to one fixed omega script, proves true linear obligations, and is refused by Lean on a false one. | §17.12, §16 |
 | `LN-01` | `lean-backend` | Each generated Lean file has the exact module, import, option, namespace, declaration, and end structure. | §18.1 |
 | `LN-02` | `lean-backend` | Imports are explicit, deduplicated, sorted, and every external global is fully qualified. | §18.3 |
 | `LN-03` | `lean-backend` | Generated Lean contains no comments, documentation, prose-bearing strings, or copied source prose. | §18.2 |

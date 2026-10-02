@@ -384,13 +384,46 @@ Command: `cargo test -p repo-conformance --test conformance --
 conformance_df_17`. Expected: the forged-evidence mutation links.
 
 ```text
-thread 'conformance_df_17' panicked at crates/conformance/src/support.rs:336:14:
+thread 'conformance_df_17' panicked at crates/conformance/src/support.rs:350:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 238 filtered out
 ```
 
 Removed: the comparison was restored; `conformance_df_17` passes and the
 `recursion-forged-evidence` negative fixture fails with `LLT4001`.
+
+### structural decrease check can fail
+
+Planted: the structural decrease test of a recursive call admitted any
+variable (`SemanticTerm::Var { name } if true || smaller.contains(name)`),
+so a member could call its group on its own argument. Command: `cargo test
+-p repo-conformance --test conformance -- conformance_df_16`. Expected: the
+`isOdd (number)` mutation links.
+
+```text
+thread 'conformance_df_16' panicked at crates/conformance/src/support.rs:350:14:
+check fails
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 238 filtered out
+```
+
+Removed: the test was restored; `conformance_df_16` passes and the
+`recursion-wrong-argument` negative fixture fails with `LLT4001`.
+
+### well-founded lowering under match can fail
+
+Planted: a numbered `match` lowered without `(generalizing := false)`, so
+Lean refined the earlier hypotheses and the evidence of `reassociate` no
+longer applied. The oracle is Lean itself. Command: `lexlean build &&
+lexlean verify` in `examples/recursion`.
+
+```text
+error[LLV7002]: Lean rejected `Recursion.Main` (error lean.unknownIdentifier): Unknown identifier `inner`
+error[LLV7002]: Lean rejected `Recursion.Main` (error lean.unknownIdentifier): Unknown identifier `rest`
+error[LLV7002]: Lean rejected `Recursion.Main` (error): Application type mismatch: The argument
+```
+
+Removed: the lowering was restored; the recursion example verifies and its
+normalized verification records match `cargo xtask verify-examples`.
 
 ### fmt-check can fail
 

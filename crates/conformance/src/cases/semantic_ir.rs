@@ -1892,28 +1892,43 @@ pub(crate) fn run(id: &str) {
                     .map(|(_, _, digest)| digest)
                     .expect("alpha identity")
             };
+            // Both copies declare the same extra theorem; only one binds it
+            // as the evidence, so every difference is the binding's.
+            let theorem_anchor = r#"{"axioms":["Quot.sound","propext"],"kind":"theorem","name":"countdown_decreases""#;
+            let added_theorem = r#"{"axioms":["Quot.sound","propext"],"kind":"theorem","name":"countdown_shrinks","parameters":[{"name":"number","type":{"kind":"nat"}},{"name":"steps","type":{"kind":"nat"}}],"proof":{"kind":"linear_arithmetic"},"statement":{"conclusion":{"kind":"lt","left":{"arguments":[{"kind":"var","name":"number"},{"kind":"nat","value":"2"}],"kind":"primitive","operation":"subtract","result":{"kind":"nat"}},"right":{"kind":"var","name":"number"}},"kind":"implies","premise":{"kind":"eq","left":{"kind":"blt","left":{"kind":"var","name":"number"},"right":{"kind":"nat","value":"2"}},"right":{"kind":"bool","value":false}}}},"#;
+            let source = original.read("src/Main.lex.tex");
+            assert!(source.contains(theorem_anchor));
+            let with_theorem = source.replacen(
+                theorem_anchor,
+                &format!("{added_theorem}{theorem_anchor}"),
+                1,
+            );
+            let added = P::copy_example("recursion");
+            added.write("src/Main.lex.tex", &with_theorem);
             let rebound = P::copy_example("recursion");
-            let source = rebound.read("src/Main.lex.tex");
+            let binding = r#""termination":{"evidence":[{"name":"countdown_decreases"}]"#;
+            assert!(with_theorem.contains(binding));
             rebound.write(
                 "src/Main.lex.tex",
-                &source.replacen(
-                    r#"{"axioms":["Quot.sound","propext"],"kind":"theorem","name":"countdown_decreases""#,
-                    r#"{"axioms":["Quot.sound","propext"],"kind":"theorem","name":"countdown_shrinks","parameters":[{"name":"number","type":{"kind":"nat"}},{"name":"steps","type":{"kind":"nat"}}],"proof":{"kind":"linear_arithmetic"},"statement":{"conclusion":{"kind":"lt","left":{"arguments":[{"kind":"var","name":"number"},{"kind":"nat","value":"2"}],"kind":"primitive","operation":"subtract","result":{"kind":"nat"}},"right":{"kind":"var","name":"number"}},"kind":"implies","premise":{"kind":"eq","left":{"kind":"blt","left":{"kind":"var","name":"number"},"right":{"kind":"nat","value":"2"}},"right":{"kind":"bool","value":false}}}},{"axioms":["Quot.sound","propext"],"kind":"theorem","name":"countdown_decreases""#,
-                    1,
-                )
-                .replacen(
-                    r#""termination":{"evidence":[{"name":"countdown_decreases"}]"#,
+                &with_theorem.replacen(
+                    binding,
                     r#""termination":{"evidence":[{"name":"countdown_shrinks"}]"#,
                     1,
                 ),
             );
+            let unbound = snapshot_of(&added);
             let second = snapshot_of(&rebound);
-            assert_ne!(alpha(&first, "countdown"), alpha(&second, "countdown"));
+            assert_eq!(
+                alpha(&first, "countdown"),
+                alpha(&unbound, "countdown"),
+                "an unused theorem does not touch the definition's identity"
+            );
+            assert_ne!(alpha(&unbound, "countdown"), alpha(&second, "countdown"));
             assert_ne!(
-                support::checked_project(&original).semantic_id,
+                support::checked_project(&added).semantic_id,
                 support::checked_project(&rebound).semantic_id
             );
-            assert_eq!(alpha(&first, "reduce"), alpha(&second, "reduce"));
+            assert_eq!(alpha(&unbound, "reduce"), alpha(&second, "reduce"));
         }
         other => panic!("no semantic-ir case is wired for {other}"),
     }

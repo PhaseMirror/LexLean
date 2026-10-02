@@ -61,9 +61,17 @@ versions, and the entries below say what each tag does and does not claim.
   structurally over one recursive family (naturals, lists, or an inductive
   group with its containers) and lower with `termination_by structural`;
   well-founded definitions carry a measure and one statement-exact evidence
-  theorem per call site, checked in linking and proved under Lean; the new
-  `linear_arithmetic` proof form discharges linear obligations (`DF-16`,
-  `DF-17`, `PF-19`, `SM-27`, `examples/recursion`).
+  theorem per call site, checked in linking and proved under Lean. A
+  well-founded call may sit under `if` and `match`: its obligation is
+  quantified over the enclosing match binders and hypotheses, and lowers
+  through `match (generalizing := false) _decreaseN : s` with the evidence
+  substituted by `subst_vars` (`examples/recursion` reassociates a syntax
+  tree by a weight measure). The new `linear_arithmetic` proof form
+  discharges linear obligations and may unfold named prior definitions.
+  Recursion that escapes its check (a group member called inside a lambda or
+  referenced as a value, a mutual label shared by an inductive and a
+  definition group) is rejected; eleven new negative fixtures cover these
+  and the decrease and evidence rules (`DF-16`, `DF-17`, `PF-19`, `SM-27`).
 - Every semantic-module member must survive into the typed value: an extra
   member of a unit variant (for example `{"kind":"reflexivity","tactic":...}`)
   was silently ignored and is now rejected in every language.

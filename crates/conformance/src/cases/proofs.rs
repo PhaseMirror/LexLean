@@ -656,14 +656,34 @@ pub(crate) fn run(id: &str) {
                 "  intros\n  try set_option linter.unusedSimpArgs false in simp only [← Bool.not_eq_true, Nat.beq_eq, Nat.blt_eq, Nat.ble_eq, LexLeanRuntime.subtract, LexLeanRuntime.multiply] at *\n  omega\n"
             ), "{main}");
             let _ = support::verify_ok_backed("PF-19", &project);
-            // The form takes no argument: no tactic name or term can ride on it.
+            // The form names only definitions to unfold: no tactic name or
+            // term can ride on it, and no unit-variant proof takes a member.
             P::assert_mutation_rejected(
                 "recursion",
                 "src/Main.lex.tex",
                 r#""proof":{"kind":"linear_arithmetic"}"#,
                 r#""proof":{"kind":"linear_arithmetic","tactic":"norm_num"}"#,
-                "member `$.declarations[7].proof.tactic` is outside the closed schema",
+                "unknown field `tactic`",
             );
+            P::assert_mutation_rejected(
+                "recursion",
+                "src/Main.lex.tex",
+                r#""proof":{"kind":"decide"}"#,
+                r#""proof":{"kind":"decide","tactic":false}"#,
+                "is outside the closed schema",
+            );
+            // Unfolded definitions are prior document definitions, sorted.
+            P::assert_mutation_rejected(
+                "recursion",
+                "src/Main.lex.tex",
+                r#"{"definitions":[{"name":"weight"}],"kind":"linear_arithmetic"}"#,
+                r#"{"definitions":[{"name":"reassociate"}],"kind":"linear_arithmetic"}"#,
+                "linear_arithmetic unfolds `reassociate`, which is not a prior document definition",
+            );
+            let main_text = project.read("src/Main.lex.tex");
+            assert!(main_text
+                .contains(r#"{"definitions":[{"name":"weight"}],"kind":"linear_arithmetic"}"#));
+            assert!(main.contains("  intros\n  subst_vars\n  try set_option linter.unusedSimpArgs false in simp only [weight, ← Bool.not_eq_true, Nat.beq_eq, Nat.blt_eq, Nat.ble_eq, LexLeanRuntime.subtract, LexLeanRuntime.multiply] at *\n  omega\n"), "{main}");
             // Language 1.1 rejects the form.
             let eleven = P::semantic_example();
             let source = eleven.read("src/Main.lex.tex");

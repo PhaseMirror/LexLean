@@ -244,8 +244,11 @@ pub(crate) fn run(id: &str) {
                 ("recursion-cyclic-measure", "LLT4001"),
                 ("recursion-forged-evidence", "LLT4001"),
                 ("recursion-missing-evidence", "LLT4001"),
-                ("recursion-under-match", "LLT4001"),
+                ("recursion-evidence-omits-match", "LLT4001"),
                 ("semantic-unknown-member", "LLT4001"),
+                ("mutual-label-shared", "LLT4001"),
+                ("recursion-member-under-lambda", "LLT4001"),
+                ("recursion-well-founded-reference", "LLT4001"),
             ];
             let negative_root = root.join("tests/negative");
             let mut classes: Vec<String> = std::fs::read_dir(negative_root.as_std_path())

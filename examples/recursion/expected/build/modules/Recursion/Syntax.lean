@@ -19,4 +19,8 @@ public inductive Stmt where
   | sequence (_ : Stmt) (_ : Stmt)
 end
 
+public inductive Term where
+  | literal (_ : Nat)
+  | plus (_ : Term) (_ : Term)
+
 end Recursion.Syntax

@@ -968,7 +968,8 @@ pub(crate) fn run(id: &str) {
                 r#""arguments":[{"kind":"var","name":"number"}],"function":{"name":"isOdd"}"#,
                 "recursive call `isOdd` is not on a structurally smaller value",
             );
-            // A call on a binder outside the family (the rose's label).
+            // A call on a value that is not a smaller family binder (a fresh
+            // empty forest).
             reject(
                 r#""arguments":[{"kind":"var","name":"children"}],"function":{"name":"forestSize"}"#,
                 r#""arguments":[{"element":{"arguments":[{"kind":"parameter","name":"Item"}],"kind":"named","member":{"module":"Syntax","name":"Rose"}},"kind":"nil"}],"function":{"name":"forestSize"}"#,
@@ -996,6 +997,13 @@ pub(crate) fn run(id: &str) {
                 r#""mutual":"SyntaxSize","name":"isEven""#,
                 "mutual group `SyntaxSize` members decrease on different recursive families",
             );
+            // Production eligibility holds member by member: an executable
+            // member may not call a formal one.
+            reject(
+                r#""kind":"definition","mutual":"Parity","name":"isEven""#,
+                r#""executable":true,"kind":"definition","mutual":"Parity","name":"isEven""#,
+                "executable definition `isEven` calls non-executable `isOdd`",
+            );
         }
         // §17.12: well-founded recursion with statement-exact evidence.
         "DF-17" => {
@@ -1004,17 +1012,20 @@ pub(crate) fn run(id: &str) {
             let rendered = support::rendered(&project);
             let main = support::lean_text(&rendered, "Main");
             for expected in [
-                "@[expose, semireducible] public def countdown (number : Nat) (steps : Nat) : Nat := (match _decrease0 : (Nat.blt (number) (2)) with | true => steps | false => countdown ((LexLeanRuntime.subtract (number) (2) : Nat)) ((steps + 1)))\ntermination_by number\ndecreasing_by all_goals first | exact countdown_decreases (number) (steps) (_decrease0)\n",
-                "decreasing_by all_goals first | exact search_decreases (target) (low) (high) (_decrease0) (_decrease1)\n",
+                "@[expose, semireducible] public def countdown (number : Nat) (steps : Nat) : Nat := (match (generalizing := false) _decrease0 : (Nat.blt (number) (2)) with | true => steps | false => countdown ((LexLeanRuntime.subtract (number) (2) : Nat)) ((steps + 1)))\ntermination_by number\ndecreasing_by all_goals first | (have _evidence := countdown_decreases (number) (steps) (_decrease0); subst_vars; exact _evidence)\n",
+                "decreasing_by all_goals first | (have _evidence := search_decreases (target) (low) (high) (_decrease0) (_decrease1); subst_vars; exact _evidence)\n",
                 "public theorem countdown_decreases (number : Nat) (_steps : Nat) :",
+                "public def reassociate (term : Recursion.Syntax.Term) : Recursion.Syntax.Term := (match (generalizing := false) _decrease0 : term with ",
+                "(match (generalizing := false) _decrease1 : left with ",
+                "decreasing_by all_goals first | (have _evidence := reassociate_literal (term) (left) (right) (value) (_decrease0) (_decrease1); subst_vars; exact _evidence) | (have _evidence := reassociate_plus (term) (left) (right) (inner) (rest) (_decrease0) (_decrease1); subst_vars; exact _evidence)\n",
             ] {
                 assert!(main.contains(expected), "missing {expected:?} in:\n{main}");
             }
             let tex = support::tex_text(&rendered, "Main");
             assert!(tex.contains("Well-founded measure:"), "{tex}");
-            if let Some(verified) = support::verify_ok_backed("DF-17", &project) {
-                let _ = verified;
-            }
+            // Lean must accept every well-founded definition with its bound
+            // evidence; verify_ok_backed fails the case otherwise.
+            let _ = support::verify_ok_backed("DF-17", &project);
             let reject = |from: &str, to: &str, message: &str| {
                 P::assert_mutation_rejected("recursion", "src/Main.lex.tex", from, to, message);
             };

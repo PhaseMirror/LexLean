@@ -79,6 +79,50 @@ fn bound_name(name: &str, used: bool) -> String {
     }
 }
 
+/// Whether a proof refers to the local `local` by name: as a case or
+/// induction scrutinee, a generalized variable, a hypothesis it simplifies
+/// with, a reflected value, or inside a term it applies a theorem to. A
+/// branch binder of the same name shadows it.
+fn proof_uses(proof: &SemanticProof, local: &str) -> bool {
+    let branch_uses = |branches: &[crate::ir::semantic::SemanticProofBranch]| {
+        branches.iter().any(|branch| {
+            !branch.binders.iter().any(|binder| binder == local) && proof_uses(&branch.proof, local)
+        })
+    };
+    match proof {
+        SemanticProof::Reflexivity | SemanticProof::Decide | SemanticProof::Congruence => false,
+        SemanticProof::LinearArithmetic { definitions }
+        | SemanticProof::Simplify { definitions } => definitions
+            .iter()
+            .any(|member| member.module.is_none() && member.name == local),
+        SemanticProof::Constructor { branches } => {
+            branches.iter().any(|branch| proof_uses(branch, local))
+        }
+        SemanticProof::Cases {
+            scrutinee,
+            branches,
+        } => scrutinee == local || branch_uses(branches),
+        SemanticProof::Induction {
+            scrutinee,
+            generalizing,
+            branches,
+        } => {
+            scrutinee == local
+                || generalizing.iter().any(|name| name == local)
+                || branch_uses(branches)
+        }
+        SemanticProof::BooleanReflection { reflection } => match reflection {
+            SemanticReflection::List {
+                parameter, values, ..
+            } => parameter == local || values == local,
+            SemanticReflection::Record { record, .. } => record == local,
+        },
+        SemanticProof::Apply { arguments, .. } => {
+            arguments.iter().any(|argument| term_uses(argument, local))
+        }
+    }
+}
+
 fn term_uses(term: &SemanticTerm, local: &str) -> bool {
     let pair = |left: &SemanticTerm, right: &SemanticTerm| {
         term_uses(left, local) || term_uses(right, local)
@@ -609,7 +653,7 @@ impl Render<'_> {
                 else_value,
             } => match self.hypotheses.get(&(std::ptr::from_ref(term) as usize)) {
                 Some(index) => format!(
-                    "(match {} : {} with | true => {} | false => {})",
+                    "(match (generalizing := false) {} : {} with | true => {} | false => {})",
                     hypothesis(*index),
                     self.term(condition),
                     self.term(then_value),
@@ -625,15 +669,21 @@ impl Render<'_> {
             SemanticTerm::Match {
                 scrutinee,
                 branches,
-            } => format!(
-                "(match {} with {})",
-                self.term(scrutinee),
-                branches
+            } => {
+                let branches = branches
                     .iter()
                     .map(|branch| self.branch(branch))
                     .collect::<Vec<_>>()
-                    .join(" ")
-            ),
+                    .join(" ");
+                match self.hypotheses.get(&(std::ptr::from_ref(term) as usize)) {
+                    Some(index) => format!(
+                        "(match (generalizing := false) {} : {} with {branches})",
+                        hypothesis(*index),
+                        self.term(scrutinee)
+                    ),
+                    None => format!("(match {} with {branches})", self.term(scrutinee)),
+                }
+            }
             SemanticTerm::Eq { left, right } => binary("=", left, right),
             SemanticTerm::Le { left, right } => binary("<=", left, right),
             SemanticTerm::Lt { left, right } => binary("<", left, right),
@@ -738,14 +788,27 @@ impl Render<'_> {
         match proof {
             SemanticProof::Reflexivity => format!("{pad}rfl\n"),
             SemanticProof::Decide => format!("{pad}decide\n"),
-            SemanticProof::LinearArithmetic => format!(
-                "{pad}intros\n{pad}try set_option linter.unusedSimpArgs false in simp only [← Bool.not_eq_true, Nat.beq_eq, Nat.blt_eq, Nat.ble_eq{}] at *\n{pad}omega\n",
-                if self.runtime {
+            SemanticProof::LinearArithmetic { definitions } => {
+                let runtime = if self.runtime {
                     ", LexLeanRuntime.subtract, LexLeanRuntime.multiply"
                 } else {
                     ""
+                };
+                if definitions.is_empty() {
+                    format!(
+                        "{pad}intros\n{pad}try set_option linter.unusedSimpArgs false in simp only [← Bool.not_eq_true, Nat.beq_eq, Nat.blt_eq, Nat.ble_eq{runtime}] at *\n{pad}omega\n"
+                    )
+                } else {
+                    format!(
+                        "{pad}intros\n{pad}subst_vars\n{pad}try set_option linter.unusedSimpArgs false in simp only [{}, ← Bool.not_eq_true, Nat.beq_eq, Nat.blt_eq, Nat.ble_eq{runtime}] at *\n{pad}omega\n",
+                        definitions
+                            .iter()
+                            .map(|member| self.member(member))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
                 }
-            ),
+            }
             SemanticProof::Simplify { definitions } => format!(
                 "{pad}simp only [{}]\n",
                 definitions
@@ -894,10 +957,10 @@ fn well_founded_definition(
         prefix: base.prefix,
         runtime: base.runtime,
         hypotheses: plan
-            .nodes
+            .addresses
             .iter()
             .enumerate()
-            .map(|(index, node)| (*node as usize, index))
+            .map(|(index, address)| (*address, index))
             .collect(),
     };
     let mut text = format!(
@@ -910,16 +973,20 @@ fn well_founded_definition(
         render.term(&termination.measure)
     );
     for (site, evidence) in plan.sites.iter().zip(&termination.evidence) {
-        let mut application = format!(" | exact {}", render.member(evidence));
+        let mut application = format!(" | (have _evidence := {}", render.member(evidence));
         for parameter in type_parameters {
             application.push_str(&format!(" ({})", identifier(parameter)));
         }
         for parameter in parameters {
             application.push_str(&format!(" ({})", identifier(&parameter.name)));
         }
-        for (index, _) in &site.path {
-            application.push_str(&format!(" ({})", hypothesis(*index)));
+        for binder in plan.binders(site) {
+            application.push_str(&format!(" ({})", identifier(&binder)));
         }
+        for step in &site.path {
+            application.push_str(&format!(" ({})", hypothesis(step.node())));
+        }
+        application.push_str("; subst_vars; exact _evidence)");
         text.push_str(&application);
     }
     text.push('\n');
@@ -1478,12 +1545,11 @@ pub fn render_lean(
                 // (as a termination-evidence theorem's may be) is bound
                 // anonymously, so Lean's unused-variable linter stays quiet;
                 // every other binder keeps its exact name.
-                let proof_text = serde_json::to_string(proof).expect("proof serializes");
                 let binders = parameters
                     .iter()
                     .map(|parameter| {
                         let used = term_uses(statement, &parameter.name)
-                            || proof_text.contains(&format!("\"{}\"", parameter.name));
+                            || proof_uses(proof, &parameter.name);
                         format!(
                             " ({}{} : {})",
                             if used { "" } else { "_" },
