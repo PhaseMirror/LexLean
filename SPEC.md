@@ -2575,10 +2575,12 @@ Termination evidence is semantic data, never tactic or backend text; no
    recursion call graph is exactly these calls. A group lowers to one
    `mutual ... end` block whose members each declare
    `termination_by structural x1 ... xn => d`, so Lean must confirm the same
-   structural recursion and no other. A label names one group of one kind:
-   a label carried by both an inductive group and a definition group is
-   rejected. No member of the group being checked is called or referenced
-   under a lambda, and none is referenced as a value.
+   structural recursion and no other; every `xi` other than the decreasing `d`
+   is written `_`, because a named binder the measure never mentions is an
+   unused variable that verification refuses (§17.11). A label names one group
+   of one kind: a label carried by both an inductive group and a definition
+   group is rejected. No member of the group being checked is called or
+   referenced under a lambda, and none is referenced as a value.
 3. **Well-founded recursion.** A definition with `termination` has no
    `recursive_argument` and no `mutual`. Its `measure` is a binder-free term
    of type `Nat` over the parameters that does not mention the definition.

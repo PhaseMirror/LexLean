@@ -719,6 +719,9 @@ pub(crate) fn run(id: &str) {
                     ),
                 );
                 wrong.check_ok();
+                // Verification resolves the toolchain from `ELAN_HOME`, which
+                // other cases override under this lock.
+                let _guard = support::env_lock();
                 wrong.verify_fails_with("LLV7002");
             }
         }

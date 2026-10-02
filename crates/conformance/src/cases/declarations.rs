@@ -959,6 +959,44 @@ pub(crate) fn run(id: &str) {
                 "Mutual recursion group \\texttt{SyntaxSize}, decreasing on \\texttt{expression}."
             ));
             let _ = support::verify_ok_backed("DF-16", &project);
+            // A member parameter that does not decrease is still bound by
+            // `termination_by structural`; it lowers as `_` so Lean's
+            // unused-variable linter, which fails verification, stays quiet.
+            let extra = P::copy_example("recursion");
+            let mut parity = extra.read("src/Main.lex.tex");
+            for (from, to) in [
+                (
+                    r#"{"binders":[],"body":{"kind":"bool","value":true},"constructor":{"name":"Nat.zero"}},{"binders":["previous"],"body":{"arguments":[{"kind":"var","name":"previous"}],"function":{"name":"isOdd"},"kind":"call"}"#,
+                    r#"{"binders":[],"body":{"kind":"var","name":"flip"},"constructor":{"name":"Nat.zero"}},{"binders":["previous"],"body":{"arguments":[{"kind":"var","name":"previous"},{"kind":"var","name":"flip"}],"function":{"name":"isOdd"},"kind":"call"}"#,
+                ),
+                (
+                    r#"{"arguments":[{"kind":"var","name":"previous"}],"function":{"name":"isEven"},"kind":"call"}"#,
+                    r#"{"arguments":[{"kind":"var","name":"previous"},{"kind":"var","name":"flip"}],"function":{"name":"isEven"},"kind":"call"}"#,
+                ),
+                (
+                    r#""name":"isEven","parameters":[{"name":"number","type":{"kind":"nat"}}]"#,
+                    r#""name":"isEven","parameters":[{"name":"number","type":{"kind":"nat"}},{"name":"flip","type":{"kind":"bool"}}]"#,
+                ),
+                (
+                    r#""name":"isOdd","parameters":[{"name":"number","type":{"kind":"nat"}}]"#,
+                    r#""name":"isOdd","parameters":[{"name":"number","type":{"kind":"nat"}},{"name":"flip","type":{"kind":"bool"}}]"#,
+                ),
+                (
+                    r#""arguments":[{"kind":"nat","value":"10"}],"function":{"name":"isEven"}"#,
+                    r#""arguments":[{"kind":"nat","value":"10"},{"kind":"bool","value":true}],"function":{"name":"isEven"}"#,
+                ),
+            ] {
+                assert_eq!(parity.matches(from).count(), 1, "{from}");
+                parity = parity.replacen(from, to, 1);
+            }
+            extra.write("src/Main.lex.tex", &parity);
+            extra.check_ok();
+            let extra_main = support::lean_text(&support::rendered(&extra), "Main");
+            assert!(
+                extra_main.contains("termination_by structural number _ => number\nend\n"),
+                "{extra_main}"
+            );
+            let _ = support::verify_ok_backed("DF-16", &extra);
             let reject = |from: &str, to: &str, message: &str| {
                 P::assert_mutation_rejected("recursion", "src/Main.lex.tex", from, to, message);
             };

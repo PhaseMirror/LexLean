@@ -1518,9 +1518,18 @@ pub fn render_lean(
                     if mutual.is_some() {
                         // §17.12: a mutual group is structurally recursive by
                         // construction; Lean must confirm exactly that.
+                        // Only the decreasing parameter is used after `=>`;
+                        // naming the others would trip Lean's unused-variable
+                        // linter, which fails verification.
                         let binders = parameters
                             .iter()
-                            .map(|parameter| identifier(&parameter.name))
+                            .map(|parameter| {
+                                if &parameter.name == recursive_argument {
+                                    identifier(&parameter.name)
+                                } else {
+                                    "_".to_owned()
+                                }
+                            })
                             .collect::<Vec<_>>()
                             .join(" ");
                         text.push_str(&format!(
