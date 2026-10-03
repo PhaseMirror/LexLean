@@ -2838,6 +2838,178 @@ struct CompositeLowering {
     obligations: Vec<Obligation>,
 }
 
+/// The state a sequence, fan-out, product, or branch threads: the
+/// right-nested product of its stateful stages' states, in stage order.
+/// Each stateful stage reads, and may replace, only its own component.
+struct Threaded {
+    /// The stage indices that are stateful, in stage order.
+    stateful: Vec<usize>,
+    /// The composite's state binder, when any stage is stateful.
+    state: Option<SemanticTerm>,
+}
+
+impl Threaded {
+    /// The component of the composite state that stage `index` reads.
+    fn component(&self, index: usize) -> Option<SemanticTerm> {
+        let position = self.stateful.iter().position(|stage| *stage == index)?;
+        Some(component(
+            self.state.as_ref()?,
+            position,
+            self.stateful.len(),
+        ))
+    }
+
+    /// The composite's next state: each stage in `updated` replaces its
+    /// component, every other component is carried unchanged.
+    fn next(&self, updated: &[(usize, SemanticTerm)]) -> Option<SemanticTerm> {
+        let components: Vec<SemanticTerm> = self
+            .stateful
+            .iter()
+            .map(|index| {
+                updated
+                    .iter()
+                    .find(|(stage, _)| stage == index)
+                    .map(|(_, value)| value.clone())
+                    .or_else(|| self.component(*index))
+                    .expect("a stateful stage has a component")
+            })
+            .collect();
+        nested(&components, &|left, right| pair(left, right))
+    }
+
+    /// The composite's result: its next state paired with `value`, or
+    /// `value` alone when nothing is stateful.
+    fn result(&self, updated: &[(usize, SemanticTerm)], value: SemanticTerm) -> SemanticTerm {
+        match self.next(updated) {
+            Some(state) => pair(state, value),
+            None => value,
+        }
+    }
+
+    /// A refusal: the state the composite was given, with the violation.
+    fn refusal(&self, ok: &SemanticType, check: ModelCheck) -> SemanticTerm {
+        let refused = refusal(ok, check);
+        match &self.state {
+            Some(state) => pair(state.clone(), refused),
+            None => refused,
+        }
+    }
+}
+
+/// Check the state a composite declares against its stateful stages.
+fn thread_state(
+    name: &str,
+    stages: &[&ModelAt],
+    state: Option<&RealizationState>,
+) -> Result<Threaded, SemanticFailure> {
+    let mismatch = |what: String| composition(format!("composite `{name}`: {what}"));
+    let stateful: Vec<usize> = (0..stages.len())
+        .filter(|index| stages[*index].contract.state.is_some())
+        .collect();
+    let types: Vec<SemanticType> = stateful
+        .iter()
+        .filter_map(|index| stages[*index].contract.state_type().cloned())
+        .collect();
+    match (nested(&types, &|left, right| product(left, right)), state) {
+        (None, None) => {}
+        (None, Some(_)) => {
+            return Err(mismatch(
+                "no stage is stateful, so the composite declares no state".to_owned(),
+            ));
+        }
+        (Some(expected), None) => {
+            return Err(mismatch(format!(
+                "its stateful stages thread a state of type {expected}, which it must declare"
+            )));
+        }
+        (Some(expected), Some(declared)) => {
+            if declared.r#type != expected {
+                return Err(mismatch(format!(
+                    "the state is {}, expected {expected}",
+                    declared.r#type
+                )));
+            }
+        }
+    }
+    Ok(Threaded {
+        stateful,
+        state: state.map(|state| var(&state.name)),
+    })
+}
+
+/// The arguments of a stage's precondition: its state component, when
+/// stateful, and its input.
+fn stage_arguments(current: Option<&SemanticTerm>, input: &SemanticTerm) -> Vec<SemanticTerm> {
+    match current {
+        Some(current) => vec![current.clone(), input.clone()],
+        None => vec![input.clone()],
+    }
+}
+
+/// A stage's invariant (of its state component) and precondition, as
+/// propositions the composite's entry establishes.
+fn stage_requirements(
+    stage: &ModelAt,
+    current: Option<&SemanticTerm>,
+    input: &SemanticTerm,
+    invariant: bool,
+) -> Vec<SemanticTerm> {
+    let mut out = Vec::new();
+    if let (true, Some(predicate), Some(current)) = (invariant, &stage.contract.invariant, current)
+    {
+        out.push(predicate.apply(vec![current.clone()]));
+    }
+    if let Some(predicate) = &stage.contract.precondition {
+        out.push(predicate.apply(stage_arguments(current, input)));
+    }
+    out
+}
+
+/// The stage's application inside `body`, built inside-out: a stateful
+/// stage binds its step, its output, and its new state; the stage's checks
+/// after it runs guard `body`.
+#[allow(clippy::too_many_arguments)]
+fn bind_stage(
+    stage: &ModelAt,
+    current: Option<&SemanticTerm>,
+    argument: &SemanticTerm,
+    output: &str,
+    step: &str,
+    after: &str,
+    body: SemanticTerm,
+    refuse: &dyn Fn(ModelCheck) -> SemanticTerm,
+) -> SemanticTerm {
+    let out = var(output);
+    let out_type = stage.contract.output.r#type.clone();
+    match (current, stage.contract.state_type()) {
+        (Some(current), Some(stage_state)) => {
+            let body = guard_after(
+                stage,
+                Some((current.clone(), var(after))),
+                argument,
+                &out,
+                body,
+                refuse,
+            );
+            let_in(
+                step,
+                product(stage_state.clone(), out_type.clone()),
+                stage.apply(vec![current.clone(), argument.clone()]),
+                let_in(
+                    output,
+                    out_type,
+                    second(var(step)),
+                    let_in(after, stage_state.clone(), first(var(step)), body),
+                ),
+            )
+        }
+        _ => {
+            let body = guard_after(stage, None, argument, &out, body, refuse);
+            let_in(output, out_type, stage.apply(vec![argument.clone()]), body)
+        }
+    }
+}
+
 // The composite's interface (input, output, state) and its scope are
 // separate inputs of one check; bundling them would only rename them.
 #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
@@ -2865,7 +3037,7 @@ fn check_composite(
     let stateless_form = || {
         state.map_or(Ok(()), |_| {
             Err(mismatch(
-                "only a sequence of stateful stages declares a state".to_owned(),
+                "a scan threads its stage's state itself and declares none".to_owned(),
             ))
         })
     };
@@ -2894,37 +3066,7 @@ fn check_composite(
                     &pair[0].contract.output.r#type,
                 )?;
             }
-            // The composite's state is the right-nested product of its
-            // stateful stages' states, in stage order.
-            let stateful: Vec<usize> = (0..stages.len())
-                .filter(|index| stages[*index].contract.state.is_some())
-                .collect();
-            let state_types: Vec<SemanticType> = stateful
-                .iter()
-                .filter_map(|index| stages[*index].contract.state_type().cloned())
-                .collect();
-            let composite_state = nested(&state_types, &|left, right| product(left, right));
-            match (&composite_state, state) {
-                (None, None) => {}
-                (None, Some(_)) => {
-                    return Err(mismatch(
-                        "no stage is stateful, so the composite declares no state".to_owned(),
-                    ));
-                }
-                (Some(expected), None) => {
-                    return Err(mismatch(format!(
-                        "its stateful stages thread a state of type {expected}, which it must declare"
-                    )));
-                }
-                (Some(expected), Some(declared)) => {
-                    expect("the state", &declared.r#type, expected)?;
-                }
-            }
-            let s = state.map(|state| var(&state.name));
-            let slot = |index: usize| -> Option<(usize, SemanticTerm)> {
-                let position = stateful.iter().position(|stage| *stage == index)?;
-                Some((position, component(s.as_ref()?, position, stateful.len())))
-            };
+            let threaded = thread_state(name, &stages.iter().collect::<Vec<_>>(), state)?;
             let last = stages[stages.len() - 1].contract.output.r#type.clone();
             let checked = junctions
                 .iter()
@@ -2936,21 +3078,31 @@ fn check_composite(
                 last.clone()
             };
             expect("the output", output, &produced)?;
+            // The first stage's invariant and precondition, and the invariant
+            // of every later stage's state component that no junction checks,
+            // hold at the composite's entry: a stage's component is the one the
+            // composite was given.
+            let mut effective =
+                stage_requirements(&stages[0], threaded.component(0).as_ref(), &x, true);
             let mut obligations = Vec::new();
             for (index, junction) in junctions.iter().enumerate() {
                 let (before, stage) = (&stages[index], &stages[index + 1]);
                 let label = index + 1;
                 let key = member_key(&stage.member);
-                let invariant =
-                    stage.contract.state.is_some() && stage.contract.invariant.is_some();
+                let current = threaded.component(index + 1);
+                let invariant = current.is_some() && stage.contract.invariant.is_some();
                 let precondition = stage.contract.precondition.is_some();
+                if invariant && !matches!(junction, CompositeJunction::Checked) {
+                    if let (Some(predicate), Some(current)) = (&stage.contract.invariant, &current)
+                    {
+                        effective.push(predicate.apply(vec![current.clone()]));
+                    }
+                }
                 match junction {
                     CompositeJunction::Unconditional => {
-                        if precondition || invariant {
+                        if precondition {
                             return Err(composition(format!(
-                                "composite `{name}` junction {label}: stage `{key}` has a {}, so the junction must be {}",
-                                if precondition { "precondition" } else { "state invariant" },
-                                if invariant { "checked" } else { "proved or checked" }
+                                "composite `{name}` junction {label}: stage `{key}` has a precondition, so the junction must be proved or checked"
                             )));
                         }
                     }
@@ -2960,25 +3112,35 @@ fn check_composite(
                                 "composite `{name}` junction {label}: stage `{key}` has no precondition, so the junction is unconditional"
                             )));
                         };
-                        if before.contract.state.is_some() || stage.contract.state.is_some() {
-                            return Err(composition(format!(
-                                "composite `{name}` junction {label}: a proved junction joins stateless stages; check the stateful stage `{key}` at run time"
-                            )));
-                        }
+                        // Over the composite's state (each stage reads its own
+                        // component) and the earlier stage's input: what holds
+                        // when the earlier stage runs implies the later stage's
+                        // precondition of its output.
                         let value = var(&input.name);
+                        let before_current = threaded.component(index);
+                        let produced = match &before_current {
+                            Some(current) => {
+                                second(before.apply(vec![current.clone(), value.clone()]))
+                            }
+                            None => before.apply(vec![value.clone()]),
+                        };
+                        let premises =
+                            stage_requirements(before, before_current.as_ref(), &value, true);
+                        let statement = premises.into_iter().rev().fold(
+                            next.apply(stage_arguments(current.as_ref(), &produced)),
+                            |conclusion, premise| implies(premise, conclusion),
+                        );
+                        let mut parameters = Vec::new();
+                        if let (Some(declared), Some(_)) = (state, &threaded.state) {
+                            parameters.push(parameter(&declared.name, &declared.r#type));
+                        }
+                        parameters.push(parameter(&input.name, &before.contract.input.r#type));
                         let obligation = Obligation {
                             role: format!("composite `{name}` junction {label}"),
                             theorem: evidence.clone(),
                             type_parameters: type_parameters.to_vec(),
-                            parameters: vec![parameter(&input.name, &before.contract.input.r#type)],
-                            statement: premised(
-                                before
-                                    .contract
-                                    .precondition
-                                    .as_ref()
-                                    .map(|predicate| predicate.apply(vec![value.clone()])),
-                                next.apply(vec![before.apply(vec![value])]),
-                            ),
+                            parameters,
+                            statement,
                         };
                         require_statement(env, evidence, &obligation, code!("LLT4007"))?;
                         obligations.push(obligation);
@@ -3010,27 +3172,20 @@ fn check_composite(
             // checked junction and its checks after it right after it; a
             // refusal returns the violation (and, when stateful, the state
             // the composite was given).
-            let refuse = |check: ModelCheck| {
-                let refused = refusal(&last, check);
-                match &s {
-                    Some(s) => pair(s.clone(), refused),
-                    None => refused,
-                }
-            };
+            let refuse = |check: ModelCheck| threaded.refusal(&last, check);
             let stage_name = |index: usize| format!("__stage{}", index + 1);
             let state_name = |index: usize| format!("__state{}", index + 1);
             let step_name = |index: usize| format!("__step{}", index + 1);
-            let new_states: Vec<SemanticTerm> = stateful
+            let updated: Vec<(usize, SemanticTerm)> = threaded
+                .stateful
                 .iter()
-                .map(|index| var(&state_name(*index)))
+                .map(|index| (*index, var(&state_name(*index))))
                 .collect();
-            let mut body = var(&stage_name(stages.len() - 1));
+            let mut final_value = var(&stage_name(stages.len() - 1));
             if checked {
-                body = ok_value(&last, body);
+                final_value = ok_value(&last, final_value);
             }
-            if let Some(states) = nested(&new_states, &|left, right| pair(left, right)) {
-                body = pair(states, body);
-            }
+            let mut body = threaded.result(&updated, final_value);
             for index in (0..stages.len()).rev() {
                 let stage = &stages[index];
                 let argument = if index == 0 {
@@ -3038,66 +3193,20 @@ fn check_composite(
                 } else {
                     var(&stage_name(index - 1))
                 };
-                let out = var(&stage_name(index));
-                let out_type = stage.contract.output.r#type.clone();
-                match (slot(index), stage.contract.state_type()) {
-                    (Some((_, current)), Some(stage_state)) => {
-                        let after = var(&state_name(index));
-                        body = guard_after(
-                            stage,
-                            Some((current.clone(), after.clone())),
-                            &argument,
-                            &out,
-                            body,
-                            &refuse,
-                        );
-                        body = let_in(
-                            &step_name(index),
-                            product(stage_state.clone(), out_type.clone()),
-                            stage.apply(vec![current.clone(), argument.clone()]),
-                            let_in(
-                                &stage_name(index),
-                                out_type,
-                                second(var(&step_name(index))),
-                                let_in(
-                                    &state_name(index),
-                                    stage_state.clone(),
-                                    first(var(&step_name(index))),
-                                    body,
-                                ),
-                            ),
-                        );
-                        if index > 0 && matches!(junctions[index - 1], CompositeJunction::Checked) {
-                            body = guard_before(stage, Some(&current), &argument, body, &refuse);
-                        }
-                    }
-                    _ => {
-                        body = guard_after(stage, None, &argument, &out, body, &refuse);
-                        body = let_in(
-                            &stage_name(index),
-                            out_type,
-                            stage.apply(vec![argument.clone()]),
-                            body,
-                        );
-                        if index > 0 && matches!(junctions[index - 1], CompositeJunction::Checked) {
-                            body = guard_before(stage, None, &argument, body, &refuse);
-                        }
-                    }
+                let current = threaded.component(index);
+                body = bind_stage(
+                    stage,
+                    current.as_ref(),
+                    &argument,
+                    &stage_name(index),
+                    &step_name(index),
+                    &state_name(index),
+                    body,
+                    &refuse,
+                );
+                if index > 0 && matches!(junctions[index - 1], CompositeJunction::Checked) {
+                    body = guard_before(stage, current.as_ref(), &argument, body, &refuse);
                 }
-            }
-            // The first stage's checks before it are effective preconditions,
-            // established at the model's entry.
-            let first_stage = &stages[0];
-            let mut effective = Vec::new();
-            let current = slot(0).map(|(_, current)| current);
-            if let (Some(invariant), Some(current)) = (&first_stage.contract.invariant, &current) {
-                effective.push(invariant.apply(vec![current.clone()]));
-            }
-            if let Some(precondition) = &first_stage.contract.precondition {
-                effective.push(match &current {
-                    Some(current) => precondition.apply(vec![current.clone(), x.clone()]),
-                    None => precondition.apply(vec![x.clone()]),
-                });
             }
             Ok(CompositeLowering {
                 body,
@@ -3106,9 +3215,8 @@ fn check_composite(
             })
         }
         CompositeForm::Fanout { left, right } | CompositeForm::Product { left, right } => {
-            stateless_form()?;
-            let left = composite_stage(name, left, scope, env, Some(false))?;
-            let right = composite_stage(name, right, scope, env, Some(false))?;
+            let left = composite_stage(name, left, scope, env, None)?;
+            let right = composite_stage(name, right, scope, env, None)?;
             let fanout = matches!(form, CompositeForm::Fanout { .. });
             let (left_input, right_input) = if fanout {
                 for (label, stage) in [("left", &left), ("right", &right)] {
@@ -3130,6 +3238,7 @@ fn check_composite(
                 )?;
                 (first(x.clone()), second(x.clone()))
             };
+            let threaded = thread_state(name, &[&left, &right], state)?;
             let both = product(
                 left.contract.output.r#type.clone(),
                 right.contract.output.r#type.clone(),
@@ -3145,34 +3254,58 @@ fn check_composite(
                 },
             )?;
             let mut effective = Vec::new();
-            for (stage, argument) in [(&left, &left_input), (&right, &right_input)] {
-                if let Some(precondition) = &stage.contract.precondition {
-                    effective.push(precondition.apply(vec![argument.clone()]));
-                }
+            for (index, stage, argument) in [(0, &left, &left_input), (1, &right, &right_input)] {
+                effective.extend(stage_requirements(
+                    stage,
+                    threaded.component(index).as_ref(),
+                    argument,
+                    true,
+                ));
             }
-            let body = if checked {
-                let refuse = |check: ModelCheck| refusal(&both, check);
-                let (l, r) = (var("__left"), var("__right"));
-                let inner = guard_after(
+            let body = if checked || threaded.state.is_some() {
+                let refuse = |check: ModelCheck| threaded.refusal(&both, check);
+                let value = pair(var("__left"), var("__right"));
+                let updated: Vec<(usize, SemanticTerm)> = threaded
+                    .stateful
+                    .iter()
+                    .map(|index| {
+                        (
+                            *index,
+                            var(if *index == 0 {
+                                "__left_state"
+                            } else {
+                                "__right_state"
+                            }),
+                        )
+                    })
+                    .collect();
+                let inner = threaded.result(
+                    &updated,
+                    if checked {
+                        ok_value(&both, value)
+                    } else {
+                        value
+                    },
+                );
+                let inner = bind_stage(
                     &right,
-                    None,
+                    threaded.component(1).as_ref(),
                     &right_input,
-                    &r,
-                    ok_value(&both, pair(l.clone(), r.clone())),
+                    "__right",
+                    "__right_step",
+                    "__right_state",
+                    inner,
                     &refuse,
                 );
-                let inner = let_in(
-                    "__right",
-                    right.contract.output.r#type.clone(),
-                    right.apply(vec![right_input.clone()]),
-                    inner,
-                );
-                let inner = guard_after(&left, None, &left_input, &l, inner, &refuse);
-                let_in(
+                bind_stage(
+                    &left,
+                    threaded.component(0).as_ref(),
+                    &left_input,
                     "__left",
-                    left.contract.output.r#type.clone(),
-                    left.apply(vec![left_input.clone()]),
+                    "__left_step",
+                    "__left_state",
                     inner,
+                    &refuse,
                 )
             } else {
                 pair(left.apply(vec![left_input]), right.apply(vec![right_input]))
@@ -3188,9 +3321,9 @@ fn check_composite(
             then,
             r#else,
         } => {
-            stateless_form()?;
-            let then = composite_stage(name, then, scope, env, Some(false))?;
-            let otherwise = composite_stage(name, r#else, scope, env, Some(false))?;
+            let then = composite_stage(name, then, scope, env, None)?;
+            let otherwise = composite_stage(name, r#else, scope, env, None)?;
+            let threaded = thread_state(name, &[&then, &otherwise], state)?;
             let raw = then.contract.output.r#type.clone();
             let checked = !post_run(&then).is_empty() || !post_run(&otherwise).is_empty();
             for (label, stage) in [("then", &then), ("else", &otherwise)] {
@@ -3208,24 +3341,40 @@ fn check_composite(
             if checked {
                 expect("the output", output, &result_type(raw.clone()))?;
             }
+            // Each arm's requirements hold at entry when the guard selects
+            // it; the arm not taken leaves its state component unchanged.
             let mut effective = Vec::new();
-            for (value, stage) in [(true, &then), (false, &otherwise)] {
-                if let Some(precondition) = &stage.contract.precondition {
-                    effective.push(implies(
-                        eq(guard.clone(), boolean(value)),
-                        precondition.apply(vec![x.clone()]),
-                    ));
+            for (index, value, stage) in [(0, true, &then), (1, false, &otherwise)] {
+                for requirement in
+                    stage_requirements(stage, threaded.component(index).as_ref(), &x, true)
+                {
+                    effective.push(implies(eq(guard.clone(), boolean(value)), requirement));
                 }
             }
-            let arm = |stage: &ModelAt, binder: &str| {
-                if checked {
-                    let refuse = |check: ModelCheck| refusal(&raw, check);
-                    let out = var(binder);
-                    let_in(
+            let arm = |index: usize, stage: &ModelAt, binder: &str| {
+                if checked || threaded.state.is_some() {
+                    let refuse = |check: ModelCheck| threaded.refusal(&raw, check);
+                    let after = format!("{binder}_state");
+                    let updated: Vec<(usize, SemanticTerm)> = threaded
+                        .stateful
+                        .iter()
+                        .filter(|stateful| **stateful == index)
+                        .map(|stateful| (*stateful, var(&after)))
+                        .collect();
+                    let value = if checked {
+                        ok_value(&raw, var(binder))
+                    } else {
+                        var(binder)
+                    };
+                    bind_stage(
+                        stage,
+                        threaded.component(index).as_ref(),
+                        &x,
                         binder,
-                        raw.clone(),
-                        stage.apply(vec![x.clone()]),
-                        guard_after(stage, None, &x, &out, ok_value(&raw, out.clone()), &refuse),
+                        &format!("{binder}_step"),
+                        &after,
+                        threaded.result(&updated, value),
+                        &refuse,
                     )
                 } else {
                     stage.apply(vec![x.clone()])
@@ -3234,8 +3383,8 @@ fn check_composite(
             Ok(CompositeLowering {
                 body: if_then(
                     guard.clone(),
-                    arm(&then, "__then"),
-                    arm(&otherwise, "__else"),
+                    arm(0, &then, "__then"),
+                    arm(1, &otherwise, "__else"),
                 ),
                 effective,
                 obligations: Vec::new(),

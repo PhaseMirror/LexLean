@@ -1680,7 +1680,7 @@ fn md_08() {
                 declaration["descriptor"]["form"]["then"] =
                     json!({"member": {"module": "Session", "name": "SessionModel"}});
             },
-            "stage `Session::SessionModel` is stateful; only a sequence or a scan threads a stateful stage",
+            "its stateful stages thread a state of type Session.Window, which it must declare",
         ),
         (
             "SessionStream",
@@ -1797,7 +1797,7 @@ fn md_08() {
                     {"member": {"module": "Ledger", "name": "ClampModel"}}]);
                 declaration["descriptor"]["form"]["junctions"] = json!([{"kind": "unconditional"}]);
             },
-            "stage `Ledger::ClampModel` has a state invariant, so the junction must be checked",
+            "its realization has 2 effective precondition(s)",
         ),
         (
             "GuessTwice",
@@ -1805,7 +1805,7 @@ fn md_08() {
                 declaration["descriptor"]["form"]["left"] =
                     json!({"member": {"module": "Ledger", "name": "ClampModel"}});
             },
-            "is stateful; only a sequence or a scan threads a stateful stage",
+            "its stateful stages thread a state of type Nat, which it must declare",
         ),
         (
             "GuessTwice",
@@ -1824,6 +1824,78 @@ fn md_08() {
         ),
     ];
     for (name, edit, message) in flows {
+        refused(&mutated("Flows", name, edit), "LLT4007", message);
+    }
+    // Stateful stages in parallel, in branches, and across a proved
+    // junction: each composite threads the product of its stages' states.
+    for (name, needles) in [
+        ("ClampTally", &["__left_state", "__right_state"][..]),
+        ("ClampBoth", &["__left_state", "__right_state"][..]),
+        ("ClampOrTally", &["__then_state", "__else_state"][..]),
+        ("SpillTally", &["__state1", "__state2"][..]),
+    ] {
+        let text = elaboration(&snapshot, "Flows", name)
+            .declarations()
+            .iter()
+            .map(Json::to_string)
+            .collect::<String>();
+        for needle in needles {
+            assert!(text.contains(needle), "{name} threads {needle}: {text}");
+        }
+    }
+    let chain = elaboration(&snapshot, "Flows", "SpillTally");
+    assert_eq!(chain.obligations()[0]["theorem"]["name"], "spill_tally");
+    assert_eq!(
+        chain.obligations()[0]["parameters"]
+            .as_array()
+            .expect("parameters")
+            .len(),
+        2,
+        "a proved junction between stateful stages is over the state and the value"
+    );
+    let branch = elaboration(&snapshot, "Flows", "BranchModel");
+    assert_eq!(
+        branch.obligations().len(),
+        2,
+        "one entry per guarded arm requirement"
+    );
+    let stateful: [NamedEdit; 5] = [
+        (
+            "ClampTally",
+            |declaration| declaration["state"]["type"] = json!({"kind": "nat"}),
+            "the state is Nat, expected Prod (Nat) (Nat)",
+        ),
+        (
+            "TwinModel",
+            |declaration| declaration["entry"] = json!([{"name": "twin_entry_left"}]),
+            "lists 1 entry theorem(s); its realization has 2 effective precondition(s)",
+        ),
+        (
+            "BranchModel",
+            |declaration| {
+                declaration["entry"] =
+                    json!([{"name": "branch_entry_else"}, {"name": "branch_entry_then"}]);
+            },
+            "entry 1: `branch_entry_else` does not state exactly the generated obligation",
+        ),
+        (
+            "SpillTally",
+            |declaration| {
+                declaration["descriptor"]["form"]["junctions"] =
+                    json!([{"kind": "proved", "evidence": {"name": "twin_small_check_sound"}}]);
+            },
+            "junction 1: `twin_small_check_sound` does not state exactly the generated obligation",
+        ),
+        (
+            "ClampOrTally",
+            |declaration| {
+                declaration["descriptor"]["form"]["else"] =
+                    json!({"member": {"module": "Ledger", "name": "GuessModel"}});
+            },
+            "the state is Prod (Nat) (Nat), expected Nat",
+        ),
+    ];
+    for (name, edit, message) in stateful {
         refused(&mutated("Flows", name, edit), "LLT4007", message);
     }
     // A stage whose open postcondition has no validator cannot compose.
@@ -1874,6 +1946,22 @@ fn md_08() {
             "Models.Main.stream_accepts",
             "Models.Main.stream_refuses_output",
             "Models.Main.overshoot_pair_refuses_postcondition",
+            "Models.Main.twin_accepts",
+            "Models.Main.twin_refuses_precondition",
+            "Models.Main.twin_refuses_input",
+            "Models.Main.pair_clamp_accepts",
+            "Models.Main.pair_clamp_refuses_input",
+            "Models.Main.branch_takes_then",
+            "Models.Main.branch_takes_else",
+            "Models.Main.branch_refuses_precondition",
+            "Models.Main.chain_accepts",
+            "Models.Main.chain_refuses_stage_output",
+            "Models.Main.chain_refuses_precondition",
+            "Models.Flows.spill_tally",
+            "Models.Flows.ClampTally",
+            "Models.Flows.ClampBoth",
+            "Models.Flows.ClampOrTally",
+            "Models.Flows.SpillTally",
             "Models.Flows.ClampGuess",
             "Models.Flows.GuessOvershoot",
             "Models.Flows.GuessTwice",
