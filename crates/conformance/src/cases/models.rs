@@ -883,11 +883,11 @@ fn md_02() {
         });
     }
     wide.relock();
-    // Decoding it takes about 1.5 GB. Where the platform can bound a
-    // process's address space, the check runs again in a process limited to
+    // Decoding it takes about 1.5 GB. On Linux, the normative host, the check
+    // runs again in a process whose address space `ulimit -v` bounds at
     // 1 GiB, so a charge made only after decoding aborts it rather than
-    // passing; elsewhere it runs here.
-    if cfg!(unix) {
+    // passing; macOS's shell cannot set that limit, so elsewhere it runs here.
+    if cfg!(target_os = "linux") {
         let ran = std::process::Command::new("sh")
             .args([
                 "-c",

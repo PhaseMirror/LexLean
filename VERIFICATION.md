@@ -2345,7 +2345,8 @@ conformance -- conformance_md_02`. Expected: (a) `model-artifact-decode-budget`,
 one digest declared three times under `max_ir_nodes = 3000`, is refused only
 after all three decode; (b) the 4 MiB artifact of empty lines, declared three
 times, is decoded before it is refused, which needs about 1.5 GB, so the
-re-run of the test in a process limited to 1 GiB of address space aborts;
+re-run of the test in a process limited to 1 GiB of address space (on
+Linux, the normative host; macOS's shell cannot set the limit) aborts;
 (c) three declarations of a 1200-byte artifact fit a source budget that
 holds only two more copies.
 
