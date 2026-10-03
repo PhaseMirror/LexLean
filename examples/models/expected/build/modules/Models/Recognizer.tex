@@ -10,8 +10,8 @@
 \noindent Value type: \texttt{List (List (Int))}.\par
 \noindent Content: \texttt{84 bytes, SHA-256 670b5066543781ad41947e253f1e5dd45157070e78116a588dc2b6bcea2e7bd8}.\par
 \noindent Axiom policy: \texttt{none}.\par
-\noindent Elaborates to: \texttt{hiddenWeights.bytes : ByteArray := ByteArray.mk \#[4, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 4, 3, 254, 0, 0, 0, 0, 255, 0, 0, 2, 253, 1, 0, 0, 255, 0, 0, 0, 2, 2, 254, 1, 1, 1, 1, 1, 1, 1, 0, 252, 0, 2, 0, 3, 0]}.\par
-\noindent Elaborates to: \texttt{hiddenWeights : List (List (Int)) := (((4 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ([] : List (Int))))))))) :: (((0 : Int) :: ((4 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ([] : List (Int))))))))) :: (((0 : Int) :: ((0 : Int) :: ((4 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ([] : List (Int))))))))) :: (((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((4 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ([] : List (Int))))))))) :: (((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((4 : Int) :: ((0 : Int) :: ((0 : Int) :: ([] : List (Int))))))))) :: (((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((4 : Int) :: ((0 : Int) :: ([] : List (Int))))))))) :: (((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((4 : Int) :: ([] : List (Int))))))))) :: (((3 : Int) :: ((-2 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((-1 : Int) :: ([] : List (Int))))))))) :: (((0 : Int) :: ((0 : Int) :: ((2 : Int) :: ((-3 : Int) :: ((1 : Int) :: ((0 : Int) :: ((0 : Int) :: ([] : List (Int))))))))) :: (((-1 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((2 : Int) :: ((2 : Int) :: ((-2 : Int) :: ([] : List (Int))))))))) :: (((1 : Int) :: ((1 : Int) :: ((1 : Int) :: ((1 : Int) :: ((1 : Int) :: ((1 : Int) :: ((1 : Int) :: ([] : List (Int))))))))) :: (((0 : Int) :: ((-4 : Int) :: ((0 : Int) :: ((2 : Int) :: ((0 : Int) :: ((3 : Int) :: ((0 : Int) :: ([] : List (Int))))))))) :: ([] : List (List (Int)))))))))))))))}.\par
+\noindent Elaborates to: \texttt{hiddenWeights.bytes : ByteArray, the configured bytes}.\par
+\noindent Elaborates to: \texttt{hiddenWeights : List (List (Int)), their decoding under the schema}.\par
 \noindent Restated in Lean against the fixed model semantics as: \texttt{hiddenWeights.decoded}.\par
 \subsection*{\texttt{hiddenBias}}
 \noindent Kind: \texttt{artifact}.\par
@@ -20,8 +20,8 @@
 \noindent Value type: \texttt{List (Int)}.\par
 \noindent Content: \texttt{48 bytes, SHA-256 102bf7ceb176bc23dd4abb56dada713135d79093a79c20c7c79471f751f9a778}.\par
 \noindent Axiom policy: \texttt{none}.\par
-\noindent Elaborates to: \texttt{hiddenBias.bytes : ByteArray := ByteArray.mk \#[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 254, 255, 255, 255, 3, 0, 0, 0, 251, 255, 255, 255, 2, 0, 0, 0]}.\par
-\noindent Elaborates to: \texttt{hiddenBias : List (Int) := ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((1 : Int) :: ((-2 : Int) :: ((3 : Int) :: ((-5 : Int) :: ((2 : Int) :: ([] : List (Int))))))))))))))}.\par
+\noindent Elaborates to: \texttt{hiddenBias.bytes : ByteArray, the configured bytes}.\par
+\noindent Elaborates to: \texttt{hiddenBias : List (Int), their decoding under the schema}.\par
 \noindent Restated in Lean against the fixed model semantics as: \texttt{hiddenBias.decoded}.\par
 \subsection*{\texttt{outputWeights}}
 \noindent Kind: \texttt{artifact}.\par
@@ -30,8 +30,8 @@
 \noindent Value type: \texttt{List (List (Int))}.\par
 \noindent Content: \texttt{120 bytes, SHA-256 6a536cff5b44d31e45ff9b128794e29c3fe9c09bad111f0dbe9df3fc29941de7}.\par
 \noindent Axiom policy: \texttt{none}.\par
-\noindent Elaborates to: \texttt{outputWeights.bytes : ByteArray := ByteArray.mk \#[2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 2, 2, 0, 2, 0, 0, 0, 0, 0, 2, 2, 2, 2, 0, 0, 2, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 2, 2, 0, 0, 0, 0, 0, 2, 0, 2, 2, 0, 2, 2, 0, 0, 0, 0, 0, 2, 0, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 2, 2, 2, 2, 0, 2, 2, 0, 0, 0, 0, 0]}.\par
-\noindent Elaborates to: \texttt{outputWeights : List (List (Int)) := (((2 : Int) :: ((2 : Int) :: ((2 : Int) :: ((2 : Int) :: ((2 : Int) :: ((2 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ([] : List (Int)))))))))))))) :: (((0 : Int) :: ((2 : Int) :: ((2 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ([] : List (Int)))))))))))))) :: (((2 : Int) :: ((2 : Int) :: ((0 : Int) :: ((2 : Int) :: ((2 : Int) :: ((0 : Int) :: ((2 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ([] : List (Int)))))))))))))) :: (((2 : Int) :: ((2 : Int) :: ((2 : Int) :: ((2 : Int) :: ((0 : Int) :: ((0 : Int) :: ((2 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ([] : List (Int)))))))))))))) :: (((0 : Int) :: ((2 : Int) :: ((2 : Int) :: ((0 : Int) :: ((0 : Int) :: ((2 : Int) :: ((2 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ([] : List (Int)))))))))))))) :: (((2 : Int) :: ((0 : Int) :: ((2 : Int) :: ((2 : Int) :: ((0 : Int) :: ((2 : Int) :: ((2 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ([] : List (Int)))))))))))))) :: (((2 : Int) :: ((0 : Int) :: ((2 : Int) :: ((2 : Int) :: ((2 : Int) :: ((2 : Int) :: ((2 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ([] : List (Int)))))))))))))) :: (((2 : Int) :: ((2 : Int) :: ((2 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ([] : List (Int)))))))))))))) :: (((2 : Int) :: ((2 : Int) :: ((2 : Int) :: ((2 : Int) :: ((2 : Int) :: ((2 : Int) :: ((2 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ([] : List (Int)))))))))))))) :: (((2 : Int) :: ((2 : Int) :: ((2 : Int) :: ((2 : Int) :: ((0 : Int) :: ((2 : Int) :: ((2 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ((0 : Int) :: ([] : List (Int)))))))))))))) :: ([] : List (List (Int)))))))))))))}.\par
+\noindent Elaborates to: \texttt{outputWeights.bytes : ByteArray, the configured bytes}.\par
+\noindent Elaborates to: \texttt{outputWeights : List (List (Int)), their decoding under the schema}.\par
 \noindent Restated in Lean against the fixed model semantics as: \texttt{outputWeights.decoded}.\par
 \subsection*{\texttt{outputBias}}
 \noindent Kind: \texttt{artifact}.\par
@@ -40,8 +40,8 @@
 \noindent Value type: \texttt{List (Int)}.\par
 \noindent Content: \texttt{40 bytes, SHA-256 ba0505206b75f60de72e117e01155033a68c40972a7f6687a2b05ca0004c5ab4}.\par
 \noindent Axiom policy: \texttt{none}.\par
-\noindent Elaborates to: \texttt{outputBias.bytes : ByteArray := ByteArray.mk \#[250, 255, 255, 255, 254, 255, 255, 255, 251, 255, 255, 255, 251, 255, 255, 255, 252, 255, 255, 255, 251, 255, 255, 255, 250, 255, 255, 255, 253, 255, 255, 255, 249, 255, 255, 255, 250, 255, 255, 255]}.\par
-\noindent Elaborates to: \texttt{outputBias : List (Int) := ((-6 : Int) :: ((-2 : Int) :: ((-5 : Int) :: ((-5 : Int) :: ((-4 : Int) :: ((-5 : Int) :: ((-6 : Int) :: ((-3 : Int) :: ((-7 : Int) :: ((-6 : Int) :: ([] : List (Int))))))))))))}.\par
+\noindent Elaborates to: \texttt{outputBias.bytes : ByteArray, the configured bytes}.\par
+\noindent Elaborates to: \texttt{outputBias : List (Int), their decoding under the schema}.\par
 \noindent Restated in Lean against the fixed model semantics as: \texttt{outputBias.decoded}.\par
 \subsection*{\texttt{digitNames}}
 \noindent Kind: \texttt{artifact}.\par
@@ -50,8 +50,8 @@
 \noindent Value type: \texttt{List (String)}.\par
 \noindent Content: \texttt{50 bytes, SHA-256 476e03af7ff499e63fe93fffa0567a69128761f538ec7dd1f3e2c197a0c90981}.\par
 \noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
-\noindent Elaborates to: \texttt{digitNames.bytes : ByteArray := ByteArray.mk \#[122, 101, 114, 111, 10, 111, 110, 101, 10, 116, 119, 111, 10, 116, 104, 114, 101, 101, 10, 102, 111, 117, 114, 10, 102, 105, 118, 101, 10, 115, 105, 120, 10, 115, 101, 118, 101, 110, 10, 101, 105, 103, 104, 116, 10, 110, 105, 110, 101, 10]}.\par
-\noindent Elaborates to: \texttt{digitNames : List (String) := ("zero" :: ("one" :: ("two" :: ("three" :: ("four" :: ("five" :: ("six" :: ("seven" :: ("eight" :: ("nine" :: ([] : List (String))))))))))))}.\par
+\noindent Elaborates to: \texttt{digitNames.bytes : ByteArray, the configured bytes}.\par
+\noindent Elaborates to: \texttt{digitNames : List (String), their decoding under the schema}.\par
 \noindent Restated in Lean against the fixed model semantics as: \texttt{digitNames.decoded}.\par
 \subsection*{\texttt{banner}}
 \noindent Kind: \texttt{artifact}.\par
@@ -60,8 +60,8 @@
 \noindent Value type: \texttt{ByteArray}.\par
 \noindent Content: \texttt{5 bytes, SHA-256 3369421cb6a657bcbdbec197a0c3b2a8e208dd7746853513f9d77331d0fa1397}.\par
 \noindent Axiom policy: \texttt{none}.\par
-\noindent Elaborates to: \texttt{banner.bytes : ByteArray := ByteArray.mk \#[76, 76, 77, 0, 1]}.\par
-\noindent Elaborates to: \texttt{banner : ByteArray := ByteArray.mk \#[76, 76, 77, 0, 1]}.\par
+\noindent Elaborates to: \texttt{banner.bytes : ByteArray, the configured bytes}.\par
+\noindent Elaborates to: \texttt{banner : ByteArray, their decoding under the schema}.\par
 \noindent Restated in Lean against the fixed model semantics as: \texttt{banner.decoded}.\par
 \subsection*{\texttt{Recognizes}}
 \noindent Kind: \texttt{definition}.\par

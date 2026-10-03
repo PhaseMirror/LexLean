@@ -84,8 +84,8 @@
 \noindent Value type: \texttt{List (List (Int))}.\par
 \noindent Content: \texttt{18 bytes, SHA-256 7a1039fea753fdbab50d96e9b180fb5f987c6ba688d847da0e209608c5c0f58e}.\par
 \noindent Axiom policy: \texttt{none}.\par
-\noindent Elaborates to: \texttt{triageWeights.bytes : ByteArray := ByteArray.mk \#[254, 255, 254, 255, 252, 255, 2, 0, 2, 0, 0, 0, 0, 0, 1, 0, 5, 0]}.\par
-\noindent Elaborates to: \texttt{triageWeights : List (List (Int)) := (((-2 : Int) :: ((-2 : Int) :: ((-4 : Int) :: ([] : List (Int))))) :: (((2 : Int) :: ((2 : Int) :: ((0 : Int) :: ([] : List (Int))))) :: (((0 : Int) :: ((1 : Int) :: ((5 : Int) :: ([] : List (Int))))) :: ([] : List (List (Int))))))}.\par
+\noindent Elaborates to: \texttt{triageWeights.bytes : ByteArray, the configured bytes}.\par
+\noindent Elaborates to: \texttt{triageWeights : List (List (Int)), their decoding under the schema}.\par
 \noindent Restated in Lean against the fixed model semantics as: \texttt{triageWeights.decoded}.\par
 \subsection*{\texttt{triageBias}}
 \noindent Kind: \texttt{artifact}.\par
@@ -94,8 +94,8 @@
 \noindent Value type: \texttt{List (Int)}.\par
 \noindent Content: \texttt{6 bytes, SHA-256 34b5d0d734084832dea276360f994018f4e6eb7921334265e58217b360a2a79d}.\par
 \noindent Axiom policy: \texttt{none}.\par
-\noindent Elaborates to: \texttt{triageBias.bytes : ByteArray := ByteArray.mk \#[1, 0, 0, 0, 255, 255]}.\par
-\noindent Elaborates to: \texttt{triageBias : List (Int) := ((1 : Int) :: ((0 : Int) :: ((-1 : Int) :: ([] : List (Int)))))}.\par
+\noindent Elaborates to: \texttt{triageBias.bytes : ByteArray, the configured bytes}.\par
+\noindent Elaborates to: \texttt{triageBias : List (Int), their decoding under the schema}.\par
 \noindent Restated in Lean against the fixed model semantics as: \texttt{triageBias.decoded}.\par
 \subsection*{\texttt{TriageContract}}
 \noindent Kind: \texttt{contract}.\par
