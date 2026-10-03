@@ -3150,8 +3150,10 @@ references from `1.1.0` to `1.2.0`, and regenerating the lock with
 the same meaning, so the migration changes identities (the compiler-semantics
 ID, the lock, and every source and semantic ID) but not generated Lean
 declarations; the generated text differs only in the exposure attributes of
-the portable runtime (rule 6 under *Collections and state threading*), which
-change no definition, type, or compiled code. No command migrates a project
+the portable runtime (rule 6 under *Collections and state threading*) and the
+`reducible` attribute of proposition-valued definitions (rule 11 under
+*Models, contracts, realizations, and evidence*), which change no
+definition, type, or compiled code. No command migrates a project
 implicitly: building an
 unmigrated project under a newer compiler keeps its declared language and its
 historical identities and artifact bytes.

@@ -17,6 +17,16 @@ use crate::support::{self, VerifiedFixture, P};
 
 const EXAMPLE: &str = "models";
 
+/// An edit of one declaration's semantic JSON.
+type Edit = fn(&mut Json);
+
+/// A declaration (or a description of the edit), the edit, and the message
+/// its refusal must name.
+type NamedEdit = (&'static str, Edit, &'static str);
+
+/// A module and declaration, the edit, and the message its refusal must name.
+type TargetedEdit = (&'static str, &'static str, Edit, &'static str);
+
 // ---------------------------------------------------------------------------
 // Source access.
 
@@ -449,7 +459,7 @@ fn md_01() {
         });
         refused(&project, "LLT4001", message);
     }
-    let edits: [(&str, &str, fn(&mut Json), &str); 6] = [
+    let edits: [TargetedEdit; 6] = [
         (
             "DigitNet",
             "raw configuration",
@@ -624,7 +634,7 @@ fn md_02() {
     });
     refused(&unconfigured, "LLR3007", "has no project artifact source");
     // LLR3008: shape, element, type, role, encoding.
-    let edits: [(&str, fn(&mut Json), &str); 5] = [
+    let edits: [NamedEdit; 5] = [
         (
             "hiddenWeights",
             |declaration| declaration["schema"]["shape"] = json!([12, 8]),
@@ -752,7 +762,7 @@ fn md_02() {
 /// §17.12: contracts, predicates, validators, and their link theorems.
 #[allow(clippy::too_many_lines)]
 fn md_03() {
-    let edits: [(&str, fn(&mut Json), &str); 7] = [
+    let edits: [NamedEdit; 7] = [
         (
             "recognizesCheck",
             |declaration| {
@@ -929,7 +939,7 @@ fn md_04() {
     assert_eq!(net.obligations().len(), 1);
     assert_eq!(net.obligations()[0]["theorem"]["name"], "digit_net_width");
     // Width, shape, role, label, and slot mismatches fail with LLT4006.
-    let edits: [(&str, &str, fn(&mut Json), &str); 13] = [
+    let edits: [TargetedEdit; 13] = [
         (
             "Recognizer",
             "DigitNet",
@@ -1167,7 +1177,7 @@ fn md_06() {
             "the canonical document of {module} claims no verification"
         );
     }
-    let edits: [(&str, fn(&mut Json), &str); 9] = [
+    let edits: [NamedEdit; 9] = [
         (
             "unsorted claims",
             |declaration| {
@@ -1354,7 +1364,7 @@ fn md_07() {
     let checked = elaboration(&snapshot, "Main", "classifyChecked");
     let body = checked.declarations()[0]["body"].to_string();
     assert!(body.contains("recognizesCheck") && body.contains("ContractViolation.postcondition"));
-    let edits: [(&str, fn(&mut Json), &str); 7] = [
+    let edits: [NamedEdit; 7] = [
         (
             "classifyChecked",
             |declaration| declaration["body"]["checks"] = json!([]),
@@ -1482,7 +1492,7 @@ fn md_08() {
         sequence.obligations()[0]["theorem"]["name"],
         "triage_actionable"
     );
-    let edits: [(&str, fn(&mut Json), &str); 11] = [
+    let edits: [NamedEdit; 11] = [
         (
             "TriagePipeline",
             |declaration| {

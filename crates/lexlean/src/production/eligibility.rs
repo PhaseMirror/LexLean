@@ -1162,10 +1162,7 @@ impl<'a> Walk<'a> {
 
     /// The model construct whose elaboration declares `name`, if any.
     fn model_owner(&self, module: &str, name: &str) -> Option<&'static str> {
-        let linked = match self.modules.get(module) {
-            Some(linked) => linked,
-            None => return None,
-        };
+        let linked = self.modules.get(module)?;
         for (index, source) in linked.semantic.declarations.iter().enumerate() {
             let key = match source {
                 SemanticDeclaration::Artifact {

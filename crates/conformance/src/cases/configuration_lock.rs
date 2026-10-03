@@ -1226,13 +1226,16 @@ pub(crate) fn run(id: &str) {
                 .iter()
                 .map(|module| module.lean_text.clone())
                 .collect();
-            // Language 1.2 exposes the portable runtime (§17.12, rule 6);
-            // undoing exactly those attributes leaves the 1.1 text.
+            // Language 1.2 exposes the portable runtime (§17.12, rule 6) and
+            // makes proposition-valued definitions reducible (§17.12,
+            // models, rule 11); undoing exactly those attributes leaves the
+            // 1.1 text.
             let unexposed: Vec<String> = migrated_lean
                 .iter()
                 .map(|text| {
-                    let mut text =
-                        text.replace("@[expose, noinline] public def ", "@[noinline] public def ");
+                    let mut text = text
+                        .replace("@[expose, noinline] public def ", "@[noinline] public def ")
+                        .replace("@[expose, reducible] public def ", "@[expose] public def ");
                     for helper in [
                         "magnitudeInt64",
                         "signedMagnitudeInt64",
