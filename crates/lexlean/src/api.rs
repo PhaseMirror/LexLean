@@ -275,11 +275,13 @@ pub fn render_build(
             );
         }
         if let Some(semantic) = &checked_module.document.semantic {
+            // §17.12 (models): a model declaration is audited as every Lean
+            // declaration it generates, never by its own name.
             declaration_names.extend(
                 semantic
-                    .declarations
-                    .iter()
-                    .map(|declaration| format!("{lean_module}.{}", declaration.name())),
+                    .generated_names()
+                    .into_iter()
+                    .map(|name| format!("{lean_module}.{name}")),
             );
         }
         // Output coverage closure is checked mechanically before anything

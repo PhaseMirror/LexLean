@@ -7,6 +7,7 @@ use crate::backend::{EmitSource, Emitter};
 use crate::code;
 use crate::diagnostic::Diagnostic;
 use crate::ir::semantic::model::{CheckProof, CheckStatement, CrossCheck};
+use crate::ir::semantic::BUILTIN_CONSTRUCTOR_OWNERS;
 use crate::ir::semantic::{
     mentions_type_parameter, MemberRef, SemanticAssignment, SemanticBranch, SemanticDeclaration,
     SemanticModule, SemanticParameter, SemanticPrimitive, SemanticProof, SemanticProofBranch,
@@ -28,6 +29,10 @@ struct Render<'a> {
     /// a set by their own type constructors rather than by the list
     /// encoding Lean receives (§17.12).
     document: bool,
+    /// The module's own Lean name, when every local reference is written
+    /// qualified: a cross-check named `E.thm` would otherwise resolve the
+    /// theorem `thm` it restates to itself (§17.12, models).
+    qualify: Option<&'a str>,
 }
 
 /// The generated name of well-founded hypothesis `index`. Semantic names
@@ -328,10 +333,15 @@ impl Render<'_> {
                 _ => {}
             }
         }
-        member.module.as_ref().map_or_else(
-            || identifier(&member.name),
-            |module| identifier(&format!("{}.{}.{}", self.prefix, module, member.name)),
-        )
+        let builtin = member
+            .name
+            .split_once('.')
+            .is_some_and(|(owner, _)| BUILTIN_CONSTRUCTOR_OWNERS.contains(&owner));
+        match (&member.module, self.qualify) {
+            (Some(module), _) => identifier(&format!("{}.{}.{}", self.prefix, module, member.name)),
+            (None, Some(own)) if !builtin => identifier(&format!("{own}.{}", member.name)),
+            (None, _) => identifier(&member.name),
+        }
     }
 
     fn ty(&self, ty: &SemanticType) -> String {
@@ -531,14 +541,22 @@ impl Render<'_> {
     }
 
     /// One Lean-only cross-check (§17.12, models).
-    fn cross_check(&self, check: &CrossCheck) -> String {
+    fn cross_check(&self, check: &CrossCheck, module: &str) -> String {
+        let qualified = Render {
+            prefix: self.prefix,
+            hypotheses: std::collections::BTreeMap::new(),
+            runtime: self.runtime,
+            document: false,
+            qualify: Some(module),
+        };
+        let this = &qualified;
         let name = identifier(&check.name);
-        let type_parameters = self.type_parameters(&check.type_parameters);
+        let type_parameters = this.type_parameters(&check.type_parameters);
         let (statement, proof) = match &check.statement {
             CheckStatement::Helper { helper, arguments } => {
                 let mut out = format!("LexLeanModels.{helper}");
                 for argument in arguments {
-                    out.push_str(&format!(" ({})", self.term(argument)));
+                    out.push_str(&format!(" ({})", this.term(argument)));
                 }
                 (out, None)
             }
@@ -595,9 +613,9 @@ impl Render<'_> {
                 },
                 None,
             ) => {
-                let mut out = self.member(theorem);
+                let mut out = this.member(theorem);
                 for argument in type_arguments {
-                    out.push_str(&format!(" ({})", self.ty(argument)));
+                    out.push_str(&format!(" ({})", this.ty(argument)));
                 }
                 out
             }
@@ -1228,6 +1246,7 @@ fn well_founded_definition(
             .map(|(index, address)| (*address, index))
             .collect(),
         document: false,
+        qualify: base.qualify,
     };
     // A parameter the measure alone mentions is used: `termination_by`
     // references it.
@@ -2059,6 +2078,7 @@ pub fn render_lean(
         hypotheses: std::collections::BTreeMap::new(),
         runtime,
         document: false,
+        qualify: None,
     };
     let document = &checked.document;
     let mut text = String::from("module\npublic import Init\n");
@@ -2119,12 +2139,9 @@ pub fn render_lean(
         if group.is_some() && (index == 0 || group_of(index - 1) != group) {
             text.push_str("mutual\n");
         }
-        let elaborated = module.elaboration.lowered(index);
-        let own = [source];
-        let declarations: Vec<&SemanticDeclaration> = if elaborated.is_empty() {
-            own.to_vec()
-        } else {
-            elaborated.iter().collect()
+        let declarations: Vec<&SemanticDeclaration> = match module.elaborated(index) {
+            Some(elaborated) => elaborated.iter().collect(),
+            None => vec![source],
         };
         for declaration in declarations {
         match declaration {
@@ -2296,8 +2313,19 @@ pub fn render_lean(
                     }
                 } else {
                     let name = identifier(name);
+                    // §17.12: a language-1.2 proposition-valued definition
+                    // is reducible, so a proposition it names is decidable
+                    // exactly when its body is, as a contract predicate
+                    // over a finite domain must be.
+                    let attributes = if module.spec == "lexlean/semantic-module/2"
+                        && *result == SemanticType::Prop
+                    {
+                        "@[expose, reducible]"
+                    } else {
+                        "@[expose]"
+                    };
                     text.push_str(&format!(
-                        "@[expose] public def {name}{type_binders}{} : {} := {}\n",
+                        "{attributes} public def {name}{type_binders}{} : {} := {}\n",
                         render.scoped_parameters(parameters, |local| term_uses(body, local)),
                         render.ty(result),
                         render.term(body)
@@ -2343,7 +2371,7 @@ pub fn render_lean(
         }
         }
         for check in module.elaboration.checks(index) {
-            text.push_str(&render.cross_check(check));
+            text.push_str(&render.cross_check(check, &document.lean_module));
         }
     }
     let end = text.len();
@@ -2901,6 +2929,7 @@ pub fn render_latex(
         hypotheses: std::collections::BTreeMap::new(),
         runtime: false,
         document: true,
+        qualify: None,
     };
     let version_2 = module.spec == "lexlean/semantic-module/2";
     let mut text = String::from(

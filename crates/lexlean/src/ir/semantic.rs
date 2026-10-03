@@ -2953,6 +2953,38 @@ impl SemanticModule {
         }
     }
 
+    /// Every Lean declaration the module generates for its semantic
+    /// declarations, in order: each ordinary declaration by its own name, and
+    /// each model declaration as the declarations and cross-checks it
+    /// elaborates to (§17.12).
+    #[must_use]
+    pub fn generated_names(&self) -> Vec<String> {
+        let mut names = Vec::new();
+        for (index, declaration) in self.declarations.iter().enumerate() {
+            match self.elaborated(index) {
+                Some(lowered) if model::declaration_construct(declaration).is_some() => {
+                    names.extend(lowered.iter().map(|derived| derived.name().to_owned()));
+                    names.extend(
+                        self.elaboration
+                            .checks(index)
+                            .iter()
+                            .map(|check| check.name.clone()),
+                    );
+                }
+                _ => names.push(declaration.name().to_owned()),
+            }
+        }
+        names
+    }
+
+    /// The ordinary declarations source declaration `index` means, or
+    /// `None` for a module linking never elaborated.
+    #[must_use]
+    pub fn elaborated(&self, index: usize) -> Option<&[SemanticDeclaration]> {
+        (self.elaboration.lowered.len() == self.declarations.len())
+            .then(|| self.elaboration.lowered(index))
+    }
+
     /// Exact recursive semantic-node count charged to `max_ir_nodes`.
     pub(crate) fn node_count(&self) -> u64 {
         let base: u64 = self.declarations.iter().map(declaration_node_count).sum::<u64>()
@@ -3171,7 +3203,7 @@ fn check_name(name: &str, what: &str) -> Result<(), String> {
 /// `List.cons`, `Option.some`, `Result.ok`, `Prod.mk`). A local reference to
 /// such a constructor has no module, so in language 1.2 no declaration may
 /// take one of these names and make the reference ambiguous.
-const BUILTIN_CONSTRUCTOR_OWNERS: [&str; 7] = [
+pub(crate) const BUILTIN_CONSTRUCTOR_OWNERS: [&str; 7] = [
     "Bool",
     "ContractViolation",
     "List",
