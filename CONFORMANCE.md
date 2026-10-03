@@ -413,6 +413,7 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `VR-17` | `build` | Lean workspace configuration and manifest hashes must match the lock and all dependencies must be locally available. |
 | `VR-18` | `build` | Check and build results never claim verified or kernel-checked status. |
 | `VR-19` | `build` | The native Atlas source graph is self-contained: every generated Atlas module publicly depends only on Init and the generated graph, its only backend-support import is Lean, and no independently authored Atlas implementation exists. |
+| `VR-20` | `build` | The verification resource profile is operational: the width the host selects bounds how many proof processes overlap and reaches no identity, and a project verified at the conservative width and at a wider profile publishes byte-identical evidence under one attestation ID. |
 
 ## Cited authorities
 

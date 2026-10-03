@@ -4933,6 +4933,61 @@ the source path, nor the host. The attestation records the byte length and
 SHA-256, and the normalized verification records include the input, the
 driver, and its process record.
 
+### 22.11 Verification resource profile
+
+The verification pipeline runs its proof processes under an *operational
+resource profile*: a width, the number of independent proof processes that may
+be in flight at once. Width is a property of the host that runs the
+verification. It is not part of the language, it is not project
+configuration, and no project can select it.
+
+**Width is not an input to any identity.** No semantic ID, compiler-semantics
+ID, build ID, module ID, process record, normalized verification record,
+compiler input, or attestation ID reads the width or anything derived from it.
+A width may therefore change the wall clock of `verify` and nothing else,
+which is the whole reason a wider profile cannot weaken the evidence §22
+requires. §23.1 holds a fortiori: no environment variable changes semantic
+configuration, and this one changes no configuration at all.
+
+**Selection.** The host selects the width through the environment variable
+`LEXLEAN_VERIFY_OPERATIONAL_WIDTH`, read once per `verify` run. The value is a
+decimal count of processes. Absent, unparsable, or out-of-range values select
+the conservative profile rather than failing the run: the variable is a
+tuning knob, not a normative input, and every rejection path lands on a width
+at most the conservative one, so a mistyped value can only cost wall time. The
+widest honoured width is 64; a larger request is clamped, which is again
+downward and therefore safe.
+
+**The conservative profile is width 1.** One Atlas environment already
+approaches the memory available on a GitHub-hosted runner, and two overlapping
+Atlas processes made a hosted runner lose its control-plane heartbeat while
+swapping. A width above 1 is therefore selected only where a runner's memory
+envelope has been measured to hold it; a repository never selects it on a
+project's behalf, because a project cannot know the machine that will verify
+it.
+
+**What width may not change.**
+
+- *What runs.* Every stage of §22.1 runs at every width: the same probe, the
+  same module elaborations, the same `leanchecker` replays, the same
+  axiom-audit members, the same policy, the same publication. There is no
+  width at which a module, an audit member, or a replay is skipped.
+- *Import barriers.* §22.3's topological order is unconditional. A module is
+  elaborated only after every module it imports has completed successfully, at
+  every width. Width parallelizes within a topological frontier, whose members
+  by construction contain no dependency edge.
+- *Order.* A batch's results are consumed in the batch's own order, never in
+  completion order. Canonical record order, the `audit/output.txt` byte
+  sequence, and therefore the attestation ID do not depend on which process
+  finished first.
+- *Evidence.* The verified artifact published at width 1 and at any other width
+  is byte-identical after §22.7 normalization, the observed axiom sets and
+  policy results are identical, and the attestation ID is identical.
+
+Verification resources are CI evidence. Wall time, resident set, scheduling
+order, runner identity, and the selected width are measurements of a host; they
+are reported as CI evidence and enter no artifact, record, or identity.
+
 ---
 
 ## 23. Command-line interface
@@ -6248,6 +6303,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `VR-17` | `verification` | Lean workspace configuration and manifest hashes must match the lock and all dependencies must be locally available. | §10.4, §22.2 |
 | `VR-18` | `verification` | Check and build results never claim verified or kernel-checked status. | §5.3 |
 | `VR-19` | `verification` | The native Atlas source graph is self-contained: every generated Atlas module publicly depends only on Init and the generated graph, its only backend-support import is Lean, and no independently authored Atlas implementation exists. | §10.4, §17.10, §22.2 |
+| `VR-20` | `verification` | The verification resource profile is operational: the width the host selects bounds how many proof processes overlap and reaches no identity, and a project verified at the conservative width and at a wider profile publishes byte-identical evidence under one attestation ID. | §22.11 |
 | `CL-01` | `cli-api` | Global options and upward project discovery obey the exact CLI contract. | §23.1, §23.2 |
 | `CL-02` | `cli-api` | Init creates the complete canonical skeleton only in an absent or empty destination and never overwrites. | §23.4 |
 | `CL-03` | `cli-api` | Lock check, local update, and explicit network acquisition obey their exact mutually exclusive behavior. | §23.4 |
@@ -6337,7 +6393,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `MD-11` | `models` | Model constructs have production dispositions under which artifacts, realizations, models, validators, and checked applications are realized through their elaborations while contracts and evidence are erased, the realization table covers every new runtime construct, and production roots applying an artifact-backed model, directly and through its checks, are eligible and extract the same closure through Lean. | §17.13, §17.14, §22.10 |
 | `MD-12` | `models` | The committed models example verifies nontrivial deterministic stateful, rule, statistical, artifact-backed neural, and composite models with every claim kernel-checked, and planting a contract and realization mismatch in it is refused by verification. | §17.12, §28.6 |
 
-**Total required capability IDs:** 290.
+**Total required capability IDs:** 291.
 
 No row may be downgraded to `some-true` or `open`. Upstream Lean facts are ledger/authority rows, not substitutions for these build behaviors.
 
