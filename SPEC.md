@@ -674,10 +674,11 @@ The parsed project has one canonical TOML serialization used by `project_config_
 
 1. scalar top-level keys in the order shown by the schema example;
 2. `lexicon_source` tables sorted by `package`, with keys in the order `package`, `kind`, then kind-specific fields;
-3. `[limits]` with keys in the order shown;
-4. optional `[pdf]` last, with keys in the order shown;
-5. basic quoted strings, decimal integers, arrays with comma-space separators, LF line endings, and one final LF;
-6. no comments, blank leading lines, or trailing spaces.
+3. language 1.2 only: `artifact_source` tables sorted by `sha256`, with keys in the order `sha256`, `path`, omitted entirely when there are none, so a project without artifacts keeps its bytes;
+4. `[limits]` with keys in the order shown;
+5. optional `[pdf]` last, with keys in the order shown;
+6. basic quoted strings, decimal integers, arrays with comma-space separators, LF line endings, and one final LF;
+7. no comments, blank leading lines, or trailing spaces.
 
 Input whitespace does not affect this canonical serialization. A project may be semantically valid before formatting, but `lexlean lock --check` and repository examples require canonical bytes.
 
@@ -696,6 +697,7 @@ Input whitespace does not affect this canonical serialization. A project may be 
 | `lean_workspace` | Project-relative directory containing `lean-toolchain` and a Lake configuration. |
 | `lean_toolchain` | Exactly the language-1.0 toolchain string. |
 | `lexicon_source` | Unique by package and sorted by package identifier. |
+| `artifact_source` | Language 1.2 only (another language rejects the field, `LLC0101`): optional `[[artifact_source]]` tables `sha256 = "<64 lowercase hex>"`, `path = "<project-relative file>"`, sorted by `sha256`, unique by digest and by path, never beneath the build root. Each names the content-addressed bytes of one model artifact (§17.12); `check`, `build`, `fmt`, and `verify` read the file, confined (§25.1), and require its SHA-256 to equal the configured digest (`LLR3007`). Artifacts are never fetched. |
 | `limits` | Every listed positive integer is required. There are no hidden compiler defaults. |
 
 #### Lexicon-source forms
@@ -736,7 +738,7 @@ Rules:
 
 ### 10.2 Explicit resource policy
 
-The values under `[limits]` are semantic inputs to acceptance. `max_total_source_bytes` counts normalized selected modules, loaded lexicon manifests and entries, configuration, and lock bytes. Exceeding one produces `LLS8002` and identifies:
+The values under `[limits]` are semantic inputs to acceptance. `max_total_source_bytes` counts normalized selected modules, loaded lexicon manifests and entries, configuration, lock bytes, and, in language 1.2, the bytes of every configured model artifact; a single artifact is also bounded by `max_file_bytes`. Exceeding one produces `LLS8002` and identifies:
 
 - the limit name;
 - configured value;
@@ -2469,10 +2471,18 @@ backend runs.
 | `executable` definitions | `lexlean/semantic-module/2` | `"executable":true` asserts production eligibility under the higher-order rules below. |
 | `mutual` definition label | `lexlean/semantic-module/2` | `"mutual":"Label"` on a structurally recursive definition places it in a mutual definition group under the recursion rules below. |
 | `termination` evidence | `lexlean/semantic-module/2` | `{"measure":m,"evidence":[theorem...]}` on a definition declares well-founded recursion under the recursion rules below. |
-| `linear_arithmetic` proof | `lexlean/semantic-module/2` | `{"kind":"linear_arithmetic"}`, optionally with `definitions`, a strictly sorted list of prior document definitions and no other member. Without definitions it lowers to the fixed script `intros`, `try set_option linter.unusedSimpArgs false in simp only [← Bool.not_eq_true, Nat.beq_eq, Nat.blt_eq, Nat.ble_eq] at *` (adding `LexLeanRuntime.subtract, LexLeanRuntime.multiply` when the module emits the portable runtime), and `omega`; with definitions, `subst_vars` follows `intros` and the definitions lead the `simp only` list, so hypotheses equating a local with a constructor value are substituted and a measure over them unfolds to linear arithmetic. |
+| `linear_arithmetic` proof | `lexlean/semantic-module/2` | `{"kind":"linear_arithmetic"}`, optionally with `definitions`, a strictly sorted list of prior document definitions and no other member. Without definitions it lowers to the fixed script `intros`, `try set_option linter.unusedSimpArgs false in simp only [← Bool.not_eq_true, Nat.beq_eq, Nat.blt_eq, Nat.ble_eq] at *` (adding `LexLeanRuntime.subtract, LexLeanRuntime.multiply` when the module emits the portable runtime), and `all_goals omega`, so a goal the simplifier already closed leaves nothing for `omega`; with definitions, `subst_vars` follows `intros` and the definitions lead the `simp only` list, so hypotheses equating a local with a constructor value are substituted and a measure over them unfolds to linear arithmetic. |
 | `map`, `set` types | `lexlean/semantic-module/2` | `{"kind":"map","key":K,"value":V}` and `{"kind":"set","element":K}` over an ordered key type, under the collection rules below. |
 | `map_literal`, `set_literal`, `graph_literal` terms | `lexlean/semantic-module/2` | Literal collections of literal keys, canonicalized in linking under the collection rules below. |
 | collection primitives | `lexlean/semantic-module/2` | The `primitive` operations `map_insert`, `map_remove`, `map_lookup`, `map_contains`, `map_size`, `map_keys`, `map_values`, `map_entries`, `map_fold`, `set_insert`, `set_remove`, `set_contains`, `set_size`, `set_elements`, `set_union`, `set_intersection`, `set_difference`, `set_fold`, `list_fold`, `iterate`, `iterate_until`, `graph_successors`, `graph_reachable`, and `graph_topological`, under the collection rules below. |
+| `less_than` primitive | `lexlean/semantic-module/2` | `{"kind":"primitive","operation":"less_than","arguments":[a,b],"result":{"kind":"bool"}}` over two values of one ordered key type (rule 1 under *Collections and state threading*): `true` exactly when `a` precedes `b` in that type's fixed order. It lowers to `LexLeanCollections.lessThan`. |
+| `artifact` declaration | `lexlean/semantic-module/2` | A typed constant decoded from content-addressed project bytes, under the model rules below. |
+| `contract` declaration | `lexlean/semantic-module/2` | Typed input, output, and optional state interfaces, proposition-valued predicates, and their runtime validators, under the model rules below. |
+| `realization` declaration | `lexlean/semantic-module/2` | A deterministic, rule, statistical, neural, or composite denotation of an interface, under the model rules below. |
+| `evidence` declaration | `lexlean/semantic-module/2` | Closed claims about a realization against a contract, each discharged by a theorem, under the model rules below. |
+| `model` declaration | `lexlean/semantic-module/2` | A contract bound to a realization of its interface, with evidence and entry theorems, under the model rules below. |
+| `checked_apply` term | `lexlean/semantic-module/2` | `{"kind":"checked_apply","model":M,"type_arguments":[T...],"arguments":[...],"checks":[...]}`, a model application that runs the named validators, under the model rules below. |
+| `contract_violation` type | `lexlean/semantic-module/2` | `{"kind":"contract_violation"}`, the closed type of a validator refusal, with the four nullary constructors `ContractViolation.precondition`, `.input_invariant`, `.postcondition`, and `.output_invariant`, under the model rules below. |
 
 #### Recursive data (language 1.2)
 
@@ -2806,6 +2816,282 @@ Termination evidence is semantic data, never tactic or backend text; no
    the `Key` order instances and the operations above as exposed, total
    Lean definitions over lists, with no comment tokens.
 
+#### Models, contracts, realizations, and evidence (language 1.2)
+
+A model is a contract bound to a realization of the same interface, with
+evidence about the realization. These rules are LexLean's own and are checked
+in linking, before either backend runs; the diagnostic each failure raises is
+named with the rule. Every model declaration *elaborates*, in linking, to
+ordinary language-1.2 definitions and theorems. The Lean backend, production
+eligibility, extraction, and the axiom audit read only the elaboration; the
+canonical document and the snapshot read the source declaration together with
+its elaboration (rule 13). No prompt text, free-form description, raw JSON,
+unchecked code, or untyped blob defines any meaning: every member of every
+model declaration belongs to the closed `lexlean/semantic-module/2` schema,
+every closed set below is a closed enumeration of that schema, and an unknown
+member or value is an ordinary schema failure (`LLT4001`).
+
+1. **References and order.** Every contract, realization, evidence, model,
+   predicate, validator, artifact, and theorem a model declaration names is
+   a prior declaration of its module or an imported one. Every theorem named
+   by a validator, a width obligation, a claim, a junction, or an entry is a
+   prior theorem *of the same module* as the declaration naming it, as for
+   termination evidence. A use of a generic contract, realization, or model
+   is `{"member":M,"type_arguments":[T...]}` with exactly its type
+   parameters; nothing is inferred. A model declaration's `axioms` row is
+   the exact axiom policy of every Lean declaration it generates (rule 12).
+2. **Artifacts** (`LLR3007`, `LLR3008`). `{"kind":"artifact","name":W,
+   "role":R,"sha256":H,"length":N,"schema":S,"type":T}` names the project
+   bytes configured as `[[artifact_source]]` with digest `H` (§10.1). Linking
+   reads each configured artifact once, confined (§25.1), within
+   `max_file_bytes`, and counted toward `max_total_source_bytes` (§10.2), and
+   requires its SHA-256 to equal the configured digest. A missing file, a
+   digest or length differing from the configuration or the declaration, or
+   a declaration whose digest no configured source has is `LLR3007`. The
+   closed schemas are `bytes` (decoding to `bytes`); `int_tensor` with an
+   `element` among `int8`, `int16`, `int32`, `int64`, `uint8`, `uint16`,
+   `uint32`, `uint64` and a nonempty `shape` of positive extents
+   (little-endian, two's complement for the signed elements, row-major,
+   exactly width times the product of the extents bytes, decoding to the
+   `shape`-deep nested `list int` of the exact element values); and
+   `utf8_lines` (valid UTF-8 without CR, every line LF-terminated, decoding
+   to `list string`). The closed roles constrain the schema: `parameters`
+   and `table` take `int_tensor`, `vocabulary` takes `utf8_lines`, `binary`
+   takes `bytes`, and `dataset` takes any. Bytes that do not decode under
+   the schema, a declared type other than the schema's decoded type, or a
+   role its schema does not admit is `LLR3008`. There is no floating-point
+   element, no JSON, ONNX, or other configuration schema, and no
+   unspecified rounding. An artifact elaborates to `W.bytes : bytes`, its
+   exact bytes, and `W : T`, the decoded value; generated Lean adds the
+   kernel-checked theorem `W.decoded` that `W` is the decoding of
+   `W.bytes` (by `decide` for tensors and lines, by `rfl` for bytes), so the
+   typed value used everywhere is tied to the exact content-addressed bytes.
+3. **Contracts** (`LLT4006`). `{"kind":"contract","name":C,
+   "type_parameters":[...],"input":{"name":x,"type":I},
+   "output":{"name":y,"type":O},"state":{"name":s,"next":t,"type":S}?,
+   "precondition":P?,"postcondition":Q?,"invariant":J?,"validators":[...]}`.
+   The binder names are pairwise distinct legal names; `invariant` requires
+   `state`; at least one predicate is present. Each predicate is a prior
+   definition with the contract's type parameters, result `prop`, and the
+   parameter types of the table below; anything else is `LLT4006`.
+
+   | Contract | Precondition | Postcondition | Invariant |
+   |---|---|---|---|
+   | stateless | `(I)` | `(I, O)` | — |
+   | stateful | `(S, I)` | `(S, I, S, O)` | `(S)` |
+
+   `validators` are strictly sorted by predicate, at most one per present
+   predicate: `{"predicate":p,"validator":V,"sound":T,"complete":U?}`. `V`
+   is a prior `executable` definition of the predicate's parameter types
+   with result `bool`; `T` states exactly `V(args) = true -> p(args)` and
+   `U`, when present, exactly `p(args) -> V(args) = true`, over the
+   predicate's parameters named by the contract binders (statements are
+   compared up to the names of bound variables). A missing, mistyped, or
+   non-executable validator, an absent predicate, or an inexact theorem is
+   `LLT4006`. A contract elaborates to no runtime declaration; generated
+   Lean restates each link as `C.<predicate>_sound` and
+   `C.<predicate>_complete` against the fixed `LexLeanModels.SoundN` and
+   `CompleteN` (rule 12).
+4. **Realizations** (`LLT4006`). `{"kind":"realization","name":R,
+   "type_parameters":[...],"input":{"name":x,"type":I},"output":O,
+   "state":{"name":s,"type":S,"initial":v}?,"descriptor":D,
+   "executable":true?}` elaborates to the ordinary definition
+   `R : (I) -> O`, or `R : (S, I) -> product S O` with `R.initial : S` when
+   stateful, plus the companion definitions named below; companions are
+   ordinary definitions under the realization's name and occupy their names
+   (§17.8). Each descriptor term has the type its slot fixes (a guard
+   `bool`, an action, default, or label `O`, an encoder or feature map
+   `list int`, a denotation `O` or `product S O`); a term of another type is
+   an interface mismatch, `LLT4006`. The closed descriptors:
+   - `deterministic` `{"body":b}`: the denotation is `b`.
+   - `rule` `{"rules":[{"name":n,"guard":g,"action":a}...],"default":d}`:
+     at least one rule, names unique; the denotation is the first rule, in
+     declared order, whose guard holds, else `d`; the companion
+     `R.selected : (I) -> nat` is the index of the firing rule, or the rule
+     count for the default.
+   - `statistical` `{"scheme":"linear_scoring","features":f,"width":w,
+     "width_evidence":T,"weights":Wt,"bias":B,"labels":[...]}`, stateless:
+     the companions `R.features` (`f`) and `R.scores` (`Wt` times the
+     features plus `B`, over mathematical integers) and the denotation, the
+     label of the first maximal score.
+   - `neural` `{"architecture":"integer_feedforward","encoder":e,"width":w,
+     "width_evidence":T,"layers":[...],"decoder":...}`, stateless: the
+     companions `R.encoded` (`e`), `R.layer1` ... `R.layerK` (one per layer,
+     each `list int -> list int`), and `R.logits`, and the denotation
+     decoding the final values. The closed layers are `dense`
+     `{"inputs":n,"outputs":m,"weights":Wt,"bias":B}` (`Wt v + B` over
+     mathematical integers), `relu` (negative values become zero), and
+     `requantize` `{"shift":k,"minimum":lo,"maximum":hi}` (division by `2^k`
+     truncating toward zero, then clamping to `[lo, hi]`; `lo <= hi` and
+     `k <= 4096`). The closed decoders are `argmax` `{"labels":[...]}` (the
+     label of the first maximal value) and `function` `{"binder":v,
+     "body":b}` (`b` over the final values bound to `v`).
+   - `composite` `{"form":F}`: rule 7.
+
+   Widths are checked statically: the first dense layer takes `width`
+   inputs, each dense layer takes the current width, a weights slot is a
+   `parameters` artifact of shape `[outputs, inputs]` (statistical:
+   `[labels, width]`) and a bias slot one of shape `[outputs]`, and an
+   argmax decoder has one label per final value; a label list is nonempty
+   and each label is a closed term, mentioning no local. `width_evidence`
+   states exactly
+   `length(e) = w` over the input binder. Any other width, shape, role, or
+   label count, or an inexact width theorem, is `LLT4006`. The kernels are
+   ordinary terms over `list_fold`, `match`, the integer primitives, and
+   `less_than`, so they mean exactly what Lean computes and nothing is
+   approximated. A realization marked `executable` is checked as executable
+   code, including its companions.
+5. **Evidence** (`LLT4009`). `{"kind":"evidence","name":E,
+   "type_parameters":[...],"contract":Cuse,"realization":Ruse,
+   "claims":[...]}` about a contract and a realization of the same interface
+   (otherwise `LLT4006`). `claims` are strictly sorted by kind and theorem.
+   The closed claim kinds, their generated statements (premises absent from
+   the contract are dropped; `R` is the realization at its type arguments),
+   and the fixed Lean helper each is restated against:
+
+   | Claim | Requires | Generated statement | Helper |
+   |---|---|---|---|
+   | `satisfies_contract` | postcondition | stateless: `P x -> Q x (R x)`; stateful: `J s -> P s x -> Q s x (first(R s x)) (second(R s x))` | `Satisfies`, `SatisfiesTotal`, `SatisfiesStep...` |
+   | `preserves_invariant` | invariant | `J s -> P s x -> J (first(R s x))` | `Preserves`, `PreservesTotal` |
+   | `initial_invariant` | invariant | `J R.initial` | `Initial` |
+   | `equivalent_to` (`"reference":F`, a definition or model of the realization's signature) | — | `P x -> R x = F x` (stateful: over `s` and `x` with `J s`) | `Equivalent...` |
+   | `dataset_agreement` (`"dataset":D,"comparison":c,"comparison_sound":T',"examples":n,"agreements":k`), stateless | — | `length(D) = n` and the count of examples `(a, b)` of `D` with `c (R a) b = true` is `k` | `Agreement` |
+
+   For `dataset_agreement`, `D : list (product I O)` is a prior nullary
+   definition, `c : (O, O) -> bool`, `k <= n`, and `T'` states exactly
+   `c e o = true -> e = o`, so an agreement is an equality. Each claim's
+   theorem states exactly its generated statement. An unknown claim kind is
+   a schema failure (`LLT4001`); a claim whose contract lacks what it
+   requires (a vacuous claim), an inexact, later, foreign, or non-theorem
+   reference, or unsorted or duplicate claims is `LLT4009`. Evidence
+   elaborates to no runtime declaration. Nothing is ever asserted without a
+   theorem: a claim is *discharged* in linking and *verified* only by a
+   verified attestation (rule 13).
+6. **Models** (`LLT4006`, `LLT4007`, `LLT4009`). `{"kind":"model","name":M,
+   "type_parameters":[...],"contract":Cuse,"realization":Ruse,
+   "evidence":[Euse...]?,"entry":[T...]?}`. The realization's input,
+   output, and state types equal the contract's at their type arguments
+   (`LLT4006`); each listed evidence, listed once, is about exactly this
+   contract and realization use (`LLT4009`). `entry` lists one theorem per
+   *effective precondition* `e` of the realization (none for the
+   noncomposite kinds; rule 7 for composites), in order, each stating
+   exactly `P x -> e` (or `e` when the contract has no precondition); an
+   omission or an inexact theorem is `LLT4007`. A model elaborates to the
+   ordinary definition `M`, applying the realization, and `M.initial` when
+   stateful. Its *required checks* are: `input_invariant` when the contract
+   has an invariant; `output_invariant` when it has an invariant and no
+   evidence discharges `preserves_invariant`; `postcondition` when it has a
+   postcondition and no evidence discharges `satisfies_contract`; and
+   `precondition` when it has a precondition.
+7. **Composition** (`LLT4007`). A composite stage is a prior model; every
+   stage is stateless except the stage of a `scan`, and a stage's required
+   checks may not include `postcondition` or `output_invariant` (it must
+   carry that evidence). Types match exactly. The closed forms:
+   - `sequence` `{"stages":[...],"junctions":[...]}`: at least two stages,
+     one junction per stage after the first, each stage consuming the
+     previous stage's output. A junction is `unconditional` (the next stage
+     has no precondition), `proved` `{"evidence":T}` (`T` states exactly
+     `P_i y -> P_{i+1} (M_i y)`, the premise dropped when stage `i` has no
+     precondition), or `checked` (the next stage has a precondition
+     validator, which runs first; a refusal returns
+     `ContractViolation.precondition`, and the composite's output is
+     `result O_k contract_violation`). The effective precondition is the
+     first stage's precondition.
+   - `fanout` `{"left":Ml,"right":Mr}`: one input, output
+     `product O_l O_r`; effective preconditions `P_l x` and `P_r x`.
+   - `product` `{"left":Ml,"right":Mr}`: input `product I_l I_r`, output
+     `product O_l O_r`; effective preconditions `P_l (first x)` and
+     `P_r (second x)`.
+   - `branch` `{"guard":g,"then":Mt,"else":Me}`: `g : bool` (another type is
+     `LLT4007`), both arms of the composite's interface; effective
+     preconditions `g = true -> P_t x` and `g = false -> P_e x`.
+   - `scan` `{"stage":Ms,"junction":j}` over one stateful stage: input
+     `list I`, threading the stage's state from `Ms.initial` and collecting
+     outputs in order. The junction is `unconditional` (no precondition, and
+     any invariant carried by `initial_invariant` and `preserves_invariant`
+     evidence), `proved` (that evidence and `T` stating exactly
+     `J s -> P s x`), or `checked` (the invariant and precondition
+     validators run before each step and the first refusal is returned; the
+     output is `result (list O) contract_violation`).
+
+   Any other composition, junction, or stage is `LLT4007`. A composite's
+   denotation is the ordinary typed composition of its stages' model
+   functions.
+8. **Runtime boundary** (`LLT4008`). `checked_apply` names a model, its type
+   arguments, its arguments (`x`, or `s, x` when stateful), and `checks`, a
+   strictly sorted subset of `input_invariant`, `output_invariant`,
+   `postcondition`, and `precondition`, each of which names a predicate the
+   contract has and validates with a sound validator. Its type is
+   `result O contract_violation`, or `result (product S O)
+   contract_violation` when stateful. It elaborates to ordinary code that
+   binds the arguments once and runs the listed checks in the fixed order
+   input invariant, precondition, the model, output invariant,
+   postcondition, returning `Result.error` of the violated predicate's
+   constructor at the first refusal and `Result.ok` of the model's result
+   otherwise; generated binders are spelled `__checked<n>_...`, a spelling
+   no source name can take. In executable code (an executable definition
+   or instance field, or a descriptor term of an executable realization), a
+   `checked_apply` lists every required check of its model; a plain `call`
+   or `function_ref` of a model is allowed only when the model has no
+   required checks; and a realization function is never applied directly.
+   Anything else is `LLT4008`. Formal code may apply any model unchecked. A
+   check is therefore erased exactly when a theorem discharges it, and a
+   proof-only predicate is never presented as runtime enforcement.
+9. **The `contract_violation` type.** Its four nullary constructors are
+   ordinary data, matched by `match`; they lower to the pairs of `Prod Bool
+   Bool` `(false, false)` (precondition), `(false, true)` (input invariant),
+   `(true, false)` (postcondition), and `(true, true)` (output invariant),
+   so values cross modules unchanged, and the canonical document names the
+   type `ContractViolation`.
+10. **Identity and accounting.** Model declarations are linked IR, so every
+    digest, length, schema, role, type, descriptor, claim, junction, entry,
+    and check is part of the semantic ID (§21.4); artifact bytes are covered
+    through their digests, and their configured digests through the source
+    ID. Every source node and every elaborated declaration and obligation
+    is charged to `max_ir_nodes`.
+11. **Elaboration in Lean.** Each elaborated definition and theorem lowers as
+    any language-1.2 declaration does; a proposition-valued language-1.2
+    definition is `@[expose, reducible]`, so a predicate over a finite
+    domain is decidable exactly when its body is. A long list literal in an
+    elaboration is a balanced `append` of literals of at most 32 elements.
+    Declarations a model declaration generates refer to their own module's
+    members by qualified name.
+12. **Cross-checks and the fixed model semantics.** A module with a model
+    declaration emits the fixed `LexLeanModels` runtime in its namespace:
+    `Sound1`, `Sound2`, `Sound4`, `Complete1`, `Complete2`, `Complete4`, the
+    `Satisfies`, `Preserves`, `Initial`, `Equivalent`, and `Agreement`
+    helpers, and the decoders `inRange`, `encodeInt`, `tensorMatches`,
+    `utf8Char`, and `linesMatch`, each an exposed total definition with no
+    comment tokens. Every validator link and claim is restated against this
+    fixed text by a generated theorem (`C.<predicate>_sound`,
+    `C.<predicate>_complete`, `E.<theorem>`) whose proof is exactly the
+    user's theorem, or `decide` for `dataset_agreement`; every artifact has
+    its `W.decoded` theorem. LexLean's statement generator is thus checked
+    by pinned Lean: had it generated any other statement, Lean would refuse
+    the restatement. The axiom audit covers every generated declaration: each
+    is allowed its owner's axioms, and their union must equal the owner's
+    exact policy (§22.6).
+13. **Document, snapshot, and attestation.** The canonical document renders
+    each model declaration as a closed catalog of facts (interface,
+    descriptor, schema and digest but never the bytes, predicates,
+    validators, claims, junctions, entry theorems, required checks), each
+    generated obligation with the theorem that states it, and each
+    elaborated definition; a claim reads "discharged by" its theorem and no
+    document text says "verified". A language-1.2 snapshot declaration
+    carries its `elaboration` (declarations, obligations, cross-checks, and
+    required checks) when it is a model declaration or applies a model
+    through `checked_apply`. Only a verified attestation records the
+    generated declarations, each with its policy and result, as verified.
+14. **Production.** Artifacts, realizations, models, validators, and
+    checked applications are realized through their elaborations; contracts
+    and evidence are erased (§17.13). Lean extraction of a root sees only
+    elaborated definitions.
+
+`examples/models` is the committed instance: a stateful deterministic
+session, a rule policy, a statistical triage and an artifact-backed neural
+recognizer, every composite form, checked boundaries at production roots,
+and every claim kind, all verified by pinned Lean.
+
 Routing is fixed by the project language and is never inferred from module
 content, so no byte sequence has two meanings:
 
@@ -2818,8 +3104,12 @@ content, so no byte sequence has two meanings:
 `schemas/semantic-module-v2.schema.json` is the language-1.1 module schema
 with the `/2` discriminator and the 1.2-only constructs added;
 `schemas/semantic-snapshot-v2.schema.json` is the snapshot schema with the
-`/2` envelope, `language` fixed to `1.2`, and the same embedded module
-definitions. `schemas/lock-v2.schema.json` has the lock shape of
+`/2` envelope, `language` fixed to `1.2`, the same embedded module
+definitions, and the closed `elaboration` member of a declaration (rule 13
+under *Models, contracts, realizations, and evidence*), whose names also admit
+the reserved spelling with two leading underscores that only elaborations
+contain (generated binders; linking rejects it in source).
+`schemas/lock-v2.schema.json` has the lock shape of
 `schemas/lock.schema.json` with `spec` fixed to `lexlean/lock/2` and
 `language` fixed to `1.2`.
 
@@ -2919,6 +3209,18 @@ realizes is visited through the declarations it names, under their
 instantiation. Termination evidence theorems are *erased* dependencies:
 recorded, never realized, and never walked. Proofs and theorem statements are
 never part of a runtime closure.
+
+Language-1.2 model declarations enter a closure only through their
+elaborations (§17.12): a closure member generated by an artifact, a
+realization (including its companions), or a model is reported with that
+construct (`declaration.artifact`, `declaration.realization`, or
+`declaration.model`, each `runtime`) and walked as the ordinary definition it
+is; a definition whose source applies a model through `checked_apply` is
+walked as its elaboration and also reports `term.checked_apply`; contracts
+and evidence (`erased`) elaborate to no runtime definition, so no closure
+reaches them, while a contract's validators are ordinary executable
+definitions. The `contract_violation` type is `runtime` plain data, and
+`less_than` a `runtime` key comparison.
 
 **Rules.** A root is eligible for a target exactly when none of the following
 holds; otherwise `check` fails with `LLT4005`, naming the root, the target, the
@@ -3084,7 +3386,12 @@ transcription of the `LexLeanCollections` definition over `compare`,
 instantiated monomorphically. Agreement with LexLean is checked pointwise:
 each template's fixtures state, and the kernel decides, that its outcome
 equals LexLean's own primitive on that input, which is evidence on those
-inputs, not a proof for all inputs. A construct requires allocation exactly
+inputs, not a proof for all inputs. The model constructs are realized by the
+elements of their elaborations (§17.12): an artifact, a realization, and a
+model are functions (a model's body a call), a checked application is a
+sequence of `let`s, validator calls, and conditionals building a `Result`, the
+`contract_violation` type is a pair of Booleans, and `less_than` is `compare`
+matched to a Boolean. A construct requires allocation exactly
 when its realization does: its values are strings, byte strings, lists, or a
 type that holds itself behind a heap handle (`indirection`), or it builds
 such a value; reading, comparing, measuring, or folding existing storage
@@ -3959,6 +4266,11 @@ production root (§17.13). Paths in manifests use `/` regardless of host OS.
 
 Each output row contains kind, project/build-relative path, byte length, and SHA-256. Rows sort by `(kind, path)`.
 
+In language 1.2, every configured model artifact (§10.1, §17.12) is an
+`inputs` row of kind `model-artifact` with its project-relative path, byte
+length, and SHA-256, so the bytes a build's typed artifact values were
+decoded from are named by the manifest.
+
 The manifest does not contain its own hash. A verification attestation records the exact manifest-file hash.
 
 ### 21.7 Canonical JSON
@@ -4096,6 +4408,14 @@ The attestation records policy, allowed set, observed set, and result for every 
 
 An imported theorem's axioms are not exempt because the theorem is upstream. If they flow into a generated declaration, the generated declaration's policy must permit them.
 
+A language-1.2 model declaration (§17.12) is audited through the Lean
+declarations it generates: its elaborated definitions and theorems, its
+cross-checks, and its artifacts' `.bytes` and `.decoded` declarations. Each
+is recorded with policy `allow` over the owner's axiom set, and the union of
+their observed sets must equal the owner's set exactly (`LLV7005`
+otherwise), so the owner's `exact` policy is met by its elaboration as a
+whole and no generated declaration may use an axiom the owner does not state.
+
 ### 22.7 Process normalization
 
 Before process output is hashed:
@@ -4223,7 +4543,10 @@ a translated definition, its safety, universe parameters, LCNF type,
 parameters, code, and the constants that code names; for a project inductive,
 its constructors with their LCNF types; and, for every other constant
 translated code names, the same facts. Universe levels are recorded wherever
-a constant is instantiated. It prints one `lexlean/lcnf-extraction/2` record.
+a constant is instantiated. An LCNF type is recorded through its metadata
+annotations, which carry no type (Lean attaches them, for example, to the
+types of instances such as the portable runtime's integer quotient). It
+prints one `lexlean/lcnf-extraction/2` record.
 
 **Driver.** Verification generates the module `LexLeanExtract.X<hex32>` (the
 first 32 hex digits of the semantic ID; a reserved module name) with exactly:
@@ -4764,11 +5087,17 @@ The initial registry MUST include at least these exact codes and meanings:
 | `LLR3004` | Invalid LSE, LRE, frame, form, or renderer token. |
 | `LLR3005` | Unavailable or invalid document/external reference. |
 | `LLR3006` | Unsafe canonical form or raw renderer output. |
+| `LLR3007` | Model artifact unavailable or its digest or length mismatched (§10.1, §17.12). |
+| `LLR3008` | Model artifact bytes violate the declared schema, type, or role (§17.12). |
 | `LLT4001` | Arity, binder, category, or conservative type mismatch. |
 | `LLT4002` | Unresolved overloaded entry. |
 | `LLT4003` | External-interface probe mismatch. |
 | `LLT4004` | Document-entry signature mismatch. |
 | `LLT4005` | Production root not eligible for a declared target. |
+| `LLT4006` | Model contract, realization, or artifact interface mismatch (§17.12). |
+| `LLT4007` | Invalid model composition or entry obligation (§17.12). |
+| `LLT4008` | Unvalidated model runtime boundary (§17.12). |
+| `LLT4009` | Model evidence not established (§17.12). |
 | `LLF5001` | Invalid definition form, self head, or recursion. |
 | `LLF5002` | Invalid proof step for the current goal. |
 | `LLF5003` | Missing, duplicate, or malformed proof branch. |
@@ -5121,6 +5450,36 @@ Tests MUST establish that LexLean rejects, at minimum:
 - a production root with type parameters, whether or not its signature
   mentions them;
 - a production root naming an unregistered target.
+- a contract declaration under language 1.1;
+- an `artifact_source` under language 1.1 (`LLC0101`);
+- a model declaration with a prompt member outside the closed schema;
+- a floating-point artifact element;
+- an unregistered evidence claim kind;
+- a missing model artifact, an artifact whose bytes differ from the configured
+  digest, a declared artifact with no configured source, and an artifact
+  whose declared length differs from its bytes (`LLR3007`);
+- an artifact that is a symlink (`LLS8001`) and an artifact beyond
+  `max_file_bytes` (`LLS8002`);
+- artifact bytes too short for the declared tensor shape, a `utf8_lines`
+  artifact that is not UTF-8, and a role its schema does not admit
+  (`LLR3008`);
+- a layer whose artifact has the wrong shape, a width theorem stating
+  another width, a model binding a contract to a realization of another
+  interface, a predicate with another signature, and a validator soundness
+  theorem stating another obligation (`LLT4006`);
+- a sequence junction left unconditional before a stage with a precondition,
+  a junction theorem stating another obligation, a composite whose output
+  type differs from its stages', and a model without its entry theorems
+  (`LLT4007`);
+- an executable application of a model without the check its precondition
+  needs, without the postcondition check its evidence does not discharge, a
+  check of a predicate without a validator, and a realization applied
+  directly (`LLT4008`);
+- a claim discharged by a theorem stating another obligation, an invariant
+  claim about a stateless contract, and evidence about another realization
+  (`LLT4009`);
+- false evidence stating the exact claim, refused by verification
+  (`LLV7002`).
 
 ### 28.6 Example verification
 

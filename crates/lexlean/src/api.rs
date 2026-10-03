@@ -1160,6 +1160,11 @@ impl Engine {
                 copy_dir(path)?;
             }
         }
+        // Model artifacts are linking inputs (§10.1, §17.12): the scratch
+        // copy re-checks only if it holds them.
+        for source in &config.artifact_sources {
+            copy_file(&source.path)?;
+        }
         copy_dir(&format!("{}/cache", config.build_root))?;
         if let Some(pdf) = &config.pdf {
             for resource in &pdf.resources {
