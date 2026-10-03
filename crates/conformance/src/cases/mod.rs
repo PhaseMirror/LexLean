@@ -22,6 +22,7 @@ mod models;
 mod production;
 mod proofs;
 mod repository;
+mod rust_backend;
 mod security;
 mod semantic_ir;
 mod typed_diagnostics;
@@ -54,6 +55,7 @@ pub fn run(id: &str) {
         "PD" => production::run(id),
         "NE" => extraction::run(id),
         "TC" => calculus::run(id),
+        "RB" => rust_backend::run(id),
         "GN" => gnaf::run(id),
         "MD" => models::run(id),
         _ => panic!("no conformance case is wired for {id}"),

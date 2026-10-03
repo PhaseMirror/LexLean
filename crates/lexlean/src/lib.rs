@@ -168,6 +168,8 @@ fn is_v1_2_file(path: &str) -> bool {
         || path == "schemas/gnaf-request.schema.json"
         || path == "schemas/target-fixture.schema.json"
         || path == "schemas/target-program.schema.json"
+        || path == "schemas/rust-package.schema.json"
+        || path == "schemas/rust-provenance.schema.json"
 }
 
 /// The compiler-semantics ID for one selected language. Language 1.0 excludes

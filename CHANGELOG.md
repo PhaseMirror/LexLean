@@ -243,7 +243,8 @@ versions, and the entries below say what each tag does and does not claim.
     renders exactly the programs that need no heap. `rust-std` shares strings,
     byte strings, and persistent list cells behind `Rc`, so `cons` and its
     match are constant work and a use clones a handle. Both are library
-    crates without lint exceptions, committed under `compiler/rust/`. A work
+    crates, committed as packages under `compiler/rust/` with the lint gate
+    of §17.16. A work
     counter in the runtime never exceeds the denotation's steps on any
     fixture, and a quadratic append is detected.
   - Every runtime row's `allocation` in `language/production-1.2.toml` now
@@ -261,6 +262,48 @@ versions, and the entries below say what each tag does and does not claim.
     interpreter's checked fixed-width multiplication overflowed `i128` and
     panicked on two large 64-bit operands; it is now checked.
   - An ill-typed program has no canonical form and no identity.
+- The canonical Rust backend (§17.16). A target program is lowered to a
+  closed Rust AST (`lexlean::calculus::rust::ast`) and checked before it is
+  printed into canonical bytes:
+  - identifiers are generated from closed kinds, and each is bound once per
+    function;
+  - every value is moved at most once;
+  - `rust-core` names no heap type, runtime function, or construct;
+  - failure is typed exactly: a function that can overflow returns `R<T>`
+    and every call to it propagates, and any other returns its value;
+  - every construct carries the calculus element it was lowered from, and
+    is refused unless its correspondence row names that element, at that
+    element's width, and the program uses it.
+
+  Strings are escaped by LexLean itself, independently of the toolchain's
+  Unicode tables. A type no value inhabits is rendered as an empty match
+  where it is a parameter and omitted where it is an arm, and any other
+  computation of one is refused. Units, literal and equal branches, matches
+  that rebuild their scrutinee, and the other shapes Rust's lint gate
+  constrains are rendered as it admits (§17.16, Lowering).
+
+  Packages (`lexlean::calculus::package`, manifests `lexlean/rust-package/1`,
+  provenance `lexlean/rust-provenance/1`) add exported functions with
+  checked names, passing modes (`own`, `borrow`, `copy`), and declared
+  failure modes; a boundary holding a function value at any depth, or a
+  version part that is not a canonical `u64`, is refused. Each package also
+  carries a Cargo manifest whose lint table is the package's gate (ten
+  documented exceptions), and provenance binding every file's SHA-256, the
+  program identity, the runtime, the sources, and the language-1.2
+  compiler-semantics ID. `language/semantics-1.2.toml` gains `rust_backend`
+  and the SHA-256 of each profile's runtime. Every fixture whose entry takes
+  and returns first-order data is committed as a package in each profile
+  that admits it, bound by its `sources` to the semantic ID of the verified
+  `compiler` build that states its program, along with negative manifests
+  for identifier collisions, ownership mismatch, unsupported boundary and
+  uninhabited types, hidden allocation, arithmetic mismatch, and
+  noncanonical versions and sources (`RB-01`..`RB-07`). The harnesses that
+  run packages live in the conformance crate. `language/semantics-1.2.toml`
+  also records the digest of the renderer's sources (`rust_renderer`), so
+  no rendering can change without changing LexLean's identity.
+  - A harness runs its calls on a thread with a fixed 64 MiB stack, one Rust
+    function per called export: the primitive differential's single `main`
+    overflowed the 1 MiB main-thread stack of the Windows runner.
 - GNAF requests over the calculus (§17.15), after UOR-GNAF
   `uor-gnaf/1-draft.2`, cited by revision and SHA-256 as the authority
   `UOR-GNAF-1-DRAFT-2`. The module `Gnaf` of `compiler/` fixes, before any
