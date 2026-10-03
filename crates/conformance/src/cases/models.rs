@@ -534,7 +534,26 @@ fn md_01() {
 /// §10.1, §17.12, §21.6: artifacts are configured, confined, digested,
 /// decoded under their closed schema, and embedded exactly.
 #[allow(clippy::too_many_lines)]
+/// Set in the address-space-limited process MD-02 starts: the project
+/// whose wide artifact that process checks.
+const WIDE_ARTIFACT_PROJECT: &str = "LEXLEAN_MD02_WIDE_ARTIFACT_PROJECT";
+
+/// Check the wide-artifact project at `root` in this process: refused at
+/// its first declaration, before a line is decoded.
+fn check_wide_artifact(root: &camino::Utf8Path) {
+    let (exit, _, stderr) = support::cli_in(root, &["check"]);
+    assert_eq!(exit, 4, "{stderr}");
+    assert!(
+        stderr.contains("once artifact `vocab0` decodes to 9043965, before decoding"),
+        "{stderr}"
+    );
+}
+
 fn md_02() {
+    if let Ok(root) = std::env::var(WIDE_ARTIFACT_PROJECT) {
+        check_wide_artifact(camino::Utf8Path::new(&root));
+        return;
+    }
     let project = P::copy_example(EXAMPLE);
     let checked = support::checked_project(&project);
     let sources = artifact_sources(&project);
@@ -786,6 +805,108 @@ fn md_02() {
             .contains("max_total_source_bytes exceeded"),
         "artifact bytes count toward the source budget: {error}"
     );
+    // Each artifact declaration is charged before it decodes, and the charge
+    // runs across declarations: one digest named three times, each decoding
+    // to 1292 nodes under a budget of 3000, is refused at the third, before
+    // it decodes, not after the module links.
+    negative(
+        "model-artifact-decode-budget",
+        "LLS8002",
+        "max_ir_nodes exceeded: configured 3000, observed 3876 IR nodes once artifact `vocab2` decodes to 1292, before decoding",
+    );
+    let names = ["vocab0", "vocab1", "vocab2"];
+    // The bytes each declaration materializes again count toward
+    // `max_total_source_bytes` the same way: a budget holding the loaded
+    // sources and two more copies refuses the third declaration.
+    let budgeted = |max_total_source_bytes: u64| {
+        let project = P::negative("model-artifact-decode-budget");
+        project.edit(
+            "lexlean.toml",
+            "max_ir_nodes = 3000",
+            "max_ir_nodes = 2000000",
+        );
+        project.edit(
+            "lexlean.toml",
+            "max_total_source_bytes = 67108864",
+            &format!("max_total_source_bytes = {max_total_source_bytes}"),
+        );
+        project.relock();
+        project.check_fails_with("LLS8002").to_string()
+    };
+    // The probe has as many digits as the budget below, so the configuration
+    // it counts has the same length.
+    let loaded: u64 = budgeted(10_000)
+        .split("observed ")
+        .nth(1)
+        .and_then(|tail| tail.split(|c: char| !c.is_ascii_digit()).next())
+        .and_then(|count| count.parse().ok())
+        .expect("the loaded source bytes");
+    // Linking then counts the artifact file once and the module's source.
+    let module = std::fs::read(
+        support::repo_root()
+            .join("tests/negative/model-artifact-decode-budget/project/src/Main.lex.tex")
+            .as_std_path(),
+    )
+    .expect("module source")
+    .len() as u64;
+    let linked = loaded + 1200 + module;
+    assert!(
+        (10_000..97_600).contains(&linked),
+        "{linked} linked source bytes"
+    );
+    let refused_bytes = budgeted(linked + 2 * 1200);
+    assert!(
+        refused_bytes.contains(&format!(
+            "observed {} source bytes once artifact `vocab2` materializes its 1200 bytes",
+            linked + 3 * 1200
+        )),
+        "{refused_bytes}"
+    );
+    // The amplification this closes: one 4 MiB artifact of empty lines
+    // decodes to 9043965 nodes, so under the default limits its first
+    // declaration is refused at once, before a line is allocated, however
+    // many declarations name it (decoding them took about 1.5 GB each).
+    let wide = P::negative("model-artifact-decode-budget");
+    wide.edit(
+        "lexlean.toml",
+        "max_ir_nodes = 3000",
+        "max_ir_nodes = 2000000",
+    );
+    let lines = vec![b'\n'; 4 * 1024 * 1024];
+    std::fs::write(wide.root.join("artifacts/lines.txt").as_std_path(), &lines).expect("write");
+    let sources = vec![(digest(&lines), "artifacts/lines.txt".to_owned())];
+    set_artifact_sources(&wide, sources);
+    for name in names {
+        edit_declaration(&wide, "Main", name, |declaration| {
+            declaration["sha256"] = json!(digest(&lines));
+            declaration["length"] = json!(lines.len());
+        });
+    }
+    wide.relock();
+    // Decoding it takes about 1.5 GB. Where the platform can bound a
+    // process's address space, the check runs again in a process limited to
+    // 1 GiB, so a charge made only after decoding aborts it rather than
+    // passing; elsewhere it runs here.
+    if cfg!(unix) {
+        let ran = std::process::Command::new("sh")
+            .args([
+                "-c",
+                "ulimit -v 1048576 && exec \"$0\" --exact conformance_md_02 --test-threads=1 --quiet",
+            ])
+            .arg(std::env::current_exe().expect("this test"))
+            .env(WIDE_ARTIFACT_PROJECT, wide.root.as_str())
+            .output()
+            .expect("the limited check runs");
+        assert!(
+            ran.status.success(),
+            "the wide artifact is refused within 1 GiB: {:?} {}{}",
+            ran.status,
+            String::from_utf8_lossy(&ran.stdout),
+            String::from_utf8_lossy(&ran.stderr)
+        );
+    } else {
+        check_wide_artifact(&wide.root);
+    }
     // A path outside the project root is refused by the configuration.
     let escape = P::copy_example(EXAMPLE);
     let mut sources = artifact_sources(&escape);
@@ -1853,6 +1974,31 @@ fn md_08() {
         2,
         "a proved junction between stateful stages is over the state and the value"
     );
+    // A checked junction before a stateful stage checks that stage's
+    // invariant and precondition at run time, so neither is an entry
+    // requirement: `RawChainModel` has none.
+    let raw = elaboration(&snapshot, "Flows", "TallySpillRaw")
+        .declarations()
+        .iter()
+        .map(Json::to_string)
+        .collect::<String>();
+    for needle in [
+        "ContractViolation.input_invariant",
+        "ContractViolation.precondition",
+        "ContractViolation.output_invariant",
+        "ContractViolation.postcondition",
+    ] {
+        assert!(
+            raw.contains(needle),
+            "TallySpillRaw elaborates {needle}: {raw}"
+        );
+    }
+    assert!(
+        elaboration(&snapshot, "Flows", "RawChainModel")
+            .obligations()
+            .is_empty(),
+        "a checked junction's invariant and precondition are not entry requirements"
+    );
     let branch = elaboration(&snapshot, "Flows", "BranchModel");
     assert_eq!(
         branch.obligations().len(),
@@ -1957,6 +2103,13 @@ fn md_08() {
             "Models.Main.chain_accepts",
             "Models.Main.chain_refuses_stage_output",
             "Models.Main.chain_refuses_precondition",
+            "Models.Main.raw_chain_accepts",
+            "Models.Main.raw_chain_refuses_input",
+            "Models.Main.raw_chain_refuses_precondition",
+            "Models.Main.drain_chain_accepts",
+            "Models.Main.drain_chain_refuses_postcondition",
+            "Models.Flows.TallySpillRaw",
+            "Models.Flows.TallyDrain",
             "Models.Flows.spill_tally",
             "Models.Flows.ClampTally",
             "Models.Flows.ClampBoth",

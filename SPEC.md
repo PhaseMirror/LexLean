@@ -747,7 +747,7 @@ Rules:
 
 ### 10.2 Explicit resource policy
 
-The values under `[limits]` are semantic inputs to acceptance. `max_total_source_bytes` counts normalized selected modules, loaded lexicon manifests and entries, configuration, lock bytes, and, in language 1.2, the bytes of every configured model artifact; a single artifact is also bounded by `max_file_bytes`. Exceeding one produces `LLS8002` and identifies:
+The values under `[limits]` are semantic inputs to acceptance. `max_total_source_bytes` counts normalized selected modules, loaded lexicon manifests and entries, configuration, lock bytes, and, in language 1.2, the bytes of every configured model artifact and, once more, the length of every artifact declaration, which materializes its bytes again (§17.12 rule 2); a single artifact is also bounded by `max_file_bytes`. Exceeding one produces `LLS8002` and identifies:
 
 - the limit name;
 - configured value;
@@ -2875,8 +2875,17 @@ member or value is an ordinary schema failure (`LLT4001`).
    takes `bytes`, and `dataset` takes any. Bytes that do not decode under
    the schema, a declared type other than the schema's decoded type, or a
    role its schema does not admit is `LLR3008`. The rank bound, the role,
-   and the declared type are checked before any byte is decoded, so decoding
-   never allocates beyond what the bounded bytes hold. There is no
+   and the declared type are checked, and the bytes checked against the
+   schema, before any byte is decoded. Each declaration is then charged
+   before it materializes anything, because one digest may be named by any
+   number of declarations and each holds its own copy: its length counts
+   once more toward `max_total_source_bytes`, and the exact node count of
+   its decoded value (computed from the length, the shape, and the line
+   count, without building it) is charged to `max_ir_nodes` on top of every
+   node linked and decoded before it in the link; exceeding either is
+   `LLS8002` before decoding allocates. Decoding a project's artifacts
+   therefore allocates at most a constant multiple of
+   `max_total_source_bytes` bytes and `max_ir_nodes` nodes. There is no
    floating-point
    element, no JSON, ONNX, or other configuration schema, and no
    unspecified rounding. An artifact elaborates to `W.bytes : bytes`, its
@@ -3039,9 +3048,13 @@ member or value is an ordinary schema failure (`LLT4001`).
      one junction per stage after the first, each stage consuming the
      previous stage's output. A junction before stage `i+1` is
      `unconditional` (the stage has no precondition), `proved`
-     `{"evidence":T}`, or `checked` (the stage's invariant validator, on its
-     component, and its precondition validator run before it, a refusal
-     returning `.input_invariant` or `.precondition`). `T` is over the
+     `{"evidence":T}` (the stage has a precondition), or `checked` (the
+     stage has a precondition or is stateful with an invariant, and has a
+     validator for each; the invariant validator, on its component, and the
+     precondition validator run before it, a refusal returning
+     `.input_invariant` or `.precondition`); a `proved` junction before a
+     stage without a precondition, or a `checked` one before a stage with
+     nothing to check, is `LLT4007`. `T` is over the
      composite's state `s` (when stateful) and the earlier stage's input `y`,
      and states exactly that the earlier stage's invariant of its component
      and its precondition imply the later stage's precondition of its
@@ -3053,10 +3066,14 @@ member or value is an ordinary schema failure (`LLT4001`).
      every later stateful stage whose junction is not checked.
    - `fanout` `{"left":Ml,"right":Mr}`: one input, output
      `product O_l O_r`; effective preconditions each stage's invariant and
-     precondition (`P_l x`, `P_r x`).
+     precondition (`P_l x` and `P_r x` for stateless stages; `J_l(s_l)`,
+     `P_l(s_l, x)`, `J_r(s_r)`, and `P_r(s_r, x)` for stateful ones, each
+     absent predicate dropped).
    - `product` `{"left":Ml,"right":Mr}`: input `product I_l I_r`, output
      `product O_l O_r`; effective preconditions each stage's invariant and
-     precondition (`P_l (first x)`, `P_r (second x)`).
+     precondition (`P_l (first x)` and `P_r (second x)` for stateless
+     stages; `J_l(s_l)`, `P_l(s_l, first x)`, `J_r(s_r)`, and
+     `P_r(s_r, second x)` for stateful ones, each absent predicate dropped).
    - `branch` `{"guard":g,"then":Mt,"else":Me}`: `g : bool` (another type is
      `LLT4007`), both arms of the composite's interface; effective
      preconditions `g = true -> R` for each invariant and precondition `R`
@@ -3067,9 +3084,11 @@ member or value is an ordinary schema failure (`LLT4001`).
      `unconditional` (no precondition, no checks after the stage runs, and
      any invariant carried by `initial_invariant` and `preserves_invariant`
      evidence), `proved` (that evidence, no checks after the stage, and `T`
-     stating exactly `J s -> P s x`), or `checked` (the invariant and
-     precondition validators run before each step and the checks after it
-     after each step; the first refusal is returned; the output is
+     stating exactly `J s -> P s x`; the stage has a precondition), or
+     `checked` (the stage has an invariant, a precondition, or a check after
+     it runs, with a validator for each; the invariant and precondition
+     validators run before each step and the checks after it after each
+     step; the first refusal is returned; the output is
      `result (list O) contract_violation`).
 
    Any other composition, junction, or stage is `LLT4007`. A composite's

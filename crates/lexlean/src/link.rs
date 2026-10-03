@@ -305,7 +305,10 @@ fn load_artifacts(
     project: &Project,
     limits: &crate::config::Limits,
 ) -> Result<crate::ir::semantic::model::ArtifactStore, Diagnostic> {
-    let mut store = crate::ir::semantic::model::ArtifactStore::new();
+    let mut store = crate::ir::semantic::model::ArtifactStore::new(
+        limits.max_ir_nodes,
+        limits.max_total_source_bytes,
+    );
     for source in &project.config.artifact_sources {
         let path = project.confined_file_or_missing(&source.path, || {
             Diagnostic::new(
@@ -664,6 +667,9 @@ fn check_project_inline(
                         .map(|semantic| (import.clone(), semantic))
                 })
                 .collect();
+            // Artifact declarations are charged before they decode, against
+            // the nodes every earlier module linked (§17.12 rule 2).
+            artifacts.begin_module(ir_node_count, total_bytes);
             Some(
                 SemanticModule::parse(
                     &ast.data.text,

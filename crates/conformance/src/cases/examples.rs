@@ -171,7 +171,7 @@ pub(crate) fn run(id: &str) {
         // exactly the one prescribed diagnostic code.
         "EX-07" => {
             let root = support::repo_root();
-            let prescribed: [(&str, &str); 139] = [
+            let prescribed: [(&str, &str); 140] = [
                 ("unknown-word", "LLL1004"),
                 ("unknown-symbol", "LLL1004"),
                 ("unknown-control", "LLL1004"),
@@ -302,6 +302,7 @@ pub(crate) fn run(id: &str) {
                 ("model-artifact-invalid-utf8", "LLR3008"),
                 ("model-artifact-role-violation", "LLR3008"),
                 ("model-artifact-rank-overflow", "LLR3008"),
+                ("model-artifact-decode-budget", "LLS8002"),
                 ("model-artifact-shape-mismatch", "LLT4006"),
                 ("model-encoder-width-forged", "LLT4006"),
                 ("model-contract-realization-mismatch", "LLT4006"),

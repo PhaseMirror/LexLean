@@ -135,16 +135,23 @@ pub const TABLE: &[(&str, &[&str])] = &[
         &["expr:build", "shape:cons", "shape:nil", "shape:pair"],
     ),
     // A checked application is realized as what it elaborates to: lets,
-    // validator calls, conditionals, and the result constructors (§17.12).
+    // the model and validator calls, conditionals, the projections of a
+    // stateful step, the result constructors, and the refusal value, a
+    // `contract_violation` pair of Booleans (§17.12 rules 8 and 9).
     (
         "term.checked_apply",
         &[
             "expr:let",
             "expr:call",
             "expr:cond",
+            "expr:first",
+            "expr:second",
             "expr:build",
             "shape:ok",
             "shape:error",
+            "shape:pair",
+            "shape:true",
+            "shape:false",
         ],
     ),
     ("constructor.nat_succ", &["expr:build", "shape:succ"]),

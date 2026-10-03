@@ -356,4 +356,60 @@
 \noindent Obligation (model ChainModel entry 2): \texttt{forall (s : (Prod (Nat) (Nat))) (x : Nat), (TwinCapped (s) -> (TwinSmall (s) (x) -> Models.Ledger.Small ((s).1) (x))); stated exactly by chain\_entry\_precondition}.\par
 \noindent Elaborates to: \texttt{ChainModel.initial : (Prod (Nat) (Nat)) := SpillTally.initial}.\par
 \noindent Elaborates to: \texttt{ChainModel (\_\_state : (Prod (Nat) (Nat))) (\_\_input : Nat) : (Prod ((Prod (Nat) (Nat))) (Except (ContractViolation) (Nat))) := SpillTally (\_\_state) (\_\_input)}.\par
+\subsection*{\texttt{RawChainContract}}
+\noindent Kind: \texttt{contract}.\par
+\noindent Interface: \texttt{input x : Nat, output y : Except (ContractViolation) (Nat), state s : (Prod (Nat) (Nat)) stepping to t}.\par
+\noindent Invariant: \texttt{TwinCapped}.\par
+\noindent Runtime validator: \texttt{twinCappedCheck validates the invariant, sound by twin\_capped\_check\_sound}.\par
+\noindent Axiom policy: \texttt{exact [propext]}.\par
+\noindent Obligation (validator invariant sound): \texttt{forall (s : (Prod (Nat) (Nat))), ((twinCappedCheck (s) = true) -> TwinCapped (s)); stated exactly by twin\_capped\_check\_sound}.\par
+\noindent Restated in Lean against the fixed model semantics as: \texttt{RawChainContract.invariant\_sound}.\par
+\subsection*{\texttt{TallySpillRaw}}
+\noindent Kind: \texttt{realization}.\par
+\noindent Interface: \texttt{input x : Nat, output Except (ContractViolation) (Nat), state s : (Prod (Nat) (Nat)) from (0, 0)}.\par
+\noindent Composite: \texttt{sequence Models.Ledger.FreeModel, Models.Ledger.SpillRawModel; junctions checked at run time}.\par
+\noindent Execution: executable, non-escaping closures only.\par
+\noindent Axiom policy: \texttt{none}.\par
+\noindent Elaborates to: \texttt{TallySpillRaw.initial : (Prod (Nat) (Nat)) := (0, 0)}.\par
+\noindent Elaborates to: \texttt{TallySpillRaw (s : (Prod (Nat) (Nat))) (x : Nat) : (Prod ((Prod (Nat) (Nat))) (Except (ContractViolation) (Nat))) := (let \_\_step1 : (Prod (Nat) (Nat)) := Models.Ledger.FreeModel ((s).1) (x); (let \_\_stage1 : Nat := (\_\_step1).2; (let \_\_state1 : Nat := (\_\_step1).1; (if Models.Ledger.cappedCheck ((s).2) then (if Models.Ledger.smallCheck ((s).2) (\_\_stage1) then (let \_\_step2 : (Prod (Nat) (Nat)) := Models.Ledger.SpillRawModel ((s).2) (\_\_stage1); (let \_\_stage2 : Nat := (\_\_step2).2; (let \_\_state2 : Nat := (\_\_step2).1; (if Models.Ledger.cappedCheck (\_\_state2) then (if Models.Ledger.growsCheck ((s).2) (\_\_stage1) (\_\_state2) (\_\_stage2) then ((\_\_state1, \_\_state2), Except.ok (\_\_stage2)) else (s, Except.error (ContractViolation.postcondition))) else (s, Except.error (ContractViolation.output\_invariant)))))) else (s, Except.error (ContractViolation.precondition))) else (s, Except.error (ContractViolation.input\_invariant))))))}.\par
+\subsection*{\texttt{RawChainModel}}
+\noindent Kind: \texttt{model}.\par
+\noindent Binds: \texttt{contract RawChainContract to realization TallySpillRaw}.\par
+\noindent Evidence: \texttt{none}.\par
+\noindent Runtime checks in executable code: \texttt{input\_invariant, output\_invariant}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\noindent Elaborates to: \texttt{RawChainModel.initial : (Prod (Nat) (Nat)) := TallySpillRaw.initial}.\par
+\noindent Elaborates to: \texttt{RawChainModel (\_\_state : (Prod (Nat) (Nat))) (\_\_input : Nat) : (Prod ((Prod (Nat) (Nat))) (Except (ContractViolation) (Nat))) := TallySpillRaw (\_\_state) (\_\_input)}.\par
+\subsection*{\texttt{Drain}}
+\noindent Kind: \texttt{realization}.\par
+\noindent Interface: \texttt{input x : Nat, output Nat, state s : Nat from 0}.\par
+\noindent Deterministic denotation: \texttt{((LexLeanRuntime.subtract (s) (x) : Nat), x)}.\par
+\noindent Execution: executable, non-escaping closures only.\par
+\noindent Axiom policy: \texttt{none}.\par
+\noindent Elaborates to: \texttt{Drain.initial : Nat := 0}.\par
+\noindent Elaborates to: \texttt{Drain (s : Nat) (x : Nat) : (Prod (Nat) (Nat)) := ((LexLeanRuntime.subtract (s) (x) : Nat), x)}.\par
+\subsection*{\texttt{DrainModel}}
+\noindent Kind: \texttt{model}.\par
+\noindent Binds: \texttt{contract Models.Ledger.FreeContract to realization Drain}.\par
+\noindent Evidence: \texttt{none}.\par
+\noindent Runtime checks in executable code: \texttt{postcondition}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\noindent Elaborates to: \texttt{DrainModel.initial : Nat := Drain.initial}.\par
+\noindent Elaborates to: \texttt{DrainModel (\_\_state : Nat) (\_\_input : Nat) : (Prod (Nat) (Nat)) := Drain (\_\_state) (\_\_input)}.\par
+\subsection*{\texttt{TallyDrain}}
+\noindent Kind: \texttt{realization}.\par
+\noindent Interface: \texttt{input x : Nat, output Except (ContractViolation) (Nat), state s : (Prod (Nat) (Nat)) from (0, 0)}.\par
+\noindent Composite: \texttt{sequence Models.Ledger.FreeModel, DrainModel; junctions unconditional}.\par
+\noindent Execution: executable, non-escaping closures only.\par
+\noindent Axiom policy: \texttt{none}.\par
+\noindent Elaborates to: \texttt{TallyDrain.initial : (Prod (Nat) (Nat)) := (0, 0)}.\par
+\noindent Elaborates to: \texttt{TallyDrain (s : (Prod (Nat) (Nat))) (x : Nat) : (Prod ((Prod (Nat) (Nat))) (Except (ContractViolation) (Nat))) := (let \_\_step1 : (Prod (Nat) (Nat)) := Models.Ledger.FreeModel ((s).1) (x); (let \_\_stage1 : Nat := (\_\_step1).2; (let \_\_state1 : Nat := (\_\_step1).1; (let \_\_step2 : (Prod (Nat) (Nat)) := DrainModel ((s).2) (\_\_stage1); (let \_\_stage2 : Nat := (\_\_step2).2; (let \_\_state2 : Nat := (\_\_step2).1; (if Models.Ledger.growsCheck ((s).2) (\_\_stage1) (\_\_state2) (\_\_stage2) then ((\_\_state1, \_\_state2), Except.ok (\_\_stage2)) else (s, Except.error (ContractViolation.postcondition)))))))))}.\par
+\subsection*{\texttt{DrainChainModel}}
+\noindent Kind: \texttt{model}.\par
+\noindent Binds: \texttt{contract RawChainContract to realization TallyDrain}.\par
+\noindent Evidence: \texttt{none}.\par
+\noindent Runtime checks in executable code: \texttt{input\_invariant, output\_invariant}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\noindent Elaborates to: \texttt{DrainChainModel.initial : (Prod (Nat) (Nat)) := TallyDrain.initial}.\par
+\noindent Elaborates to: \texttt{DrainChainModel (\_\_state : (Prod (Nat) (Nat))) (\_\_input : Nat) : (Prod ((Prod (Nat) (Nat))) (Except (ContractViolation) (Nat))) := TallyDrain (\_\_state) (\_\_input)}.\par
 \end{document}

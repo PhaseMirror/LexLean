@@ -2104,7 +2104,7 @@ conformance_md_07`. Expected: an executable application of a model with an
 unchecked precondition links.
 
 ```text
-thread 'conformance_md_07' (7264) panicked at crates/conformance/src/cases/models.rs:1425:9:
+thread 'conformance_md_07' (7264) panicked at crates/conformance/src/cases/models.rs:1546:9:
 assertion `left == right` failed: SessionModel
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 282 filtered out
 ```
@@ -2266,9 +2266,9 @@ roots that list the checks they need, whose refusals the kernel decides.
 ```text
 thread 'conformance_md_07' (7826) panicked at crates/conformance/src/cases/models.rs:204:10:
 snapshot: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLT4007"), message: "phase link: composite `GuessTwice`: the output is Result (Prod (Nat) (Nat)) (ContractViolation), expected Prod (Nat) (Nat)", ...
-thread 'conformance_md_07' (8388) panicked at crates/conformance/src/cases/models.rs:1425:9:
+thread 'conformance_md_07' (8388) panicked at crates/conformance/src/cases/models.rs:1546:9:
 assertion `left == right` failed: SpillModel
-thread 'conformance_md_08' (8389) panicked at crates/conformance/src/cases/models.rs:1759:5:
+thread 'conformance_md_08' (8389) panicked at crates/conformance/src/cases/models.rs:1880:5:
 ```
 
 Removed: each rule was restored; `conformance_md_07` and `conformance_md_08`
@@ -2302,7 +2302,7 @@ leaves its postcondition or output invariant open runs unchecked inside a
 composite; pinned Lean refuses the kernel-decided refusals.
 
 ```text
-thread 'conformance_md_08' (9543) panicked at crates/conformance/src/cases/models.rs:1749:9:
+thread 'conformance_md_08' (9543) panicked at crates/conformance/src/cases/models.rs:1870:9:
 ClampGuess elaborates Ledger::belowCheck: ...
 error[LLV7002]: Lean rejected `Models.Main` (error): Tactic `decide` proved that the proposition
   twiceCode (guessOvershoot 4) = 13
@@ -2331,6 +2331,87 @@ test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 282 filtered out
 ```
 
 Removed: the update was restored; `conformance_md_08` passes and the example
+verifies.
+
+### model artifact decoding charge can fail
+
+Planted, separately: (a) the charge was dropped (`let _ = nodes;` in place
+of `artifacts.charge(name, *length, nodes)?;` in `check_artifact`), so
+decoded values were charged only when the module finished linking; (b) the
+charge was made after decoding instead of before it; (c) the per-declaration
+byte charge was dropped (`saturating_add(length - length)` in
+`ArtifactStore::charge`). Command: `cargo test -p repo-conformance --test
+conformance -- conformance_md_02`. Expected: (a) `model-artifact-decode-budget`,
+one digest declared three times under `max_ir_nodes = 3000`, is refused only
+after all three decode; (b) the 4 MiB artifact of empty lines, declared three
+times, is decoded before it is refused, which needs about 1.5 GB, so the
+re-run of the test in a process limited to 1 GiB of address space aborts;
+(c) three declarations of a 1200-byte artifact fit a source budget that
+holds only two more copies.
+
+```text
+(a) thread 'conformance_md_02' (28498) panicked at crates/conformance/src/cases/models.rs:126:5:
+tests/negative/model-artifact-decode-budget: expected "max_ir_nodes exceeded: configured 3000, observed 3876 IR nodes once artifact `vocab2` decodes to 1292, before decoding", got LLS8002: max_ir_nodes exceeded in phase link: configured 3000, observed 3909 linked IR nodes through module `Main`
+(b) thread 'conformance_md_02' (27434) panicked at crates/conformance/src/cases/models.rs:900:5:
+the wide artifact is refused within 1 GiB: ExitStatus(unix_wait_status(6))
+(c) thread 'conformance_md_02' (29254) panicked at crates/conformance/src/support.rs:418:14:
+check fails
+```
+
+Removed: each plant was restored; `conformance_md_02` passes. The reviewer's
+probe (three declarations of the 4 MiB artifact, default limits) now fails
+with `LLS8002` at the first declaration in 0.3 s with a peak RSS of 25 MB,
+where it took 27 s and 4.46 GB before; `decoded_nodes_is_exact` checks that
+the charge equals the node count of the decoded value at every chunk
+boundary.
+
+### model checked junction before a stateful stage can fail
+
+Planted: a checked junction no longer validated a later stateful stage's
+invariant (`guard_before` received a clone of the stage with
+`validators.remove(&ContractPredicate::Invariant)` in `check_composite`),
+while the invariant stayed out of the entry requirements. Command: `cargo
+test -p repo-conformance --test conformance -- conformance_md_07
+conformance_md_08 conformance_md_12`. Expected: `Flows.TallySpillRaw` runs
+`Ledger.SpillRawModel` from a state component its invariant does not hold
+for, so the kernel-decided input-invariant refusal of `Main.raw_chain_refuses_input`
+becomes an output-invariant one.
+
+```text
+thread 'conformance_md_08' (3882) panicked at crates/conformance/src/cases/models.rs:1991:9:
+TallySpillRaw elaborates ContractViolation.input_invariant: ...
+thread 'conformance_md_12' (3883) panicked at crates/conformance/src/cases/models.rs:245:14:
+the models example verifies under pinned Lean: ... "Lean rejected `Models.Main` (error): Tactic `decide` proved that the proposition\n  chainCode (rawChainStep (4, 150) 3) = 4150002\nis false" ...
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 287 filtered out
+```
+
+Removed: the validator was restored; the three tests pass, and
+`RawChainModel` has no entry obligation.
+
+### model checks after a stateful stage can fail
+
+Planted: the postcondition validator run after a stateful stage received its
+states swapped (`vec![after.clone(), input.clone(), before.clone(),
+output.clone()]` in `guard_after`), which still type-checks because a
+postcondition takes `S, I, S, O`. Command: `cargo test -p repo-conformance
+--test conformance -- conformance_md_07 conformance_md_08
+conformance_md_12`. Expected: `Ledger.Grows` is not symmetric in the two
+states, so `Flows.TallySpillRaw` refuses the accepted step of
+`Main.raw_chain_accepts`, and `Flows.TallyDrain` accepts the step that
+`Main.drain_chain_refuses_postcondition` refuses (`Flows.Drain` violates
+`Ledger.FreeContract`'s postcondition). `lexlean verify` in a copy of
+`examples/models` under the plant rejects both.
+
+```text
+thread 'conformance_md_08' (5141) panicked at crates/conformance/src/cases/models.rs:245:14:
+the models example verifies under pinned Lean: ... "Lean rejected `Models.Main` (error): Tactic `decide` proved that the proposition\n  chainCode (rawChainStep (4, 20) 3) = 7024104\nis false" ...
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 287 filtered out
+error[LLV7002]: Lean rejected `Models.Main` (error): Tactic `decide` proved that the proposition
+  chainCode (drainChainStep (4, 20) 3) = 4020003
+is false
+```
+
+Removed: the order was restored; the three tests pass and the example
 verifies.
 
 ### model contract-claim generator is checked by Lean

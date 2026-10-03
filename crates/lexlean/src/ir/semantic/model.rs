@@ -375,8 +375,94 @@ pub(super) fn source_node_count(declaration: &SemanticDeclaration) -> u64 {
 }
 
 /// The bytes of every artifact the project locks, by lowercase hexadecimal
-/// SHA-256 (§10.1). Linking reads an artifact only through its digest.
-pub type ArtifactStore = BTreeMap<String, Vec<u8>>;
+/// SHA-256 (§10.1), and what elaborating artifact declarations may still
+/// allocate (§17.12 rule 2). Linking reads an artifact only through its
+/// digest.
+///
+/// One digest may be declared under any number of names, and each
+/// declaration materializes the bytes again and decodes them again. So each
+/// declaration is charged before it allocates: its length toward
+/// `max_total_source_bytes`, and the exact node count of its decoded value
+/// toward `max_ir_nodes`, both running across every module of the link.
+#[derive(Debug)]
+pub struct ArtifactStore {
+    bytes: BTreeMap<String, Vec<u8>>,
+    max_ir_nodes: u64,
+    max_total_source_bytes: u64,
+    /// The linked IR nodes of the modules before this one plus every value
+    /// this module's artifact declarations have decoded so far.
+    ir_nodes: std::cell::Cell<u64>,
+    /// Every source byte counted so far, including each artifact
+    /// declaration's materialized bytes.
+    source_bytes: std::cell::Cell<u64>,
+}
+
+impl ArtifactStore {
+    /// An empty store under the two limits that bound decoding.
+    #[must_use]
+    pub fn new(max_ir_nodes: u64, max_total_source_bytes: u64) -> Self {
+        Self {
+            bytes: BTreeMap::new(),
+            max_ir_nodes,
+            max_total_source_bytes,
+            ir_nodes: std::cell::Cell::new(0),
+            source_bytes: std::cell::Cell::new(0),
+        }
+    }
+
+    /// Hold the bytes whose digest is `sha256`.
+    pub fn insert(&mut self, sha256: String, bytes: Vec<u8>) {
+        self.bytes.insert(sha256, bytes);
+    }
+
+    /// The bytes whose digest is `sha256`.
+    #[must_use]
+    pub fn get(&self, sha256: &str) -> Option<&Vec<u8>> {
+        self.bytes.get(sha256)
+    }
+
+    /// Every held artifact's bytes.
+    pub fn values(&self) -> impl Iterator<Item = &Vec<u8>> {
+        self.bytes.values()
+    }
+
+    /// Start charging a module: `ir_nodes` linked IR nodes precede it, and
+    /// `source_bytes` source bytes are counted so far (the first call; later
+    /// modules keep the running count).
+    pub fn begin_module(&self, ir_nodes: u64, source_bytes: u64) {
+        self.ir_nodes.set(ir_nodes);
+        self.source_bytes
+            .set(self.source_bytes.get().max(source_bytes));
+    }
+
+    /// Charge artifact declaration `name`, of `length` bytes decoding to
+    /// `nodes` IR nodes, before anything is materialized.
+    fn charge(&self, name: &str, length: u64, nodes: u64) -> Result<(), SemanticFailure> {
+        let bytes = self.source_bytes.get().saturating_add(length);
+        if bytes > self.max_total_source_bytes {
+            return Err(fail(
+                code!("LLS8002"),
+                format!(
+                    "max_total_source_bytes exceeded: configured {}, observed {bytes} source bytes once artifact `{name}` materializes its {length} bytes",
+                    self.max_total_source_bytes
+                ),
+            ));
+        }
+        let total = self.ir_nodes.get().saturating_add(nodes);
+        if total > self.max_ir_nodes {
+            return Err(fail(
+                code!("LLS8002"),
+                format!(
+                    "max_ir_nodes exceeded: configured {}, observed {total} IR nodes once artifact `{name}` decodes to {nodes}, before decoding",
+                    self.max_ir_nodes
+                ),
+            ));
+        }
+        self.source_bytes.set(bytes);
+        self.ir_nodes.set(total);
+        Ok(())
+    }
+}
 
 /// The kind of a model declaration, for diagnostics and the closed list of
 /// language-1.2 constructs.
@@ -2105,6 +2191,88 @@ fn nest_level(shape: &[u64], values: &[i128], types: &[SemanticType]) -> Semanti
     }
 }
 
+/// The exact node count of the list literal [`list_literal`] builds from
+/// `items` elements of `item` nodes each, whose element type has `element`
+/// nodes.
+fn list_literal_nodes(items: u64, item: u64, element: u64) -> u64 {
+    const CHUNK: u64 = 32;
+    if items <= CHUNK {
+        // A cons per element, then the typed nil.
+        return items
+            .saturating_mul(item.saturating_add(1))
+            .saturating_add(1 + element);
+    }
+    let half = items.div_ceil(CHUNK).div_ceil(2) * CHUNK;
+    // The append primitive and its list result type, over the two halves.
+    (2 + element)
+        .saturating_add(list_literal_nodes(half, item, element))
+        .saturating_add(list_literal_nodes(items - half, item, element))
+}
+
+/// The exact node count of the value [`nest`] builds under `shape`.
+fn nest_nodes(shape: &[u64]) -> u64 {
+    match shape.split_first() {
+        Some((rows, rest)) if !rest.is_empty() => {
+            list_literal_nodes(*rows, nest_nodes(rest), rest.len() as u64 + 1)
+        }
+        // As in `nest_level`, the innermost level lists its values.
+        _ => list_literal_nodes(
+            shape
+                .iter()
+                .fold(1u64, |total, extent| total.saturating_mul(*extent)),
+            1,
+            1,
+        ),
+    }
+}
+
+/// Check an artifact's bytes against its schema without decoding them, and
+/// return the exact node count of the value [`decode`] would build: the
+/// count is charged before anything is allocated (§17.12 rule 2).
+fn decoded_nodes(schema: &ArtifactSchema, bytes: &[u8]) -> Result<u64, String> {
+    match schema {
+        ArtifactSchema::Bytes => Ok(1),
+        ArtifactSchema::IntTensor { element, shape } => {
+            if shape.is_empty() || shape.contains(&0) {
+                return Err(
+                    "an integer tensor has at least one dimension and no empty one".to_owned(),
+                );
+            }
+            let (width, _) = element_encoding(*element);
+            let count = shape
+                .iter()
+                .try_fold(1usize, |total, dimension| {
+                    usize::try_from(*dimension)
+                        .ok()
+                        .and_then(|dimension| total.checked_mul(dimension))
+                })
+                .ok_or("the tensor shape's element count overflows")?;
+            let expected = count
+                .checked_mul(width)
+                .ok_or("the tensor shape's byte length overflows")?;
+            if bytes.len() != expected {
+                return Err(format!(
+                    "{} bytes cannot hold {count} elements of {width} byte(s) each ({expected} bytes)",
+                    bytes.len()
+                ));
+            }
+            Ok(nest_nodes(shape))
+        }
+        ArtifactSchema::Utf8Lines => {
+            let text = std::str::from_utf8(bytes)
+                .map_err(|error| format!("the bytes are not UTF-8: {error}"))?;
+            if text.contains('\r') {
+                return Err("UTF-8 lines contain a carriage return".to_owned());
+            }
+            if !text.is_empty() && !text.ends_with('\n') {
+                return Err("the last UTF-8 line is not LF-terminated".to_owned());
+            }
+            let lines = bytes.iter().filter(|byte| **byte == b'\n').count() as u64;
+            Ok(list_literal_nodes(lines, 1, 1))
+        }
+    }
+}
+
 /// Decode an artifact's bytes under its schema, or say why they violate it.
 fn decode(schema: &ArtifactSchema, bytes: &[u8]) -> Result<SemanticTerm, String> {
     match schema {
@@ -2272,8 +2440,7 @@ fn check_artifact(
         )));
     }
     // The shape is bounded and the declared type checked before any byte is
-    // decoded, so no declaration can make decoding allocate beyond what its
-    // bounded bytes hold (§10.2, R5).
+    // decoded (§10.2, R5).
     if let ArtifactSchema::IntTensor { shape, .. } = schema {
         if shape.len() > MAX_TENSOR_RANK {
             return Err(schema_violation(format!(
@@ -2289,6 +2456,12 @@ fn check_artifact(
             r#type
         )));
     }
+    // The bytes are checked against the schema and the decoded value's
+    // exact size charged, with the bytes it materializes again, before
+    // anything is allocated: the charge runs across every declaration, so
+    // naming one digest many times cannot amplify (§10.2, R5).
+    let nodes = decoded_nodes(schema, bytes).map_err(schema_violation)?;
+    artifacts.charge(name, *length, nodes)?;
     let decoded = decode(schema, bytes).map_err(schema_violation)?;
     let lowering = Lowering {
         declarations: vec![
@@ -2687,29 +2860,21 @@ fn width_obligation(
 /// One stage of a composite at its instantiation. A stage's checks after
 /// it runs (its output invariant and postcondition, unless its evidence
 /// discharges them) run right after it, so each needs a sound validator.
-/// `stateful` is what the form requires of the stage, if anything: a scan
-/// threads exactly one stateful stage.
+/// Every form takes stateless and stateful stages alike, except a scan,
+/// which threads exactly one stateful stage (`scan`).
 fn composite_stage(
     name: &str,
     stage: &ModelUse,
     scope: &BTreeSet<String>,
     env: &Environment<'_>,
-    stateful: Option<bool>,
+    scan: bool,
 ) -> Result<ModelAt, SemanticFailure> {
     let at = resolve_model(stage, scope, env, composition)?;
     let key = member_key(&stage.member);
-    match (stateful, at.contract.state.is_some()) {
-        (Some(true), false) => {
-            return Err(composition(format!(
-                "composite `{name}` stage `{key}` is stateless; a scan threads one stateful stage"
-            )));
-        }
-        (Some(false), true) => {
-            return Err(composition(format!(
-                "composite `{name}` stage `{key}` is stateful; only a sequence or a scan threads a stateful stage"
-            )));
-        }
-        _ => {}
+    if scan && at.contract.state.is_none() {
+        return Err(composition(format!(
+            "composite `{name}` stage `{key}` is stateless; a scan threads one stateful stage"
+        )));
     }
     for check in post_run(&at) {
         let predicate = match check {
@@ -3053,7 +3218,7 @@ fn check_composite(
             }
             let stages = stages
                 .iter()
-                .map(|stage| composite_stage(name, stage, scope, env, None))
+                .map(|stage| composite_stage(name, stage, scope, env, false))
                 .collect::<Result<Vec<_>, _>>()?;
             expect(
                 "the first stage input",
@@ -3216,8 +3381,8 @@ fn check_composite(
             })
         }
         CompositeForm::Fanout { left, right } | CompositeForm::Product { left, right } => {
-            let left = composite_stage(name, left, scope, env, None)?;
-            let right = composite_stage(name, right, scope, env, None)?;
+            let left = composite_stage(name, left, scope, env, false)?;
+            let right = composite_stage(name, right, scope, env, false)?;
             let fanout = matches!(form, CompositeForm::Fanout { .. });
             let (left_input, right_input) = if fanout {
                 for (label, stage) in [("left", &left), ("right", &right)] {
@@ -3322,8 +3487,8 @@ fn check_composite(
             then,
             r#else,
         } => {
-            let then = composite_stage(name, then, scope, env, None)?;
-            let otherwise = composite_stage(name, r#else, scope, env, None)?;
+            let then = composite_stage(name, then, scope, env, false)?;
+            let otherwise = composite_stage(name, r#else, scope, env, false)?;
             let threaded = thread_state(name, &[&then, &otherwise], state)?;
             let raw = then.contract.output.r#type.clone();
             let checked = !post_run(&then).is_empty() || !post_run(&otherwise).is_empty();
@@ -3393,7 +3558,7 @@ fn check_composite(
         }
         CompositeForm::Scan { stage, junction } => {
             stateless_form()?;
-            let stage = composite_stage(name, stage, scope, env, Some(true))?;
+            let stage = composite_stage(name, stage, scope, env, true)?;
             let key = member_key(&stage.member);
             let state = stage
                 .contract
@@ -5099,4 +5264,47 @@ pub(super) fn check_declaration(
         }
     }
     Ok(lowering)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{decode, decoded_nodes, term_node_count, ArtifactSchema, TensorElement};
+
+    /// The charge made before decoding is the exact size of what decoding
+    /// builds, at and around every chunk boundary of the list literal.
+    #[test]
+    fn decoded_nodes_is_exact() {
+        let mut cases: Vec<(ArtifactSchema, Vec<u8>)> = vec![(ArtifactSchema::Bytes, vec![7; 5])];
+        for lines in [0usize, 1, 31, 32, 33, 64, 65, 100, 1000, 4097] {
+            cases.push((ArtifactSchema::Utf8Lines, b"a\n".repeat(lines)));
+        }
+        for shape in [
+            vec![1u64],
+            vec![32],
+            vec![33],
+            vec![97],
+            vec![3, 50],
+            vec![40, 3],
+            vec![2, 3, 70],
+            vec![65, 2, 1, 3],
+        ] {
+            let count = usize::try_from(shape.iter().product::<u64>()).expect("small");
+            cases.push((
+                ArtifactSchema::IntTensor {
+                    element: TensorElement::Int16,
+                    shape,
+                },
+                vec![0x81; count * 2],
+            ));
+        }
+        for (schema, bytes) in cases {
+            let decoded = decode(&schema, &bytes).expect("decodes");
+            assert_eq!(
+                decoded_nodes(&schema, &bytes),
+                Ok(term_node_count(&decoded)),
+                "{schema:?} over {} bytes",
+                bytes.len()
+            );
+        }
+    }
 }

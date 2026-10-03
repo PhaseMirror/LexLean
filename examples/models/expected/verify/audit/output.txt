@@ -15,6 +15,12 @@
 'Models.Flows.ClampOrTally.initial' does not depend on any axioms
 'Models.Flows.ClampTally' does not depend on any axioms
 'Models.Flows.ClampTally.initial' does not depend on any axioms
+'Models.Flows.Drain' does not depend on any axioms
+'Models.Flows.Drain.initial' does not depend on any axioms
+'Models.Flows.DrainChainModel' does not depend on any axioms
+'Models.Flows.DrainChainModel.initial' does not depend on any axioms
+'Models.Flows.DrainModel' does not depend on any axioms
+'Models.Flows.DrainModel.initial' does not depend on any axioms
 'Models.Flows.Few' does not depend on any axioms
 'Models.Flows.FlowContract.invariant_sound' depends on axioms: [propext]
 'Models.Flows.FlowModel' does not depend on any axioms
@@ -27,11 +33,18 @@
 'Models.Flows.PairClampModel.initial' does not depend on any axioms
 'Models.Flows.PairGuessContract.precondition_sound' depends on axioms: [propext]
 'Models.Flows.PairGuessModel' does not depend on any axioms
+'Models.Flows.RawChainContract.invariant_sound' depends on axioms: [propext]
+'Models.Flows.RawChainModel' does not depend on any axioms
+'Models.Flows.RawChainModel.initial' does not depend on any axioms
 'Models.Flows.SpillStream' does not depend on any axioms
 'Models.Flows.SpillStreamContract.precondition_sound' depends on axioms: [propext]
 'Models.Flows.SpillStreamModel' does not depend on any axioms
 'Models.Flows.SpillTally' does not depend on any axioms
 'Models.Flows.SpillTally.initial' does not depend on any axioms
+'Models.Flows.TallyDrain' does not depend on any axioms
+'Models.Flows.TallyDrain.initial' does not depend on any axioms
+'Models.Flows.TallySpillRaw' does not depend on any axioms
+'Models.Flows.TallySpillRaw.initial' does not depend on any axioms
 'Models.Flows.TwinCapped' does not depend on any axioms
 'Models.Flows.TwinContract.invariant_sound' depends on axioms: [propext]
 'Models.Flows.TwinContract.precondition_sound' depends on axioms: [propext]
@@ -168,6 +181,9 @@
 'Models.Main.classify' depends on axioms: [propext]
 'Models.Main.classifyChecked' depends on axioms: [propext]
 'Models.Main.classify_eight' depends on axioms: [propext]
+'Models.Main.drainChainStep' does not depend on any axioms
+'Models.Main.drain_chain_accepts' does not depend on any axioms
+'Models.Main.drain_chain_refuses_postcondition' does not depend on any axioms
 'Models.Main.flowCode' does not depend on any axioms
 'Models.Main.flowStep' does not depend on any axioms
 'Models.Main.flow_accepts' does not depend on any axioms
@@ -193,6 +209,10 @@
 'Models.Main.pair_clamp_accepts' does not depend on any axioms
 'Models.Main.pair_clamp_refuses_input' does not depend on any axioms
 'Models.Main.quadCode' does not depend on any axioms
+'Models.Main.rawChainStep' does not depend on any axioms
+'Models.Main.raw_chain_accepts' does not depend on any axioms
+'Models.Main.raw_chain_refuses_input' does not depend on any axioms
+'Models.Main.raw_chain_refuses_precondition' does not depend on any axioms
 'Models.Main.respond' depends on axioms: [propext]
 'Models.Main.spillStream' does not depend on any axioms
 'Models.Main.step' does not depend on any axioms

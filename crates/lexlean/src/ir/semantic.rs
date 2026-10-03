@@ -8655,7 +8655,7 @@ mod tests {
             "Test",
             &[],
             &BTreeMap::new(),
-            &BTreeMap::new(),
+            &super::model::ArtifactStore::new(u64::MAX, u64::MAX),
         )
         .expect("both Boolean constructors form a typed exhaustive match");
 
@@ -8669,7 +8669,7 @@ mod tests {
             "Test",
             &[],
             &BTreeMap::new(),
-            &BTreeMap::new()
+            &super::model::ArtifactStore::new(u64::MAX, u64::MAX)
         )
         .expect_err("one Boolean branch is not exhaustive")
         .to_string()
@@ -8684,7 +8684,7 @@ mod tests {
             "Test",
             &[],
             &BTreeMap::new(),
-            &BTreeMap::new(),
+            &super::model::ArtifactStore::new(u64::MAX, u64::MAX),
         )
         .expect("omitted policy is exact empty");
         let declaration = module.declarations.first().expect("one theorem");
@@ -8701,7 +8701,7 @@ mod tests {
             "Test",
             &[],
             &BTreeMap::new(),
-            &BTreeMap::new(),
+            &super::model::ArtifactStore::new(u64::MAX, u64::MAX),
         )
         .expect("sorted exact policy is valid");
         let declaration = module.declarations.first().expect("one theorem");
@@ -8727,7 +8727,7 @@ mod tests {
                 "Test",
                 &[],
                 &BTreeMap::new(),
-                &BTreeMap::new(),
+                &super::model::ArtifactStore::new(u64::MAX, u64::MAX),
             )
             .expect_err("invalid exact policy must fail");
             assert!(

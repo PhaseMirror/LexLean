@@ -680,4 +680,24 @@ public theorem chain_entry_precondition (s : (Prod (Nat) (Nat))) (x : Nat) : (Tw
 @[expose] public def ChainModel.initial : (Prod (Nat) (Nat)) := Models.Flows.SpillTally.initial
 @[expose] public def ChainModel (__state : (Prod (Nat) (Nat))) (__input : Nat) : (Prod ((Prod (Nat) (Nat))) (Except ((Prod Bool Bool)) (Nat))) := Models.Flows.SpillTally (__state) (__input)
 
+public theorem RawChainContract.invariant_sound : LexLeanModels.Sound1 ((Models.Flows.twinCappedCheck)) ((Models.Flows.TwinCapped)) := Models.Flows.twin_capped_check_sound
+
+@[expose] public def TallySpillRaw.initial : (Prod (Nat) (Nat)) := (0, 0)
+@[expose] public def TallySpillRaw (s : (Prod (Nat) (Nat))) (x : Nat) : (Prod ((Prod (Nat) (Nat))) (Except ((Prod Bool Bool)) (Nat))) := (let __step1 : (Prod (Nat) (Nat)) := Models.Ledger.FreeModel ((s).1) (x); (let __stage1 : Nat := (__step1).2; (let __state1 : Nat := (__step1).1; (if Models.Ledger.cappedCheck ((s).2) then (if Models.Ledger.smallCheck ((s).2) (__stage1) then (let __step2 : (Prod (Nat) (Nat)) := Models.Ledger.SpillRawModel ((s).2) (__stage1); (let __stage2 : Nat := (__step2).2; (let __state2 : Nat := (__step2).1; (if Models.Ledger.cappedCheck (__state2) then (if Models.Ledger.growsCheck ((s).2) (__stage1) (__state2) (__stage2) then ((__state1, __state2), Except.ok (__stage2)) else (s, Except.error (((true, false) : Prod Bool Bool)))) else (s, Except.error (((true, true) : Prod Bool Bool))))))) else (s, Except.error (((false, false) : Prod Bool Bool)))) else (s, Except.error (((false, true) : Prod Bool Bool)))))))
+
+@[expose] public def RawChainModel.initial : (Prod (Nat) (Nat)) := Models.Flows.TallySpillRaw.initial
+@[expose] public def RawChainModel (__state : (Prod (Nat) (Nat))) (__input : Nat) : (Prod ((Prod (Nat) (Nat))) (Except ((Prod Bool Bool)) (Nat))) := Models.Flows.TallySpillRaw (__state) (__input)
+
+@[expose] public def Drain.initial : Nat := 0
+@[expose] public def Drain (s : Nat) (x : Nat) : (Prod (Nat) (Nat)) := ((LexLeanRuntime.subtract (s) (x) : Nat), x)
+
+@[expose] public def DrainModel.initial : Nat := Models.Flows.Drain.initial
+@[expose] public def DrainModel (__state : Nat) (__input : Nat) : (Prod (Nat) (Nat)) := Models.Flows.Drain (__state) (__input)
+
+@[expose] public def TallyDrain.initial : (Prod (Nat) (Nat)) := (0, 0)
+@[expose] public def TallyDrain (s : (Prod (Nat) (Nat))) (x : Nat) : (Prod ((Prod (Nat) (Nat))) (Except ((Prod Bool Bool)) (Nat))) := (let __step1 : (Prod (Nat) (Nat)) := Models.Ledger.FreeModel ((s).1) (x); (let __stage1 : Nat := (__step1).2; (let __state1 : Nat := (__step1).1; (let __step2 : (Prod (Nat) (Nat)) := Models.Flows.DrainModel ((s).2) (__stage1); (let __stage2 : Nat := (__step2).2; (let __state2 : Nat := (__step2).1; (if Models.Ledger.growsCheck ((s).2) (__stage1) (__state2) (__stage2) then ((__state1, __state2), Except.ok (__stage2)) else (s, Except.error (((true, false) : Prod Bool Bool))))))))))
+
+@[expose] public def DrainChainModel.initial : (Prod (Nat) (Nat)) := Models.Flows.TallyDrain.initial
+@[expose] public def DrainChainModel (__state : (Prod (Nat) (Nat))) (__input : Nat) : (Prod ((Prod (Nat) (Nat))) (Except ((Prod Bool Bool)) (Nat))) := Models.Flows.TallyDrain (__state) (__input)
+
 end Models.Flows

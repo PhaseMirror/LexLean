@@ -17,6 +17,9 @@ import Models.Main
 #print axioms Models.Main.classify
 #print axioms Models.Main.classifyChecked
 #print axioms Models.Main.classify_eight
+#print axioms Models.Main.drainChainStep
+#print axioms Models.Main.drain_chain_accepts
+#print axioms Models.Main.drain_chain_refuses_postcondition
 #print axioms Models.Main.flowCode
 #print axioms Models.Main.flowStep
 #print axioms Models.Main.flow_accepts
@@ -42,6 +45,10 @@ import Models.Main
 #print axioms Models.Main.pair_clamp_accepts
 #print axioms Models.Main.pair_clamp_refuses_input
 #print axioms Models.Main.quadCode
+#print axioms Models.Main.rawChainStep
+#print axioms Models.Main.raw_chain_accepts
+#print axioms Models.Main.raw_chain_refuses_input
+#print axioms Models.Main.raw_chain_refuses_precondition
 #print axioms Models.Main.respond
 #print axioms Models.Main.spillStream
 #print axioms Models.Main.step

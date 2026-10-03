@@ -143,6 +143,20 @@
 \noindent Type: \texttt{Except (ContractViolation) ((Prod ((Prod (Nat) (Nat))) (Except (ContractViolation) (Nat))))}.\par
 \noindent Definition: \texttt{(checked Models.Flows.ChainModel (s) (x) [input\_invariant, output\_invariant, precondition])}.\par
 \noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{rawChainStep}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(s : (Prod (Nat) (Nat))) (x : Nat)}.\par
+\noindent Execution: executable, non-escaping closures only.\par
+\noindent Type: \texttt{Except (ContractViolation) ((Prod ((Prod (Nat) (Nat))) (Except (ContractViolation) (Nat))))}.\par
+\noindent Definition: \texttt{(checked Models.Flows.RawChainModel (s) (x) [input\_invariant, output\_invariant])}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{drainChainStep}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(s : (Prod (Nat) (Nat))) (x : Nat)}.\par
+\noindent Execution: executable, non-escaping closures only.\par
+\noindent Type: \texttt{Except (ContractViolation) ((Prod ((Prod (Nat) (Nat))) (Except (ContractViolation) (Nat))))}.\par
+\noindent Definition: \texttt{(checked Models.Flows.DrainChainModel (s) (x) [input\_invariant, output\_invariant])}.\par
+\noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{spillStream}}
 \noindent Kind: \texttt{definition}.\par
 \noindent Parameters: \texttt{(xs : List (Nat))}.\par
@@ -309,6 +323,26 @@
 \subsection*{\texttt{chain\_refuses\_precondition}}
 \noindent Kind: \texttt{theorem}.\par
 \noindent Statement: \texttt{(chainCode (chainStep ((5, 7)) (30)) = 1)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{raw\_chain\_accepts}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(chainCode (rawChainStep ((4, 20)) (3)) = 7024104)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{raw\_chain\_refuses\_input}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(chainCode (rawChainStep ((4, 150)) (3)) = 4150002)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{raw\_chain\_refuses\_precondition}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(chainCode (rawChainStep ((12, 20)) (3)) = 12020001)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{drain\_chain\_accepts}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(chainCode (drainChainStep ((0, 20)) (3)) = 3020100)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{drain\_chain\_refuses\_postcondition}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(chainCode (drainChainStep ((4, 20)) (3)) = 4020003)}.\par
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{stream\_accepts}}
 \noindent Kind: \texttt{theorem}.\par

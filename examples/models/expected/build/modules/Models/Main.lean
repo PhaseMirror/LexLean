@@ -338,6 +338,10 @@ public theorem admit_accepts_cheap : (admission (admitCosts ((3 :: (16 :: (9 :: 
 
 @[expose] public def chainStep (s : (Prod (Nat) (Nat))) (x : Nat) : Except ((Prod Bool Bool)) ((Prod ((Prod (Nat) (Nat))) (Except ((Prod Bool Bool)) (Nat)))) := (let __checked1_state : (Prod (Nat) (Nat)) := s; (let __checked1_input : Nat := x; (if Models.Flows.twinCappedCheck (__checked1_state) then (if Models.Flows.twinSmallCheck (__checked1_state) (__checked1_input) then (let __checked1_step : (Prod ((Prod (Nat) (Nat))) (Except ((Prod Bool Bool)) (Nat))) := Models.Flows.ChainModel (__checked1_state) (__checked1_input); (if Models.Flows.twinCappedCheck ((__checked1_step).1) then Except.ok (__checked1_step) else Except.error (((true, true) : Prod Bool Bool)))) else Except.error (((false, false) : Prod Bool Bool))) else Except.error (((false, true) : Prod Bool Bool)))))
 
+@[expose] public def rawChainStep (s : (Prod (Nat) (Nat))) (x : Nat) : Except ((Prod Bool Bool)) ((Prod ((Prod (Nat) (Nat))) (Except ((Prod Bool Bool)) (Nat)))) := (let __checked1_state : (Prod (Nat) (Nat)) := s; (let __checked1_input : Nat := x; (if Models.Flows.twinCappedCheck (__checked1_state) then (let __checked1_step : (Prod ((Prod (Nat) (Nat))) (Except ((Prod Bool Bool)) (Nat))) := Models.Flows.RawChainModel (__checked1_state) (__checked1_input); (if Models.Flows.twinCappedCheck ((__checked1_step).1) then Except.ok (__checked1_step) else Except.error (((true, true) : Prod Bool Bool)))) else Except.error (((false, true) : Prod Bool Bool)))))
+
+@[expose] public def drainChainStep (s : (Prod (Nat) (Nat))) (x : Nat) : Except ((Prod Bool Bool)) ((Prod ((Prod (Nat) (Nat))) (Except ((Prod Bool Bool)) (Nat)))) := (let __checked1_state : (Prod (Nat) (Nat)) := s; (let __checked1_input : Nat := x; (if Models.Flows.twinCappedCheck (__checked1_state) then (let __checked1_step : (Prod ((Prod (Nat) (Nat))) (Except ((Prod Bool Bool)) (Nat))) := Models.Flows.DrainChainModel (__checked1_state) (__checked1_input); (if Models.Flows.twinCappedCheck ((__checked1_step).1) then Except.ok (__checked1_step) else Except.error (((true, true) : Prod Bool Bool)))) else Except.error (((false, true) : Prod Bool Bool)))))
+
 @[expose] public def spillStream (xs : List (Nat)) : Except ((Prod Bool Bool)) (Except ((Prod Bool Bool)) (List (Nat))) := (let __checked1_input : List (Nat) := xs; (if Models.Flows.fewCheck (__checked1_input) then (let __checked1_output : Except ((Prod Bool Bool)) (List (Nat)) := Models.Flows.SpillStreamModel (__checked1_input); Except.ok (__checked1_output)) else Except.error (((false, false) : Prod Bool Bool))))
 
 @[expose] public def stepCode (outcome : Except ((Prod Bool Bool)) ((Prod (Nat) (Nat)))) : Nat := (match outcome with | Except.error violation => Models.Ledger.violationCode (violation) | Except.ok pair => (100 + (pair).1))
@@ -432,6 +436,21 @@ public theorem chain_refuses_stage_output : (chainCode (chainStep ((95, 7)) (9))
   decide
 
 public theorem chain_refuses_precondition : (chainCode (chainStep ((5, 7)) (30)) = 1) := by
+  decide
+
+public theorem raw_chain_accepts : (chainCode (rawChainStep ((4, 20)) (3)) = 7024104) := by
+  decide
+
+public theorem raw_chain_refuses_input : (chainCode (rawChainStep ((4, 150)) (3)) = 4150002) := by
+  decide
+
+public theorem raw_chain_refuses_precondition : (chainCode (rawChainStep ((12, 20)) (3)) = 12020001) := by
+  decide
+
+public theorem drain_chain_accepts : (chainCode (drainChainStep ((0, 20)) (3)) = 3020100) := by
+  decide
+
+public theorem drain_chain_refuses_postcondition : (chainCode (drainChainStep ((4, 20)) (3)) = 4020003) := by
   decide
 
 public theorem stream_accepts : (streamCode (spillStream ((10 :: (10 :: (10 :: (10 :: (10 :: (10 :: (10 :: (10 :: (10 :: (10 :: ([] : List (Nat)))))))))))))) = 110) := by

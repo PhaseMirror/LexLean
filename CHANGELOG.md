@@ -432,7 +432,11 @@ versions, and the entries below say what each tag does and does not claim.
     a stage whose evidence leaves its postcondition or output invariant open
     is checked right after it runs); widths, shapes, roles, labels, and descriptor slot
     types are checked in linking. A tensor declares at most 16 dimensions,
-    checked with its declared type before any byte is decoded.
+    checked with its declared type before any byte is decoded, and every
+    artifact declaration is charged before it decodes: its length once more
+    toward `max_total_source_bytes` and the exact node count of its decoded
+    value toward `max_ir_nodes`, running across the link, so naming one
+    digest many times cannot amplify memory.
   - Evidence claims (`satisfies_contract`, `preserves_invariant`,
     `initial_invariant`, `equivalent_to`, `dataset_agreement`) are generated
     statements discharged by statement-exact theorems and restated in Lean
@@ -443,7 +447,7 @@ versions, and the entries below say what each tag does and does not claim.
     and `LLT4009`; new conformance IDs `MD-01` to `MD-12`; new example
     `examples/models` (nine modules and a title glossary), which produces and
     verifies with real Lean, including extraction, every claim form of the
-    fixed model semantics and every runtime check and refusal; 32 new
+    fixed model semantics and every runtime check and refusal; 33 new
     negative fixtures. The canonical document never prints an artifact's
     bytes or decoded value.
   - The language-1.2 `semantic_ir`, `lean_backend`, and `latex_backend`
