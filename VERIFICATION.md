@@ -1725,8 +1725,12 @@ after restoration.
 Planted: the statement-exactness check of an evidence claim was skipped
 (`if false { require_statement(env, theorem, &obligation, code!("LLT4009"))?; }`
 at the end of `claim_obligation`). Command: `cargo test -p repo-conformance
---test conformance -- conformance_md_06`. Expected: claims discharged by
-theorems that state something else link.
+--test conformance -- conformance_md_06`, and `cargo xtask check-fixtures`.
+Expected: claims discharged by theorems that state something else link. The
+first mutation `conformance_md_06` reaches is a duplicated claim, which now
+fails later, on its duplicate generated name, instead of as unestablished
+evidence; `model-forged-evidence` links (`check-fixtures` and
+`conformance_ex_07` both fail on it).
 
 ```text
 thread 'conformance_md_06' (23724) panicked at crates/conformance/src/support.rs:526:5:

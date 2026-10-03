@@ -384,8 +384,11 @@ versions, and the entries below say what each tag does and does not claim.
     integer feed-forward neural (dense, ReLU, truncating requantization,
     first-maximum or function decoder), or composite (sequence, fan-out,
     product, branch, scan with unconditional, proved, or checked
-    junctions); widths, shapes, roles, labels, and descriptor slot types are
-    checked in linking.
+    junctions; a sequence may thread stateful stages, and a stage whose
+    evidence leaves its postcondition or output invariant open is checked
+    right after it runs); widths, shapes, roles, labels, and descriptor slot
+    types are checked in linking. A tensor declares at most 16 dimensions,
+    checked with its declared type before any byte is decoded.
   - Evidence claims (`satisfies_contract`, `preserves_invariant`,
     `initial_invariant`, `equivalent_to`, `dataset_agreement`) are generated
     statements discharged by statement-exact theorems and restated in Lean
@@ -394,15 +397,19 @@ versions, and the entries below say what each tag does and does not claim.
     discharge.
   - New diagnostics `LLR3007`, `LLR3008`, `LLT4006`, `LLT4007`, `LLT4008`,
     and `LLT4009`; new conformance IDs `MD-01` to `MD-12`; new example
-    `examples/models`, verified with real Lean including extraction; 31 new
-    negative fixtures.
+    `examples/models` (nine modules and a title glossary), which produces and
+    verifies with real Lean, including extraction, every claim form of the
+    fixed model semantics and every runtime check and refusal; 32 new
+    negative fixtures. The canonical document never prints an artifact's
+    bytes or decoded value.
   - The language-1.2 `semantic_ir`, `lean_backend`, and `latex_backend`
     versions are bumped. Language-1.2 proposition-valued definitions lower
     `@[expose, reducible]`, `linear_arithmetic` closes with `all_goals
     omega`, and the extraction adapter reads LCNF types through metadata
     annotations. `fmt` stages a project's artifacts with its sources.
   - The public snapshot DTO grows: `SnapshotDeclaration::elaboration`
-    (`SnapshotElaboration`), the model declaration variants, `CheckedApply`,
+    (`SnapshotElaboration`, with the alpha identity of each elaborated
+    definition), the model declaration variants, `CheckedApply`,
     `ContractViolation`, and `LessThan`. Downstream exhaustive matches must
     add them.
 ## 0.3.0
