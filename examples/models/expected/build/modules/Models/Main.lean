@@ -330,6 +330,14 @@ public theorem admit_accepts_cheap : (admission (admitCosts ((3 :: (16 :: (9 :: 
 
 @[expose] public def guessOvershoot (x : Nat) : Except ((Prod Bool Bool)) (Except ((Prod Bool Bool)) ((Prod (Nat) (Nat)))) := (let __checked1_input : Nat := x; (if Models.Ledger.withinCheck (__checked1_input) then (let __checked1_output : Except ((Prod Bool Bool)) ((Prod (Nat) (Nat))) := Models.Flows.OvershootPairModel (__checked1_input); Except.ok (__checked1_output)) else Except.error (((false, false) : Prod Bool Bool))))
 
+@[expose] public def twinStep (s : (Prod (Nat) (Nat))) (x : Nat) : Except ((Prod Bool Bool)) ((Prod ((Prod (Nat) (Nat))) ((Prod (Nat) (Nat))))) := (let __checked1_state : (Prod (Nat) (Nat)) := s; (let __checked1_input : Nat := x; (if Models.Flows.twinCappedCheck (__checked1_state) then (if Models.Flows.twinSmallCheck (__checked1_state) (__checked1_input) then (let __checked1_step : (Prod ((Prod (Nat) (Nat))) ((Prod (Nat) (Nat)))) := Models.Flows.TwinModel (__checked1_state) (__checked1_input); (if Models.Flows.twinCappedCheck ((__checked1_step).1) then Except.ok (__checked1_step) else Except.error (((true, true) : Prod Bool Bool)))) else Except.error (((false, false) : Prod Bool Bool))) else Except.error (((false, true) : Prod Bool Bool)))))
+
+@[expose] public def pairClamp (s : (Prod (Nat) (Nat))) (x : (Prod (Nat) (Nat))) : Except ((Prod Bool Bool)) ((Prod ((Prod (Nat) (Nat))) ((Prod (Nat) (Nat))))) := (let __checked1_state : (Prod (Nat) (Nat)) := s; (let __checked1_input : (Prod (Nat) (Nat)) := x; (if Models.Flows.bothCappedCheck (__checked1_state) then (let __checked1_step : (Prod ((Prod (Nat) (Nat))) ((Prod (Nat) (Nat)))) := Models.Flows.PairClampModel (__checked1_state) (__checked1_input); (if Models.Flows.bothCappedCheck ((__checked1_step).1) then Except.ok (__checked1_step) else Except.error (((true, true) : Prod Bool Bool)))) else Except.error (((false, true) : Prod Bool Bool)))))
+
+@[expose] public def branchStep (s : (Prod (Nat) (Nat))) (x : Nat) : Except ((Prod Bool Bool)) ((Prod ((Prod (Nat) (Nat))) (Nat))) := (let __checked1_state : (Prod (Nat) (Nat)) := s; (let __checked1_input : Nat := x; (if Models.Flows.twinCappedCheck (__checked1_state) then (if Models.Flows.twinSmallCheck (__checked1_state) (__checked1_input) then (let __checked1_step : (Prod ((Prod (Nat) (Nat))) (Nat)) := Models.Flows.BranchModel (__checked1_state) (__checked1_input); (if Models.Flows.twinCappedCheck ((__checked1_step).1) then Except.ok (__checked1_step) else Except.error (((true, true) : Prod Bool Bool)))) else Except.error (((false, false) : Prod Bool Bool))) else Except.error (((false, true) : Prod Bool Bool)))))
+
+@[expose] public def chainStep (s : (Prod (Nat) (Nat))) (x : Nat) : Except ((Prod Bool Bool)) ((Prod ((Prod (Nat) (Nat))) (Except ((Prod Bool Bool)) (Nat)))) := (let __checked1_state : (Prod (Nat) (Nat)) := s; (let __checked1_input : Nat := x; (if Models.Flows.twinCappedCheck (__checked1_state) then (if Models.Flows.twinSmallCheck (__checked1_state) (__checked1_input) then (let __checked1_step : (Prod ((Prod (Nat) (Nat))) (Except ((Prod Bool Bool)) (Nat))) := Models.Flows.ChainModel (__checked1_state) (__checked1_input); (if Models.Flows.twinCappedCheck ((__checked1_step).1) then Except.ok (__checked1_step) else Except.error (((true, true) : Prod Bool Bool)))) else Except.error (((false, false) : Prod Bool Bool))) else Except.error (((false, true) : Prod Bool Bool)))))
+
 @[expose] public def spillStream (xs : List (Nat)) : Except ((Prod Bool Bool)) (Except ((Prod Bool Bool)) (List (Nat))) := (let __checked1_input : List (Nat) := xs; (if Models.Flows.fewCheck (__checked1_input) then (let __checked1_output : Except ((Prod Bool Bool)) (List (Nat)) := Models.Flows.SpillStreamModel (__checked1_input); Except.ok (__checked1_output)) else Except.error (((false, false) : Prod Bool Bool))))
 
 @[expose] public def stepCode (outcome : Except ((Prod Bool Bool)) ((Prod (Nat) (Nat)))) : Nat := (match outcome with | Except.error violation => Models.Ledger.violationCode (violation) | Except.ok pair => (100 + (pair).1))
@@ -337,6 +345,12 @@ public theorem admit_accepts_cheap : (admission (admitCosts ((3 :: (16 :: (9 :: 
 @[expose] public def valueCode (outcome : Except ((Prod Bool Bool)) (Nat)) : Nat := (match outcome with | Except.error violation => Models.Ledger.violationCode (violation) | Except.ok value => (100 + value))
 
 @[expose] public def flowCode (outcome : Except ((Prod Bool Bool)) ((Prod (Nat) (Except ((Prod Bool Bool)) (Nat))))) : Nat := (match outcome with | Except.error violation => Models.Ledger.violationCode (violation) | Except.ok pair => (1000 + ((LexLeanRuntime.multiply ((pair).1) (1000) : Nat) + valueCode ((pair).2))))
+
+@[expose] public def quadCode (outcome : Except ((Prod Bool Bool)) ((Prod ((Prod (Nat) (Nat))) ((Prod (Nat) (Nat)))))) : Nat := (match outcome with | Except.error violation => Models.Ledger.violationCode (violation) | Except.ok p => ((LexLeanRuntime.multiply (((p).1).1) (1000000000) : Nat) + ((LexLeanRuntime.multiply (((p).1).2) (1000000) : Nat) + ((LexLeanRuntime.multiply (((p).2).1) (1000) : Nat) + ((p).2).2))))
+
+@[expose] public def branchCode (outcome : Except ((Prod Bool Bool)) ((Prod ((Prod (Nat) (Nat))) (Nat)))) : Nat := (match outcome with | Except.error violation => Models.Ledger.violationCode (violation) | Except.ok p => ((LexLeanRuntime.multiply (((p).1).1) (1000000) : Nat) + ((LexLeanRuntime.multiply (((p).1).2) (1000) : Nat) + (p).2)))
+
+@[expose] public def chainCode (outcome : Except ((Prod Bool Bool)) ((Prod ((Prod (Nat) (Nat))) (Except ((Prod Bool Bool)) (Nat))))) : Nat := (match outcome with | Except.error violation => Models.Ledger.violationCode (violation) | Except.ok p => ((LexLeanRuntime.multiply (((p).1).1) (1000000) : Nat) + ((LexLeanRuntime.multiply (((p).1).2) (1000) : Nat) + valueCode ((p).2))))
 
 @[expose] public def twiceCode (outcome : Except ((Prod Bool Bool)) (Except ((Prod Bool Bool)) ((Prod (Nat) (Nat))))) : Nat := (match outcome with | Except.error violation => Models.Ledger.violationCode (violation) | Except.ok inner => (match inner with | Except.error violation => (10 + Models.Ledger.violationCode (violation)) | Except.ok values => (100 + ((LexLeanRuntime.multiply ((values).1) (10) : Nat) + (values).2))))
 
@@ -385,6 +399,39 @@ public theorem twice_refuses : (twiceCode (guessTwice (40)) = 1) := by
   decide
 
 public theorem overshoot_pair_refuses_postcondition : (twiceCode (guessOvershoot (4)) = 13) := by
+  decide
+
+public theorem twin_accepts : (quadCode (twinStep ((5, 7)) (3)) = 8010008007) := by
+  decide
+
+public theorem twin_refuses_precondition : (quadCode (twinStep ((5, 7)) (30)) = 1) := by
+  decide
+
+public theorem twin_refuses_input : (quadCode (twinStep ((200, 7)) (3)) = 2) := by
+  decide
+
+public theorem pair_clamp_accepts : (quadCode (pairClamp ((5, 90)) ((3, 20))) = 8100008100) := by
+  decide
+
+public theorem pair_clamp_refuses_input : (quadCode (pairClamp ((5, 200)) ((1, 1))) = 2) := by
+  decide
+
+public theorem branch_takes_then : (branchCode (branchStep ((5, 7)) (3)) = 8007008) := by
+  decide
+
+public theorem branch_takes_else : (branchCode (branchStep ((5, 7)) (8)) = 5015007) := by
+  decide
+
+public theorem branch_refuses_precondition : (branchCode (branchStep ((5, 7)) (20)) = 1) := by
+  decide
+
+public theorem chain_accepts : (chainCode (chainStep ((5, 7)) (3)) = 8010107) := by
+  decide
+
+public theorem chain_refuses_stage_output : (chainCode (chainStep ((95, 7)) (9)) = 95007004) := by
+  decide
+
+public theorem chain_refuses_precondition : (chainCode (chainStep ((5, 7)) (30)) = 1) := by
   decide
 
 public theorem stream_accepts : (streamCode (spillStream ((10 :: (10 :: (10 :: (10 :: (10 :: (10 :: (10 :: (10 :: (10 :: (10 :: ([] : List (Nat)))))))))))))) = 110) := by

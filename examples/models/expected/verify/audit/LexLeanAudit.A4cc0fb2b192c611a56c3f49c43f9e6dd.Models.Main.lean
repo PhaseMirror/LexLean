@@ -4,6 +4,16 @@ import Models.Main
 #print axioms Models.Main.admitCosts
 #print axioms Models.Main.admit_accepts_cheap
 #print axioms Models.Main.admit_rejects_costly
+#print axioms Models.Main.branchCode
+#print axioms Models.Main.branchStep
+#print axioms Models.Main.branch_refuses_precondition
+#print axioms Models.Main.branch_takes_else
+#print axioms Models.Main.branch_takes_then
+#print axioms Models.Main.chainCode
+#print axioms Models.Main.chainStep
+#print axioms Models.Main.chain_accepts
+#print axioms Models.Main.chain_refuses_precondition
+#print axioms Models.Main.chain_refuses_stage_output
 #print axioms Models.Main.classify
 #print axioms Models.Main.classifyChecked
 #print axioms Models.Main.classify_eight
@@ -28,6 +38,10 @@ import Models.Main
 #print axioms Models.Main.overshootChecked
 #print axioms Models.Main.overshoot_pair_refuses_postcondition
 #print axioms Models.Main.overshoot_refuses_postcondition
+#print axioms Models.Main.pairClamp
+#print axioms Models.Main.pair_clamp_accepts
+#print axioms Models.Main.pair_clamp_refuses_input
+#print axioms Models.Main.quadCode
 #print axioms Models.Main.respond
 #print axioms Models.Main.spillStream
 #print axioms Models.Main.step
@@ -38,4 +52,8 @@ import Models.Main
 #print axioms Models.Main.twiceCode
 #print axioms Models.Main.twice_accepts
 #print axioms Models.Main.twice_refuses
+#print axioms Models.Main.twinStep
+#print axioms Models.Main.twin_accepts
+#print axioms Models.Main.twin_refuses_input
+#print axioms Models.Main.twin_refuses_precondition
 #print axioms Models.Main.valueCode

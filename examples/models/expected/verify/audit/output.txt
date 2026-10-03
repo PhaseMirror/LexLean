@@ -1,5 +1,20 @@
+'Models.Flows.BothCapped' does not depend on any axioms
+'Models.Flows.BranchContract.invariant_sound' depends on axioms: [propext]
+'Models.Flows.BranchContract.precondition_sound' depends on axioms: [propext]
+'Models.Flows.BranchModel' does not depend on any axioms
+'Models.Flows.BranchModel.initial' does not depend on any axioms
+'Models.Flows.ChainContract.invariant_sound' depends on axioms: [propext]
+'Models.Flows.ChainContract.precondition_sound' depends on axioms: [propext]
+'Models.Flows.ChainModel' does not depend on any axioms
+'Models.Flows.ChainModel.initial' does not depend on any axioms
+'Models.Flows.ClampBoth' does not depend on any axioms
+'Models.Flows.ClampBoth.initial' does not depend on any axioms
 'Models.Flows.ClampGuess' does not depend on any axioms
 'Models.Flows.ClampGuess.initial' does not depend on any axioms
+'Models.Flows.ClampOrTally' does not depend on any axioms
+'Models.Flows.ClampOrTally.initial' does not depend on any axioms
+'Models.Flows.ClampTally' does not depend on any axioms
+'Models.Flows.ClampTally.initial' does not depend on any axioms
 'Models.Flows.Few' does not depend on any axioms
 'Models.Flows.FlowContract.invariant_sound' depends on axioms: [propext]
 'Models.Flows.FlowModel' does not depend on any axioms
@@ -7,11 +22,30 @@
 'Models.Flows.GuessOvershoot' does not depend on any axioms
 'Models.Flows.GuessTwice' does not depend on any axioms
 'Models.Flows.OvershootPairModel' does not depend on any axioms
+'Models.Flows.PairClampContract.invariant_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+'Models.Flows.PairClampModel' does not depend on any axioms
+'Models.Flows.PairClampModel.initial' does not depend on any axioms
 'Models.Flows.PairGuessContract.precondition_sound' depends on axioms: [propext]
 'Models.Flows.PairGuessModel' does not depend on any axioms
 'Models.Flows.SpillStream' does not depend on any axioms
 'Models.Flows.SpillStreamContract.precondition_sound' depends on axioms: [propext]
 'Models.Flows.SpillStreamModel' does not depend on any axioms
+'Models.Flows.SpillTally' does not depend on any axioms
+'Models.Flows.SpillTally.initial' does not depend on any axioms
+'Models.Flows.TwinCapped' does not depend on any axioms
+'Models.Flows.TwinContract.invariant_sound' depends on axioms: [propext]
+'Models.Flows.TwinContract.precondition_sound' depends on axioms: [propext]
+'Models.Flows.TwinModel' does not depend on any axioms
+'Models.Flows.TwinModel.initial' does not depend on any axioms
+'Models.Flows.TwinSmall' does not depend on any axioms
+'Models.Flows.bothCappedCheck' does not depend on any axioms
+'Models.Flows.both_capped_check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+'Models.Flows.both_entry_left' depends on axioms: [propext, Quot.sound]
+'Models.Flows.both_entry_right' depends on axioms: [propext, Quot.sound]
+'Models.Flows.branch_entry_else' does not depend on any axioms
+'Models.Flows.branch_entry_then' does not depend on any axioms
+'Models.Flows.chain_entry_invariant' does not depend on any axioms
+'Models.Flows.chain_entry_precondition' does not depend on any axioms
 'Models.Flows.fewCheck' does not depend on any axioms
 'Models.Flows.few_check_sound' depends on axioms: [propext]
 'Models.Flows.flow_capped_sound' depends on axioms: [propext]
@@ -19,6 +53,13 @@
 'Models.Flows.pair_entry_left' does not depend on any axioms
 'Models.Flows.pair_entry_right' does not depend on any axioms
 'Models.Flows.pair_within_sound' depends on axioms: [propext]
+'Models.Flows.spill_tally' does not depend on any axioms
+'Models.Flows.twinCappedCheck' does not depend on any axioms
+'Models.Flows.twinSmallCheck' does not depend on any axioms
+'Models.Flows.twin_capped_check_sound' depends on axioms: [propext]
+'Models.Flows.twin_entry_left' does not depend on any axioms
+'Models.Flows.twin_entry_right' does not depend on any axioms
+'Models.Flows.twin_small_check_sound' depends on axioms: [propext]
 'Models.Glyphs.Glyph' does not depend on any axioms
 'Models.Glyphs.digitOf' does not depend on any axioms
 'Models.Glyphs.encode' does not depend on any axioms
@@ -114,6 +155,16 @@
 'Models.Main.admitCosts' does not depend on any axioms
 'Models.Main.admit_accepts_cheap' does not depend on any axioms
 'Models.Main.admit_rejects_costly' does not depend on any axioms
+'Models.Main.branchCode' does not depend on any axioms
+'Models.Main.branchStep' does not depend on any axioms
+'Models.Main.branch_refuses_precondition' does not depend on any axioms
+'Models.Main.branch_takes_else' does not depend on any axioms
+'Models.Main.branch_takes_then' does not depend on any axioms
+'Models.Main.chainCode' does not depend on any axioms
+'Models.Main.chainStep' does not depend on any axioms
+'Models.Main.chain_accepts' does not depend on any axioms
+'Models.Main.chain_refuses_precondition' does not depend on any axioms
+'Models.Main.chain_refuses_stage_output' does not depend on any axioms
 'Models.Main.classify' depends on axioms: [propext]
 'Models.Main.classifyChecked' depends on axioms: [propext]
 'Models.Main.classify_eight' depends on axioms: [propext]
@@ -138,6 +189,10 @@
 'Models.Main.overshootChecked' does not depend on any axioms
 'Models.Main.overshoot_pair_refuses_postcondition' does not depend on any axioms
 'Models.Main.overshoot_refuses_postcondition' does not depend on any axioms
+'Models.Main.pairClamp' does not depend on any axioms
+'Models.Main.pair_clamp_accepts' does not depend on any axioms
+'Models.Main.pair_clamp_refuses_input' does not depend on any axioms
+'Models.Main.quadCode' does not depend on any axioms
 'Models.Main.respond' depends on axioms: [propext]
 'Models.Main.spillStream' does not depend on any axioms
 'Models.Main.step' does not depend on any axioms
@@ -148,6 +203,10 @@
 'Models.Main.twiceCode' does not depend on any axioms
 'Models.Main.twice_accepts' does not depend on any axioms
 'Models.Main.twice_refuses' does not depend on any axioms
+'Models.Main.twinStep' does not depend on any axioms
+'Models.Main.twin_accepts' does not depend on any axioms
+'Models.Main.twin_refuses_input' does not depend on any axioms
+'Models.Main.twin_refuses_precondition' does not depend on any axioms
 'Models.Main.valueCode' does not depend on any axioms
 'Models.Pipeline.Answered' does not depend on any axioms
 'Models.Pipeline.Bounded9' does not depend on any axioms

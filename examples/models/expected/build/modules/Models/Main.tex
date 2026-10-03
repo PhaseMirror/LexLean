@@ -115,6 +115,34 @@
 \noindent Type: \texttt{Except (ContractViolation) (Except (ContractViolation) ((Prod (Nat) (Nat))))}.\par
 \noindent Definition: \texttt{(checked Models.Flows.OvershootPairModel (x) [precondition])}.\par
 \noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{twinStep}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(s : (Prod (Nat) (Nat))) (x : Nat)}.\par
+\noindent Execution: executable, non-escaping closures only.\par
+\noindent Type: \texttt{Except (ContractViolation) ((Prod ((Prod (Nat) (Nat))) ((Prod (Nat) (Nat)))))}.\par
+\noindent Definition: \texttt{(checked Models.Flows.TwinModel (s) (x) [input\_invariant, output\_invariant, precondition])}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{pairClamp}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(s : (Prod (Nat) (Nat))) (x : (Prod (Nat) (Nat)))}.\par
+\noindent Execution: executable, non-escaping closures only.\par
+\noindent Type: \texttt{Except (ContractViolation) ((Prod ((Prod (Nat) (Nat))) ((Prod (Nat) (Nat)))))}.\par
+\noindent Definition: \texttt{(checked Models.Flows.PairClampModel (s) (x) [input\_invariant, output\_invariant])}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{branchStep}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(s : (Prod (Nat) (Nat))) (x : Nat)}.\par
+\noindent Execution: executable, non-escaping closures only.\par
+\noindent Type: \texttt{Except (ContractViolation) ((Prod ((Prod (Nat) (Nat))) (Nat)))}.\par
+\noindent Definition: \texttt{(checked Models.Flows.BranchModel (s) (x) [input\_invariant, output\_invariant, precondition])}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{chainStep}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(s : (Prod (Nat) (Nat))) (x : Nat)}.\par
+\noindent Execution: executable, non-escaping closures only.\par
+\noindent Type: \texttt{Except (ContractViolation) ((Prod ((Prod (Nat) (Nat))) (Except (ContractViolation) (Nat))))}.\par
+\noindent Definition: \texttt{(checked Models.Flows.ChainModel (s) (x) [input\_invariant, output\_invariant, precondition])}.\par
+\noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{spillStream}}
 \noindent Kind: \texttt{definition}.\par
 \noindent Parameters: \texttt{(xs : List (Nat))}.\par
@@ -142,6 +170,27 @@
 \noindent Execution: executable, non-escaping closures only.\par
 \noindent Type: \texttt{Nat}.\par
 \noindent Definition: \texttt{(match outcome with | Except.error violation => Models.Ledger.violationCode (violation) | Except.ok pair => (1000 + ((LexLeanRuntime.multiply ((pair).1) (1000) : Nat) + valueCode ((pair).2))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{quadCode}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(outcome : Except (ContractViolation) ((Prod ((Prod (Nat) (Nat))) ((Prod (Nat) (Nat))))))}.\par
+\noindent Execution: executable, non-escaping closures only.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match outcome with | Except.error violation => Models.Ledger.violationCode (violation) | Except.ok p => ((LexLeanRuntime.multiply (((p).1).1) (1000000000) : Nat) + ((LexLeanRuntime.multiply (((p).1).2) (1000000) : Nat) + ((LexLeanRuntime.multiply (((p).2).1) (1000) : Nat) + ((p).2).2))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{branchCode}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(outcome : Except (ContractViolation) ((Prod ((Prod (Nat) (Nat))) (Nat))))}.\par
+\noindent Execution: executable, non-escaping closures only.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match outcome with | Except.error violation => Models.Ledger.violationCode (violation) | Except.ok p => ((LexLeanRuntime.multiply (((p).1).1) (1000000) : Nat) + ((LexLeanRuntime.multiply (((p).1).2) (1000) : Nat) + (p).2)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{chainCode}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(outcome : Except (ContractViolation) ((Prod ((Prod (Nat) (Nat))) (Except (ContractViolation) (Nat)))))}.\par
+\noindent Execution: executable, non-escaping closures only.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match outcome with | Except.error violation => Models.Ledger.violationCode (violation) | Except.ok p => ((LexLeanRuntime.multiply (((p).1).1) (1000000) : Nat) + ((LexLeanRuntime.multiply (((p).1).2) (1000) : Nat) + valueCode ((p).2))))}.\par
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{twiceCode}}
 \noindent Kind: \texttt{definition}.\par
@@ -216,6 +265,50 @@
 \subsection*{\texttt{overshoot\_pair\_refuses\_postcondition}}
 \noindent Kind: \texttt{theorem}.\par
 \noindent Statement: \texttt{(twiceCode (guessOvershoot (4)) = 13)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{twin\_accepts}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(quadCode (twinStep ((5, 7)) (3)) = 8010008007)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{twin\_refuses\_precondition}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(quadCode (twinStep ((5, 7)) (30)) = 1)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{twin\_refuses\_input}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(quadCode (twinStep ((200, 7)) (3)) = 2)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{pair\_clamp\_accepts}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(quadCode (pairClamp ((5, 90)) ((3, 20))) = 8100008100)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{pair\_clamp\_refuses\_input}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(quadCode (pairClamp ((5, 200)) ((1, 1))) = 2)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{branch\_takes\_then}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(branchCode (branchStep ((5, 7)) (3)) = 8007008)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{branch\_takes\_else}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(branchCode (branchStep ((5, 7)) (8)) = 5015007)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{branch\_refuses\_precondition}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(branchCode (branchStep ((5, 7)) (20)) = 1)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{chain\_accepts}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(chainCode (chainStep ((5, 7)) (3)) = 8010107)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{chain\_refuses\_stage\_output}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(chainCode (chainStep ((95, 7)) (9)) = 95007004)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{chain\_refuses\_precondition}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(chainCode (chainStep ((5, 7)) (30)) = 1)}.\par
 \noindent Axiom policy: \texttt{none}.\par
 \subsection*{\texttt{stream\_accepts}}
 \noindent Kind: \texttt{theorem}.\par
