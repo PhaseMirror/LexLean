@@ -2061,6 +2061,15 @@ impl<'a> Walk<'a> {
                 production: _,
             }) => {
                 self.construct(&site, construct, None);
+                // A checked application is realized through its
+                // elaboration; the root still reports that it uses one.
+                if self
+                    .modules
+                    .get(module.as_str())
+                    .is_some_and(|linked| linked.semantic.applies_checked(&name))
+                {
+                    self.construct(&site, "term.checked_apply", None);
+                }
                 if !*executable {
                     self.violation(
                         &site,

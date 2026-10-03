@@ -839,9 +839,7 @@ fn check_project_inline(
             .map(|source| {
                 (
                     source.path.clone(),
-                    artifacts
-                        .get(&source.sha256.to_hex())
-                        .map_or(0, Vec::len),
+                    artifacts.get(&source.sha256.to_hex()).map_or(0, Vec::len),
                     source.sha256,
                 )
             })

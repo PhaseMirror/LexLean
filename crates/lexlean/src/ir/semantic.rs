@@ -2985,6 +2985,23 @@ impl SemanticModule {
             .then(|| self.elaboration.lowered(index))
     }
 
+    /// Does the ordinary source declaration `name` apply a model through a
+    /// checked application, so that what is realized is its elaborated copy
+    /// (§17.12, §17.13)?
+    #[must_use]
+    pub fn applies_checked(&self, name: &str) -> bool {
+        self.declarations
+            .iter()
+            .enumerate()
+            .any(|(index, declaration)| {
+                declaration.name() == name
+                    && model::declaration_construct(declaration).is_none()
+                    && self
+                        .elaborated(index)
+                        .is_some_and(|lowered| lowered != std::slice::from_ref(declaration))
+            })
+    }
+
     /// Exact recursive semantic-node count charged to `max_ir_nodes`.
     pub(crate) fn node_count(&self) -> u64 {
         let base: u64 = self
@@ -8632,25 +8649,44 @@ mod tests {
 
     #[test]
     fn semantic_bool_match_is_typed_and_exhaustive() {
-        SemanticModule::parse(BOOL_MATCH, "1.1", "Test", &[], &BTreeMap::new(), &BTreeMap::new())
-            .expect("both Boolean constructors form a typed exhaustive match");
+        SemanticModule::parse(
+            BOOL_MATCH,
+            "1.1",
+            "Test",
+            &[],
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+        )
+        .expect("both Boolean constructors form a typed exhaustive match");
 
         let nonexhaustive = BOOL_MATCH.replace(
             r#",{"binders":[],"body":{"kind":"nat","value":"1"},"constructor":{"name":"Bool.true"}}"#,
             "",
         );
-        assert!(
-            SemanticModule::parse(&nonexhaustive, "1.1", "Test", &[], &BTreeMap::new(), &BTreeMap::new())
-                .expect_err("one Boolean branch is not exhaustive")
-                .to_string()
-                .contains("nonexhaustive or mixed match branches")
-        );
+        assert!(SemanticModule::parse(
+            &nonexhaustive,
+            "1.1",
+            "Test",
+            &[],
+            &BTreeMap::new(),
+            &BTreeMap::new()
+        )
+        .expect_err("one Boolean branch is not exhaustive")
+        .to_string()
+        .contains("nonexhaustive or mixed match branches"));
     }
 
     #[test]
     fn semantic_theorem_policy_defaults_to_exact_empty() {
-        let module = SemanticModule::parse(EMPTY_POLICY, "1.1", "Test", &[], &BTreeMap::new(), &BTreeMap::new())
-            .expect("omitted policy is exact empty");
+        let module = SemanticModule::parse(
+            EMPTY_POLICY,
+            "1.1",
+            "Test",
+            &[],
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+        )
+        .expect("omitted policy is exact empty");
         let declaration = module.declarations.first().expect("one theorem");
         assert_eq!(declaration.axiom_policy_kind(), "none");
         assert!(declaration.axioms().is_empty());
@@ -8659,8 +8695,15 @@ mod tests {
     #[test]
     fn semantic_theorem_policy_round_trips_a_nonempty_exact_set() {
         let source = theorem_with_axioms(r#"["Classical.choice","propext"]"#);
-        let module = SemanticModule::parse(&source, "1.1", "Test", &[], &BTreeMap::new(), &BTreeMap::new())
-            .expect("sorted exact policy is valid");
+        let module = SemanticModule::parse(
+            &source,
+            "1.1",
+            "Test",
+            &[],
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+        )
+        .expect("sorted exact policy is valid");
         let declaration = module.declarations.first().expect("one theorem");
         assert_eq!(declaration.axiom_policy_kind(), "exact");
         assert_eq!(declaration.axioms(), ["Classical.choice", "propext"]);

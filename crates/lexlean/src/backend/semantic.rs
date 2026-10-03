@@ -2960,12 +2960,21 @@ fn latex_model(
         | SemanticDeclaration::Theorem { .. } => {}
     }
     for obligation in module.elaboration.obligations(index) {
-        let parameters = render.parameters(&obligation.parameters);
+        // A closed obligation is stated bare; the role's code quotes are
+        // diagnostic spelling, not document text.
+        let binders = if obligation.parameters.is_empty() {
+            String::new()
+        } else {
+            format!("forall{}, ", render.parameters(&obligation.parameters))
+        };
         latex_line(
             text,
-            &format!("Obligation ({})", tex_escape(&obligation.role)),
             &format!(
-                "forall{parameters}, {}; stated exactly by {}",
+                "Obligation ({})",
+                tex_escape(&obligation.role.replace('`', ""))
+            ),
+            &format!(
+                "{binders}{}; stated exactly by {}",
                 render.term(&obligation.statement),
                 render.member(&obligation.theorem)
             ),

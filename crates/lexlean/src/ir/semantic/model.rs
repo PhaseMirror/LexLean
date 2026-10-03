@@ -19,8 +19,9 @@ use super::{
     visit_terms_mut, AlphaRenamer, ArtifactRole, ArtifactSchema, CompositeForm, CompositeJunction,
     ContractPredicate, ContractState, ContractValidator, Environment, EvidenceClaim, MemberRef,
     ModelBinder, ModelCheck, ModelUse, NeuralDecoder, NeuralLayer, RealizationDescriptor,
-    SemanticBranch, SemanticDeclaration, SemanticFailure, SemanticInteger, SemanticParameter,
-    SemanticPrimitive, SemanticTerm, SemanticType, TensorElement, BUILTIN_CONSTRUCTOR_OWNERS,
+    RealizationState, SemanticBranch, SemanticDeclaration, SemanticFailure, SemanticInteger,
+    SemanticParameter, SemanticPrimitive, SemanticTerm, SemanticType, TensorElement,
+    BUILTIN_CONSTRUCTOR_OWNERS,
 };
 use crate::code;
 use crate::diagnostic::DiagnosticCode;
@@ -3138,6 +3139,120 @@ fn check_composite(
 }
 
 #[allow(clippy::too_many_lines)]
+/// The type of a descriptor term is fixed by its slot: a rule action or a
+/// label is an output, a guard is a Boolean, an encoder or a feature map is an
+/// integer vector. A term of another type is therefore an interface mismatch
+/// (LLT4006) of the realization, or, for a branch guard, of the composition
+/// (LLT4007), rather than an incidental ill-typed body. A term that has no
+/// type at all is left to the ordinary check of the elaborated declaration,
+/// which reports it as any ill-formed term (LLT4001).
+fn check_slots(
+    name: &str,
+    input: &ModelBinder,
+    output: &SemanticType,
+    state: Option<&RealizationState>,
+    descriptor: &RealizationDescriptor,
+    env: &Environment<'_>,
+) -> Result<(), SemanticFailure> {
+    let mut locals = BTreeMap::from([(input.name.clone(), input.r#type.clone())]);
+    let result = match state {
+        Some(state) => {
+            locals.insert(state.name.clone(), state.r#type.clone());
+            product(state.r#type.clone(), output.clone())
+        }
+        None => output.clone(),
+    };
+    let slot = |term: &SemanticTerm,
+                locals: &BTreeMap<String, SemanticType>,
+                expected: &SemanticType,
+                what: &str,
+                failure: fn(String) -> SemanticFailure| {
+        match super::infer_term(term, locals, env) {
+            Ok(Some(observed)) if &observed != expected => Err(failure(format!(
+                "realization `{name}` {what} has type {observed}, expected {expected}"
+            ))),
+            _ => Ok(()),
+        }
+    };
+    match descriptor {
+        RealizationDescriptor::Deterministic { body } => {
+            slot(body, &locals, &result, "denotation", interface)
+        }
+        RealizationDescriptor::Rule { rules, default } => {
+            for rule in rules {
+                let what = format!("rule `{}`", rule.name);
+                slot(
+                    &rule.guard,
+                    &locals,
+                    &SemanticType::Bool,
+                    &format!("{what} guard"),
+                    interface,
+                )?;
+                slot(
+                    &rule.action,
+                    &locals,
+                    &result,
+                    &format!("{what} action"),
+                    interface,
+                )?;
+            }
+            slot(default, &locals, &result, "default", interface)
+        }
+        RealizationDescriptor::Statistical {
+            features, labels, ..
+        } => {
+            slot(features, &locals, &int_list(), "feature map", interface)?;
+            for (index, label) in labels.iter().enumerate() {
+                slot(
+                    label,
+                    &BTreeMap::new(),
+                    output,
+                    &format!("label {}", index + 1),
+                    interface,
+                )?;
+            }
+            Ok(())
+        }
+        RealizationDescriptor::Neural {
+            encoder, decoder, ..
+        } => {
+            slot(encoder, &locals, &int_list(), "encoder", interface)?;
+            match decoder {
+                NeuralDecoder::Argmax { labels } => {
+                    for (index, label) in labels.iter().enumerate() {
+                        slot(
+                            label,
+                            &BTreeMap::new(),
+                            output,
+                            &format!("label {}", index + 1),
+                            interface,
+                        )?;
+                    }
+                    Ok(())
+                }
+                NeuralDecoder::Function { binder, body } => {
+                    let mut decoded = locals.clone();
+                    decoded.insert(binder.clone(), int_list());
+                    slot(body, &decoded, &result, "decoder", interface)
+                }
+            }
+        }
+        RealizationDescriptor::Composite { form } => match form {
+            CompositeForm::Branch { guard, .. } => slot(
+                guard,
+                &locals,
+                &SemanticType::Bool,
+                "branch guard",
+                composition,
+            ),
+            CompositeForm::Sequence { .. }
+            | CompositeForm::Fanout { .. }
+            | CompositeForm::Product { .. }
+            | CompositeForm::Scan { .. } => Ok(()),
+        },
+    }
+}
+
 fn check_realization(
     declaration: &SemanticDeclaration,
     env: &mut Environment<'_>,
@@ -3181,6 +3296,7 @@ fn check_realization(
     else {
         return Ok(Lowering::default());
     };
+    check_slots(name, input, output, state.as_ref(), descriptor, env)?;
     let companion = |suffix: &str| format!("{name}.{suffix}");
     let x = var(&input.name);
     let input_parameter = parameter(&input.name, &input.r#type);
