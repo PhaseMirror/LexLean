@@ -670,8 +670,10 @@ pub(crate) struct RealizationInfo {
     input: ModelBinder,
     output: SemanticType,
     state: Option<SemanticType>,
-    /// Propositions over the input binder that a model binding must
-    /// establish from its contract's precondition.
+    /// The state binder the effective preconditions mention, when stateful.
+    state_binder: Option<String>,
+    /// Propositions over the input (and state) binder that a model binding
+    /// must establish from its contract's invariant and precondition.
     effective: Vec<SemanticTerm>,
 }
 
@@ -961,6 +963,7 @@ pub(super) fn register_import(module: &str, elaboration: &Elaboration, models: &
                 input: qualify_binder(&info.input, module),
                 output: qualify_type(&info.output, module),
                 state: info.state.as_ref().map(|state| qualify_type(state, module)),
+                state_binder: info.state_binder.clone(),
                 effective: info
                     .effective
                     .iter()
@@ -1724,6 +1727,7 @@ struct RealizationAt {
     input: ModelBinder,
     output: SemanticType,
     state: Option<SemanticType>,
+    state_binder: Option<String>,
     effective: Vec<SemanticTerm>,
 }
 
@@ -1784,6 +1788,7 @@ fn resolve_realization(
             .state
             .as_ref()
             .map(|state| substitute_type(state, &map)),
+        state_binder: info.state_binder.clone(),
         effective: info
             .effective
             .iter()
@@ -2072,10 +2077,16 @@ fn hex(bytes: &[u8]) -> String {
 
 /// Nest `values` row-major under `shape`.
 fn nest(shape: &[u64], values: &[i128]) -> SemanticTerm {
-    let element = schema_type(&ArtifactSchema::IntTensor {
-        element: TensorElement::Int8,
-        shape: shape.iter().skip(1).copied().collect(),
-    });
+    // The element type of each level, innermost first, built once.
+    let mut types = vec![SemanticType::Int];
+    for _ in 1..shape.len() {
+        let inner = types[types.len() - 1].clone();
+        types.push(list_type(inner));
+    }
+    nest_level(shape, values, &types)
+}
+
+fn nest_level(shape: &[u64], values: &[i128], types: &[SemanticType]) -> SemanticTerm {
     match shape {
         [] | [_] => list_literal(
             &SemanticType::Int,
@@ -2084,10 +2095,10 @@ fn nest(shape: &[u64], values: &[i128]) -> SemanticTerm {
         [rows, rest @ ..] => {
             let stride = values.len() / usize::try_from(*rows).unwrap_or(1).max(1);
             list_literal(
-                &element,
+                &types[rest.len()],
                 values
                     .chunks(stride.max(1))
-                    .map(|chunk| nest(rest, chunk))
+                    .map(|chunk| nest_level(rest, chunk, types))
                     .collect(),
             )
         }
@@ -2198,6 +2209,10 @@ fn ordinary_definition(
     }
 }
 
+/// The most dimensions an integer tensor artifact may declare: a closed
+/// language bound, so a shape is never an unbounded input (§17.12 rule 2).
+pub const MAX_TENSOR_RANK: usize = 16;
+
 fn check_artifact(
     declaration: &SemanticDeclaration,
     env: &mut Environment<'_>,
@@ -2256,7 +2271,17 @@ fn check_artifact(
             schema_kind(schema)
         )));
     }
-    let decoded = decode(schema, bytes).map_err(schema_violation)?;
+    // The shape is bounded and the declared type checked before any byte is
+    // decoded, so no declaration can make decoding allocate beyond what its
+    // bounded bytes hold (§10.2, R5).
+    if let ArtifactSchema::IntTensor { shape, .. } = schema {
+        if shape.len() > MAX_TENSOR_RANK {
+            return Err(schema_violation(format!(
+                "an integer tensor has at most {MAX_TENSOR_RANK} dimensions, not {}",
+                shape.len()
+            )));
+        }
+    }
     let expected = schema_type(schema);
     if r#type != &expected {
         return Err(schema_violation(format!(
@@ -2264,6 +2289,7 @@ fn check_artifact(
             r#type
         )));
     }
+    let decoded = decode(schema, bytes).map_err(schema_violation)?;
     let lowering = Lowering {
         declarations: vec![
             ordinary_definition(
@@ -2658,83 +2684,158 @@ fn width_obligation(
     Ok(obligation)
 }
 
-/// One stage of a composite at its instantiation, checked to need nothing
-/// after it runs: its evidence discharges its postcondition and output
-/// invariant, so only what precedes the run is left to a junction or an
-/// entry obligation.
+/// One stage of a composite at its instantiation. A stage's checks after
+/// it runs (its output invariant and postcondition, unless its evidence
+/// discharges them) run right after it, so each needs a sound validator; a
+/// stateful stage is threaded only by a sequence or a scan.
 fn composite_stage(
     name: &str,
     stage: &ModelUse,
     scope: &BTreeSet<String>,
     env: &Environment<'_>,
-    stateful: bool,
+    stateful: Option<bool>,
 ) -> Result<ModelAt, SemanticFailure> {
     let at = resolve_model(stage, scope, env, composition)?;
-    if at.contract.state.is_some() != stateful {
-        return Err(composition(format!(
-            "composite `{name}` stage `{}` is {}; only a scan threads a stateful stage",
-            member_key(&stage.member),
-            if stateful { "stateless" } else { "stateful" }
-        )));
+    let key = member_key(&stage.member);
+    match (stateful, at.contract.state.is_some()) {
+        (Some(true), false) => {
+            return Err(composition(format!(
+                "composite `{name}` stage `{key}` is stateless; a scan threads one stateful stage"
+            )));
+        }
+        (Some(false), true) => {
+            return Err(composition(format!(
+                "composite `{name}` stage `{key}` is stateful; only a sequence or a scan threads a stateful stage"
+            )));
+        }
+        _ => {}
     }
-    let after: Vec<&str> = at
-        .required()
-        .into_iter()
-        .filter(|check| {
-            matches!(
-                check,
-                ModelCheck::Postcondition | ModelCheck::OutputInvariant
-            )
-        })
-        .map(check_name_of)
-        .collect();
-    if !after.is_empty() {
-        return Err(composition(format!(
-            "composite `{name}` stage `{}` has no evidence discharging its {}; apply it with checked_apply in a deterministic realization instead",
-            member_key(&stage.member),
-            after.join(", ")
-        )));
+    for check in post_run(&at) {
+        let predicate = match check {
+            ModelCheck::OutputInvariant => ContractPredicate::Invariant,
+            _ => ContractPredicate::Postcondition,
+        };
+        if !at.contract.validators.contains_key(&predicate) {
+            return Err(composition(format!(
+                "composite `{name}` stage `{key}` has no evidence discharging its {} and no sound validator to check it at run time",
+                check_name_of(check)
+            )));
+        }
     }
     Ok(at)
 }
 
-/// What a composite elaborates to.
+/// The checks a stage needs after it runs, in the fixed order.
+fn post_run(stage: &ModelAt) -> Vec<ModelCheck> {
+    let required = stage.required();
+    [ModelCheck::OutputInvariant, ModelCheck::Postcondition]
+        .into_iter()
+        .filter(|check| required.contains(check))
+        .collect()
+}
+
+/// `rest`, guarded by a stage's checks after it runs: the output invariant
+/// of its new state, then its postcondition; a refusal is `refuse(check)`.
+fn guard_after(
+    stage: &ModelAt,
+    state: Option<(SemanticTerm, SemanticTerm)>,
+    input: &SemanticTerm,
+    output: &SemanticTerm,
+    rest: SemanticTerm,
+    refuse: &dyn Fn(ModelCheck) -> SemanticTerm,
+) -> SemanticTerm {
+    let checks = post_run(stage);
+    let mut body = rest;
+    if checks.contains(&ModelCheck::Postcondition) {
+        let validator = &stage.contract.validators[&ContractPredicate::Postcondition];
+        let arguments = match &state {
+            Some((before, after)) => {
+                vec![before.clone(), input.clone(), after.clone(), output.clone()]
+            }
+            None => vec![input.clone(), output.clone()],
+        };
+        body = if_then(
+            validator.apply(arguments),
+            body,
+            refuse(ModelCheck::Postcondition),
+        );
+    }
+    if let (true, Some((_, after))) = (checks.contains(&ModelCheck::OutputInvariant), &state) {
+        let validator = &stage.contract.validators[&ContractPredicate::Invariant];
+        body = if_then(
+            validator.apply(vec![after.clone()]),
+            body,
+            refuse(ModelCheck::OutputInvariant),
+        );
+    }
+    body
+}
+
+/// `rest`, guarded by a stage's validators before it runs: the input
+/// invariant of its state, then its precondition.
+fn guard_before(
+    stage: &ModelAt,
+    state: Option<&SemanticTerm>,
+    input: &SemanticTerm,
+    rest: SemanticTerm,
+    refuse: &dyn Fn(ModelCheck) -> SemanticTerm,
+) -> SemanticTerm {
+    let mut body = rest;
+    if let Some(validator) = stage
+        .contract
+        .validators
+        .get(&ContractPredicate::Precondition)
+    {
+        let arguments = match state {
+            Some(state) => vec![state.clone(), input.clone()],
+            None => vec![input.clone()],
+        };
+        body = if_then(
+            validator.apply(arguments),
+            body,
+            refuse(ModelCheck::Precondition),
+        );
+    }
+    if let (Some(validator), Some(state)) = (
+        stage.contract.validators.get(&ContractPredicate::Invariant),
+        state,
+    ) {
+        body = if_then(
+            validator.apply(vec![state.clone()]),
+            body,
+            refuse(ModelCheck::InputInvariant),
+        );
+    }
+    body
+}
+
+/// The right-nested product of `items` (one item is itself).
+fn nested<T: Clone>(items: &[T], pair_of: &dyn Fn(T, T) -> T) -> Option<T> {
+    let (last, init) = items.split_last()?;
+    Some(
+        init.iter()
+            .rev()
+            .fold(last.clone(), |rest, item| pair_of(item.clone(), rest)),
+    )
+}
+
+/// Component `index` of a right-nested product of `count` components.
+fn component(value: &SemanticTerm, index: usize, count: usize) -> SemanticTerm {
+    let mut out = value.clone();
+    for _ in 0..index {
+        out = second(out);
+    }
+    if index + 1 < count {
+        first(out)
+    } else {
+        out
+    }
+}
+
 struct CompositeLowering {
     body: SemanticTerm,
     effective: Vec<SemanticTerm>,
     obligations: Vec<Obligation>,
-}
-
-fn junction_check(
-    name: &str,
-    stage: &ModelAt,
-    junction: &CompositeJunction,
-    index: usize,
-) -> Result<(), SemanticFailure> {
-    match (junction, &stage.contract.precondition) {
-        (CompositeJunction::Unconditional, Some(_)) => Err(composition(format!(
-            "composite `{name}` junction {index}: stage `{}` has a precondition, so the junction must be proved or checked",
-            member_key(&stage.member)
-        ))),
-        (CompositeJunction::Proved { .. } | CompositeJunction::Checked, None) => {
-            Err(composition(format!(
-                "composite `{name}` junction {index}: stage `{}` has no precondition, so the junction is unconditional",
-                member_key(&stage.member)
-            )))
-        }
-        (CompositeJunction::Checked, Some(_))
-            if !stage
-                .contract
-                .validators
-                .contains_key(&ContractPredicate::Precondition) =>
-        {
-            Err(composition(format!(
-                "composite `{name}` junction {index}: stage `{}` has no precondition validator to check",
-                member_key(&stage.member)
-            )))
-        }
-        _ => Ok(()),
-    }
 }
 
 #[allow(clippy::too_many_lines)]
@@ -2744,6 +2845,7 @@ fn check_composite(
     scope: &BTreeSet<String>,
     input: &ModelBinder,
     output: &SemanticType,
+    state: Option<&RealizationState>,
     form: &CompositeForm,
     env: &Environment<'_>,
 ) -> Result<CompositeLowering, SemanticFailure> {
@@ -2758,6 +2860,13 @@ fn check_composite(
             )))
         }
     };
+    let stateless_form = || {
+        state.map_or(Ok(()), |_| {
+            Err(mismatch(
+                "only a sequence of stateful stages declares a state".to_owned(),
+            ))
+        })
+    };
     match form {
         CompositeForm::Sequence { stages, junctions } => {
             if stages.len() < 2 || junctions.len() + 1 != stages.len() {
@@ -2769,7 +2878,7 @@ fn check_composite(
             }
             let stages = stages
                 .iter()
-                .map(|stage| composite_stage(name, stage, scope, env, false))
+                .map(|stage| composite_stage(name, stage, scope, env, None))
                 .collect::<Result<Vec<_>, _>>()?;
             expect(
                 "the first stage input",
@@ -2783,10 +2892,45 @@ fn check_composite(
                     &pair[0].contract.output.r#type,
                 )?;
             }
-            let last = &stages[stages.len() - 1].contract.output.r#type;
+            // The composite's state is the right-nested product of its
+            // stateful stages' states, in stage order.
+            let stateful: Vec<usize> = (0..stages.len())
+                .filter(|index| stages[*index].contract.state.is_some())
+                .collect();
+            let state_types: Vec<SemanticType> = stateful
+                .iter()
+                .filter_map(|index| stages[*index].contract.state_type().cloned())
+                .collect();
+            let composite_state = nested(&state_types, &|left, right| product(left, right));
+            match (&composite_state, state) {
+                (None, None) => {}
+                (None, Some(_)) => {
+                    return Err(mismatch(
+                        "no stage is stateful, so the composite declares no state".to_owned(),
+                    ));
+                }
+                (Some(expected), None) => {
+                    return Err(mismatch(format!(
+                        "its stateful stages thread a state of type {expected}, which it must declare"
+                    )));
+                }
+                (Some(expected), Some(declared)) => {
+                    expect("the state", &declared.r#type, expected)?;
+                }
+            }
+            let s = state.map(|state| var(&state.name));
+            let slot = |index: usize| -> Option<(usize, SemanticTerm)> {
+                let position = stateful.iter().position(|stage| *stage == index)?;
+                Some((
+                    position,
+                    component(s.as_ref()?, position, stateful.len()),
+                ))
+            };
+            let last = stages[stages.len() - 1].contract.output.r#type.clone();
             let checked = junctions
                 .iter()
-                .any(|junction| matches!(junction, CompositeJunction::Checked));
+                .any(|junction| matches!(junction, CompositeJunction::Checked))
+                || stages.iter().any(|stage| !post_run(stage).is_empty());
             let produced = if checked {
                 result_type(last.clone())
             } else {
@@ -2796,86 +2940,180 @@ fn check_composite(
             let mut obligations = Vec::new();
             for (index, junction) in junctions.iter().enumerate() {
                 let (before, stage) = (&stages[index], &stages[index + 1]);
-                junction_check(name, stage, junction, index + 1)?;
-                if let (CompositeJunction::Proved { evidence }, Some(precondition)) =
-                    (junction, &stage.contract.precondition)
-                {
-                    let value = var(&input.name);
-                    let obligation = Obligation {
-                        role: format!("composite `{name}` junction {}", index + 1),
-                        theorem: evidence.clone(),
-                        type_parameters: type_parameters.to_vec(),
-                        parameters: vec![parameter(&input.name, &before.contract.input.r#type)],
-                        statement: premised(
-                            before
-                                .contract
-                                .precondition
-                                .as_ref()
-                                .map(|predicate| predicate.apply(vec![value.clone()])),
-                            precondition.apply(vec![before.apply(vec![value])]),
-                        ),
-                    };
-                    require_statement(env, evidence, &obligation, code!("LLT4007"))?;
-                    obligations.push(obligation);
+                let label = index + 1;
+                let key = member_key(&stage.member);
+                let invariant = stage.contract.state.is_some() && stage.contract.invariant.is_some();
+                let precondition = stage.contract.precondition.is_some();
+                match junction {
+                    CompositeJunction::Unconditional => {
+                        if precondition || invariant {
+                            return Err(composition(format!(
+                                "composite `{name}` junction {label}: stage `{key}` has a {}, so the junction must be {}",
+                                if precondition { "precondition" } else { "state invariant" },
+                                if invariant { "checked" } else { "proved or checked" }
+                            )));
+                        }
+                    }
+                    CompositeJunction::Proved { evidence } => {
+                        let Some(next) = &stage.contract.precondition else {
+                            return Err(composition(format!(
+                                "composite `{name}` junction {label}: stage `{key}` has no precondition, so the junction is unconditional"
+                            )));
+                        };
+                        if before.contract.state.is_some() || stage.contract.state.is_some() {
+                            return Err(composition(format!(
+                                "composite `{name}` junction {label}: a proved junction joins stateless stages; check the stateful stage `{key}` at run time"
+                            )));
+                        }
+                        let value = var(&input.name);
+                        let obligation = Obligation {
+                            role: format!("composite `{name}` junction {label}"),
+                            theorem: evidence.clone(),
+                            type_parameters: type_parameters.to_vec(),
+                            parameters: vec![parameter(&input.name, &before.contract.input.r#type)],
+                            statement: premised(
+                                before
+                                    .contract
+                                    .precondition
+                                    .as_ref()
+                                    .map(|predicate| predicate.apply(vec![value.clone()])),
+                                next.apply(vec![before.apply(vec![value])]),
+                            ),
+                        };
+                        require_statement(env, evidence, &obligation, code!("LLT4007"))?;
+                        obligations.push(obligation);
+                    }
+                    CompositeJunction::Checked => {
+                        if !precondition && !invariant {
+                            return Err(composition(format!(
+                                "composite `{name}` junction {label}: stage `{key}` has no precondition, so the junction is unconditional"
+                            )));
+                        }
+                        for (present, predicate, what) in [
+                            (precondition, ContractPredicate::Precondition, "precondition"),
+                            (invariant, ContractPredicate::Invariant, "invariant"),
+                        ] {
+                            if present && !stage.contract.validators.contains_key(&predicate) {
+                                return Err(composition(format!(
+                                    "composite `{name}` junction {label}: stage `{key}` has no {what} validator to check"
+                                )));
+                            }
+                        }
+                    }
                 }
             }
-            // let __stage1 := M1 x; ... checking each checked junction
-            // before the stage it guards.
+            // let __stage1 := M1 x; ... each stage's checks before it at a
+            // checked junction and its checks after it right after it; a
+            // refusal returns the violation (and, when stateful, the state
+            // the composite was given).
+            let refuse = |check: ModelCheck| {
+                let refused = refusal(&last, check);
+                match &s {
+                    Some(s) => pair(s.clone(), refused),
+                    None => refused,
+                }
+            };
             let stage_name = |index: usize| format!("__stage{}", index + 1);
+            let state_name = |index: usize| format!("__state{}", index + 1);
+            let step_name = |index: usize| format!("__step{}", index + 1);
+            let new_states: Vec<SemanticTerm> = stateful
+                .iter()
+                .map(|index| var(&state_name(*index)))
+                .collect();
             let mut body = var(&stage_name(stages.len() - 1));
             if checked {
-                body = ok_value(last, body);
+                body = ok_value(&last, body);
             }
-            for index in (1..stages.len()).rev() {
+            if let Some(states) = nested(&new_states, &|left, right| pair(left, right)) {
+                body = pair(states, body);
+            }
+            for index in (0..stages.len()).rev() {
                 let stage = &stages[index];
-                let argument = var(&stage_name(index - 1));
-                body = let_in(
-                    &stage_name(index),
-                    stage.contract.output.r#type.clone(),
-                    stage.apply(vec![argument.clone()]),
-                    body,
-                );
-                if matches!(junctions[index - 1], CompositeJunction::Checked) {
-                    let validator = &stage.contract.validators[&ContractPredicate::Precondition];
-                    body = if_then(
-                        validator.apply(vec![argument]),
-                        body,
-                        refusal(last, ModelCheck::Precondition),
-                    );
+                let argument = if index == 0 {
+                    x.clone()
+                } else {
+                    var(&stage_name(index - 1))
+                };
+                let out = var(&stage_name(index));
+                let out_type = stage.contract.output.r#type.clone();
+                match (slot(index), stage.contract.state_type()) {
+                    (Some((_, current)), Some(stage_state)) => {
+                        let after = var(&state_name(index));
+                        body = guard_after(
+                            stage,
+                            Some((current.clone(), after.clone())),
+                            &argument,
+                            &out,
+                            body,
+                            &refuse,
+                        );
+                        body = let_in(
+                            &step_name(index),
+                            product(stage_state.clone(), out_type.clone()),
+                            stage.apply(vec![current.clone(), argument.clone()]),
+                            let_in(
+                                &stage_name(index),
+                                out_type,
+                                second(var(&step_name(index))),
+                                let_in(
+                                    &state_name(index),
+                                    stage_state.clone(),
+                                    first(var(&step_name(index))),
+                                    body,
+                                ),
+                            ),
+                        );
+                        if index > 0 && matches!(junctions[index - 1], CompositeJunction::Checked) {
+                            body = guard_before(stage, Some(&current), &argument, body, &refuse);
+                        }
+                    }
+                    _ => {
+                        body = guard_after(stage, None, &argument, &out, body, &refuse);
+                        body = let_in(
+                            &stage_name(index),
+                            out_type,
+                            stage.apply(vec![argument.clone()]),
+                            body,
+                        );
+                        if index > 0 && matches!(junctions[index - 1], CompositeJunction::Checked) {
+                            body = guard_before(stage, None, &argument, body, &refuse);
+                        }
+                    }
                 }
             }
-            body = let_in(
-                &stage_name(0),
-                stages[0].contract.output.r#type.clone(),
-                stages[0].apply(vec![x.clone()]),
-                body,
-            );
+            // The first stage's checks before it are effective preconditions,
+            // established at the model's entry.
+            let first_stage = &stages[0];
+            let mut effective = Vec::new();
+            let current = slot(0).map(|(_, current)| current);
+            if let (Some(invariant), Some(current)) = (&first_stage.contract.invariant, &current) {
+                effective.push(invariant.apply(vec![current.clone()]));
+            }
+            if let Some(precondition) = &first_stage.contract.precondition {
+                effective.push(match &current {
+                    Some(current) => precondition.apply(vec![current.clone(), x.clone()]),
+                    None => precondition.apply(vec![x.clone()]),
+                });
+            }
             Ok(CompositeLowering {
                 body,
-                effective: stages[0]
-                    .contract
-                    .precondition
-                    .iter()
-                    .map(|predicate| predicate.apply(vec![x.clone()]))
-                    .collect(),
+                effective,
                 obligations,
             })
         }
         CompositeForm::Fanout { left, right } | CompositeForm::Product { left, right } => {
-            let left = composite_stage(name, left, scope, env, false)?;
-            let right = composite_stage(name, right, scope, env, false)?;
+            stateless_form()?;
+            let left = composite_stage(name, left, scope, env, Some(false))?;
+            let right = composite_stage(name, right, scope, env, Some(false))?;
             let fanout = matches!(form, CompositeForm::Fanout { .. });
             let (left_input, right_input) = if fanout {
-                expect(
-                    "the left stage input",
-                    &left.contract.input.r#type,
-                    &input.r#type,
-                )?;
-                expect(
-                    "the right stage input",
-                    &right.contract.input.r#type,
-                    &input.r#type,
-                )?;
+                for (label, stage) in [("left", &left), ("right", &right)] {
+                    expect(
+                        &format!("the {label} stage input"),
+                        &stage.contract.input.r#type,
+                        &input.r#type,
+                    )?;
+                }
                 (x.clone(), x.clone())
             } else {
                 expect(
@@ -2888,13 +3126,19 @@ fn check_composite(
                 )?;
                 (first(x.clone()), second(x.clone()))
             };
+            let both = product(
+                left.contract.output.r#type.clone(),
+                right.contract.output.r#type.clone(),
+            );
+            let checked = !post_run(&left).is_empty() || !post_run(&right).is_empty();
             expect(
                 "the output",
                 output,
-                &product(
-                    left.contract.output.r#type.clone(),
-                    right.contract.output.r#type.clone(),
-                ),
+                &if checked {
+                    result_type(both.clone())
+                } else {
+                    both.clone()
+                },
             )?;
             let mut effective = Vec::new();
             for (stage, argument) in [(&left, &left_input), (&right, &right_input)] {
@@ -2902,8 +3146,35 @@ fn check_composite(
                     effective.push(precondition.apply(vec![argument.clone()]));
                 }
             }
+            let body = if checked {
+                let refuse = |check: ModelCheck| refusal(&both, check);
+                let (l, r) = (var("__left"), var("__right"));
+                let inner = guard_after(
+                    &right,
+                    None,
+                    &right_input,
+                    &r,
+                    ok_value(&both, pair(l.clone(), r.clone())),
+                    &refuse,
+                );
+                let inner = let_in(
+                    "__right",
+                    right.contract.output.r#type.clone(),
+                    right.apply(vec![right_input.clone()]),
+                    inner,
+                );
+                let inner = guard_after(&left, None, &left_input, &l, inner, &refuse);
+                let_in(
+                    "__left",
+                    left.contract.output.r#type.clone(),
+                    left.apply(vec![left_input.clone()]),
+                    inner,
+                )
+            } else {
+                pair(left.apply(vec![left_input]), right.apply(vec![right_input]))
+            };
             Ok(CompositeLowering {
-                body: pair(left.apply(vec![left_input]), right.apply(vec![right_input])),
+                body,
                 effective,
                 obligations: Vec::new(),
             })
@@ -2913,8 +3184,11 @@ fn check_composite(
             then,
             r#else,
         } => {
-            let then = composite_stage(name, then, scope, env, false)?;
-            let otherwise = composite_stage(name, r#else, scope, env, false)?;
+            stateless_form()?;
+            let then = composite_stage(name, then, scope, env, Some(false))?;
+            let otherwise = composite_stage(name, r#else, scope, env, Some(false))?;
+            let raw = then.contract.output.r#type.clone();
+            let checked = !post_run(&then).is_empty() || !post_run(&otherwise).is_empty();
             for (label, stage) in [("then", &then), ("else", &otherwise)] {
                 expect(
                     &format!("the {label} stage input"),
@@ -2924,8 +3198,15 @@ fn check_composite(
                 expect(
                     &format!("the {label} stage output"),
                     &stage.contract.output.r#type,
-                    output,
+                    &if checked {
+                        raw.clone()
+                    } else {
+                        output.clone()
+                    },
                 )?;
+            }
+            if checked {
+                expect("the output", output, &result_type(raw.clone()))?;
             }
             let mut effective = Vec::new();
             for (value, stage) in [(true, &then), (false, &otherwise)] {
@@ -2936,18 +3217,30 @@ fn check_composite(
                     ));
                 }
             }
+            let arm = |stage: &ModelAt, binder: &str| {
+                if checked {
+                    let refuse = |check: ModelCheck| refusal(&raw, check);
+                    let out = var(binder);
+                    let_in(
+                        binder,
+                        raw.clone(),
+                        stage.apply(vec![x.clone()]),
+                        guard_after(stage, None, &x, &out, ok_value(&raw, out.clone()), &refuse),
+                    )
+                } else {
+                    stage.apply(vec![x.clone()])
+                }
+            };
             Ok(CompositeLowering {
-                body: if_then(
-                    guard.clone(),
-                    then.apply(vec![x.clone()]),
-                    otherwise.apply(vec![x.clone()]),
-                ),
+                body: if_then(guard.clone(), arm(&then, "__then"), arm(&otherwise, "__else")),
                 effective,
                 obligations: Vec::new(),
             })
         }
         CompositeForm::Scan { stage, junction } => {
-            let stage = composite_stage(name, stage, scope, env, true)?;
+            stateless_form()?;
+            let stage = composite_stage(name, stage, scope, env, Some(true))?;
+            let key = member_key(&stage.member);
             let state = stage
                 .contract
                 .state_type()
@@ -2957,6 +3250,13 @@ fn check_composite(
             let out = stage.contract.output.r#type.clone();
             expect("the input", &input.r#type, &list_type(item.clone()))?;
             let checked = matches!(junction, CompositeJunction::Checked);
+            let after = post_run(&stage);
+            if !after.is_empty() && !checked {
+                return Err(mismatch(format!(
+                    "the scanned stage `{key}` needs its {} checked at run time, so the junction must be checked",
+                    after.iter().map(|check| check_name_of(*check)).collect::<Vec<_>>().join(", ")
+                )));
+            }
             let produced = if checked {
                 result_type(list_type(out.clone()))
             } else {
@@ -2971,22 +3271,19 @@ fn check_composite(
                 CompositeJunction::Unconditional => {
                     if stage.contract.precondition.is_some() || !invariant_held {
                         return Err(mismatch(format!(
-                            "the scanned stage `{}` has a precondition or an invariant its evidence does not carry from the initial state, so the junction must be proved or checked",
-                            member_key(&stage.member)
+                            "the scanned stage `{key}` has a precondition or an invariant its evidence does not carry from the initial state, so the junction must be proved or checked"
                         )));
                     }
                 }
                 CompositeJunction::Proved { evidence } => {
                     let Some(precondition) = &stage.contract.precondition else {
                         return Err(mismatch(format!(
-                            "the scanned stage `{}` has no precondition, so the junction is unconditional",
-                            member_key(&stage.member)
+                            "the scanned stage `{key}` has no precondition, so the junction is unconditional"
                         )));
                     };
                     if !invariant_held {
                         return Err(mismatch(format!(
-                            "the scanned stage `{}` needs initial_invariant and preserves_invariant evidence for a proved junction",
-                            member_key(&stage.member)
+                            "the scanned stage `{key}` needs initial_invariant and preserves_invariant evidence for a proved junction"
                         )));
                     }
                     let contract_state = stage
@@ -3025,15 +3322,16 @@ fn check_composite(
                             && !stage.contract.validators.contains_key(&predicate)
                         {
                             return Err(mismatch(format!(
-                                "the scanned stage `{}` has no {label} validator to check",
-                                member_key(&stage.member)
+                                "the scanned stage `{key}` has no {label} validator to check"
                             )));
                         }
                     }
-                    if stage.contract.precondition.is_none() && stage.contract.invariant.is_none() {
+                    if stage.contract.precondition.is_none()
+                        && stage.contract.invariant.is_none()
+                        && after.is_empty()
+                    {
                         return Err(mismatch(format!(
-                            "the scanned stage `{}` has nothing to check, so the junction is unconditional",
-                            member_key(&stage.member)
+                            "the scanned stage `{key}` has nothing to check, so the junction is unconditional"
                         )));
                     }
                 }
@@ -3064,30 +3362,34 @@ fn check_composite(
             };
             let body = if checked {
                 let folded = result_type(accumulated.clone());
-                let mut guarded = ok_value(
-                    &accumulated,
-                    step(first(var("__state")), second(var("__state"))),
+                let refuse = |check: ModelCheck| refusal(&accumulated, check);
+                let current = first(var("__state"));
+                let ran = guard_after(
+                    &stage,
+                    Some((current.clone(), first(var("__step")))),
+                    &var("__item"),
+                    &second(var("__step")),
+                    ok_value(
+                        &accumulated,
+                        pair(
+                            first(var("__step")),
+                            append_one(second(var("__state")), &out, second(var("__step"))),
+                        ),
+                    ),
+                    &refuse,
                 );
-                if let Some(validator) = stage
-                    .contract
-                    .validators
-                    .get(&ContractPredicate::Precondition)
-                {
-                    guarded = if_then(
-                        validator.apply(vec![first(var("__state")), var("__item")]),
-                        guarded,
-                        refusal(&accumulated, ModelCheck::Precondition),
-                    );
-                }
-                if let Some(validator) =
-                    stage.contract.validators.get(&ContractPredicate::Invariant)
-                {
-                    guarded = if_then(
-                        validator.apply(vec![first(var("__state"))]),
-                        guarded,
-                        refusal(&accumulated, ModelCheck::InputInvariant),
-                    );
-                }
+                let guarded = guard_before(
+                    &stage,
+                    Some(&current),
+                    &var("__item"),
+                    let_in(
+                        "__step",
+                        step_type.clone(),
+                        stage.apply(vec![current.clone(), var("__item")]),
+                        ran,
+                    ),
+                    &refuse,
+                );
                 let_in(
                     "__scanned",
                     folded.clone(),
@@ -3146,7 +3448,6 @@ fn check_composite(
     }
 }
 
-#[allow(clippy::too_many_lines)]
 /// The type of a descriptor term is fixed by its slot: a rule action or a
 /// label is an output, a guard is a Boolean, an encoder or a feature map is an
 /// integer vector. A term of another type is therefore an interface mismatch
@@ -3554,13 +3855,16 @@ fn check_realization(
                 .push(definition(name.clone(), parameters, result, denotation));
         }
         RealizationDescriptor::Composite { form } => {
-            if state.is_some() {
-                return Err(composition(format!(
-                    "composite realization `{name}` is stateless; a scan threads its stage's state"
-                )));
-            }
-            let composite =
-                check_composite(name, type_parameters, &scope, input, output, form, env)?;
+            let composite = check_composite(
+                name,
+                type_parameters,
+                &scope,
+                input,
+                output,
+                state.as_ref(),
+                form,
+                env,
+            )?;
             effective = composite.effective;
             lowering.obligations.extend(composite.obligations);
             lowering.declarations.push(definition(
@@ -3583,6 +3887,7 @@ fn check_realization(
             input: input.clone(),
             output: output.clone(),
             state: state.as_ref().map(|state| state.r#type.clone()),
+            state_binder: state.as_ref().map(|state| state.name.clone()),
             effective,
         },
     );
@@ -4110,18 +4415,45 @@ fn check_model(
     }
     let mut lowering = Lowering::default();
     let x = &realization_at.input.name;
+    // A stateful realization's effective preconditions mention its state:
+    // the entry theorem may assume the contract's invariant of it too.
+    let stateful = realization_at
+        .state
+        .as_ref()
+        .zip(realization_at.state_binder.as_ref());
     for (index, (theorem, effective)) in entry.iter().zip(&realization_at.effective).enumerate() {
+        let (parameters, premise_arguments, invariant) = match stateful {
+            Some((state_type, binder)) => (
+                vec![
+                    parameter(binder, state_type),
+                    parameter(x, &realization_at.input.r#type),
+                ],
+                vec![var(binder), var(x)],
+                contract_at
+                    .invariant
+                    .as_ref()
+                    .map(|predicate| predicate.apply(vec![var(binder)])),
+            ),
+            None => (
+                vec![parameter(x, &realization_at.input.r#type)],
+                vec![var(x)],
+                None,
+            ),
+        };
         let obligation = Obligation {
             role: format!("model `{name}` entry {}", index + 1),
             theorem: theorem.clone(),
             type_parameters: type_parameters.clone(),
-            parameters: vec![parameter(x, &realization_at.input.r#type)],
+            parameters,
             statement: premised(
-                contract_at
-                    .precondition
-                    .as_ref()
-                    .map(|predicate| predicate.apply(vec![var(x)])),
-                effective.clone(),
+                invariant,
+                premised(
+                    contract_at
+                        .precondition
+                        .as_ref()
+                        .map(|predicate| predicate.apply(premise_arguments)),
+                    effective.clone(),
+                ),
             ),
         };
         require_statement(env, theorem, &obligation, code!("LLT4007"))?;

@@ -2989,16 +2989,28 @@ fn latex_model(
             ..
         } = derived
         {
-            latex_line(
-                text,
-                "Elaborates to",
-                &format!(
+            // §17.12 rule 13: an artifact's bytes and decoded value are never
+            // document text; the document states what they are (role, schema,
+            // length, digest) and the generated Lean carries them.
+            let shown = if matches!(declaration, SemanticDeclaration::Artifact { .. }) {
+                format!(
+                    "{name} : {}, {}",
+                    render.ty(result),
+                    if name.ends_with(".bytes") {
+                        "the configured bytes"
+                    } else {
+                        "their decoding under the schema"
+                    }
+                )
+            } else {
+                format!(
                     "{name}{} : {} := {}",
                     render.parameters(parameters),
                     render.ty(result),
                     render.term(body)
-                ),
-            );
+                )
+            };
+            latex_line(text, "Elaborates to", &shown);
         }
     }
     for check in module.elaboration.checks(index) {
