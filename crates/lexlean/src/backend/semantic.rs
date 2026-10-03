@@ -2064,8 +2064,7 @@ pub fn render_lean(
     // the ordinary term it means. Lean is generated from exactly those.
     let lowered: Vec<&SemanticDeclaration> = module.lowered_declarations();
     let elaborated = serde_json::to_string(&lowered).expect("semantic declarations serialize")
-        + &serde_json::to_string(&module.elaboration.all_checks())
-            .expect("cross-checks serialize");
+        + &serde_json::to_string(&module.elaboration.all_checks()).expect("cross-checks serialize");
     if elaborated.contains("\"kind\":\"checked_apply\"") {
         return Err(Diagnostic::new(
             code!("LLI9001"),
@@ -2159,133 +2158,133 @@ pub fn render_lean(
             &base_render
         };
         for declaration in declarations {
-        match declaration {
-            SemanticDeclaration::Structure {
-                name,
-                type_parameters,
-                parameters,
-                fields,
-            } => {
-                let name = identifier(name);
-                text.push_str(&format!(
-                    "public structure {name}{}{} where\n",
-                    render.type_parameters(type_parameters),
-                    render.parameters(parameters)
-                ));
-                for field in fields {
+            match declaration {
+                SemanticDeclaration::Structure {
+                    name,
+                    type_parameters,
+                    parameters,
+                    fields,
+                } => {
+                    let name = identifier(name);
                     text.push_str(&format!(
-                        "  {} : {}\n",
-                        identifier(&field.name),
-                        render.ty(&field.r#type)
+                        "public structure {name}{}{} where\n",
+                        render.type_parameters(type_parameters),
+                        render.parameters(parameters)
                     ));
+                    for field in fields {
+                        text.push_str(&format!(
+                            "  {} : {}\n",
+                            identifier(&field.name),
+                            render.ty(&field.r#type)
+                        ));
+                    }
                 }
-            }
-            SemanticDeclaration::Class {
-                name,
-                type_parameters,
-                parameters,
-                fields,
-            } => {
-                let name = identifier(name);
-                text.push_str(&format!(
-                    "public class {name}{}{} where\n",
-                    render.type_parameters(type_parameters),
-                    render.parameters(parameters)
-                ));
-                for field in fields {
+                SemanticDeclaration::Class {
+                    name,
+                    type_parameters,
+                    parameters,
+                    fields,
+                } => {
+                    let name = identifier(name);
                     text.push_str(&format!(
-                        "  {} : {}\n",
-                        identifier(&field.name),
-                        render.ty(&field.r#type)
+                        "public class {name}{}{} where\n",
+                        render.type_parameters(type_parameters),
+                        render.parameters(parameters)
                     ));
+                    for field in fields {
+                        text.push_str(&format!(
+                            "  {} : {}\n",
+                            identifier(&field.name),
+                            render.ty(&field.r#type)
+                        ));
+                    }
                 }
-            }
-            SemanticDeclaration::Instance {
-                name,
-                class,
-                arguments,
-                priority,
-                fields,
-            } => {
-                let name = identifier(name);
-                let arguments = arguments
-                    .iter()
-                    .map(|argument| format!(" ({})", render.ty(argument)))
-                    .collect::<String>();
-                text.push_str(&format!(
-                    "public instance (priority := {priority}) {name} : {}{arguments} where\n",
-                    render.member(class)
-                ));
-                for field in fields {
-                    text.push_str(&format!(
-                        "  {} := {}\n",
-                        identifier(&field.field),
-                        render.term(&field.value)
-                    ));
-                }
-            }
-            SemanticDeclaration::Inductive {
-                name,
-                type_parameters,
-                parameters,
-                constructors,
-                ..
-            } => {
-                let name = identifier(name);
-                text.push_str(&format!(
-                    "public inductive {name}{}{} where\n",
-                    render.type_parameters(type_parameters),
-                    render.parameters(parameters)
-                ));
-                for constructor in constructors {
-                    let fields = constructor
-                        .fields
+                SemanticDeclaration::Instance {
+                    name,
+                    class,
+                    arguments,
+                    priority,
+                    fields,
+                } => {
+                    let name = identifier(name);
+                    let arguments = arguments
                         .iter()
-                        .map(|field| format!(" (_ : {})", render.ty(field)))
+                        .map(|argument| format!(" ({})", render.ty(argument)))
                         .collect::<String>();
-                    text.push_str(&format!("  | {}{fields}\n", identifier(&constructor.name)));
+                    text.push_str(&format!(
+                        "public instance (priority := {priority}) {name} : {}{arguments} where\n",
+                        render.member(class)
+                    ));
+                    for field in fields {
+                        text.push_str(&format!(
+                            "  {} := {}\n",
+                            identifier(&field.field),
+                            render.term(&field.value)
+                        ));
+                    }
                 }
-                if group_of(index).is_some() && group_of(index + 1) != group_of(index) {
-                    text.push_str("end\n");
-                }
-            }
-            SemanticDeclaration::Definition {
-                name,
-                type_parameters,
-                parameters,
-                result,
-                body,
-                recursive_argument,
-                mutual,
-                termination,
-                ..
-            } => {
-                let type_binders = render.scoped_type_parameters(type_parameters, declaration);
-                if termination.is_some() {
-                    // The recursion is the definition alone, or every member
-                    // of its mutual group.
-                    let group: BTreeSet<String> = match mutual {
-                        Some(label) => module
-                            .declarations
+                SemanticDeclaration::Inductive {
+                    name,
+                    type_parameters,
+                    parameters,
+                    constructors,
+                    ..
+                } => {
+                    let name = identifier(name);
+                    text.push_str(&format!(
+                        "public inductive {name}{}{} where\n",
+                        render.type_parameters(type_parameters),
+                        render.parameters(parameters)
+                    ));
+                    for constructor in constructors {
+                        let fields = constructor
+                            .fields
                             .iter()
-                            .filter(|other| {
-                                matches!(other, SemanticDeclaration::Definition {
+                            .map(|field| format!(" (_ : {})", render.ty(field)))
+                            .collect::<String>();
+                        text.push_str(&format!("  | {}{fields}\n", identifier(&constructor.name)));
+                    }
+                    if group_of(index).is_some() && group_of(index + 1) != group_of(index) {
+                        text.push_str("end\n");
+                    }
+                }
+                SemanticDeclaration::Definition {
+                    name,
+                    type_parameters,
+                    parameters,
+                    result,
+                    body,
+                    recursive_argument,
+                    mutual,
+                    termination,
+                    ..
+                } => {
+                    let type_binders = render.scoped_type_parameters(type_parameters, declaration);
+                    if termination.is_some() {
+                        // The recursion is the definition alone, or every member
+                        // of its mutual group.
+                        let group: BTreeSet<String> = match mutual {
+                            Some(label) => module
+                                .declarations
+                                .iter()
+                                .filter(|other| {
+                                    matches!(other, SemanticDeclaration::Definition {
                                     mutual: Some(other_label),
                                     ..
                                 } if other_label == label)
-                            })
-                            .map(|other| other.name().to_owned())
-                            .collect(),
-                        None => BTreeSet::from([name.clone()]),
-                    };
-                    // Every type parameter is passed to the evidence in
-                    // `decreasing_by`, so each is used and keeps its name.
-                    text.push_str(&well_founded_definition(render, &group, declaration)?);
-                    if mutual.is_some() && group_of(index + 1) != group_of(index) {
-                        text.push_str("end\n");
-                    }
-                } else if let Some(recursive_argument) = recursive_argument {
-                    let equations = render
+                                })
+                                .map(|other| other.name().to_owned())
+                                .collect(),
+                            None => BTreeSet::from([name.clone()]),
+                        };
+                        // Every type parameter is passed to the evidence in
+                        // `decreasing_by`, so each is used and keeps its name.
+                        text.push_str(&well_founded_definition(render, &group, declaration)?);
+                        if mutual.is_some() && group_of(index + 1) != group_of(index) {
+                            text.push_str("end\n");
+                        }
+                    } else if let Some(recursive_argument) = recursive_argument {
+                        let equations = render
                         .recursive_equations(
                             name,
                             &type_binders,
@@ -2300,90 +2299,90 @@ pub fn render_lean(
                                 "phase lean-backend: recursive definition is not a top-level structural match",
                             )
                         })?;
-                    text.push_str(&equations);
-                    if mutual.is_some() {
-                        // §17.12: a mutual group is structurally recursive by
-                        // construction; Lean must confirm exactly that.
-                        // Only the decreasing parameter is used after `=>`;
-                        // naming the others would trip Lean's unused-variable
-                        // linter, which fails verification.
-                        let binders = parameters
-                            .iter()
-                            .map(|parameter| {
-                                if &parameter.name == recursive_argument {
-                                    identifier(&parameter.name)
-                                } else {
-                                    "_".to_owned()
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                            .join(" ");
-                        text.push_str(&format!(
-                            "termination_by structural {binders} => {}\n",
-                            identifier(recursive_argument)
-                        ));
-                        if group_of(index + 1) != group_of(index) {
-                            text.push_str("end\n");
+                        text.push_str(&equations);
+                        if mutual.is_some() {
+                            // §17.12: a mutual group is structurally recursive by
+                            // construction; Lean must confirm exactly that.
+                            // Only the decreasing parameter is used after `=>`;
+                            // naming the others would trip Lean's unused-variable
+                            // linter, which fails verification.
+                            let binders = parameters
+                                .iter()
+                                .map(|parameter| {
+                                    if &parameter.name == recursive_argument {
+                                        identifier(&parameter.name)
+                                    } else {
+                                        "_".to_owned()
+                                    }
+                                })
+                                .collect::<Vec<_>>()
+                                .join(" ");
+                            text.push_str(&format!(
+                                "termination_by structural {binders} => {}\n",
+                                identifier(recursive_argument)
+                            ));
+                            if group_of(index + 1) != group_of(index) {
+                                text.push_str("end\n");
+                            }
                         }
-                    }
-                } else {
-                    let name = identifier(name);
-                    // §17.12: a language-1.2 proposition-valued definition
-                    // is reducible, so a proposition it names is decidable
-                    // exactly when its body is, as a contract predicate
-                    // over a finite domain must be.
-                    let attributes = if module.spec == "lexlean/semantic-module/2"
-                        && *result == SemanticType::Prop
-                    {
-                        "@[expose, reducible]"
                     } else {
-                        "@[expose]"
-                    };
+                        let name = identifier(name);
+                        // §17.12: a language-1.2 proposition-valued definition
+                        // is reducible, so a proposition it names is decidable
+                        // exactly when its body is, as a contract predicate
+                        // over a finite domain must be.
+                        let attributes = if module.spec == "lexlean/semantic-module/2"
+                            && *result == SemanticType::Prop
+                        {
+                            "@[expose, reducible]"
+                        } else {
+                            "@[expose]"
+                        };
+                        text.push_str(&format!(
+                            "{attributes} public def {name}{type_binders}{} : {} := {}\n",
+                            render.scoped_parameters(parameters, |local| term_uses(body, local)),
+                            render.ty(result),
+                            render.term(body)
+                        ));
+                    }
+                }
+                SemanticDeclaration::Theorem {
+                    name,
+                    type_parameters,
+                    parameters,
+                    statement,
+                    proof,
+                    ..
+                } => {
+                    let name = identifier(name);
+                    // A parameter neither the statement nor the proof mentions
+                    // (as a termination-evidence theorem's may be) is bound as
+                    // `_name`, so Lean's unused-variable linter stays quiet;
+                    // every other binder keeps its exact name.
+                    let binders = render.scoped_parameters(parameters, |local| {
+                        term_uses(statement, local) || proof_uses(proof, local)
+                    });
                     text.push_str(&format!(
-                        "{attributes} public def {name}{type_binders}{} : {} := {}\n",
-                        render.scoped_parameters(parameters, |local| term_uses(body, local)),
-                        render.ty(result),
-                        render.term(body)
+                        "public theorem {name}{}{binders} : {} := by\n{}",
+                        render.scoped_type_parameters(type_parameters, declaration),
+                        render.term(statement),
+                        render.proof(proof, 1)
+                    ));
+                }
+                SemanticDeclaration::Artifact { .. }
+                | SemanticDeclaration::Contract { .. }
+                | SemanticDeclaration::Realization { .. }
+                | SemanticDeclaration::Evidence { .. }
+                | SemanticDeclaration::Model { .. } => {
+                    return Err(Diagnostic::new(
+                        code!("LLI9001"),
+                        format!(
+                            "phase lean-backend: model declaration `{}` was not elaborated",
+                            declaration.name()
+                        ),
                     ));
                 }
             }
-            SemanticDeclaration::Theorem {
-                name,
-                type_parameters,
-                parameters,
-                statement,
-                proof,
-                ..
-            } => {
-                let name = identifier(name);
-                // A parameter neither the statement nor the proof mentions
-                // (as a termination-evidence theorem's may be) is bound as
-                // `_name`, so Lean's unused-variable linter stays quiet;
-                // every other binder keeps its exact name.
-                let binders = render.scoped_parameters(parameters, |local| {
-                    term_uses(statement, local) || proof_uses(proof, local)
-                });
-                text.push_str(&format!(
-                    "public theorem {name}{}{binders} : {} := by\n{}",
-                    render.scoped_type_parameters(type_parameters, declaration),
-                    render.term(statement),
-                    render.proof(proof, 1)
-                ));
-            }
-            SemanticDeclaration::Artifact { .. }
-            | SemanticDeclaration::Contract { .. }
-            | SemanticDeclaration::Realization { .. }
-            | SemanticDeclaration::Evidence { .. }
-            | SemanticDeclaration::Model { .. } => {
-                return Err(Diagnostic::new(
-                    code!("LLI9001"),
-                    format!(
-                        "phase lean-backend: model declaration `{}` was not elaborated",
-                        declaration.name()
-                    ),
-                ));
-            }
-        }
         }
         for check in module.elaboration.checks(index) {
             text.push_str(&render.cross_check(check, &document.lean_module));
@@ -2540,7 +2539,11 @@ fn latex_model(
                 },
             );
             latex_line(text, "Value type", &render.ty(r#type));
-            latex_line(text, "Content", &format!("{length} bytes, SHA-256 {sha256}"));
+            latex_line(
+                text,
+                "Content",
+                &format!("{length} bytes, SHA-256 {sha256}"),
+            );
             latex_line(text, "Axiom policy", &latex_policy(axioms));
         }
         SemanticDeclaration::Contract {
@@ -2556,7 +2559,11 @@ fn latex_model(
             ..
         } => {
             if !type_parameters.is_empty() {
-                latex_line(text, "Type parameters", &format!("({})", names(type_parameters)));
+                latex_line(
+                    text,
+                    "Type parameters",
+                    &format!("({})", names(type_parameters)),
+                );
             }
             let mut interface = format!(
                 "input {} : {}, output {} : {}",
@@ -2611,7 +2618,11 @@ fn latex_model(
             ..
         } => {
             if !type_parameters.is_empty() {
-                latex_line(text, "Type parameters", &format!("({})", names(type_parameters)));
+                latex_line(
+                    text,
+                    "Type parameters",
+                    &format!("({})", names(type_parameters)),
+                );
             }
             let mut interface = format!(
                 "input {} : {}, output {}",
@@ -2672,12 +2683,20 @@ fn latex_model(
                     latex_line(
                         text,
                         "Parameters",
-                        &format!("weights {}, bias {}", render.member(weights), render.member(bias)),
+                        &format!(
+                            "weights {}, bias {}",
+                            render.member(weights),
+                            render.member(bias)
+                        ),
                     );
                     latex_line(
                         text,
                         "Labels",
-                        &labels.iter().map(|label| render.term(label)).collect::<Vec<_>>().join(", "),
+                        &labels
+                            .iter()
+                            .map(|label| render.term(label))
+                            .collect::<Vec<_>>()
+                            .join(", "),
                     );
                 }
                 RealizationDescriptor::Neural {
@@ -2734,7 +2753,11 @@ fn latex_model(
                         &match decoder {
                             NeuralDecoder::Argmax { labels } => format!(
                                 "first maximal of {}",
-                                labels.iter().map(|label| render.term(label)).collect::<Vec<_>>().join(", ")
+                                labels
+                                    .iter()
+                                    .map(|label| render.term(label))
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
                             ),
                             NeuralDecoder::Function { binder, body } => {
                                 format!("{binder} => {}", render.term(body))
@@ -2746,14 +2769,30 @@ fn latex_model(
                     let line = match form {
                         CompositeForm::Sequence { stages, junctions } => format!(
                             "sequence {}; junctions {}",
-                            stages.iter().map(|stage| latex_use(render, stage)).collect::<Vec<_>>().join(", "),
-                            junctions.iter().map(junction).collect::<Vec<_>>().join(", ")
+                            stages
+                                .iter()
+                                .map(|stage| latex_use(render, stage))
+                                .collect::<Vec<_>>()
+                                .join(", "),
+                            junctions
+                                .iter()
+                                .map(junction)
+                                .collect::<Vec<_>>()
+                                .join(", ")
                         ),
                         CompositeForm::Fanout { left, right } => {
-                            format!("fan-out of {} and {}", latex_use(render, left), latex_use(render, right))
+                            format!(
+                                "fan-out of {} and {}",
+                                latex_use(render, left),
+                                latex_use(render, right)
+                            )
                         }
                         CompositeForm::Product { left, right } => {
-                            format!("product of {} and {}", latex_use(render, left), latex_use(render, right))
+                            format!(
+                                "product of {} and {}",
+                                latex_use(render, left),
+                                latex_use(render, right)
+                            )
                         }
                         CompositeForm::Branch {
                             guard,
@@ -2765,15 +2804,24 @@ fn latex_model(
                             latex_use(render, then),
                             latex_use(render, r#else)
                         ),
-                        CompositeForm::Scan { stage, junction: scan } => {
-                            format!("scan of {}; junction {}", latex_use(render, stage), junction(scan))
+                        CompositeForm::Scan {
+                            stage,
+                            junction: scan,
+                        } => {
+                            format!(
+                                "scan of {}; junction {}",
+                                latex_use(render, stage),
+                                junction(scan)
+                            )
                         }
                     };
                     latex_line(text, "Composite", &line);
                 }
             }
             if *executable {
-                text.push_str("\\noindent Execution: executable, non-escaping closures only.\\par\n");
+                text.push_str(
+                    "\\noindent Execution: executable, non-escaping closures only.\\par\n",
+                );
             }
             latex_line(text, "Axiom policy", &latex_policy(axioms));
         }
@@ -2786,7 +2834,11 @@ fn latex_model(
             ..
         } => {
             if !type_parameters.is_empty() {
-                latex_line(text, "Type parameters", &format!("({})", names(type_parameters)));
+                latex_line(
+                    text,
+                    "Type parameters",
+                    &format!("({})", names(type_parameters)),
+                );
             }
             latex_line(
                 text,
@@ -2845,7 +2897,11 @@ fn latex_model(
             ..
         } => {
             if !type_parameters.is_empty() {
-                latex_line(text, "Type parameters", &format!("({})", names(type_parameters)));
+                latex_line(
+                    text,
+                    "Type parameters",
+                    &format!("({})", names(type_parameters)),
+                );
             }
             latex_line(
                 text,
@@ -2862,14 +2918,22 @@ fn latex_model(
                 &if evidence.is_empty() {
                     "none".to_owned()
                 } else {
-                    evidence.iter().map(|item| latex_use(render, item)).collect::<Vec<_>>().join(", ")
+                    evidence
+                        .iter()
+                        .map(|item| latex_use(render, item))
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 },
             );
             if !entry.is_empty() {
                 latex_line(
                     text,
                     "Entry",
-                    &entry.iter().map(|theorem| render.member(theorem)).collect::<Vec<_>>().join(", "),
+                    &entry
+                        .iter()
+                        .map(|theorem| render.member(theorem))
+                        .collect::<Vec<_>>()
+                        .join(", "),
                 );
             }
             let required = module.elaboration.required(index);
@@ -2929,7 +2993,11 @@ fn latex_model(
         }
     }
     for check in module.elaboration.checks(index) {
-        latex_line(text, "Restated in Lean against the fixed model semantics as", &check.name);
+        latex_line(
+            text,
+            "Restated in Lean against the fixed model semantics as",
+            &check.name,
+        );
     }
 }
 

@@ -58,6 +58,8 @@ pub const TABLE: &[(&str, &[&str])] = &[
     ("type.function", &["type:fn"]),
     ("type.map", &["type:list", "type:pair"]),
     ("type.set", &["type:list"]),
+    // A refusal is the pair of Booleans (after run, invariant) (§17.12).
+    ("type.contract_violation", &["type:pair", "type:bool"]),
     ("term.var", &["expr:var"]),
     ("term.nat", &["expr:value", "value:nat"]),
     (
@@ -93,6 +95,9 @@ pub const TABLE: &[(&str, &[&str])] = &[
             "shape:ok",
             "shape:error",
             "shape:zero",
+            "shape:pair",
+            "shape:true",
+            "shape:false",
         ],
     ),
     ("term.instance_value", &["expr:call", "function"]),
@@ -128,6 +133,19 @@ pub const TABLE: &[(&str, &[&str])] = &[
     (
         "term.graph_literal",
         &["expr:build", "shape:cons", "shape:nil", "shape:pair"],
+    ),
+    // A checked application is realized as what it elaborates to: lets,
+    // validator calls, conditionals, and the result constructors (§17.12).
+    (
+        "term.checked_apply",
+        &[
+            "expr:let",
+            "expr:call",
+            "expr:cond",
+            "expr:build",
+            "shape:ok",
+            "shape:error",
+        ],
     ),
     ("constructor.nat_succ", &["expr:build", "shape:succ"]),
     ("primitive.subtract", &["prim:nat_sub", "prim:int_sub"]),
@@ -178,6 +196,19 @@ pub const TABLE: &[(&str, &[&str])] = &[
     ("primitive.set_difference", &["template:set_difference"]),
     ("primitive.set_fold", &["template:set_fold"]),
     ("primitive.list_fold", &["template:list_fold"]),
+    (
+        "primitive.less_than",
+        &[
+            "prim:compare",
+            "expr:match",
+            "shape:lt",
+            "shape:eq",
+            "shape:gt",
+            "expr:build",
+            "shape:true",
+            "shape:false",
+        ],
+    ),
     ("primitive.iterate", &["template:iterate"]),
     ("primitive.iterate_until", &["template:iterate_until"]),
     ("primitive.graph_successors", &["template:graph_successors"]),
@@ -199,6 +230,12 @@ pub const TABLE: &[(&str, &[&str])] = &[
         "declaration.definition.recursive",
         &["function", "expr:call"],
     ),
+    // A model construct is realized through the ordinary definitions it
+    // elaborates to: an artifact as a constant function, a realization as
+    // its denotation and companions, a model as a call of its realization.
+    ("declaration.artifact", &["function"]),
+    ("declaration.realization", &["function"]),
+    ("declaration.model", &["function", "expr:call"]),
 ];
 
 /// The serialized `kind` tag of a closed calculus value.

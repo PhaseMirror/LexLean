@@ -2987,7 +2987,11 @@ impl SemanticModule {
 
     /// Exact recursive semantic-node count charged to `max_ir_nodes`.
     pub(crate) fn node_count(&self) -> u64 {
-        let base: u64 = self.declarations.iter().map(declaration_node_count).sum::<u64>()
+        let base: u64 = self
+            .declarations
+            .iter()
+            .map(declaration_node_count)
+            .sum::<u64>()
             + self.elaboration.node_count();
         if semantic_module_spec(crate::LANGUAGE_1_2) == Some(self.spec.as_str()) {
             base + self
@@ -6712,8 +6716,9 @@ fn infer_primitive(
             }
         }
         P::LessThan => {
-            check_ordered_key(&first)
-                .map_err(|_| format!("primitive LessThan requires an ordered key type, not {first}"))?;
+            check_ordered_key(&first).map_err(|_| {
+                format!("primitive LessThan requires an ordered key type, not {first}")
+            })?;
             require_observed(arguments, &[first.clone(), first.clone()], operation)?;
             exact_result(SemanticType::Bool)
         }
@@ -7728,8 +7733,13 @@ impl SemanticModule {
             )
             .into());
         }
-        let elaboration =
-            module.validate(language, module_prefix, imports, imported_modules, artifacts)?;
+        let elaboration = module.validate(
+            language,
+            module_prefix,
+            imports,
+            imported_modules,
+            artifacts,
+        )?;
         let mut module = module;
         module.elaboration = elaboration;
         if language == crate::LANGUAGE_1_2 {
@@ -7804,11 +7814,14 @@ impl SemanticModule {
             if let Some(construct) = self.first_language_1_2_construct() {
                 return Err(format!(
                     "`{construct}` is a language-1.2 construct; language 1.1 rejects it"
-                ).into());
+                )
+                .into());
             }
         }
         if self.declarations.is_empty() {
-            return Err("a semantic module contains at least one declaration".to_owned().into());
+            return Err("a semantic module contains at least one declaration"
+                .to_owned()
+                .into());
         }
         if language == crate::LANGUAGE_1_2 {
             check_binder_hygiene(self, module_prefix)?;
@@ -7991,7 +8004,8 @@ impl SemanticModule {
                         if env.instances.insert(key.clone(), instance).is_some() {
                             return Err(format!(
                                 "ambiguous imported instances for requirement `{key}`"
-                            ).into());
+                            )
+                            .into());
                         }
                     }
                     SemanticDeclaration::Theorem {
@@ -8014,10 +8028,7 @@ impl SemanticModule {
                     | SemanticDeclaration::Realization { .. }
                     | SemanticDeclaration::Evidence { .. }
                     | SemanticDeclaration::Model { .. } => {
-                        return Err(format!(
-                            "internal: imported `{key}` was not elaborated"
-                        )
-                        .into());
+                        return Err(format!("internal: imported `{key}` was not elaborated").into());
                     }
                 }
             }
@@ -8083,7 +8094,8 @@ impl SemanticModule {
         if let Some(label) = inductive_labels.intersection(&definition_labels).next() {
             return Err(format!(
                 "mutual label `{label}` names both an inductive group and a definition group"
-            ).into());
+            )
+            .into());
         }
         let mut generated_names = BTreeSet::new();
         let mut registered_groups = BTreeSet::new();
@@ -8124,7 +8136,8 @@ impl SemanticModule {
                     if !parameters.is_empty() {
                         return Err(format!(
                             "`{name}` value parameters are not part of a finite data declaration"
-                        ).into());
+                        )
+                        .into());
                     }
                     let type_parameter_names = type_parameters.clone();
                     check_type_parameter_spelling(
@@ -8262,7 +8275,8 @@ impl SemanticModule {
                             {
                                 return Err(format!(
                                     "recursive inductive payload in `{full}` is not permitted"
-                                ).into());
+                                )
+                                .into());
                             }
                         }
                         rows.insert(full.clone(), constructor.fields.len());
@@ -8295,11 +8309,15 @@ impl SemanticModule {
                         ..
                     } = &lowered
                     else {
-                        return Err(format!("internal: instance `{name}` lowered to another kind").into());
+                        return Err(
+                            format!("internal: instance `{name}` lowered to another kind").into(),
+                        );
                     };
                     check_member(class, &env)?;
                     if *priority != 1000 {
-                        return Err(format!("instance `{name}` priority must be exactly 1000").into());
+                        return Err(
+                            format!("instance `{name}` priority must be exactly 1000").into()
+                        );
                     }
                     for argument in arguments {
                         check_type(argument, &env)?;
@@ -8315,7 +8333,9 @@ impl SemanticModule {
                     }
                     let key = format!("{}:{arguments:?}", member_key(class));
                     if env.instances.contains_key(&key) {
-                        return Err(format!("ambiguous duplicate instance for `{}`", class.name).into());
+                        return Err(
+                            format!("ambiguous duplicate instance for `{}`", class.name).into()
+                        );
                     }
                     check_assignments(
                         fields,
@@ -8366,12 +8386,18 @@ impl SemanticModule {
                         .map(|row| model::lower_ordinary(row, &env))
                         .collect::<Result<Vec<_>, _>>()?;
                     env.derived = true;
-                    let checked =
-                        check_definition_group(&lowered.iter().collect::<Vec<_>>(), label, &mut env);
+                    let checked = check_definition_group(
+                        &lowered.iter().collect::<Vec<_>>(),
+                        label,
+                        &mut env,
+                    );
                     env.derived = false;
                     checked?;
                     for (position, row) in self.declarations.iter().enumerate() {
-                        if let Some(at) = rows.iter().position(|candidate| std::ptr::eq(*candidate, row)) {
+                        if let Some(at) = rows
+                            .iter()
+                            .position(|candidate| std::ptr::eq(*candidate, row))
+                        {
                             elaboration.lower(position, vec![lowered[at].clone()]);
                         }
                     }
@@ -8397,8 +8423,12 @@ impl SemanticModule {
                 | SemanticDeclaration::Realization { .. }
                 | SemanticDeclaration::Evidence { .. }
                 | SemanticDeclaration::Model { .. } => {
-                    let lowering =
-                        model::check_declaration(declaration, &mut env, artifacts, &mut generated_names)?;
+                    let lowering = model::check_declaration(
+                        declaration,
+                        &mut env,
+                        artifacts,
+                        &mut generated_names,
+                    )?;
                     elaboration.record(index, lowering);
                 }
             }
@@ -8409,7 +8439,10 @@ impl SemanticModule {
 
 /// Check one theorem: signature, statement, and proof; then register it as a
 /// prior theorem of the module.
-fn check_theorem(declaration: &SemanticDeclaration, env: &mut Environment<'_>) -> Result<(), String> {
+fn check_theorem(
+    declaration: &SemanticDeclaration,
+    env: &mut Environment<'_>,
+) -> Result<(), String> {
     let SemanticDeclaration::Theorem {
         name,
         type_parameters,

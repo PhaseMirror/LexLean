@@ -12,8 +12,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::Serialize;
 
 use super::{
-    check_declaration_name, check_definition, check_member, check_name, check_theorem,
-    check_type, check_type_argument, check_type_parameter_spelling, check_type_parameters,
+    check_declaration_name, check_definition, check_member, check_name, check_theorem, check_type,
+    check_type_argument, check_type_parameter_spelling, check_type_parameters,
     declaration_node_count, free_locals, function_info, legal_name, member_key, qualify_type,
     substitute_type, term_node_count, type_node_count, type_parameter_set, visit_terms,
     visit_terms_mut, AlphaRenamer, ArtifactRole, ArtifactSchema, CompositeForm, CompositeJunction,
@@ -181,7 +181,8 @@ fn types_of(declaration: &SemanticDeclaration) -> Vec<&SemanticType> {
                             use_types(stage, &mut out);
                         }
                     }
-                    CompositeForm::Fanout { left, right } | CompositeForm::Product { left, right } => {
+                    CompositeForm::Fanout { left, right }
+                    | CompositeForm::Product { left, right } => {
                         use_types(left, &mut out);
                         use_types(right, &mut out);
                     }
@@ -371,7 +372,6 @@ pub(super) fn source_node_count(declaration: &SemanticDeclaration) -> u64 {
     };
     types.saturating_add(terms).saturating_add(shape)
 }
-
 
 /// The bytes of every artifact the project locks, by lowercase hexadecimal
 /// SHA-256 (§10.1). Linking reads an artifact only through its digest.
@@ -589,8 +589,14 @@ impl Elaboration {
                         .sum::<u64>()
             })
             .sum();
-        let checks = self.checks.iter().map(|checks| checks.len() as u64).sum::<u64>();
-        declarations.saturating_add(obligations).saturating_add(checks)
+        let checks = self
+            .checks
+            .iter()
+            .map(|checks| checks.len() as u64)
+            .sum::<u64>();
+        declarations
+            .saturating_add(obligations)
+            .saturating_add(checks)
     }
 
     /// Every cross-check, in declaration order.
@@ -913,8 +919,14 @@ pub(super) fn register_import(module: &str, elaboration: &Elaboration, models: &
                     next: state.next.clone(),
                     r#type: qualify_type(&state.r#type, module),
                 }),
-                precondition: info.precondition.as_ref().map(|member| anchor(member, module)),
-                postcondition: info.postcondition.as_ref().map(|member| anchor(member, module)),
+                precondition: info
+                    .precondition
+                    .as_ref()
+                    .map(|member| anchor(member, module)),
+                postcondition: info
+                    .postcondition
+                    .as_ref()
+                    .map(|member| anchor(member, module)),
                 invariant: info.invariant.as_ref().map(|member| anchor(member, module)),
                 validators: info
                     .validators
@@ -923,7 +935,10 @@ pub(super) fn register_import(module: &str, elaboration: &Elaboration, models: &
                         predicate: validator.predicate,
                         validator: anchor(&validator.validator, module),
                         sound: anchor(&validator.sound, module),
-                        complete: validator.complete.as_ref().map(|member| anchor(member, module)),
+                        complete: validator
+                            .complete
+                            .as_ref()
+                            .map(|member| anchor(member, module)),
                     })
                     .collect(),
             },
@@ -1012,7 +1027,11 @@ fn var(name: &str) -> SemanticTerm {
     }
 }
 
-fn call(function: &MemberRef, type_arguments: &[SemanticType], arguments: Vec<SemanticTerm>) -> SemanticTerm {
+fn call(
+    function: &MemberRef,
+    type_arguments: &[SemanticType],
+    arguments: Vec<SemanticTerm>,
+) -> SemanticTerm {
     SemanticTerm::Call {
         function: function.clone(),
         type_arguments: type_arguments.to_vec(),
@@ -1085,7 +1104,11 @@ fn int(value: &str) -> SemanticTerm {
     }
 }
 
-fn constructor(name: &str, type_arguments: Vec<SemanticType>, arguments: Vec<SemanticTerm>) -> SemanticTerm {
+fn constructor(
+    name: &str,
+    type_arguments: Vec<SemanticType>,
+    arguments: Vec<SemanticTerm>,
+) -> SemanticTerm {
     SemanticTerm::Constructor {
         constructor: local(name),
         type_arguments,
@@ -1104,7 +1127,11 @@ fn let_in(name: &str, ty: SemanticType, value: SemanticTerm, body: SemanticTerm)
     }
 }
 
-fn if_then(condition: SemanticTerm, then_value: SemanticTerm, else_value: SemanticTerm) -> SemanticTerm {
+fn if_then(
+    condition: SemanticTerm,
+    then_value: SemanticTerm,
+    else_value: SemanticTerm,
+) -> SemanticTerm {
     SemanticTerm::If {
         condition: Box::new(condition),
         then_value: Box::new(then_value),
@@ -1112,7 +1139,11 @@ fn if_then(condition: SemanticTerm, then_value: SemanticTerm, else_value: Semant
     }
 }
 
-fn primitive(operation: SemanticPrimitive, arguments: Vec<SemanticTerm>, result: SemanticType) -> SemanticTerm {
+fn primitive(
+    operation: SemanticPrimitive,
+    arguments: Vec<SemanticTerm>,
+    result: SemanticType,
+) -> SemanticTerm {
     SemanticTerm::Primitive {
         operation,
         arguments,
@@ -1123,7 +1154,10 @@ fn primitive(operation: SemanticPrimitive, arguments: Vec<SemanticTerm>, result:
 /// A lambda capturing exactly the locals its body uses beyond its own
 /// parameters, sorted (§17.12).
 fn lambda(parameters: Vec<(&str, SemanticType)>, body: SemanticTerm) -> SemanticTerm {
-    let mut bound: BTreeSet<String> = parameters.iter().map(|(name, _)| (*name).to_owned()).collect();
+    let mut bound: BTreeSet<String> = parameters
+        .iter()
+        .map(|(name, _)| (*name).to_owned())
+        .collect();
     let mut captures = BTreeSet::new();
     free_locals(&body, &mut bound, &mut captures);
     SemanticTerm::Lambda {
@@ -1139,7 +1173,10 @@ fn lambda(parameters: Vec<(&str, SemanticType)>, body: SemanticTerm) -> Semantic
     }
 }
 
-fn matching(scrutinee: SemanticTerm, branches: Vec<(&str, Vec<&str>, SemanticTerm)>) -> SemanticTerm {
+fn matching(
+    scrutinee: SemanticTerm,
+    branches: Vec<(&str, Vec<&str>, SemanticTerm)>,
+) -> SemanticTerm {
     SemanticTerm::Match {
         scrutinee: Box::new(scrutinee),
         branches: branches
@@ -1195,7 +1232,11 @@ fn refusal(ok: &SemanticType, check: ModelCheck) -> SemanticTerm {
     constructor(
         "Result.error",
         vec![ok.clone(), SemanticType::ContractViolation],
-        vec![constructor(violation_constructor(check), Vec::new(), Vec::new())],
+        vec![constructor(
+            violation_constructor(check),
+            Vec::new(),
+            Vec::new(),
+        )],
     )
 }
 
@@ -1258,7 +1299,10 @@ fn list_literal(element: &SemanticType, items: Vec<SemanticTerm>) -> SemanticTer
 
 /// Substitute type parameters throughout a term. Only types have the tag
 /// `parameter`, so the rewrite cannot touch a term node.
-fn substitute_term_types(term: &SemanticTerm, map: &BTreeMap<String, SemanticType>) -> SemanticTerm {
+fn substitute_term_types(
+    term: &SemanticTerm,
+    map: &BTreeMap<String, SemanticType>,
+) -> SemanticTerm {
     fn rewrite(value: &mut serde_json::Value, map: &BTreeMap<String, serde_json::Value>) {
         match value {
             serde_json::Value::Array(items) => items.iter_mut().for_each(|item| rewrite(item, map)),
@@ -1284,14 +1328,22 @@ fn substitute_term_types(term: &SemanticTerm, map: &BTreeMap<String, SemanticTyp
     }
     let map: BTreeMap<String, serde_json::Value> = map
         .iter()
-        .map(|(name, ty)| (name.clone(), serde_json::to_value(ty).expect("type serializes")))
+        .map(|(name, ty)| {
+            (
+                name.clone(),
+                serde_json::to_value(ty).expect("type serializes"),
+            )
+        })
         .collect();
     let mut value = serde_json::to_value(term).expect("semantic term serializes");
     rewrite(&mut value, &map);
     serde_json::from_value(value).expect("a substituted term deserializes")
 }
 
-fn substitution(parameters: &[String], arguments: &[SemanticType]) -> BTreeMap<String, SemanticType> {
+fn substitution(
+    parameters: &[String],
+    arguments: &[SemanticType],
+) -> BTreeMap<String, SemanticType> {
     parameters
         .iter()
         .cloned()
@@ -1398,7 +1450,9 @@ fn require_statement(
 }
 
 fn check_axioms(name: &str, axioms: &[String]) -> Result<(), SemanticFailure> {
-    if axioms.windows(2).any(|pair| pair[0] >= pair[1]) || axioms.iter().any(|axiom| !legal_name(axiom)) {
+    if axioms.windows(2).any(|pair| pair[0] >= pair[1])
+        || axioms.iter().any(|axiom| !legal_name(axiom))
+    {
         return Err(format!("`{name}` axiom policy is not sorted, unique, and qualified").into());
     }
     Ok(())
@@ -1702,7 +1756,13 @@ fn resolve_realization(
     let Some(info) = env.models.realizations.get(&key) else {
         return Err(failure(format!("`{key}` is not a prior realization")));
     };
-    let map = use_substitution(realization_use, &info.type_parameters, scope, env, "realization")?;
+    let map = use_substitution(
+        realization_use,
+        &info.type_parameters,
+        scope,
+        env,
+        "realization",
+    )?;
     Ok(RealizationAt {
         member: realization_use.member.clone(),
         type_arguments: realization_use.type_arguments.clone(),
@@ -1711,7 +1771,10 @@ fn resolve_realization(
             r#type: substitute_type(&info.input.r#type, &map),
         },
         output: substitute_type(&info.output, &map),
-        state: info.state.as_ref().map(|state| substitute_type(state, &map)),
+        state: info
+            .state
+            .as_ref()
+            .map(|state| substitute_type(state, &map)),
         effective: info
             .effective
             .iter()
@@ -1739,7 +1802,9 @@ fn interface_mismatch(contract: &ContractAt, realization: &RealizationAt) -> Opt
         (Some(expected), Some(observed)) if expected == observed => None,
         (expected, observed) => Some(format!(
             "state {} differs from the contract's {}",
-            observed.as_ref().map_or_else(|| "none".to_owned(), ToString::to_string),
+            observed
+                .as_ref()
+                .map_or_else(|| "none".to_owned(), ToString::to_string),
             expected.map_or_else(|| "none".to_owned(), ToString::to_string)
         )),
     }
@@ -1851,8 +1916,16 @@ fn check_contract(
             return Err(interface(format!(
                 "{what} `{}` must take ({}) to Prop, but takes ({}) to {result}",
                 member_key(&member.member),
-                expected.iter().map(ToString::to_string).collect::<Vec<_>>().join(", "),
-                parameters.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ")
+                expected
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                parameters
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
             )));
         }
     }
@@ -1875,8 +1948,10 @@ fn check_contract(
         let (parameters, result, executable) =
             signature_at(&validator.validator, type_parameters, env, &what)?;
         let expected = at.predicate_parameters(validator.predicate);
-        let expected_types: Vec<SemanticType> =
-            expected.iter().map(|parameter| parameter.r#type.clone()).collect();
+        let expected_types: Vec<SemanticType> = expected
+            .iter()
+            .map(|parameter| parameter.r#type.clone())
+            .collect();
         if parameters != expected_types || result != SemanticType::Bool {
             return Err(interface(format!(
                 "{what} `{}` must take the predicate's parameters to Bool",
@@ -1889,7 +1964,10 @@ fn check_contract(
                 member_key(&validator.validator)
             )));
         }
-        let arguments: Vec<SemanticTerm> = expected.iter().map(|parameter| var(&parameter.name)).collect();
+        let arguments: Vec<SemanticTerm> = expected
+            .iter()
+            .map(|parameter| var(&parameter.name))
+            .collect();
         let check = Predicate {
             member: validator.validator.clone(),
             type_arguments: parameter_types(type_parameters),
@@ -2013,7 +2091,9 @@ fn decode(schema: &ArtifactSchema, bytes: &[u8]) -> Result<SemanticTerm, String>
         ArtifactSchema::Bytes => Ok(SemanticTerm::Bytes { hex: hex(bytes) }),
         ArtifactSchema::IntTensor { element, shape } => {
             if shape.is_empty() || shape.contains(&0) {
-                return Err("an integer tensor has at least one dimension and no empty one".to_owned());
+                return Err(
+                    "an integer tensor has at least one dimension and no empty one".to_owned(),
+                );
             }
             let (width, signed) = element_encoding(*element);
             let count = shape
@@ -2052,7 +2132,8 @@ fn decode(schema: &ArtifactSchema, bytes: &[u8]) -> Result<SemanticTerm, String>
             Ok(nest(shape, &values))
         }
         ArtifactSchema::Utf8Lines => {
-            let text = std::str::from_utf8(bytes).map_err(|error| format!("the bytes are not UTF-8: {error}"))?;
+            let text = std::str::from_utf8(bytes)
+                .map_err(|error| format!("the bytes are not UTF-8: {error}"))?;
             if text.contains('\r') {
                 return Err("UTF-8 lines contain a carriage return".to_owned());
             }
@@ -2126,7 +2207,11 @@ fn check_artifact(
         return Ok(Lowering::default());
     };
     check_axioms(name, axioms)?;
-    if sha256.len() != 64 || !sha256.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)) {
+    if sha256.len() != 64
+        || !sha256
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
         return Err(format!(
             "artifact `{name}` SHA-256 `{sha256}` is not 64 lowercase hexadecimal digits"
         )
@@ -2154,7 +2239,8 @@ fn check_artifact(
             ),
         ));
     }
-    let schema_violation = |reason: String| fail(code!("LLR3008"), format!("artifact `{name}`: {reason}"));
+    let schema_violation =
+        |reason: String| fail(code!("LLR3008"), format!("artifact `{name}`: {reason}"));
     if !role_admits(*role, schema) {
         return Err(schema_violation(format!(
             "the role {role:?} does not admit the {} schema",
@@ -2240,9 +2326,9 @@ fn parameter_slot(
         )));
     }
     match &info.schema {
-        ArtifactSchema::IntTensor { shape: observed, .. } if observed == shape => {
-            Ok(call(member, &[], Vec::new()))
-        }
+        ArtifactSchema::IntTensor {
+            shape: observed, ..
+        } if observed == shape => Ok(call(member, &[], Vec::new())),
         other => Err(interface(format!(
             "{what} `{key}` is a {} {}; the slot needs an integer tensor of shape {shape:?}",
             schema_kind(other),
@@ -2270,7 +2356,11 @@ fn int_add(left: SemanticTerm, right: SemanticTerm) -> SemanticTerm {
 }
 
 fn less_than(left: SemanticTerm, right: SemanticTerm) -> SemanticTerm {
-    primitive(SemanticPrimitive::LessThan, vec![left, right], SemanticType::Bool)
+    primitive(
+        SemanticPrimitive::LessThan,
+        vec![left, right],
+        SemanticType::Bool,
+    )
 }
 
 fn append_one(list: SemanticTerm, element: &SemanticType, value: SemanticTerm) -> SemanticTerm {
@@ -2281,8 +2371,17 @@ fn append_one(list: SemanticTerm, element: &SemanticType, value: SemanticTerm) -
     )
 }
 
-fn fold(step: SemanticTerm, initial: SemanticTerm, values: SemanticTerm, state: SemanticType) -> SemanticTerm {
-    primitive(SemanticPrimitive::ListFold, vec![step, initial, values], state)
+fn fold(
+    step: SemanticTerm,
+    initial: SemanticTerm,
+    values: SemanticTerm,
+    state: SemanticType,
+) -> SemanticTerm {
+    primitive(
+        SemanticPrimitive::ListFold,
+        vec![step, initial, values],
+        state,
+    )
 }
 
 /// The dot product of `row` and `values`, pairing positions (zip).
@@ -2390,7 +2489,11 @@ fn power_of_two(shift: u64) -> String {
             digits.push(carry);
         }
     }
-    digits.iter().rev().map(|digit| char::from(b'0' + digit)).collect()
+    digits
+        .iter()
+        .rev()
+        .map(|digit| char::from(b'0' + digit))
+        .collect()
 }
 
 /// Truncating division by `2^shift`, clamped to `[minimum, maximum]`.
@@ -2534,7 +2637,11 @@ fn width_obligation(
         type_parameters: type_parameters.to_vec(),
         parameters: vec![parameter(&input.name, &input.r#type)],
         statement: eq(
-            primitive(SemanticPrimitive::Length, vec![term.clone()], SemanticType::Nat),
+            primitive(
+                SemanticPrimitive::Length,
+                vec![term.clone()],
+                SemanticType::Nat,
+            ),
             nat(width),
         ),
     };
@@ -2564,7 +2671,12 @@ fn composite_stage(
     let after: Vec<&str> = at
         .required()
         .into_iter()
-        .filter(|check| matches!(check, ModelCheck::Postcondition | ModelCheck::OutputInvariant))
+        .filter(|check| {
+            matches!(
+                check,
+                ModelCheck::Postcondition | ModelCheck::OutputInvariant
+            )
+        })
         .map(check_name_of)
         .collect();
     if !after.is_empty() {
@@ -2632,7 +2744,9 @@ fn check_composite(
         if observed == expected {
             Ok(())
         } else {
-            Err(mismatch(format!("{label} is {observed}, expected {expected}")))
+            Err(mismatch(format!(
+                "{label} is {observed}, expected {expected}"
+            )))
         }
     };
     match form {
@@ -2648,7 +2762,11 @@ fn check_composite(
                 .iter()
                 .map(|stage| composite_stage(name, stage, scope, env, false))
                 .collect::<Result<Vec<_>, _>>()?;
-            expect("the first stage input", &stages[0].contract.input.r#type, &input.r#type)?;
+            expect(
+                "the first stage input",
+                &stages[0].contract.input.r#type,
+                &input.r#type,
+            )?;
             for (index, pair) in stages.windows(2).enumerate() {
                 expect(
                     &format!("stage {} input", index + 2),
@@ -2739,8 +2857,16 @@ fn check_composite(
             let right = composite_stage(name, right, scope, env, false)?;
             let fanout = matches!(form, CompositeForm::Fanout { .. });
             let (left_input, right_input) = if fanout {
-                expect("the left stage input", &left.contract.input.r#type, &input.r#type)?;
-                expect("the right stage input", &right.contract.input.r#type, &input.r#type)?;
+                expect(
+                    "the left stage input",
+                    &left.contract.input.r#type,
+                    &input.r#type,
+                )?;
+                expect(
+                    "the right stage input",
+                    &right.contract.input.r#type,
+                    &input.r#type,
+                )?;
                 (x.clone(), x.clone())
             } else {
                 expect(
@@ -2781,8 +2907,16 @@ fn check_composite(
             let then = composite_stage(name, then, scope, env, false)?;
             let otherwise = composite_stage(name, r#else, scope, env, false)?;
             for (label, stage) in [("then", &then), ("else", &otherwise)] {
-                expect(&format!("the {label} stage input"), &stage.contract.input.r#type, &input.r#type)?;
-                expect(&format!("the {label} stage output"), &stage.contract.output.r#type, output)?;
+                expect(
+                    &format!("the {label} stage input"),
+                    &stage.contract.input.r#type,
+                    &input.r#type,
+                )?;
+                expect(
+                    &format!("the {label} stage output"),
+                    &stage.contract.output.r#type,
+                    output,
+                )?;
             }
             let mut effective = Vec::new();
             for (value, stage) in [(true, &then), (false, &otherwise)] {
@@ -2846,9 +2980,11 @@ fn check_composite(
                             member_key(&stage.member)
                         )));
                     }
-                    let contract_state = stage.contract.state.clone().ok_or_else(|| {
-                        mismatch("the scanned stage has no state".to_owned())
-                    })?;
+                    let contract_state = stage
+                        .contract
+                        .state
+                        .clone()
+                        .ok_or_else(|| mismatch("the scanned stage has no state".to_owned()))?;
                     let s = var(&contract_state.name);
                     let item_value = var(&stage.contract.input.name);
                     let obligation = Obligation {
@@ -2923,14 +3059,20 @@ fn check_composite(
                     &accumulated,
                     step(first(var("__state")), second(var("__state"))),
                 );
-                if let Some(validator) = stage.contract.validators.get(&ContractPredicate::Precondition) {
+                if let Some(validator) = stage
+                    .contract
+                    .validators
+                    .get(&ContractPredicate::Precondition)
+                {
                     guarded = if_then(
                         validator.apply(vec![first(var("__state")), var("__item")]),
                         guarded,
                         refusal(&accumulated, ModelCheck::Precondition),
                     );
                 }
-                if let Some(validator) = stage.contract.validators.get(&ContractPredicate::Invariant) {
+                if let Some(validator) =
+                    stage.contract.validators.get(&ContractPredicate::Invariant)
+                {
                     guarded = if_then(
                         validator.apply(vec![first(var("__state"))]),
                         guarded,
@@ -3044,12 +3186,18 @@ fn check_realization(
     let input_parameter = parameter(&input.name, &input.r#type);
     let (parameters, result) = match state {
         Some(state) => (
-            vec![parameter(&state.name, &state.r#type), input_parameter.clone()],
+            vec![
+                parameter(&state.name, &state.r#type),
+                input_parameter.clone(),
+            ],
             product(state.r#type.clone(), output.clone()),
         ),
         None => (vec![input_parameter.clone()], output.clone()),
     };
-    let definition = |name: String, parameters: Vec<SemanticParameter>, result: SemanticType, body: SemanticTerm| {
+    let definition = |name: String,
+                      parameters: Vec<SemanticParameter>,
+                      result: SemanticType,
+                      body: SemanticTerm| {
         ordinary_definition(name, type_parameters, parameters, result, body, *executable)
     };
     let stateless = |kind: &str| {
@@ -3061,7 +3209,13 @@ fn check_realization(
             Ok(())
         }
     };
-    let own = |suffix: &str| call(&local(&companion(suffix)), &parameter_types(type_parameters), vec![x.clone()]);
+    let own = |suffix: &str| {
+        call(
+            &local(&companion(suffix)),
+            &parameter_types(type_parameters),
+            vec![x.clone()],
+        )
+    };
     let mut lowering = Lowering::default();
     let mut effective = Vec::new();
     if let Some(state) = state {
@@ -3143,7 +3297,12 @@ fn check_realization(
                 companion("scores"),
                 parameters.clone(),
                 int_list(),
-                let_in("__values", int_list(), own("features"), dense(weights, bias, "__values")),
+                let_in(
+                    "__values",
+                    int_list(),
+                    own("features"),
+                    dense(weights, bias, "__values"),
+                ),
             ));
             lowering.declarations.push(definition(
                 name.clone(),
@@ -3162,7 +3321,9 @@ fn check_realization(
         } => {
             stateless("neural")?;
             if layers.is_empty() {
-                return Err(interface(format!("neural realization `{name}` has no layers")));
+                return Err(interface(format!(
+                    "neural realization `{name}` has no layers"
+                )));
             }
             lowering.obligations.push(width_obligation(
                 name,
@@ -3197,7 +3358,12 @@ fn check_realization(
                         }
                         current = *outputs;
                         dense(
-                            parameter_slot(weights, &[*outputs, *inputs], env, &format!("{what} weights"))?,
+                            parameter_slot(
+                                weights,
+                                &[*outputs, *inputs],
+                                env,
+                                &format!("{what} weights"),
+                            )?,
                             parameter_slot(bias, &[*outputs], env, &format!("{what} bias"))?,
                             "__values",
                         )
@@ -3232,7 +3398,11 @@ fn check_realization(
                     int_list(),
                     body,
                 ));
-                logits = call(&local(&layer_name), &parameter_types(type_parameters), vec![logits]);
+                logits = call(
+                    &local(&layer_name),
+                    &parameter_types(type_parameters),
+                    vec![logits],
+                );
             }
             lowering.declarations.push(definition(
                 companion("logits"),
@@ -3265,16 +3435,22 @@ fn check_realization(
                     "composite realization `{name}` is stateless; a scan threads its stage's state"
                 )));
             }
-            let composite = check_composite(name, type_parameters, &scope, input, output, form, env)?;
+            let composite =
+                check_composite(name, type_parameters, &scope, input, output, form, env)?;
             effective = composite.effective;
             lowering.obligations.extend(composite.obligations);
-            lowering
-                .declarations
-                .push(definition(name.clone(), parameters, result, composite.body));
+            lowering.declarations.push(definition(
+                name.clone(),
+                parameters,
+                result,
+                composite.body,
+            ));
         }
     }
     for derived in &lowering.declarations {
-        env.models.realization_functions.insert(derived.name().to_owned());
+        env.models
+            .realization_functions
+            .insert(derived.name().to_owned());
     }
     env.models.realizations.insert(
         name.clone(),
@@ -3322,13 +3498,18 @@ fn claim_obligation(
             };
             match state {
                 None => {
-                    let pre = contract.precondition.as_ref().map(|p| p.apply(vec![x.clone()]));
+                    let pre = contract
+                        .precondition
+                        .as_ref()
+                        .map(|p| p.apply(vec![x.clone()]));
                     let statement = premised(
                         pre,
                         post.apply(vec![x.clone(), realization.apply(vec![x.clone()])]),
                     );
                     let check = match &contract.precondition {
-                        Some(pre) => helper("Satisfies", vec![pre.reference(), post.reference(), r]),
+                        Some(pre) => {
+                            helper("Satisfies", vec![pre.reference(), post.reference(), r])
+                        }
                         None => helper("SatisfiesTotal", vec![post.reference(), r]),
                     };
                     (vec![input], statement, check)
@@ -3343,16 +3524,31 @@ fn claim_obligation(
                         second(step),
                     ]);
                     let statement = premised(
-                        contract.invariant.as_ref().map(|j| j.apply(vec![s.clone()])),
+                        contract
+                            .invariant
+                            .as_ref()
+                            .map(|j| j.apply(vec![s.clone()])),
                         premised(
-                            contract.precondition.as_ref().map(|p| p.apply(vec![s.clone(), x.clone()])),
+                            contract
+                                .precondition
+                                .as_ref()
+                                .map(|p| p.apply(vec![s.clone(), x.clone()])),
                             conclusion,
                         ),
                     );
-                    let check = match (reference(&contract.invariant), reference(&contract.precondition)) {
-                        (Some(j), Some(p)) => helper("SatisfiesStep", vec![j, p, post.reference(), r]),
-                        (None, Some(p)) => helper("SatisfiesStepNoInvariant", vec![p, post.reference(), r]),
-                        (Some(j), None) => helper("SatisfiesStepNoPrecondition", vec![j, post.reference(), r]),
+                    let check = match (
+                        reference(&contract.invariant),
+                        reference(&contract.precondition),
+                    ) {
+                        (Some(j), Some(p)) => {
+                            helper("SatisfiesStep", vec![j, p, post.reference(), r])
+                        }
+                        (None, Some(p)) => {
+                            helper("SatisfiesStepNoInvariant", vec![p, post.reference(), r])
+                        }
+                        (Some(j), None) => {
+                            helper("SatisfiesStepNoPrecondition", vec![j, post.reference(), r])
+                        }
                         (None, None) => helper("SatisfiesStepTotal", vec![post.reference(), r]),
                     };
                     (
@@ -3371,7 +3567,10 @@ fn claim_obligation(
             let statement = implies(
                 invariant.apply(vec![s.clone()]),
                 premised(
-                    contract.precondition.as_ref().map(|p| p.apply(vec![s.clone(), x.clone()])),
+                    contract
+                        .precondition
+                        .as_ref()
+                        .map(|p| p.apply(vec![s.clone(), x.clone()])),
                     invariant.apply(vec![first(realization.apply(vec![s.clone(), x.clone()]))]),
                 ),
             );
@@ -3392,17 +3591,30 @@ fn claim_obligation(
             (
                 Vec::new(),
                 invariant.apply(vec![realization.initial()]),
-                helper("Initial", vec![invariant.reference(), realization.initial()]),
+                helper(
+                    "Initial",
+                    vec![invariant.reference(), realization.initial()],
+                ),
             )
         }
-        (EvidenceClaim::PreservesInvariant { .. } | EvidenceClaim::InitialInvariant { .. }, None) => {
+        (
+            EvidenceClaim::PreservesInvariant { .. } | EvidenceClaim::InitialInvariant { .. },
+            None,
+        ) => {
             return Err(vacuous("a stateless contract has no invariant"));
         }
-        (EvidenceClaim::EquivalentTo { reference: target, .. }, state) => {
+        (
+            EvidenceClaim::EquivalentTo {
+                reference: target, ..
+            },
+            state,
+        ) => {
             check_member(&target.member, env)?;
             let key = member_key(&target.member);
             let Some(info) = function_info(&target.member, env) else {
-                return Err(vacuous(&format!("the reference `{key}` is not a prior definition or model")));
+                return Err(vacuous(&format!(
+                    "the reference `{key}` is not a prior definition or model"
+                )));
             };
             if info.type_parameters.len() != target.type_arguments.len() {
                 return Err(vacuous(&format!(
@@ -3430,7 +3642,10 @@ fn claim_obligation(
             match state {
                 None => {
                     let statement = premised(
-                        contract.precondition.as_ref().map(|p| p.apply(vec![x.clone()])),
+                        contract
+                            .precondition
+                            .as_ref()
+                            .map(|p| p.apply(vec![x.clone()])),
                         eq(
                             realization.apply(vec![x.clone()]),
                             call(&target.member, &target.type_arguments, vec![x.clone()]),
@@ -3445,16 +3660,29 @@ fn claim_obligation(
                 Some(state) => {
                     let s = var(&state.name);
                     let statement = premised(
-                        contract.invariant.as_ref().map(|j| j.apply(vec![s.clone()])),
+                        contract
+                            .invariant
+                            .as_ref()
+                            .map(|j| j.apply(vec![s.clone()])),
                         premised(
-                            contract.precondition.as_ref().map(|p| p.apply(vec![s.clone(), x.clone()])),
+                            contract
+                                .precondition
+                                .as_ref()
+                                .map(|p| p.apply(vec![s.clone(), x.clone()])),
                             eq(
                                 realization.apply(vec![s.clone(), x.clone()]),
-                                call(&target.member, &target.type_arguments, vec![s.clone(), x.clone()]),
+                                call(
+                                    &target.member,
+                                    &target.type_arguments,
+                                    vec![s.clone(), x.clone()],
+                                ),
                             ),
                         ),
                     );
-                    let check = match (reference(&contract.invariant), reference(&contract.precondition)) {
+                    let check = match (
+                        reference(&contract.invariant),
+                        reference(&contract.precondition),
+                    ) {
                         (Some(j), Some(p)) => helper("EquivalentStep", vec![j, p, r, f]),
                         (None, Some(p)) => helper("EquivalentStepNoInvariant", vec![p, r, f]),
                         (Some(j), None) => helper("EquivalentStepNoPrecondition", vec![j, r, f]),
@@ -3484,7 +3712,10 @@ fn claim_obligation(
                     "{agreements} agreements cannot be counted over {examples} examples"
                 )));
             }
-            let example = product(contract.input.r#type.clone(), contract.output.r#type.clone());
+            let example = product(
+                contract.input.r#type.clone(),
+                contract.output.r#type.clone(),
+            );
             check_member(dataset, env)?;
             let dataset_key = member_key(dataset);
             match function_info(dataset, env) {
@@ -3502,7 +3733,9 @@ fn claim_obligation(
             check_member(comparison, env)?;
             let comparison_key = member_key(comparison);
             let Some(info) = function_info(comparison, env) else {
-                return Err(vacuous(&format!("the comparison `{comparison_key}` is not a prior definition")));
+                return Err(vacuous(&format!(
+                    "the comparison `{comparison_key}` is not a prior definition"
+                )));
             };
             let output = &contract.output.r#type;
             if !info.type_parameters.is_empty()
@@ -3522,7 +3755,10 @@ fn claim_obligation(
                 type_parameters: type_parameters.to_vec(),
                 parameters: vec![parameter(left, output), parameter(right, output)],
                 statement: implies(
-                    eq(call(comparison, &[], vec![var(left), var(right)]), boolean(true)),
+                    eq(
+                        call(comparison, &[], vec![var(left), var(right)]),
+                        boolean(true),
+                    ),
                     eq(var(left), var(right)),
                 ),
             };
@@ -3531,7 +3767,10 @@ fn claim_obligation(
             let data = call(dataset, &[], Vec::new());
             let counted = fold(
                 lambda(
-                    vec![("__count", SemanticType::Nat), ("__example", example.clone())],
+                    vec![
+                        ("__count", SemanticType::Nat),
+                        ("__example", example.clone()),
+                    ],
                     if_then(
                         call(
                             comparison,
@@ -3554,7 +3793,11 @@ fn claim_obligation(
             );
             let statement = SemanticTerm::PropAnd {
                 left: Box::new(eq(
-                    primitive(SemanticPrimitive::Length, vec![data.clone()], SemanticType::Nat),
+                    primitive(
+                        SemanticPrimitive::Length,
+                        vec![data.clone()],
+                        SemanticType::Nat,
+                    ),
                     nat(*examples),
                 )),
                 right: Box::new(eq(counted, nat(*agreements))),
@@ -3572,7 +3815,9 @@ fn claim_obligation(
             (Vec::new(), statement, check)
         }
         (EvidenceClaim::DatasetAgreement { .. }, Some(_)) => {
-            return Err(vacuous("dataset agreement is stated for stateless realizations"));
+            return Err(vacuous(
+                "dataset agreement is stated for stateless realizations",
+            ));
         }
     };
     let obligation = Obligation {
@@ -3705,10 +3950,14 @@ fn check_model(
     for item in evidence {
         let key = member_key(&item.member);
         if !seen.insert(key.clone()) {
-            return Err(unestablished(format!("model `{name}` lists evidence `{key}` twice")));
+            return Err(unestablished(format!(
+                "model `{name}` lists evidence `{key}` twice"
+            )));
         }
         let Some(info) = env.models.evidence.get(&key).cloned() else {
-            return Err(unestablished(format!("model `{name}`: `{key}` is not prior evidence")));
+            return Err(unestablished(format!(
+                "model `{name}`: `{key}` is not prior evidence"
+            )));
         };
         let map = use_substitution(item, &info.type_parameters, &scope, env, "evidence")?;
         let at = |model_use: &ModelUse| ModelUse {
@@ -3765,7 +4014,10 @@ fn check_model(
         ],
         None => vec![parameter("__input", &realization_at.input.r#type)],
     };
-    let arguments = parameters.iter().map(|parameter| var(&parameter.name)).collect();
+    let arguments = parameters
+        .iter()
+        .map(|parameter| var(&parameter.name))
+        .collect();
     let (_, result) = realization_at.signature();
     if let Some(state) = &realization_at.state {
         lowering.declarations.push(ordinary_definition(
@@ -3837,7 +4089,9 @@ fn check_boundary(
                         member: function.clone(),
                         type_arguments: match node {
                             SemanticTerm::Call { type_arguments, .. }
-                            | SemanticTerm::FunctionRef { type_arguments, .. } => type_arguments.clone(),
+                            | SemanticTerm::FunctionRef { type_arguments, .. } => {
+                                type_arguments.clone()
+                            }
                             _ => Vec::new(),
                         },
                     };
@@ -3891,11 +4145,15 @@ fn check_application(
     }
     for check in checks {
         let predicate = match check {
-            ModelCheck::InputInvariant | ModelCheck::OutputInvariant => ContractPredicate::Invariant,
+            ModelCheck::InputInvariant | ModelCheck::OutputInvariant => {
+                ContractPredicate::Invariant
+            }
             ModelCheck::Precondition => ContractPredicate::Precondition,
             ModelCheck::Postcondition => ContractPredicate::Postcondition,
         };
-        if at.contract.predicate(predicate).is_none() || !at.contract.validators.contains_key(&predicate) {
+        if at.contract.predicate(predicate).is_none()
+            || !at.contract.validators.contains_key(&predicate)
+        {
             return Err(boundary(format!(
                 "`{owner}` checks the {} of model `{key}`, which its contract does not validate with a sound validator",
                 check_name_of(*check)
@@ -3959,12 +4217,18 @@ fn expand(
             let mut body = ok_value(&output_type, var(&output));
             if has(ModelCheck::Postcondition) {
                 body = if_then(
-                    validator(ContractPredicate::Postcondition).apply(vec![var(&input), var(&output)]),
+                    validator(ContractPredicate::Postcondition)
+                        .apply(vec![var(&input), var(&output)]),
                     body,
                     refusal(&output_type, ModelCheck::Postcondition),
                 );
             }
-            body = let_in(&output, output_type.clone(), at.apply(vec![var(&input)]), body);
+            body = let_in(
+                &output,
+                output_type.clone(),
+                at.apply(vec![var(&input)]),
+                body,
+            );
             if has(ModelCheck::Precondition) {
                 body = if_then(
                     validator(ContractPredicate::Precondition).apply(vec![var(&input)]),
@@ -4006,7 +4270,8 @@ fn expand(
             );
             if has(ModelCheck::Precondition) {
                 body = if_then(
-                    validator(ContractPredicate::Precondition).apply(vec![var(&current), var(&input)]),
+                    validator(ContractPredicate::Precondition)
+                        .apply(vec![var(&current), var(&input)]),
                     body,
                     refusal(&step_type, ModelCheck::Precondition),
                 );
@@ -4037,9 +4302,15 @@ fn expand(
 
 fn type_scope(declaration: &SemanticDeclaration) -> BTreeSet<String> {
     let parameters: &[String] = match declaration {
-        SemanticDeclaration::Definition { type_parameters, .. }
-        | SemanticDeclaration::Theorem { type_parameters, .. }
-        | SemanticDeclaration::Realization { type_parameters, .. } => type_parameters,
+        SemanticDeclaration::Definition {
+            type_parameters, ..
+        }
+        | SemanticDeclaration::Theorem {
+            type_parameters, ..
+        }
+        | SemanticDeclaration::Realization {
+            type_parameters, ..
+        } => type_parameters,
         SemanticDeclaration::Structure { .. }
         | SemanticDeclaration::Class { .. }
         | SemanticDeclaration::Instance { .. }
@@ -4084,7 +4355,9 @@ fn lower_terms(
             SemanticDeclaration::Instance { fields, .. } => {
                 outer.extend(fields.iter().map(|field| field.value.clone()));
             }
-            SemanticDeclaration::Theorem { statement, proof, .. } => {
+            SemanticDeclaration::Theorem {
+                statement, proof, ..
+            } => {
                 outer.push(statement.clone());
                 super::proof_terms(proof, &mut |term| outer.push(term.clone()));
             }
@@ -4200,7 +4473,9 @@ pub(super) fn check_declaration(
         let checked = match derived {
             SemanticDeclaration::Definition { .. } => check_definition(derived, env),
             SemanticDeclaration::Theorem { .. } => check_theorem(derived, env),
-            _ => Err(format!("internal: `{derived_name}` is not a definition or theorem")),
+            _ => Err(format!(
+                "internal: `{derived_name}` is not a definition or theorem"
+            )),
         };
         env.derived = false;
         env.current_type_parameters.clear();
