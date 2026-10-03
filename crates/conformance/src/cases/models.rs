@@ -17,6 +17,27 @@ use crate::support::{self, VerifiedFixture, P};
 
 const EXAMPLE: &str = "models";
 
+/// The four refusal constructors, as elaborated code spells them.
+const VIOLATIONS: [&str; 4] = [
+    "ContractViolation.precondition",
+    "ContractViolation.input_invariant",
+    "ContractViolation.postcondition",
+    "ContractViolation.output_invariant",
+];
+
+/// The modules of the committed example.
+const MODULES: [&str; 9] = [
+    "Glyphs",
+    "Recognizer",
+    "Triage",
+    "Policy",
+    "Session",
+    "Ledger",
+    "Pipeline",
+    "Flows",
+    "Main",
+];
+
 /// An edit of one declaration's semantic JSON.
 type Edit = fn(&mut Json);
 
@@ -350,15 +371,7 @@ fn md_01() {
     }
     // Every committed model module is an instance of the closed schema.
     let project = P::copy_example(EXAMPLE);
-    for name in [
-        "Glyphs",
-        "Recognizer",
-        "Triage",
-        "Policy",
-        "Session",
-        "Pipeline",
-        "Main",
-    ] {
+    for name in MODULES {
         support::assert_schema(
             "semantic-module-v2",
             &format!("examples/models/src/{name}.lex.tex"),
@@ -609,6 +622,30 @@ fn md_02() {
     assert_eq!(
         inputs, expected,
         "the manifest records every model artifact"
+    );
+    // The document states what an artifact is, never its bytes or its
+    // decoded value (§17.12 rule 13).
+    for module in MODULES {
+        let tex = support::tex_text(&build, module);
+        assert!(!tex.contains("ByteArray.mk"), "{module}.tex prints artifact bytes");
+        assert!(!tex.contains(&embedded), "{module}.tex prints the weights");
+    }
+    let tex = support::tex_text(&build, "Recognizer");
+    assert!(tex.contains(
+        "Elaborates to: \\texttt{hiddenWeights : List (List (Int)), their decoding under the schema}"
+    ));
+    assert!(tex.contains("Elaborates to: \\texttt{banner.bytes : ByteArray, the configured bytes}"));
+    // A shape is bounded, and the declared type checked, before any byte is
+    // decoded: a one-byte artifact with a 40000-deep shape fails at once.
+    let started = std::time::Instant::now();
+    negative(
+        "model-artifact-rank-overflow",
+        "LLR3008",
+        "an integer tensor has at most 16 dimensions, not 40000",
+    );
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(30),
+        "the rank bound is checked before decoding"
     );
     // LLR3007: missing, digest, length, unconfigured.
     let missing = P::copy_example(EXAMPLE);
@@ -1163,14 +1200,7 @@ fn md_06() {
     assert!(tex.contains(
         "Claim: \\texttt{satisfies the postcondition under the contract's premises, discharged by digit\\_net\\_correct}"
     ));
-    for module in [
-        "Recognizer",
-        "Triage",
-        "Policy",
-        "Session",
-        "Pipeline",
-        "Main",
-    ] {
+    for module in MODULES {
         let tex = support::tex_text(&build, module);
         assert!(
             !tex.to_lowercase().contains("verified"),
@@ -1347,12 +1377,89 @@ fn md_07() {
         ),
         ("Pipeline", "PipelineModel", &["precondition"][..]),
         ("Pipeline", "StreamModel", &["precondition"][..]),
+        // Evidence discharges a check only through the claim that states
+        // it: a dataset agreement or an equivalence discharges nothing, and
+        // satisfying the contract does not preserve the invariant.
+        ("Ledger", "GuessModel", &["postcondition", "precondition"][..]),
+        ("Ledger", "GuessExactModel", &["postcondition", "precondition"][..]),
+        (
+            "Ledger",
+            "SpillModel",
+            &["input_invariant", "output_invariant", "precondition"][..],
+        ),
+        (
+            "Ledger",
+            "SpillRawModel",
+            &[
+                "input_invariant",
+                "output_invariant",
+                "postcondition",
+                "precondition",
+            ][..],
+        ),
+        ("Ledger", "TallyModel", &["precondition"][..]),
+        ("Ledger", "ClampModel", &["input_invariant"][..]),
+        ("Ledger", "FreeModel", &[][..]),
+        ("Ledger", "OvershootModel", &["postcondition", "precondition"][..]),
+        (
+            "Flows",
+            "FlowModel",
+            &["input_invariant", "output_invariant"][..],
+        ),
     ] {
         assert_eq!(
             elaboration(&snapshot, module, name).required_checks(),
             required,
             "{name}"
         );
+    }
+    // The stateful application with every check nests them in the fixed
+    // order (canonical JSON writes a conditional's refusal before the rest),
+    // the output invariant and the postcondition over the model's step.
+    let full = elaboration(&snapshot, "Main", "ledgerFull");
+    let body = full.declarations()[0]["body"].to_string();
+    let order: Vec<usize> = [
+        "ContractViolation.input_invariant",
+        "ContractViolation.precondition",
+        "ContractViolation.output_invariant",
+        "ContractViolation.postcondition",
+    ]
+    .iter()
+    .map(|needle| {
+        body.find(needle)
+            .unwrap_or_else(|| panic!("`ledgerFull` elaborates {needle}: {body}"))
+    })
+    .collect();
+    let mut sorted = order.clone();
+    sorted.sort_unstable();
+    assert_eq!(order, sorted, "checks run in the fixed order: {body}");
+    for (name, edit, message) in [
+        (
+            "guessChecked",
+            (|declaration: &mut Json| declaration["body"]["checks"] = json!(["precondition"]))
+                as Edit,
+            "without the runtime checks [postcondition] its evidence does not discharge",
+        ),
+        (
+            "guessChecked",
+            |declaration: &mut Json| {
+                declaration["body"] = json!({
+                    "kind": "constructor", "constructor": {"name": "Result.ok"},
+                    "type_arguments": [{"kind": "nat"}, {"kind": "contract_violation"}],
+                    "arguments": [{"kind": "call", "function": {"module": "Ledger", "name": "GuessModel"},
+                                   "arguments": [{"kind": "var", "name": "x"}]}]});
+            },
+            "applies model `Ledger::GuessModel` without its runtime checks [postcondition, precondition]",
+        ),
+        (
+            "ledgerPost",
+            |declaration: &mut Json| {
+                declaration["body"]["checks"] = json!(["input_invariant", "precondition"]);
+            },
+            "without the runtime checks [output_invariant] its evidence does not discharge",
+        ),
+    ] {
+        refused(&mutated("Main", name, edit), "LLT4008", message);
     }
     // The fixed order: input invariant, precondition, run, ... ; each
     // refusal is the violation of the predicate that failed.
@@ -1473,6 +1580,21 @@ fn md_07() {
         assert_attested(fixture, "Models.Main.admit_accepts_cheap", "none");
         assert_attested(fixture, "Models.Main.classify_eight", "exact");
         assert_attested(fixture, "Models.Main.step", "none");
+        // Every refusal is kernel-checked: input invariant, precondition,
+        // output invariant (stateful), and postcondition.
+        for name in [
+            "Models.Main.ledger_accepts",
+            "Models.Main.ledger_refuses_input",
+            "Models.Main.ledger_refuses_precondition",
+            "Models.Main.ledger_refuses_output",
+            "Models.Main.ledger_full_accepts",
+            "Models.Main.ledger_full_refuses_output",
+            "Models.Main.guess_accepts",
+            "Models.Main.guess_refuses_precondition",
+            "Models.Main.overshoot_refuses_postcondition",
+        ] {
+            assert_eq!(attested(fixture, name)["result"], "ok", "{name}");
+        }
     }
 }
 
@@ -1543,14 +1665,14 @@ fn md_08() {
                 declaration["descriptor"]["form"]["then"] =
                     json!({"member": {"module": "Session", "name": "SessionModel"}});
             },
-            "stage `Session::SessionModel` is stateful; only a scan threads a stateful stage",
+            "stage `Session::SessionModel` is stateful; only a sequence or a scan threads a stateful stage",
         ),
         (
             "SessionStream",
             |declaration| {
                 declaration["descriptor"]["form"]["stage"] = json!({"member": {"name": "SegmentModel"}});
             },
-            "stage `SegmentModel` is stateless; only a scan threads a stateful stage",
+            "stage `SegmentModel` is stateless; a scan threads one stateful stage",
         ),
         (
             "SessionStream",
@@ -1579,7 +1701,7 @@ fn md_08() {
                 declaration["descriptor"]["form"]["left"] =
                     json!({"member": {"module": "Recognizer", "name": "RawDigitModel"}});
             },
-            "has no evidence discharging its postcondition",
+            "the output is Prod (Nat) (Nat), expected Result (Prod (Nat) (Nat)) (ContractViolation)",
         ),
         (
             "GlyphPair",
@@ -1592,6 +1714,110 @@ fn md_08() {
     for (name, edit, message) in edits {
         refused(&mutated("Pipeline", name, edit), "LLT4007", message);
     }
+    // A stateful sequence threads the right-nested product of its stateful
+    // stages' states; a stage whose evidence leaves its postcondition or
+    // output invariant open is checked right after it runs, and its
+    // precondition at a checked junction.
+    let flow = elaboration(&snapshot, "Flows", "ClampGuess");
+    let text = flow
+        .declarations()
+        .iter()
+        .map(Json::to_string)
+        .collect::<String>();
+    for needle in [
+        "\"name\":\"__state1\"",
+        "Ledger::withinCheck",
+        "Ledger::belowCheck",
+        "ContractViolation.postcondition",
+        "ContractViolation.precondition",
+    ] {
+        assert!(
+            text.contains(needle) || text.contains(&needle.replace("Ledger::", "")),
+            "ClampGuess elaborates {needle}: {text}"
+        );
+    }
+    let stream = elaboration(&snapshot, "Flows", "SpillStream")
+        .declarations()
+        .iter()
+        .map(Json::to_string)
+        .collect::<String>();
+    assert!(stream.contains("ContractViolation.output_invariant"), "{stream}");
+    let entry = elaboration(&snapshot, "Flows", "FlowModel");
+    assert_eq!(
+        entry.obligations()[0]["parameters"]
+            .as_array()
+            .expect("parameters")
+            .len(),
+        2,
+        "a stateful model's entry obligation is over its state and input"
+    );
+    let flows: [NamedEdit; 7] = [
+        (
+            "ClampGuess",
+            |declaration| {
+                declaration
+                    .as_object_mut()
+                    .expect("object")
+                    .remove("state");
+            },
+            "its stateful stages thread a state of type Nat, which it must declare",
+        ),
+        (
+            "ClampGuess",
+            |declaration| declaration["state"]["type"] = json!({"kind": "int"}),
+            "the state is Int, expected Nat",
+        ),
+        (
+            "ClampGuess",
+            |declaration| {
+                declaration["descriptor"]["form"]["junctions"] = json!([{"kind": "unconditional"}]);
+            },
+            "has a precondition, so the junction must be proved or checked",
+        ),
+        (
+            "ClampGuess",
+            |declaration| {
+                declaration["descriptor"]["form"]["stages"] = json!([
+                    {"member": {"module": "Ledger", "name": "GuessModel"}},
+                    {"member": {"module": "Ledger", "name": "ClampModel"}}]);
+                declaration["descriptor"]["form"]["junctions"] = json!([{"kind": "unconditional"}]);
+            },
+            "stage `Ledger::ClampModel` has a state invariant, so the junction must be checked",
+        ),
+        (
+            "GuessTwice",
+            |declaration| {
+                declaration["descriptor"]["form"]["left"] =
+                    json!({"member": {"module": "Ledger", "name": "ClampModel"}});
+            },
+            "is stateful; only a sequence or a scan threads a stateful stage",
+        ),
+        (
+            "GuessTwice",
+            |declaration| declaration["output"] = json!({"kind": "product", "left": {"kind": "nat"}, "right": {"kind": "nat"}}),
+            "expected Result (Prod (Nat) (Nat)) (ContractViolation)",
+        ),
+        (
+            "SpillStream",
+            |declaration| declaration["descriptor"]["form"]["junction"] = json!({"kind": "unconditional"}),
+            "needs its output_invariant checked at run time, so the junction must be checked",
+        ),
+    ];
+    for (name, edit, message) in flows {
+        refused(&mutated("Flows", name, edit), "LLT4007", message);
+    }
+    // A stage whose open postcondition has no validator cannot compose.
+    let unvalidated = mutated("Ledger", "GuessContract", |declaration| {
+        declaration["validators"]
+            .as_array_mut()
+            .expect("validators")
+            .remove(0);
+    });
+    refused(
+        &unvalidated,
+        "LLT4007",
+        "has no evidence discharging its postcondition and no sound validator to check it at run time",
+    );
     negative(
         "model-composition-missing-junction",
         "LLT4007",
@@ -1618,6 +1844,20 @@ fn md_08() {
             "Models.Pipeline.PipelineEvidence.pipeline_responds",
         ] {
             assert_attested(fixture, name, "allow");
+        }
+        for name in [
+            "Models.Main.flow_accepts",
+            "Models.Main.flow_refuses_junction",
+            "Models.Main.flow_refuses_input",
+            "Models.Main.twice_accepts",
+            "Models.Main.twice_refuses",
+            "Models.Main.stream_accepts",
+            "Models.Main.stream_refuses_output",
+            "Models.Flows.ClampGuess",
+            "Models.Flows.GuessTwice",
+            "Models.Flows.SpillStream",
+        ] {
+            assert_eq!(attested(fixture, name)["result"], "ok", "{name}");
         }
         assert_attested(fixture, "Models.Pipeline.triage_actionable", "exact");
         assert_attested(fixture, "Models.Pipeline.pipeline_entry", "none");
@@ -2370,6 +2610,10 @@ fn md_11() {
             "Models.Main.respond",
             "Models.Main.admitCosts",
             "Models.Main.step",
+            "Models.Main.ledgerPost",
+            "Models.Main.ledgerFull",
+            "Models.Main.guessChecked",
+            "Models.Main.flowStep",
         ]
     );
     for (root, members) in [
@@ -2479,9 +2723,75 @@ fn md_12() {
     let project = P::copy_example(EXAMPLE);
     project.check_ok();
     project.fmt_check_ok();
+    // The inventory: every claim and link form of the fixed model semantics
+    // is produced by a declaration of the committed example. The names are
+    // read from the emitted runtime itself, so a new form is covered or this
+    // case fails.
+    let build = support::rendered(&project);
+    let lean = support::lean_text(&build, "Ledger");
+    let runtime = lean
+        .split("namespace LexLeanModels\n")
+        .nth(1)
+        .and_then(|rest| rest.split("end LexLeanModels").next())
+        .expect("the emitted model runtime");
+    let decoders = BTreeSet::from(["encodeInt", "inRange", "linesMatch", "tensorMatches", "utf8Char"]);
+    let forms: BTreeSet<String> = runtime
+        .lines()
+        .filter_map(|line| line.split("public def ").nth(1))
+        .filter_map(|rest| rest.split_whitespace().next())
+        .filter(|name| !decoders.contains(name))
+        .map(str::to_owned)
+        .collect();
+    assert!(forms.len() >= 20, "{forms:?}");
+    let snapshot = snapshot(&project);
+    let mut produced = BTreeSet::new();
+    let mut statements = BTreeSet::new();
+    let mut cross_checks = Vec::new();
+    let mut constructors = BTreeSet::new();
+    for module in snapshot.modules() {
+        for declaration in module.declarations() {
+            let Some(elaboration) = declaration.elaboration() else {
+                continue;
+            };
+            for check in elaboration.cross_checks() {
+                statements.insert(check["statement"]["kind"].as_str().expect("kind").to_owned());
+                if let Some(helper) = check["statement"]["helper"].as_str() {
+                    produced.insert(helper.to_owned());
+                }
+                cross_checks.push(format!(
+                    "Models.{}.{}",
+                    module.name(),
+                    check["name"].as_str().expect("name")
+                ));
+            }
+            for derived in elaboration.declarations() {
+                let text = derived.to_string();
+                for constructor in VIOLATIONS {
+                    if text.contains(constructor) {
+                        constructors.insert(constructor);
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(produced, forms, "every form of the fixed semantics is produced");
+    assert_eq!(
+        statements,
+        BTreeSet::from(["bytes".to_owned(), "helper".to_owned(), "lines".to_owned(), "tensor".to_owned()]),
+        "every artifact decoding is restated"
+    );
+    assert_eq!(
+        constructors.len(),
+        4,
+        "every refusal is generated in executable code: {constructors:?}"
+    );
     let Some(fixture) = models_backed("MD-12") else {
         return;
     };
+    // ... and every one of them is verified by pinned Lean.
+    for name in &cross_checks {
+        assert_eq!(attested(fixture, name)["result"], "ok", "{name}");
+    }
     assert_eq!(fixture.attestation["status"], "verified");
     // Every declaration, generated or written, passed its axiom policy;
     // the generated ones are allowed what their source declaration states.
