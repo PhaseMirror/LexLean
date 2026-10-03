@@ -1750,7 +1750,7 @@ conformance_md_07`. Expected: an executable application of a model with an
 unchecked precondition links.
 
 ```text
-thread 'conformance_md_07' (23161) panicked at crates/conformance/src/cases/models.rs:1351:9:
+thread 'conformance_md_07' (7264) panicked at crates/conformance/src/cases/models.rs:1425:9:
 assertion `left == right` failed: SessionModel
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 282 filtered out
 ```
@@ -1785,7 +1785,7 @@ refused as a configuration mismatch. The declaration's own digest check still
 refuses them, with another message, so the tampering never reaches a backend.
 
 ```text
-thread 'conformance_md_02' (24293) panicked at crates/conformance/src/cases/models.rs:94:5:
+thread 'conformance_md_02' (6697) panicked at crates/conformance/src/cases/models.rs:115:5:
 expected "not its configured" under LLR3007, got LLR3007: phase link: artifact `banner` bytes have SHA-256 3733cd977ff8eb18b987357e22ced99f46097f31ecb239e878ae63760e83e4d5, not the declared 3369421cb6a657bcbdbec197a0c3b2a8e208dd7746853513f9d77331d0fa1397
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 282 filtered out
 ```
@@ -1862,6 +1862,10 @@ is false
 
 Removed: the generator was restored; the committed example verifies.
 
+This restatement is proved by `decide` against the fixed `Agreement`, so it
+does not use the generated statement; *model contract-claim generator is
+checked by Lean* covers the claims whose restatement is the user's theorem.
+
 ### model kernel differential can fail
 
 Planted, one at a time, against `conformance_md_09` (`cargo test -p
@@ -1890,6 +1894,96 @@ differently, clamping at both bounds, and a rectified value inside the
 range.
 
 Removed: each plant was restored; `conformance_md_09` passes.
+
+### model evidence discharge rules can fail
+
+Planted, one at a time (review r47, plants C and E): any claim at all
+discharged the postcondition check (`discharged.is_empty()` for
+`!discharged.contains(&ClaimKind::SatisfiesContract)` in `required_checks`),
+and the output-invariant check was never required (`if false &&
+!discharged.contains(&ClaimKind::PreservesInvariant)`). Commands: `cargo test
+-p repo-conformance --test conformance -- conformance_md_07
+conformance_md_08`. Expected: a model whose evidence is only a dataset
+agreement or an equivalence, or satisfies its contract without preserving
+its invariant, would run unchecked. `examples/models` now holds such models
+(`Ledger.GuessModel`, `GuessExactModel`, `SpillModel`, `SpillRawModel`), and
+roots that list the checks they need, whose refusals the kernel decides.
+
+```text
+thread 'conformance_md_07' (7826) panicked at crates/conformance/src/cases/models.rs:204:10:
+snapshot: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLT4007"), message: "phase link: composite `GuessTwice`: the output is Result (Prod (Nat) (Nat)) (ContractViolation), expected Prod (Nat) (Nat)", ...
+thread 'conformance_md_07' (8388) panicked at crates/conformance/src/cases/models.rs:1425:9:
+assertion `left == right` failed: SpillModel
+thread 'conformance_md_08' (8389) panicked at crates/conformance/src/cases/models.rs:1759:5:
+```
+
+Removed: each rule was restored; `conformance_md_07` and `conformance_md_08`
+pass.
+
+### model artifact rank bound can fail
+
+Planted: the tensor rank bound was skipped (`if false && shape.len() >
+MAX_TENSOR_RANK` in `check_artifact`). Command: `cargo test -p
+repo-conformance --test conformance -- conformance_md_02`. Expected: the
+one-byte artifact with a 40000-deep shape of `model-artifact-rank-overflow`
+is no longer refused by the bound. With the declared type still checked
+before decoding it fails on the type, printing a 40000-deep type; before
+review r47 the same input decoded first and exhausted 14 GB.
+
+```text
+thread 'conformance_md_02' (8977) panicked at crates/conformance/src/cases/models.rs:126:5:
+tests/negative/model-artifact-rank-overflow: expected "an integer tensor has at most 16 dimensions, not 40000", got LLR3008: phase link: artifact `weights`: the declared type List (Int) is not the schema's value type List (List (List (List (List ...
+```
+
+Removed: the bound was restored; `conformance_md_02` passes, and the fixture
+fails with `LLR3008` in about 0.2 s.
+
+### model composition checks after a stage can fail
+
+Planted: a composite stage's checks after it runs were dropped (`let checks:
+Vec<ModelCheck> = Vec::new();` in `guard_after`). Commands: `cargo test -p
+repo-conformance --test conformance -- conformance_md_08`, then `lexlean
+verify` in a copy of `examples/models`. Expected: a stage whose evidence
+leaves its postcondition or output invariant open runs unchecked inside a
+composite; pinned Lean refuses the kernel-decided refusals.
+
+```text
+thread 'conformance_md_08' (9543) panicked at crates/conformance/src/cases/models.rs:1749:9:
+ClampGuess elaborates Ledger::belowCheck: ...
+error[LLV7002]: Lean rejected `Models.Main` (error): Tactic `decide` proved that the proposition
+  twiceCode (guessOvershoot 4) = 13
+is false
+error[LLV7002]: Lean rejected `Models.Main` (error): Tactic `decide` proved that the proposition
+  streamCode (spillStream [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10]) = 14
+is false
+```
+
+Removed: the checks were restored; `conformance_md_08` passes and the example
+verifies.
+
+### model contract-claim generator is checked by Lean
+
+Planted (review r47, S2): the stateless `satisfies_contract` generator stated
+the vacuous `P x -> P x` for a contract with a precondition, and a copy of
+`examples/models` was edited so that each such claim's theorem
+(`triage_safe`, `policy_escalates`, `pipeline_responds`, `checked_answers`)
+states exactly that. Commands: `lexlean check`, then `lexlean verify`, in that
+copy. Expected: linking accepts the theorems, which state the generator's
+output; Lean refuses the restatement against the fixed
+`LexLeanModels.Satisfies`, which is not definitionally that statement.
+
+```text
+check 0
+verify 1
+error[LLV7002]: Lean rejected `Models.Triage` (error): Type mismatch
+  Triage.triage_safe
+has type
+  ∀ (presentation : Presentation), Symptomatic presentation → Symptomatic presentation
+but is expected to have type
+  LexLeanModels.Satisfies Symptomatic Safe TriageScore
+```
+
+Removed: the generator was restored; the committed example verifies.
 
 ### model axiom audit union can fail
 
