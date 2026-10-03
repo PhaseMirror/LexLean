@@ -1,0 +1,65 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\begin{document}
+\section*{Semantic declarations}
+\subsection*{\texttt{classify}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(glyph : Models.Glyphs.Glyph)}.\par
+\noindent Execution: executable, non-escaping closures only.\par
+\noindent Production root for targets \texttt{rust-std}; admitted effects: \texttt{allocation, overflow, recursion}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{Models.Recognizer.DigitModel (glyph)}.\par
+\noindent Axiom policy: \texttt{exact [propext]}.\par
+\subsection*{\texttt{classifyChecked}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(glyph : Models.Glyphs.Glyph)}.\par
+\noindent Execution: executable, non-escaping closures only.\par
+\noindent Production root for targets \texttt{rust-std}; admitted effects: \texttt{allocation, overflow, recursion}.\par
+\noindent Type: \texttt{Except (ContractViolation) (Nat)}.\par
+\noindent Definition: \texttt{(checked Models.Recognizer.RawDigitModel (glyph) [postcondition])}.\par
+\noindent Axiom policy: \texttt{exact [propext]}.\par
+\subsection*{\texttt{respond}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(presentation : Models.Triage.Presentation)}.\par
+\noindent Execution: executable, non-escaping closures only.\par
+\noindent Production root for targets \texttt{rust-std}; admitted effects: \texttt{allocation, overflow, recursion}.\par
+\noindent Type: \texttt{Except (ContractViolation) (Nat)}.\par
+\noindent Definition: \texttt{(checked Models.Pipeline.PipelineModel (presentation) [precondition])}.\par
+\noindent Axiom policy: \texttt{exact [propext]}.\par
+\subsection*{\texttt{admitCosts}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(costs : List (Nat))}.\par
+\noindent Execution: executable, non-escaping closures only.\par
+\noindent Production root for targets \texttt{rust-std}; admitted effects: \texttt{allocation, overflow, recursion}.\par
+\noindent Type: \texttt{Except (ContractViolation) (Except (ContractViolation) (List (Nat)))}.\par
+\noindent Definition: \texttt{(checked Models.Pipeline.StreamModel (costs) [precondition])}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{step}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(window : Models.Session.Window) (cost : Nat)}.\par
+\noindent Execution: executable, non-escaping closures only.\par
+\noindent Production root for targets \texttt{rust-std}; admitted effects: \texttt{allocation, overflow, recursion}.\par
+\noindent Type: \texttt{Except (ContractViolation) ((Prod (Models.Session.Window) (Nat)))}.\par
+\noindent Definition: \texttt{(checked Models.Session.SessionModel (window) (cost) [input\_invariant, precondition])}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{classify\_eight}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(classify (Models.Glyphs.Glyph.g8) = 8)}.\par
+\noindent Axiom policy: \texttt{exact [propext]}.\par
+\subsection*{\texttt{admission}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(outcome : Except (ContractViolation) (Except (ContractViolation) (List (Nat))))}.\par
+\noindent Execution: executable, non-escaping closures only.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match outcome with | Except.error \_ => 0 | Except.ok scanned => (match scanned with | Except.error \_ => 1 | Except.ok \_ => 2))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{admit\_rejects\_costly}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(admission (admitCosts ((3 :: (40 :: ([] : List (Nat)))))) = 1)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{admit\_accepts\_cheap}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(admission (admitCosts ((3 :: (16 :: (9 :: ([] : List (Nat))))))) = 2)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\end{document}

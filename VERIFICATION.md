@@ -259,7 +259,7 @@ check, which refuses a type parameter that survives instantiation, still
 stops it, and the case observes the changed reason.
 
 ```text
-thread 'conformance_pd_05' panicked at crates/conformance/src/cases/production.rs:646:17:
+thread 'conformance_pd_05' panicked at crates/conformance/src/cases/production.rs:656:17:
 production-phantom-type-parameter: expected "production root declares the type parameters (Item)", got LLT4005: phase production: production root `LanguageTwelve.Main.count` is not eligible for target `rust-std`: the type parameter `Item` is never instantiated in the closure (in `LanguageTwelve.Main.count`, reached by LanguageTwelve.Main.count; 1 violation(s) in total)
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 249 filtered out
 ```
@@ -275,7 +275,7 @@ no-allocation target admitted allocation as an effect. Command: `cargo test -p
 repo-conformance --test conformance -- conformance_pd_04 conformance_pd_05`.
 
 ```text
-thread 'conformance_pd_05' panicked at crates/conformance/src/cases/production.rs:646:17:
+thread 'conformance_pd_05' panicked at crates/conformance/src/cases/production.rs:656:17:
 production-unbounded-type: expected "construct `type.list` requires heap allocation, which target `rust-core` does not provide", got LLT4005: phase production: production root `LanguageTwelve.Main.first` is not eligible for target `rust-core`: effect mismatch: construct `type.list` realizes effect `allocation`, which the root does not admit (in `LanguageTwelve.Main.first`, reached by LanguageTwelve.Main.first; 1 violation(s) in total)
 thread 'conformance_pd_04' panicked at crates/conformance/src/support.rs:390:14:
 check fails

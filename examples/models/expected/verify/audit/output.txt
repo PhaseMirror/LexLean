@@ -1,0 +1,159 @@
+'Models.Glyphs.Glyph' does not depend on any axioms
+'Models.Glyphs.digitOf' does not depend on any axioms
+'Models.Glyphs.encode' does not depend on any axioms
+'Models.Glyphs.encode_width' does not depend on any axioms
+'Models.Glyphs.isEight' does not depend on any axioms
+'Models.Glyphs.segmentCount' does not depend on any axioms
+'Models.Main.admission' does not depend on any axioms
+'Models.Main.admitCosts' does not depend on any axioms
+'Models.Main.admit_accepts_cheap' does not depend on any axioms
+'Models.Main.admit_rejects_costly' does not depend on any axioms
+'Models.Main.classify' depends on axioms: [propext]
+'Models.Main.classifyChecked' depends on axioms: [propext]
+'Models.Main.classify_eight' depends on axioms: [propext]
+'Models.Main.respond' depends on axioms: [propext]
+'Models.Main.step' does not depend on any axioms
+'Models.Pipeline.Answered' does not depend on any axioms
+'Models.Pipeline.Bounded9' does not depend on any axioms
+'Models.Pipeline.CheckedEvidence.checked_answers' depends on axioms: [propext]
+'Models.Pipeline.CheckedModel' depends on axioms: [propext]
+'Models.Pipeline.CheckedPipeline' depends on axioms: [propext]
+'Models.Pipeline.GlyphPair' does not depend on any axioms
+'Models.Pipeline.GlyphReport' depends on axioms: [propext]
+'Models.Pipeline.GlyphRoute' depends on axioms: [propext]
+'Models.Pipeline.Lit' does not depend on any axioms
+'Models.Pipeline.PairEvidence.pair_correct' does not depend on any axioms
+'Models.Pipeline.PairLit' does not depend on any axioms
+'Models.Pipeline.PairModel' does not depend on any axioms
+'Models.Pipeline.PipelineContract.precondition_sound' does not depend on any axioms
+'Models.Pipeline.PipelineEvidence.pipeline_responds' depends on axioms: [propext]
+'Models.Pipeline.PipelineModel' depends on axioms: [propext]
+'Models.Pipeline.ReportEvidence.report_correct' depends on axioms: [propext]
+'Models.Pipeline.ReportModel' depends on axioms: [propext]
+'Models.Pipeline.Reported' does not depend on any axioms
+'Models.Pipeline.Responds' does not depend on any axioms
+'Models.Pipeline.RouteEvidence.route_bounded' depends on axioms: [propext]
+'Models.Pipeline.RouteModel' depends on axioms: [propext]
+'Models.Pipeline.SegmentCounter' does not depend on any axioms
+'Models.Pipeline.SegmentEvidence.segments_lit' does not depend on any axioms
+'Models.Pipeline.SegmentModel' does not depend on any axioms
+'Models.Pipeline.SessionStream' does not depend on any axioms
+'Models.Pipeline.ShortStream' does not depend on any axioms
+'Models.Pipeline.StreamContract.precondition_sound' depends on axioms: [propext, Quot.sound]
+'Models.Pipeline.StreamModel' does not depend on any axioms
+'Models.Pipeline.TriagePipeline' depends on axioms: [propext]
+'Models.Pipeline.checked_answers' depends on axioms: [propext]
+'Models.Pipeline.pair_correct' does not depend on any axioms
+'Models.Pipeline.pipeline_entry' does not depend on any axioms
+'Models.Pipeline.pipeline_responds' depends on axioms: [propext]
+'Models.Pipeline.report_correct' depends on axioms: [propext]
+'Models.Pipeline.resultCode' does not depend on any axioms
+'Models.Pipeline.route_bounded' depends on axioms: [propext]
+'Models.Pipeline.segments_lit' does not depend on any axioms
+'Models.Pipeline.shortStreamCheck' does not depend on any axioms
+'Models.Pipeline.short_stream_check_sound' depends on axioms: [propext, Quot.sound]
+'Models.Pipeline.symptomatic_sound' does not depend on any axioms
+'Models.Pipeline.triage_actionable' depends on axioms: [propext]
+'Models.Policy.Actionable' does not depend on any axioms
+'Models.Policy.Escalates' does not depend on any axioms
+'Models.Policy.PolicyContract.precondition_complete' does not depend on any axioms
+'Models.Policy.PolicyContract.precondition_sound' does not depend on any axioms
+'Models.Policy.PolicyEvidence.policy_escalates' does not depend on any axioms
+'Models.Policy.PolicyModel' does not depend on any axioms
+'Models.Policy.PolicyRules' does not depend on any axioms
+'Models.Policy.PolicyRules.selected' does not depend on any axioms
+'Models.Policy.actionableCheck' does not depend on any axioms
+'Models.Policy.actionable_check_complete' does not depend on any axioms
+'Models.Policy.actionable_check_sound' does not depend on any axioms
+'Models.Policy.emergency_dispatches' does not depend on any axioms
+'Models.Policy.isUrgent' does not depend on any axioms
+'Models.Policy.policy_escalates' does not depend on any axioms
+'Models.Recognizer.DigitContract.postcondition_complete' depends on axioms: [propext]
+'Models.Recognizer.DigitContract.postcondition_sound' depends on axioms: [propext]
+'Models.Recognizer.DigitEvidence.digit_net_correct' depends on axioms: [propext]
+'Models.Recognizer.DigitEvidence.digit_net_exact' depends on axioms: [propext]
+'Models.Recognizer.DigitEvidence.labeled_agreement' depends on axioms: [propext]
+'Models.Recognizer.DigitModel' depends on axioms: [propext]
+'Models.Recognizer.DigitNet' depends on axioms: [propext]
+'Models.Recognizer.DigitNet.encoded' does not depend on any axioms
+'Models.Recognizer.DigitNet.layer1' does not depend on any axioms
+'Models.Recognizer.DigitNet.layer2' depends on axioms: [propext]
+'Models.Recognizer.DigitNet.layer3' depends on axioms: [propext]
+'Models.Recognizer.DigitNet.layer4' does not depend on any axioms
+'Models.Recognizer.DigitNet.logits' depends on axioms: [propext]
+'Models.Recognizer.RawDigitModel' depends on axioms: [propext]
+'Models.Recognizer.Recognizes' does not depend on any axioms
+'Models.Recognizer.banner' does not depend on any axioms
+'Models.Recognizer.banner.bytes' does not depend on any axioms
+'Models.Recognizer.banner.decoded' does not depend on any axioms
+'Models.Recognizer.digitName' does not depend on any axioms
+'Models.Recognizer.digitNames' does not depend on any axioms
+'Models.Recognizer.digitNames.bytes' does not depend on any axioms
+'Models.Recognizer.digitNames.decoded' depends on axioms: [propext, Classical.choice, Quot.sound]
+'Models.Recognizer.digit_net_correct' depends on axioms: [propext]
+'Models.Recognizer.digit_net_exact' depends on axioms: [propext]
+'Models.Recognizer.digit_net_width' does not depend on any axioms
+'Models.Recognizer.hiddenBias' does not depend on any axioms
+'Models.Recognizer.hiddenBias.bytes' does not depend on any axioms
+'Models.Recognizer.hiddenBias.decoded' does not depend on any axioms
+'Models.Recognizer.hiddenWeights' does not depend on any axioms
+'Models.Recognizer.hiddenWeights.bytes' does not depend on any axioms
+'Models.Recognizer.hiddenWeights.decoded' does not depend on any axioms
+'Models.Recognizer.labeledGlyphs' does not depend on any axioms
+'Models.Recognizer.labeled_agreement' depends on axioms: [propext]
+'Models.Recognizer.outputBias' does not depend on any axioms
+'Models.Recognizer.outputBias.bytes' does not depend on any axioms
+'Models.Recognizer.outputBias.decoded' does not depend on any axioms
+'Models.Recognizer.outputWeights' does not depend on any axioms
+'Models.Recognizer.outputWeights.bytes' does not depend on any axioms
+'Models.Recognizer.outputWeights.decoded' does not depend on any axioms
+'Models.Recognizer.recognizesCheck' does not depend on any axioms
+'Models.Recognizer.recognizes_check_complete' depends on axioms: [propext]
+'Models.Recognizer.recognizes_check_sound' depends on axioms: [propext]
+'Models.Recognizer.sameDigit' does not depend on any axioms
+'Models.Recognizer.same_digit_sound' depends on axioms: [propext]
+'Models.Session.Affordable' does not depend on any axioms
+'Models.Session.Bounded' does not depend on any axioms
+'Models.Session.Conserves' does not depend on any axioms
+'Models.Session.SessionContract.invariant_sound' depends on axioms: [propext]
+'Models.Session.SessionContract.precondition_sound' depends on axioms: [propext]
+'Models.Session.SessionEvidence.session_conserves' depends on axioms: [propext, Quot.sound]
+'Models.Session.SessionEvidence.session_initial' does not depend on any axioms
+'Models.Session.SessionEvidence.session_preserves' depends on axioms: [propext, Quot.sound]
+'Models.Session.SessionModel' does not depend on any axioms
+'Models.Session.SessionModel.initial' does not depend on any axioms
+'Models.Session.SessionStep' does not depend on any axioms
+'Models.Session.SessionStep.initial' does not depend on any axioms
+'Models.Session.Window' does not depend on any axioms
+'Models.Session.affordableCheck' does not depend on any axioms
+'Models.Session.affordable_check_sound' depends on axioms: [propext]
+'Models.Session.boundedCheck' does not depend on any axioms
+'Models.Session.bounded_check_sound' depends on axioms: [propext]
+'Models.Session.session_conserves' depends on axioms: [propext, Quot.sound]
+'Models.Session.session_initial' does not depend on any axioms
+'Models.Session.session_preserves' depends on axioms: [propext, Quot.sound]
+'Models.Triage.Level' does not depend on any axioms
+'Models.Triage.Presentation' does not depend on any axioms
+'Models.Triage.Safe' does not depend on any axioms
+'Models.Triage.Symptomatic' does not depend on any axioms
+'Models.Triage.TriageContract.precondition_sound' does not depend on any axioms
+'Models.Triage.TriageEvidence.triage_safe' depends on axioms: [propext]
+'Models.Triage.TriageModel' depends on axioms: [propext]
+'Models.Triage.TriageScore' depends on axioms: [propext]
+'Models.Triage.TriageScore.features' does not depend on any axioms
+'Models.Triage.TriageScore.scores' does not depend on any axioms
+'Models.Triage.features' does not depend on any axioms
+'Models.Triage.hasSymptom' does not depend on any axioms
+'Models.Triage.isBreathless' does not depend on any axioms
+'Models.Triage.isEmergency' does not depend on any axioms
+'Models.Triage.isRoutine' does not depend on any axioms
+'Models.Triage.symptomaticCheck' does not depend on any axioms
+'Models.Triage.symptomatic_check_sound' does not depend on any axioms
+'Models.Triage.triageBias' does not depend on any axioms
+'Models.Triage.triageBias.bytes' does not depend on any axioms
+'Models.Triage.triageBias.decoded' does not depend on any axioms
+'Models.Triage.triageWeights' does not depend on any axioms
+'Models.Triage.triageWeights.bytes' does not depend on any axioms
+'Models.Triage.triageWeights.decoded' does not depend on any axioms
+'Models.Triage.triage_safe' depends on axioms: [propext]
+'Models.Triage.triage_width' does not depend on any axioms
