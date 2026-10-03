@@ -2921,10 +2921,7 @@ fn check_composite(
             let s = state.map(|state| var(&state.name));
             let slot = |index: usize| -> Option<(usize, SemanticTerm)> {
                 let position = stateful.iter().position(|stage| *stage == index)?;
-                Some((
-                    position,
-                    component(s.as_ref()?, position, stateful.len()),
-                ))
+                Some((position, component(s.as_ref()?, position, stateful.len())))
             };
             let last = stages[stages.len() - 1].contract.output.r#type.clone();
             let checked = junctions
@@ -2942,7 +2939,8 @@ fn check_composite(
                 let (before, stage) = (&stages[index], &stages[index + 1]);
                 let label = index + 1;
                 let key = member_key(&stage.member);
-                let invariant = stage.contract.state.is_some() && stage.contract.invariant.is_some();
+                let invariant =
+                    stage.contract.state.is_some() && stage.contract.invariant.is_some();
                 let precondition = stage.contract.precondition.is_some();
                 match junction {
                     CompositeJunction::Unconditional => {
@@ -2990,7 +2988,11 @@ fn check_composite(
                             )));
                         }
                         for (present, predicate, what) in [
-                            (precondition, ContractPredicate::Precondition, "precondition"),
+                            (
+                                precondition,
+                                ContractPredicate::Precondition,
+                                "precondition",
+                            ),
                             (invariant, ContractPredicate::Invariant, "invariant"),
                         ] {
                             if present && !stage.contract.validators.contains_key(&predicate) {
@@ -3198,11 +3200,7 @@ fn check_composite(
                 expect(
                     &format!("the {label} stage output"),
                     &stage.contract.output.r#type,
-                    &if checked {
-                        raw.clone()
-                    } else {
-                        output.clone()
-                    },
+                    &if checked { raw.clone() } else { output.clone() },
                 )?;
             }
             if checked {
@@ -3232,7 +3230,11 @@ fn check_composite(
                 }
             };
             Ok(CompositeLowering {
-                body: if_then(guard.clone(), arm(&then, "__then"), arm(&otherwise, "__else")),
+                body: if_then(
+                    guard.clone(),
+                    arm(&then, "__then"),
+                    arm(&otherwise, "__else"),
+                ),
                 effective,
                 obligations: Vec::new(),
             })

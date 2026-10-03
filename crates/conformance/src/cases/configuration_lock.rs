@@ -1233,9 +1233,21 @@ pub(crate) fn run(id: &str) {
             let unexposed: Vec<String> = migrated_lean
                 .iter()
                 .map(|text| {
+                    // Only a proposition-valued definition is reducible; any
+                    // other reducible definition is left to fail the comparison.
                     let mut text = text
                         .replace("@[expose, noinline] public def ", "@[noinline] public def ")
-                        .replace("@[expose, reducible] public def ", "@[expose] public def ");
+                        .split_inclusive('\n')
+                        .map(|line| {
+                            if line.starts_with("@[expose, reducible] public def ")
+                                && line.contains(" : Prop :=")
+                            {
+                                line.replacen("@[expose, reducible]", "@[expose]", 1)
+                            } else {
+                                line.to_owned()
+                            }
+                        })
+                        .collect::<String>();
                     for helper in [
                         "magnitudeInt64",
                         "signedMagnitudeInt64",

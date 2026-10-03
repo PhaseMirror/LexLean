@@ -105,6 +105,9 @@ pub struct SnapshotDeclaration {
 #[serde(deny_unknown_fields)]
 pub struct SnapshotElaboration {
     declarations: Vec<serde_json::Value>,
+    /// The alpha identity of every elaborated definition, by name, as for a
+    /// source definition (§17.12).
+    alpha_ids: std::collections::BTreeMap<String, Sha256Digest>,
     obligations: Vec<serde_json::Value>,
     cross_checks: Vec<serde_json::Value>,
     required_checks: Vec<String>,
@@ -115,6 +118,12 @@ impl SnapshotElaboration {
     #[must_use]
     pub fn declarations(&self) -> &[serde_json::Value] {
         &self.declarations
+    }
+
+    /// The alpha identity of each elaborated definition, by name.
+    #[must_use]
+    pub const fn alpha_ids(&self) -> &std::collections::BTreeMap<String, Sha256Digest> {
+        &self.alpha_ids
     }
 
     /// The generated obligations.
@@ -259,6 +268,14 @@ impl SemanticSnapshot {
                         (model || lowered != std::slice::from_ref(declaration)).then(|| {
                             SnapshotElaboration {
                                 declarations: lowered.iter().map(canonical_value).collect(),
+                                alpha_ids: lowered
+                                    .iter()
+                                    .filter_map(|derived| {
+                                        derived
+                                            .alpha_identity()
+                                            .map(|id| (derived.name().to_owned(), id))
+                                    })
+                                    .collect(),
                                 obligations: semantic
                                     .elaboration
                                     .obligations(index)

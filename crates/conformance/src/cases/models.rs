@@ -627,7 +627,10 @@ fn md_02() {
     // decoded value (§17.12 rule 13).
     for module in MODULES {
         let tex = support::tex_text(&build, module);
-        assert!(!tex.contains("ByteArray.mk"), "{module}.tex prints artifact bytes");
+        assert!(
+            !tex.contains("ByteArray.mk"),
+            "{module}.tex prints artifact bytes"
+        );
         assert!(!tex.contains(&embedded), "{module}.tex prints the weights");
     }
     let tex = support::tex_text(&build, "Recognizer");
@@ -1380,8 +1383,16 @@ fn md_07() {
         // Evidence discharges a check only through the claim that states
         // it: a dataset agreement or an equivalence discharges nothing, and
         // satisfying the contract does not preserve the invariant.
-        ("Ledger", "GuessModel", &["postcondition", "precondition"][..]),
-        ("Ledger", "GuessExactModel", &["postcondition", "precondition"][..]),
+        (
+            "Ledger",
+            "GuessModel",
+            &["postcondition", "precondition"][..],
+        ),
+        (
+            "Ledger",
+            "GuessExactModel",
+            &["postcondition", "precondition"][..],
+        ),
         (
             "Ledger",
             "SpillModel",
@@ -1400,7 +1411,11 @@ fn md_07() {
         ("Ledger", "TallyModel", &["precondition"][..]),
         ("Ledger", "ClampModel", &["input_invariant"][..]),
         ("Ledger", "FreeModel", &[][..]),
-        ("Ledger", "OvershootModel", &["postcondition", "precondition"][..]),
+        (
+            "Ledger",
+            "OvershootModel",
+            &["postcondition", "precondition"][..],
+        ),
         (
             "Flows",
             "FlowModel",
@@ -1741,7 +1756,10 @@ fn md_08() {
         .iter()
         .map(Json::to_string)
         .collect::<String>();
-    assert!(stream.contains("ContractViolation.output_invariant"), "{stream}");
+    assert!(
+        stream.contains("ContractViolation.output_invariant"),
+        "{stream}"
+    );
     let entry = elaboration(&snapshot, "Flows", "FlowModel");
     assert_eq!(
         entry.obligations()[0]["parameters"]
@@ -1755,10 +1773,7 @@ fn md_08() {
         (
             "ClampGuess",
             |declaration| {
-                declaration
-                    .as_object_mut()
-                    .expect("object")
-                    .remove("state");
+                declaration.as_object_mut().expect("object").remove("state");
             },
             "its stateful stages thread a state of type Nat, which it must declare",
         ),
@@ -1794,12 +1809,17 @@ fn md_08() {
         ),
         (
             "GuessTwice",
-            |declaration| declaration["output"] = json!({"kind": "product", "left": {"kind": "nat"}, "right": {"kind": "nat"}}),
+            |declaration| {
+                declaration["output"] =
+                    json!({"kind": "product", "left": {"kind": "nat"}, "right": {"kind": "nat"}})
+            },
             "expected Result (Prod (Nat) (Nat)) (ContractViolation)",
         ),
         (
             "SpillStream",
-            |declaration| declaration["descriptor"]["form"]["junction"] = json!({"kind": "unconditional"}),
+            |declaration| {
+                declaration["descriptor"]["form"]["junction"] = json!({"kind": "unconditional"})
+            },
             "needs its output_invariant checked at run time, so the junction must be checked",
         ),
     ];
@@ -1853,7 +1873,9 @@ fn md_08() {
             "Models.Main.twice_refuses",
             "Models.Main.stream_accepts",
             "Models.Main.stream_refuses_output",
+            "Models.Main.overshoot_pair_refuses_postcondition",
             "Models.Flows.ClampGuess",
+            "Models.Flows.GuessOvershoot",
             "Models.Flows.GuessTwice",
             "Models.Flows.SpillStream",
         ] {
@@ -2529,6 +2551,34 @@ fn md_10() {
         "an artifact is its exact bytes and a constant of their decoded value"
     );
     assert_eq!(artifact.cross_checks()[0]["statement"]["kind"], "tensor");
+    // Every elaborated definition carries its alpha identity, as a source
+    // definition does.
+    let net = elaboration(&first, "Recognizer", "DigitNet");
+    let defined: Vec<String> = names(net.declarations());
+    assert_eq!(
+        net.alpha_ids().keys().cloned().collect::<Vec<_>>(),
+        {
+            let mut sorted = defined.clone();
+            sorted.sort();
+            sorted
+        },
+        "one alpha identity per elaborated definition"
+    );
+    // A reserved generated name is admitted in an elaboration only.
+    let mut forged = value.clone();
+    let declaration = forged["modules"]
+        .as_array_mut()
+        .expect("modules")
+        .iter_mut()
+        .filter_map(|module| module["semantic"]["declarations"].as_array_mut())
+        .flatten()
+        .find(|declaration| declaration["kind"] == "definition")
+        .expect("a source definition");
+    declaration["name"] = json!("__forged");
+    assert!(
+        !crate::schema::validate(&support::schema("semantic-snapshot-v2"), &forged).is_empty(),
+        "the snapshot schema rejects a reserved name in a source declaration"
+    );
 }
 
 /// §17.13, §17.14: production dispositions, the realization table, and
@@ -2734,7 +2784,13 @@ fn md_12() {
         .nth(1)
         .and_then(|rest| rest.split("end LexLeanModels").next())
         .expect("the emitted model runtime");
-    let decoders = BTreeSet::from(["encodeInt", "inRange", "linesMatch", "tensorMatches", "utf8Char"]);
+    let decoders = BTreeSet::from([
+        "encodeInt",
+        "inRange",
+        "linesMatch",
+        "tensorMatches",
+        "utf8Char",
+    ]);
     let forms: BTreeSet<String> = runtime
         .lines()
         .filter_map(|line| line.split("public def ").nth(1))
@@ -2754,7 +2810,12 @@ fn md_12() {
                 continue;
             };
             for check in elaboration.cross_checks() {
-                statements.insert(check["statement"]["kind"].as_str().expect("kind").to_owned());
+                statements.insert(
+                    check["statement"]["kind"]
+                        .as_str()
+                        .expect("kind")
+                        .to_owned(),
+                );
                 if let Some(helper) = check["statement"]["helper"].as_str() {
                     produced.insert(helper.to_owned());
                 }
@@ -2774,10 +2835,18 @@ fn md_12() {
             }
         }
     }
-    assert_eq!(produced, forms, "every form of the fixed semantics is produced");
+    assert_eq!(
+        produced, forms,
+        "every form of the fixed semantics is produced"
+    );
     assert_eq!(
         statements,
-        BTreeSet::from(["bytes".to_owned(), "helper".to_owned(), "lines".to_owned(), "tensor".to_owned()]),
+        BTreeSet::from([
+            "bytes".to_owned(),
+            "helper".to_owned(),
+            "lines".to_owned(),
+            "tensor".to_owned()
+        ]),
         "every artifact decoding is restated"
     );
     assert_eq!(
