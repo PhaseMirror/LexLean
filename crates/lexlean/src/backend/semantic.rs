@@ -1067,11 +1067,11 @@ impl Render<'_> {
                 };
                 if definitions.is_empty() {
                     format!(
-                        "{pad}intros\n{pad}try set_option linter.unusedSimpArgs false in simp only [← Bool.not_eq_true, Nat.beq_eq, Nat.blt_eq, Nat.ble_eq{runtime}] at *\n{pad}omega\n"
+                        "{pad}intros\n{pad}try set_option linter.unusedSimpArgs false in simp only [← Bool.not_eq_true, Nat.beq_eq, Nat.blt_eq, Nat.ble_eq{runtime}] at *\n{pad}all_goals omega\n"
                     )
                 } else {
                     format!(
-                        "{pad}intros\n{pad}subst_vars\n{pad}try set_option linter.unusedSimpArgs false in simp only [{}, ← Bool.not_eq_true, Nat.beq_eq, Nat.blt_eq, Nat.ble_eq{runtime}] at *\n{pad}omega\n",
+                        "{pad}intros\n{pad}subst_vars\n{pad}try set_option linter.unusedSimpArgs false in simp only [{}, ← Bool.not_eq_true, Nat.beq_eq, Nat.blt_eq, Nat.ble_eq{runtime}] at *\n{pad}all_goals omega\n",
                         definitions
                             .iter()
                             .map(|member| self.member(member))
@@ -2073,14 +2073,24 @@ pub fn render_lean(
         ));
     }
     let runtime = elaborated.contains("\"kind\":\"primitive\"");
-    let render = Render {
+    let document = &checked.document;
+    let base_render = Render {
         prefix: module_prefix,
         hypotheses: std::collections::BTreeMap::new(),
         runtime,
         document: false,
         qualify: None,
     };
-    let document = &checked.document;
+    // A declaration a model elaborates to is named `R.x`, and Lean resolves
+    // a name inside it against the namespace `R` first, so every local
+    // reference it makes is written qualified (§17.12, models).
+    let model_render = Render {
+        prefix: module_prefix,
+        hypotheses: std::collections::BTreeMap::new(),
+        runtime,
+        document: false,
+        qualify: Some(&document.lean_module),
+    };
     let mut text = String::from("module\npublic import Init\n");
     for import in &document.imports {
         text.push_str(&format!(
@@ -2142,6 +2152,11 @@ pub fn render_lean(
         let declarations: Vec<&SemanticDeclaration> = match module.elaborated(index) {
             Some(elaborated) => elaborated.iter().collect(),
             None => vec![source],
+        };
+        let render = if crate::ir::semantic::model::declaration_construct(source).is_some() {
+            &model_render
+        } else {
+            &base_render
         };
         for declaration in declarations {
         match declaration {
@@ -2265,7 +2280,7 @@ pub fn render_lean(
                     };
                     // Every type parameter is passed to the evidence in
                     // `decreasing_by`, so each is used and keeps its name.
-                    text.push_str(&well_founded_definition(&render, &group, declaration)?);
+                    text.push_str(&well_founded_definition(render, &group, declaration)?);
                     if mutual.is_some() && group_of(index + 1) != group_of(index) {
                         text.push_str("end\n");
                     }

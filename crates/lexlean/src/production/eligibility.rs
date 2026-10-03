@@ -39,6 +39,7 @@ use crate::ir::semantic::{
 #[derive(Clone, Copy)]
 enum BuiltinOwner {
     Bool,
+    ContractViolation,
     Nat,
     List,
     Option,
@@ -49,15 +50,16 @@ impl BuiltinOwner {
     /// The number of type arguments a constructor of this type carries.
     const fn arity(self) -> usize {
         match self {
-            Self::Bool | Self::Nat => 0,
+            Self::Bool | Self::ContractViolation | Self::Nat => 0,
             Self::List | Self::Option => 1,
             Self::Result => 2,
         }
     }
 }
 
-const BUILTIN_OWNERS: [(&str, BuiltinOwner); 5] = [
+const BUILTIN_OWNERS: [(&str, BuiltinOwner); 6] = [
     ("Bool", BuiltinOwner::Bool),
+    ("ContractViolation", BuiltinOwner::ContractViolation),
     ("Nat", BuiltinOwner::Nat),
     ("List", BuiltinOwner::List),
     ("Option", BuiltinOwner::Option),
@@ -1846,6 +1848,7 @@ impl<'a> Walk<'a> {
                 let argument = |index: usize| Box::new(type_arguments[index].clone());
                 match builtin {
                     BuiltinOwner::Bool => SemanticType::Bool,
+                    BuiltinOwner::ContractViolation => SemanticType::ContractViolation,
                     BuiltinOwner::Nat => SemanticType::Nat,
                     BuiltinOwner::List => SemanticType::List {
                         element: argument(0),

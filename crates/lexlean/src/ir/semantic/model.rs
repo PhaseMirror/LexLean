@@ -4142,6 +4142,20 @@ pub(super) fn lower_ordinary(
         | SemanticDeclaration::Evidence { .. }
         | SemanticDeclaration::Model { .. } => false,
     };
+    // The elaborated copy is checked admitting generated binders, so every
+    // source binder is checked as source first: no source name begins with
+    // an underscore.
+    let mut failure = None;
+    super::declaration_binders(declaration, &mut |binder| {
+        if failure.is_none() {
+            if let Err(reason) = check_name(binder, "binder") {
+                failure = Some(reason);
+            }
+        }
+    });
+    if let Some(reason) = failure {
+        return Err(reason.into());
+    }
     let mut out = declaration.clone();
     lower_terms(&mut out, executable, env)?;
     Ok(out)

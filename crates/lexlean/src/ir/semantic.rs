@@ -3576,6 +3576,7 @@ fn constructor_arity(member: &MemberRef, env: &Environment<'_>) -> Option<usize>
                 return Some(usize::from(member.name != "Option.none"));
             }
             "Option.some" => return Some(1),
+            name if env.language_1_2 && model::VIOLATIONS.contains(&name) => return Some(0),
             _ => {}
         }
     }
@@ -8283,6 +8284,9 @@ impl SemanticModule {
                 }
                 SemanticDeclaration::Instance { .. } => {
                     let lowered = model::lower_ordinary(declaration, &env)?;
+                    // Only elaborated checked applications bind generated
+                    // names; the source binders were checked as source.
+                    env.derived = true;
                     let SemanticDeclaration::Instance {
                         class,
                         arguments,
@@ -8336,6 +8340,7 @@ impl SemanticModule {
                             name: name.to_owned(),
                         },
                     );
+                    env.derived = false;
                     elaboration.lower(index, vec![lowered.clone()]);
                 }
                 SemanticDeclaration::Definition {
@@ -8360,7 +8365,11 @@ impl SemanticModule {
                         .iter()
                         .map(|row| model::lower_ordinary(row, &env))
                         .collect::<Result<Vec<_>, _>>()?;
-                    check_definition_group(&lowered.iter().collect::<Vec<_>>(), label, &mut env)?;
+                    env.derived = true;
+                    let checked =
+                        check_definition_group(&lowered.iter().collect::<Vec<_>>(), label, &mut env);
+                    env.derived = false;
+                    checked?;
                     for (position, row) in self.declarations.iter().enumerate() {
                         if let Some(at) = rows.iter().position(|candidate| std::ptr::eq(*candidate, row)) {
                             elaboration.lower(position, vec![lowered[at].clone()]);
@@ -8369,12 +8378,18 @@ impl SemanticModule {
                 }
                 SemanticDeclaration::Definition { .. } => {
                     let lowered = model::lower_ordinary(declaration, &env)?;
-                    check_definition(&lowered, &mut env)?;
+                    env.derived = true;
+                    let checked = check_definition(&lowered, &mut env);
+                    env.derived = false;
+                    checked?;
                     elaboration.lower(index, vec![lowered]);
                 }
                 SemanticDeclaration::Theorem { .. } => {
                     let lowered = model::lower_ordinary(declaration, &env)?;
-                    check_theorem(&lowered, &mut env)?;
+                    env.derived = true;
+                    let checked = check_theorem(&lowered, &mut env);
+                    env.derived = false;
+                    checked?;
                     elaboration.lower(index, vec![lowered]);
                 }
                 SemanticDeclaration::Artifact { .. }
