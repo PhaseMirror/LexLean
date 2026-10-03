@@ -1,0 +1,1 @@
+hidden allocation: a list requires heap allocation, which rust-core does not provide
