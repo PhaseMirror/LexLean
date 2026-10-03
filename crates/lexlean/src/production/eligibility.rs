@@ -150,13 +150,14 @@ pub const fn primitive_key(operation: SemanticPrimitive) -> &'static str {
         SemanticPrimitive::GraphSuccessors => "primitive.graph_successors",
         SemanticPrimitive::GraphReachable => "primitive.graph_reachable",
         SemanticPrimitive::GraphTopological => "primitive.graph_topological",
+        SemanticPrimitive::LessThan => "primitive.less_than",
     }
 }
 
 /// Every primitive operation, in declaration order. [`primitive_index`] is
 /// exhaustive, so a new operation cannot be added without extending it, and
 /// the conformance suite checks the two agree.
-pub const PRIMITIVES: [SemanticPrimitive; 53] = [
+pub const PRIMITIVES: [SemanticPrimitive; 54] = [
     SemanticPrimitive::Subtract,
     SemanticPrimitive::Multiply,
     SemanticPrimitive::Quotient,
@@ -210,6 +211,7 @@ pub const PRIMITIVES: [SemanticPrimitive; 53] = [
     SemanticPrimitive::GraphSuccessors,
     SemanticPrimitive::GraphReachable,
     SemanticPrimitive::GraphTopological,
+    SemanticPrimitive::LessThan,
 ];
 
 /// The position of an operation in [`PRIMITIVES`].
@@ -269,6 +271,7 @@ pub const fn primitive_index(operation: SemanticPrimitive) -> usize {
         SemanticPrimitive::GraphSuccessors => 50,
         SemanticPrimitive::GraphReachable => 51,
         SemanticPrimitive::GraphTopological => 52,
+        SemanticPrimitive::LessThan => 53,
     }
 }
 
@@ -276,7 +279,7 @@ pub const fn primitive_index(operation: SemanticPrimitive) -> usize {
 /// the primitive keys, which [`PRIMITIVES`] enumerates. The conformance suite
 /// checks this list, the primitive keys, and the declaration keys against
 /// the registry rows in both directions.
-pub const STRUCTURAL_KEYS: [&str; 76] = [
+pub const STRUCTURAL_KEYS: [&str; 83] = [
     "type.type",
     "type.parameter",
     "type.nat",
@@ -303,6 +306,7 @@ pub const STRUCTURAL_KEYS: [&str; 76] = [
     "type.function",
     "type.map",
     "type.set",
+    "type.contract_violation",
     "term.var",
     "term.nat",
     "term.integer",
@@ -344,6 +348,7 @@ pub const STRUCTURAL_KEYS: [&str; 76] = [
     "term.map_literal",
     "term.set_literal",
     "term.graph_literal",
+    "term.checked_apply",
     "constructor.nat_succ",
     "declaration.structure",
     "declaration.class",
@@ -353,6 +358,11 @@ pub const STRUCTURAL_KEYS: [&str; 76] = [
     "declaration.definition",
     "declaration.definition.recursive",
     "declaration.theorem",
+    "declaration.artifact",
+    "declaration.contract",
+    "declaration.realization",
+    "declaration.evidence",
+    "declaration.model",
 ];
 
 /// The registry key of a type, before its arguments are visited.
@@ -391,6 +401,7 @@ pub const fn type_key(ty: &SemanticType) -> &'static str {
         } => "type.function",
         SemanticType::Map { key: _, value: _ } => "type.map",
         SemanticType::Set { element: _ } => "type.set",
+        SemanticType::ContractViolation => "type.contract_violation",
     }
 }
 
@@ -497,6 +508,12 @@ pub const fn term_key(term: &SemanticTerm) -> &'static str {
             nodes: _,
             edges: _,
         } => "term.graph_literal",
+        SemanticTerm::CheckedApply {
+            model: _,
+            type_arguments: _,
+            arguments: _,
+            checks: _,
+        } => "term.checked_apply",
     }
 }
 
@@ -580,6 +597,7 @@ fn representation(ty: &SemanticType) -> Option<Representation> {
         | SemanticType::String
         | SemanticType::Bytes
         | SemanticType::Ordering
+        | SemanticType::ContractViolation
         | SemanticType::Result { ok: _, error: _ }
         | SemanticType::List { element: _ }
         | SemanticType::Named {
@@ -641,6 +659,7 @@ fn type_text(ty: &SemanticType, owner: &Owner<'_>) -> String {
         }
         SemanticType::Map { key, value } => format!("Map {} {}", wrap(key), wrap(value)),
         SemanticType::Set { element } => format!("Set {}", wrap(element)),
+        SemanticType::ContractViolation => "ContractViolation".to_owned(),
     }
 }
 
@@ -703,7 +722,8 @@ fn substitute(ty: &SemanticType, map: &BTreeMap<String, SemanticType>) -> Semant
         | SemanticType::UInt64
         | SemanticType::String
         | SemanticType::Bytes
-        | SemanticType::Ordering => ty.clone(),
+        | SemanticType::Ordering
+        | SemanticType::ContractViolation => ty.clone(),
     }
 }
 
@@ -764,7 +784,8 @@ fn anchor(ty: &SemanticType, from: &str) -> SemanticType {
         | SemanticType::UInt64
         | SemanticType::String
         | SemanticType::Bytes
-        | SemanticType::Ordering => ty.clone(),
+        | SemanticType::Ordering
+        | SemanticType::ContractViolation => ty.clone(),
     }
 }
 
@@ -1021,6 +1042,54 @@ impl<'a> Walk<'a> {
                             statement: _,
                             proof: _,
                             axioms: _,
+                        }
+                        | SemanticDeclaration::Artifact {
+                            name: _,
+                            role: _,
+                            sha256: _,
+                            length: _,
+                            schema: _,
+                            r#type: _,
+                            axioms: _,
+                        }
+                        | SemanticDeclaration::Contract {
+                            name: _,
+                            type_parameters: _,
+                            input: _,
+                            output: _,
+                            state: _,
+                            precondition: _,
+                            postcondition: _,
+                            invariant: _,
+                            validators: _,
+                            axioms: _,
+                        }
+                        | SemanticDeclaration::Realization {
+                            name: _,
+                            type_parameters: _,
+                            input: _,
+                            output: _,
+                            state: _,
+                            descriptor: _,
+                            executable: _,
+                            axioms: _,
+                        }
+                        | SemanticDeclaration::Evidence {
+                            name: _,
+                            type_parameters: _,
+                            contract: _,
+                            realization: _,
+                            claims: _,
+                            axioms: _,
+                        }
+                        | SemanticDeclaration::Model {
+                            name: _,
+                            type_parameters: _,
+                            contract: _,
+                            realization: _,
+                            evidence: _,
+                            entry: _,
+                            axioms: _,
                         },
                     )
                     | None => {
@@ -1061,7 +1130,8 @@ impl<'a> Walk<'a> {
             | SemanticType::UInt64
             | SemanticType::String
             | SemanticType::Bytes
-            | SemanticType::Ordering => None,
+            | SemanticType::Ordering
+            | SemanticType::ContractViolation => None,
         }
     }
 
@@ -1075,14 +1145,130 @@ impl<'a> Walk<'a> {
         self.queue.push_back((item, path));
     }
 
+    /// The declaration `name` of `module` as linking elaborated it: a
+    /// model declaration is the ordinary declarations it means, and a
+    /// checked application the ordinary term it means (§17.12).
     fn declaration(&self, module: &str, name: &str) -> Option<&'a SemanticDeclaration> {
         self.modules.get(module).and_then(|linked| {
             linked
                 .semantic
-                .declarations
-                .iter()
+                .lowered_declarations()
+                .into_iter()
                 .find(|declaration| declaration.name() == name)
         })
+    }
+
+    /// The model construct whose elaboration declares `name`, if any.
+    fn model_owner(&self, module: &str, name: &str) -> Option<&'static str> {
+        let linked = match self.modules.get(module) {
+            Some(linked) => linked,
+            None => return None,
+        };
+        for (index, source) in linked.semantic.declarations.iter().enumerate() {
+            let key = match source {
+                SemanticDeclaration::Artifact {
+                    name: _,
+                    role: _,
+                    sha256: _,
+                    length: _,
+                    schema: _,
+                    r#type: _,
+                    axioms: _,
+                } => "declaration.artifact",
+                SemanticDeclaration::Contract {
+                    name: _,
+                    type_parameters: _,
+                    input: _,
+                    output: _,
+                    state: _,
+                    precondition: _,
+                    postcondition: _,
+                    invariant: _,
+                    validators: _,
+                    axioms: _,
+                } => "declaration.contract",
+                SemanticDeclaration::Realization {
+                    name: _,
+                    type_parameters: _,
+                    input: _,
+                    output: _,
+                    state: _,
+                    descriptor: _,
+                    executable: _,
+                    axioms: _,
+                } => "declaration.realization",
+                SemanticDeclaration::Evidence {
+                    name: _,
+                    type_parameters: _,
+                    contract: _,
+                    realization: _,
+                    claims: _,
+                    axioms: _,
+                } => "declaration.evidence",
+                SemanticDeclaration::Model {
+                    name: _,
+                    type_parameters: _,
+                    contract: _,
+                    realization: _,
+                    evidence: _,
+                    entry: _,
+                    axioms: _,
+                } => "declaration.model",
+                SemanticDeclaration::Structure {
+                    name: _,
+                    type_parameters: _,
+                    parameters: _,
+                    fields: _,
+                }
+                | SemanticDeclaration::Class {
+                    name: _,
+                    type_parameters: _,
+                    parameters: _,
+                    fields: _,
+                }
+                | SemanticDeclaration::Instance {
+                    name: _,
+                    class: _,
+                    arguments: _,
+                    priority: _,
+                    fields: _,
+                }
+                | SemanticDeclaration::Inductive {
+                    name: _,
+                    type_parameters: _,
+                    parameters: _,
+                    constructors: _,
+                    mutual: _,
+                }
+                | SemanticDeclaration::Definition {
+                    name: _,
+                    type_parameters: _,
+                    parameters: _,
+                    result: _,
+                    recursive_argument: _,
+                    body: _,
+                    axioms: _,
+                    executable: _,
+                    mutual: _,
+                    termination: _,
+                    production: _,
+                }
+                | SemanticDeclaration::Theorem {
+                    name: _,
+                    type_parameters: _,
+                    parameters: _,
+                    statement: _,
+                    proof: _,
+                    axioms: _,
+                } => continue,
+            };
+            for derived in linked.semantic.elaboration.lowered(index) {
+                if derived.name() == name {
+                    return Some(key);
+                }
+            }
+        }
+        None
     }
 
     fn ty(&mut self, ty: &SemanticType, site: &Site<'_>) {
@@ -1148,7 +1334,8 @@ impl<'a> Walk<'a> {
             | SemanticType::UInt64
             | SemanticType::String
             | SemanticType::Bytes
-            | SemanticType::Ordering => {}
+            | SemanticType::Ordering
+            | SemanticType::ContractViolation => {}
         }
         self.types.entry(text).or_insert_with(|| key.to_owned());
     }
@@ -1253,6 +1440,54 @@ impl<'a> Walk<'a> {
                 parameters: _,
                 statement: _,
                 proof: _,
+                axioms: _,
+            }
+            | SemanticDeclaration::Artifact {
+                name: _,
+                role: _,
+                sha256: _,
+                length: _,
+                schema: _,
+                r#type: _,
+                axioms: _,
+            }
+            | SemanticDeclaration::Contract {
+                name: _,
+                type_parameters: _,
+                input: _,
+                output: _,
+                state: _,
+                precondition: _,
+                postcondition: _,
+                invariant: _,
+                validators: _,
+                axioms: _,
+            }
+            | SemanticDeclaration::Realization {
+                name: _,
+                type_parameters: _,
+                input: _,
+                output: _,
+                state: _,
+                descriptor: _,
+                executable: _,
+                axioms: _,
+            }
+            | SemanticDeclaration::Evidence {
+                name: _,
+                type_parameters: _,
+                contract: _,
+                realization: _,
+                claims: _,
+                axioms: _,
+            }
+            | SemanticDeclaration::Model {
+                name: _,
+                type_parameters: _,
+                contract: _,
+                realization: _,
+                evidence: _,
+                entry: _,
                 axioms: _,
             } => {
                 self.violation(
@@ -1537,6 +1772,23 @@ impl<'a> Walk<'a> {
                     self.term(target, site);
                 }
             }
+            // The analysis reads elaborated declarations, in which every
+            // checked application is the ordinary term it means (§17.12);
+            // one reaching here was not elaborated and is never realized.
+            SemanticTerm::CheckedApply {
+                model: _,
+                type_arguments: _,
+                arguments: _,
+                checks: _,
+            } => {
+                self.construct(site, key, None);
+                self.violation(
+                    site,
+                    key,
+                    "a checked model application is realized only through its elaboration"
+                        .to_owned(),
+                );
+            }
         }
     }
 
@@ -1697,6 +1949,54 @@ impl<'a> Walk<'a> {
                 proof: _,
                 axioms: _,
             }) => "declaration.theorem",
+            Some(SemanticDeclaration::Artifact {
+                name: _,
+                role: _,
+                sha256: _,
+                length: _,
+                schema: _,
+                r#type: _,
+                axioms: _,
+            }) => "declaration.artifact",
+            Some(SemanticDeclaration::Contract {
+                name: _,
+                type_parameters: _,
+                input: _,
+                output: _,
+                state: _,
+                precondition: _,
+                postcondition: _,
+                invariant: _,
+                validators: _,
+                axioms: _,
+            }) => "declaration.contract",
+            Some(SemanticDeclaration::Realization {
+                name: _,
+                type_parameters: _,
+                input: _,
+                output: _,
+                state: _,
+                descriptor: _,
+                executable: _,
+                axioms: _,
+            }) => "declaration.realization",
+            Some(SemanticDeclaration::Evidence {
+                name: _,
+                type_parameters: _,
+                contract: _,
+                realization: _,
+                claims: _,
+                axioms: _,
+            }) => "declaration.evidence",
+            Some(SemanticDeclaration::Model {
+                name: _,
+                type_parameters: _,
+                contract: _,
+                realization: _,
+                evidence: _,
+                entry: _,
+                axioms: _,
+            }) => "declaration.model",
             Some(SemanticDeclaration::Structure {
                 name: _,
                 type_parameters: _,
@@ -1717,6 +2017,13 @@ impl<'a> Walk<'a> {
                 mutual: _,
             }) => "declaration.inductive",
             None => "declaration.definition",
+        };
+        // A declaration elaborated from a model declaration is that
+        // construct, realized by the ordinary definition it elaborates to
+        // (§17.12, §17.13).
+        let construct = match self.model_owner(&module, &name) {
+            Some(owner) => owner,
+            None => construct,
         };
         self.members.insert(
             instance.clone(),
@@ -1809,6 +2116,54 @@ impl<'a> Walk<'a> {
                     parameters: _,
                     statement: _,
                     proof: _,
+                    axioms: _,
+                }
+                | SemanticDeclaration::Artifact {
+                    name: _,
+                    role: _,
+                    sha256: _,
+                    length: _,
+                    schema: _,
+                    r#type: _,
+                    axioms: _,
+                }
+                | SemanticDeclaration::Contract {
+                    name: _,
+                    type_parameters: _,
+                    input: _,
+                    output: _,
+                    state: _,
+                    precondition: _,
+                    postcondition: _,
+                    invariant: _,
+                    validators: _,
+                    axioms: _,
+                }
+                | SemanticDeclaration::Realization {
+                    name: _,
+                    type_parameters: _,
+                    input: _,
+                    output: _,
+                    state: _,
+                    descriptor: _,
+                    executable: _,
+                    axioms: _,
+                }
+                | SemanticDeclaration::Evidence {
+                    name: _,
+                    type_parameters: _,
+                    contract: _,
+                    realization: _,
+                    claims: _,
+                    axioms: _,
+                }
+                | SemanticDeclaration::Model {
+                    name: _,
+                    type_parameters: _,
+                    contract: _,
+                    realization: _,
+                    evidence: _,
+                    entry: _,
                     axioms: _,
                 }
                 | SemanticDeclaration::Structure {
@@ -1925,6 +2280,54 @@ fn inductive_group(
                 statement: _,
                 proof: _,
                 axioms: _,
+            }
+            | SemanticDeclaration::Artifact {
+                name: _,
+                role: _,
+                sha256: _,
+                length: _,
+                schema: _,
+                r#type: _,
+                axioms: _,
+            }
+            | SemanticDeclaration::Contract {
+                name: _,
+                type_parameters: _,
+                input: _,
+                output: _,
+                state: _,
+                precondition: _,
+                postcondition: _,
+                invariant: _,
+                validators: _,
+                axioms: _,
+            }
+            | SemanticDeclaration::Realization {
+                name: _,
+                type_parameters: _,
+                input: _,
+                output: _,
+                state: _,
+                descriptor: _,
+                executable: _,
+                axioms: _,
+            }
+            | SemanticDeclaration::Evidence {
+                name: _,
+                type_parameters: _,
+                contract: _,
+                realization: _,
+                claims: _,
+                axioms: _,
+            }
+            | SemanticDeclaration::Model {
+                name: _,
+                type_parameters: _,
+                contract: _,
+                realization: _,
+                evidence: _,
+                entry: _,
+                axioms: _,
             } => {}
         }
     }
@@ -1976,7 +2379,8 @@ fn mentions(ty: &SemanticType, module: &str, group: &BTreeSet<String>) -> bool {
         | SemanticType::UInt64
         | SemanticType::String
         | SemanticType::Bytes
-        | SemanticType::Ordering => false,
+        | SemanticType::Ordering
+        | SemanticType::ContractViolation => false,
     }
 }
 
@@ -2286,6 +2690,54 @@ pub fn analyse_module(
                 parameters: _,
                 statement: _,
                 proof: _,
+                axioms: _,
+            }
+            | SemanticDeclaration::Artifact {
+                name: _,
+                role: _,
+                sha256: _,
+                length: _,
+                schema: _,
+                r#type: _,
+                axioms: _,
+            }
+            | SemanticDeclaration::Contract {
+                name: _,
+                type_parameters: _,
+                input: _,
+                output: _,
+                state: _,
+                precondition: _,
+                postcondition: _,
+                invariant: _,
+                validators: _,
+                axioms: _,
+            }
+            | SemanticDeclaration::Realization {
+                name: _,
+                type_parameters: _,
+                input: _,
+                output: _,
+                state: _,
+                descriptor: _,
+                executable: _,
+                axioms: _,
+            }
+            | SemanticDeclaration::Evidence {
+                name: _,
+                type_parameters: _,
+                contract: _,
+                realization: _,
+                claims: _,
+                axioms: _,
+            }
+            | SemanticDeclaration::Model {
+                name: _,
+                type_parameters: _,
+                contract: _,
+                realization: _,
+                evidence: _,
+                entry: _,
                 axioms: _,
             } => {}
         }

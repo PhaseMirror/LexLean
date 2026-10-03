@@ -6,6 +6,7 @@ use crate::artifact::source_map::MapRole;
 use crate::backend::{EmitSource, Emitter};
 use crate::code;
 use crate::diagnostic::Diagnostic;
+use crate::ir::semantic::model::{CheckProof, CheckStatement, CrossCheck};
 use crate::ir::semantic::{
     mentions_type_parameter, MemberRef, SemanticAssignment, SemanticBranch, SemanticDeclaration,
     SemanticModule, SemanticParameter, SemanticPrimitive, SemanticProof, SemanticProofBranch,
@@ -209,6 +210,9 @@ fn term_uses(term: &SemanticTerm, local: &str) -> bool {
                 || arguments.iter().any(|argument| term_uses(argument, local))
         }
         SemanticTerm::FunctionRef { .. } => false,
+        SemanticTerm::CheckedApply { arguments, .. } => {
+            arguments.iter().any(|argument| term_uses(argument, local))
+        }
         SemanticTerm::MapLiteral { entries, .. } => entries
             .iter()
             .any(|entry| term_uses(&entry.key, local) || term_uses(&entry.value, local)),
@@ -251,6 +255,21 @@ fn term_uses(term: &SemanticTerm, local: &str) -> bool {
             value,
             body,
         } => term_uses(value, local) || (binder.name != local && term_uses(body, local)),
+    }
+}
+
+/// The Lean pattern of a `ContractViolation` constructor: the pair of
+/// Booleans `(after run, invariant)` it is represented by (§17.12).
+fn violation_pattern(constructor: &MemberRef) -> Option<&'static str> {
+    if constructor.module.is_some() {
+        return None;
+    }
+    match constructor.name.as_str() {
+        "ContractViolation.precondition" => Some("(false, false)"),
+        "ContractViolation.input_invariant" => Some("(false, true)"),
+        "ContractViolation.postcondition" => Some("(true, false)"),
+        "ContractViolation.output_invariant" => Some("(true, true)"),
+        _ => None,
     }
 }
 
@@ -371,6 +390,10 @@ impl Render<'_> {
                 format!("List (Prod ({}) ({}))", self.ty(key), self.ty(value))
             }
             SemanticType::Set { element } => format!("List ({})", self.ty(element)),
+            // §17.12 (models): a refusal is plain data with exactly four
+            // values, so it crosses module boundaries unchanged.
+            SemanticType::ContractViolation if self.document => "ContractViolation".to_owned(),
+            SemanticType::ContractViolation => "(Prod Bool Bool)".to_owned(),
         }
     }
 
@@ -507,6 +530,81 @@ impl Render<'_> {
             .join(", ")
     }
 
+    /// One Lean-only cross-check (§17.12, models).
+    fn cross_check(&self, check: &CrossCheck) -> String {
+        let name = identifier(&check.name);
+        let type_parameters = self.type_parameters(&check.type_parameters);
+        let (statement, proof) = match &check.statement {
+            CheckStatement::Helper { helper, arguments } => {
+                let mut out = format!("LexLeanModels.{helper}");
+                for argument in arguments {
+                    out.push_str(&format!(" ({})", self.term(argument)));
+                }
+                (out, None)
+            }
+            CheckStatement::Tensor {
+                artifact,
+                element,
+                shape,
+            } => {
+                let (width, signed) = crate::ir::semantic::model::element_encoding(*element);
+                let value = identifier(artifact);
+                // The flattened values decode from exactly the bytes, and
+                // every level of nesting has exactly its declared length.
+                let mut level = value.clone();
+                let mut shape_checks = vec![format!("{value}.length == {}", shape[0])];
+                let mut rows: u64 = 1;
+                for (depth, dimension) in shape.iter().enumerate().skip(1) {
+                    rows = rows.saturating_mul(shape[depth - 1]);
+                    shape_checks.push(format!(
+                        "{level}.map List.length == List.replicate {rows} {dimension}"
+                    ));
+                    level = format!("{level}.flatten");
+                }
+                (
+                    format!(
+                        "(LexLeanModels.tensorMatches {width} {signed} {level} {value}.bytes && {}) = true",
+                        shape_checks
+                            .iter()
+                            .map(|check| format!("({check})"))
+                            .collect::<Vec<_>>()
+                            .join(" && ")
+                    ),
+                    Some("by decide"),
+                )
+            }
+            CheckStatement::Lines { artifact } => {
+                let value = identifier(artifact);
+                (
+                    format!("LexLeanModels.linesMatch {value} {value}.bytes = true"),
+                    Some("by decide"),
+                )
+            }
+            CheckStatement::Bytes { artifact } => {
+                let value = identifier(artifact);
+                (format!("{value} = {value}.bytes"), Some("rfl"))
+            }
+        };
+        let proof = match (&check.proof, proof) {
+            (_, Some(proof)) => proof.to_owned(),
+            (CheckProof::Decide, None) => "by decide".to_owned(),
+            (
+                CheckProof::Theorem {
+                    theorem,
+                    type_arguments,
+                },
+                None,
+            ) => {
+                let mut out = self.member(theorem);
+                for argument in type_arguments {
+                    out.push_str(&format!(" ({})", self.ty(argument)));
+                }
+                out
+            }
+        };
+        format!("public theorem {name}{type_parameters} : {statement} := {proof}\n")
+    }
+
     fn branch(&self, branch: &SemanticBranch) -> String {
         let binders = if branch.binders.is_empty() {
             String::new()
@@ -527,12 +625,11 @@ impl Render<'_> {
                     .join(" ")
             )
         };
-        format!(
-            "| {}{} => {}",
-            self.member(&branch.constructor),
-            binders,
-            self.term(&branch.body)
-        )
+        let pattern = match violation_pattern(&branch.constructor) {
+            Some(pattern) if !self.document => pattern.to_owned(),
+            _ => self.member(&branch.constructor),
+        };
+        format!("| {pattern}{binders} => {}", self.term(&branch.body))
     }
 
     fn primitive(
@@ -616,6 +713,7 @@ impl Render<'_> {
                     SemanticPrimitive::IterateUntil => "iterateUntil",
                     SemanticPrimitive::GraphSuccessors => "graphSuccessors",
                     SemanticPrimitive::GraphReachable => "graphReachable",
+                    SemanticPrimitive::LessThan => "lessThan",
                     _ => "graphTopological",
                 };
                 let mut out = format!("(LexLeanCollections.{name}");
@@ -699,6 +797,9 @@ impl Render<'_> {
                 type_arguments: _,
                 arguments,
             } => {
+                if let (false, Some(pattern)) = (self.document, violation_pattern(constructor)) {
+                    return format!("({pattern} : Prod Bool Bool)");
+                }
                 let mut out = self.member(constructor);
                 for argument in arguments {
                     out.push_str(" (");
@@ -866,6 +967,31 @@ impl Render<'_> {
                     .join(", "),
                 self.ty(element)
             ),
+            // Linking elaborates every checked application before Lean is
+            // rendered (§17.12); the document states the application itself.
+            SemanticTerm::CheckedApply {
+                model,
+                type_arguments,
+                arguments,
+                checks,
+            } => {
+                let mut out = format!("(checked {}", self.member(model));
+                for argument in type_arguments {
+                    out.push_str(&format!(" ({})", self.ty(argument)));
+                }
+                for argument in arguments {
+                    out.push_str(&format!(" ({})", self.term(argument)));
+                }
+                out.push_str(&format!(
+                    " [{}])",
+                    checks
+                        .iter()
+                        .map(|check| crate::ir::semantic::model::check_name_of(*check))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
+                out
+            }
             SemanticTerm::GraphLiteral { node, nodes, edges } => format!(
                 "([{}] : List (Prod ({}) (List ({}))))",
                 nodes
@@ -1147,7 +1273,7 @@ fn well_founded_definition(
 /// The primitive alone suffices, because a module that only measures or
 /// folds a collection imported from another module still calls the runtime,
 /// and the importer's runtime lives in the importer's namespace.
-fn uses_collections(module: &SemanticModule) -> bool {
+fn uses_collections(module: &serde_json::Value) -> bool {
     fn walk(value: &serde_json::Value) -> bool {
         match value {
             serde_json::Value::Array(items) => items.iter().any(walk),
@@ -1171,7 +1297,7 @@ fn uses_collections(module: &SemanticModule) -> bool {
             | serde_json::Value::String(_) => false,
         }
     }
-    walk(&serde_json::to_value(module).expect("semantic module serialization"))
+    walk(module)
 }
 
 /// The fixed ordered-collection runtime: canonical ascending entry and
@@ -1318,7 +1444,90 @@ public instance {α β : Type} [Key α] [Key β] : Key (Prod α β) where
   | Nat.succ fuel, state => match step state with
     | none => (state, true)
     | some next => iterateUntil step fuel next
+
+@[expose] public def lessThan {κ : Type} [Key κ] (left right : κ) : Bool :=
+  match Key.compare left right with
+  | .lt => true
+  | _ => false
 end LexLeanCollections
+"#;
+
+/// The fixed model runtime (§17.12, models): the meaning of every claim,
+/// validator link, and artifact decoding, written once, independently of
+/// the obligation generator. Each cross-check restates a user theorem, or
+/// recomputes an artifact, against these definitions, so Lean refuses a
+/// generator that states anything else. Plain predicates only: no type is
+/// declared here, so nothing has a per-module identity.
+const MODELS_RUNTIME: &str = r#"
+namespace LexLeanModels
+
+@[expose] public def Sound1 {α : Type} (v : α -> Bool) (p : α -> Prop) : Prop :=
+  forall (a : α), v a = true -> p a
+@[expose] public def Sound2 {α β : Type} (v : α -> β -> Bool) (p : α -> β -> Prop) : Prop :=
+  forall (a : α) (b : β), v a b = true -> p a b
+@[expose] public def Sound4 {α β γ δ : Type} (v : α -> β -> γ -> δ -> Bool) (p : α -> β -> γ -> δ -> Prop) : Prop :=
+  forall (a : α) (b : β) (c : γ) (d : δ), v a b c d = true -> p a b c d
+@[expose] public def Complete1 {α : Type} (v : α -> Bool) (p : α -> Prop) : Prop :=
+  forall (a : α), p a -> v a = true
+@[expose] public def Complete2 {α β : Type} (v : α -> β -> Bool) (p : α -> β -> Prop) : Prop :=
+  forall (a : α) (b : β), p a b -> v a b = true
+@[expose] public def Complete4 {α β γ δ : Type} (v : α -> β -> γ -> δ -> Bool) (p : α -> β -> γ -> δ -> Prop) : Prop :=
+  forall (a : α) (b : β) (c : γ) (d : δ), p a b c d -> v a b c d = true
+
+@[expose] public def Satisfies {α β : Type} (p : α -> Prop) (q : α -> β -> Prop) (r : α -> β) : Prop :=
+  forall (a : α), p a -> q a (r a)
+@[expose] public def SatisfiesTotal {α β : Type} (q : α -> β -> Prop) (r : α -> β) : Prop :=
+  forall (a : α), q a (r a)
+@[expose] public def SatisfiesStep {σ α β : Type} (j : σ -> Prop) (p : σ -> α -> Prop) (q : σ -> α -> σ -> β -> Prop) (r : σ -> α -> Prod σ β) : Prop :=
+  forall (s : σ) (a : α), j s -> p s a -> q s a (r s a).1 (r s a).2
+@[expose] public def SatisfiesStepNoInvariant {σ α β : Type} (p : σ -> α -> Prop) (q : σ -> α -> σ -> β -> Prop) (r : σ -> α -> Prod σ β) : Prop :=
+  forall (s : σ) (a : α), p s a -> q s a (r s a).1 (r s a).2
+@[expose] public def SatisfiesStepNoPrecondition {σ α β : Type} (j : σ -> Prop) (q : σ -> α -> σ -> β -> Prop) (r : σ -> α -> Prod σ β) : Prop :=
+  forall (s : σ) (a : α), j s -> q s a (r s a).1 (r s a).2
+@[expose] public def SatisfiesStepTotal {σ α β : Type} (q : σ -> α -> σ -> β -> Prop) (r : σ -> α -> Prod σ β) : Prop :=
+  forall (s : σ) (a : α), q s a (r s a).1 (r s a).2
+@[expose] public def Preserves {σ α β : Type} (j : σ -> Prop) (p : σ -> α -> Prop) (r : σ -> α -> Prod σ β) : Prop :=
+  forall (s : σ) (a : α), j s -> p s a -> j (r s a).1
+@[expose] public def PreservesTotal {σ α β : Type} (j : σ -> Prop) (r : σ -> α -> Prod σ β) : Prop :=
+  forall (s : σ) (a : α), j s -> j (r s a).1
+@[expose] public def Initial {σ : Type} (j : σ -> Prop) (i : σ) : Prop :=
+  j i
+@[expose] public def Equivalent {α β : Type} (p : α -> Prop) (r f : α -> β) : Prop :=
+  forall (a : α), p a -> r a = f a
+@[expose] public def EquivalentTotal {α β : Type} (r f : α -> β) : Prop :=
+  forall (a : α), r a = f a
+@[expose] public def EquivalentStep {σ α β : Type} (j : σ -> Prop) (p : σ -> α -> Prop) (r f : σ -> α -> Prod σ β) : Prop :=
+  forall (s : σ) (a : α), j s -> p s a -> r s a = f s a
+@[expose] public def EquivalentStepNoInvariant {σ α β : Type} (p : σ -> α -> Prop) (r f : σ -> α -> Prod σ β) : Prop :=
+  forall (s : σ) (a : α), p s a -> r s a = f s a
+@[expose] public def EquivalentStepNoPrecondition {σ α β : Type} (j : σ -> Prop) (r f : σ -> α -> Prod σ β) : Prop :=
+  forall (s : σ) (a : α), j s -> r s a = f s a
+@[expose] public def EquivalentStepTotal {σ α β : Type} (r f : σ -> α -> Prod σ β) : Prop :=
+  forall (s : σ) (a : α), r s a = f s a
+@[expose, reducible] public def Agreement {α β : Type} (r : α -> β) (cmp : β -> β -> Bool) (d : List (Prod α β)) (examples agreements : Nat) : Prop :=
+  d.length = examples /\ d.foldl (fun c e => if cmp (r e.1) e.2 then c + 1 else c) 0 = agreements
+
+@[expose] public def inRange (width : Nat) (signed : Bool) (value : Int) : Bool :=
+  if signed then
+    decide (-((2 : Int) ^ (8 * width - 1)) <= value) && decide (value < (2 : Int) ^ (8 * width - 1))
+  else
+    decide (0 <= value) && decide (value < (2 : Int) ^ (8 * width))
+@[expose] public def encodeInt (width : Nat) (value : Int) : List Nat :=
+  let unsigned := if value < 0 then value + (2 : Int) ^ (8 * width) else value
+  (List.range width).map (fun i => (unsigned.toNat / 256 ^ i) % 256)
+@[expose] public def tensorMatches (width : Nat) (signed : Bool) (values : List Int) (bytes : ByteArray) : Bool :=
+  values.all (inRange width signed) && values.flatMap (encodeInt width) == bytes.data.toList.map UInt8.toNat
+@[expose] public def utf8Char (c : Char) : List Nat :=
+  let n := c.toNat
+  if n < 128 then [n]
+  else if n < 2048 then [192 + n / 64, 128 + n % 64]
+  else if n < 65536 then [224 + n / 4096, 128 + (n / 64) % 64, 128 + n % 64]
+  else [240 + n / 262144, 128 + (n / 4096) % 64, 128 + (n / 64) % 64, 128 + n % 64]
+@[expose] public def linesMatch (lines : List String) (bytes : ByteArray) : Bool :=
+  lines.all (fun line => line.toList.all (fun c => c.toNat != 10 && c.toNat != 13)) &&
+    lines.foldr (fun line rest => line.toList.foldr (fun c tail => utf8Char c ++ tail) [10] ++ rest) [] ==
+      bytes.data.toList.map UInt8.toNat
+end LexLeanModels
 "#;
 
 fn emit(checked: &CheckedModule, text: &str, kind: &str) -> Emitter {
@@ -1831,9 +2040,20 @@ pub fn render_lean(
     module: &SemanticModule,
     module_prefix: &str,
 ) -> Result<Emitter, Diagnostic> {
-    let runtime = serde_json::to_string(module)
-        .expect("semantic module serialization")
-        .contains("\"kind\":\"primitive\"");
+    // The module means its elaboration (§17.12): a model declaration is the
+    // ordinary declarations it elaborates to, and a checked application is
+    // the ordinary term it means. Lean is generated from exactly those.
+    let lowered: Vec<&SemanticDeclaration> = module.lowered_declarations();
+    let elaborated = serde_json::to_string(&lowered).expect("semantic declarations serialize")
+        + &serde_json::to_string(&module.elaboration.all_checks())
+            .expect("cross-checks serialize");
+    if elaborated.contains("\"kind\":\"checked_apply\"") {
+        return Err(Diagnostic::new(
+            code!("LLI9001"),
+            "phase lean-backend: a checked model application was not elaborated",
+        ));
+    }
+    let runtime = elaborated.contains("\"kind\":\"primitive\"");
     let render = Render {
         prefix: module_prefix,
         hypotheses: std::collections::BTreeMap::new(),
@@ -1864,8 +2084,18 @@ pub fn render_lean(
             text.push_str(portable_runtime());
         }
     }
-    if uses_collections(module) {
+    if uses_collections(
+        &serde_json::to_value((&lowered, module.elaboration.all_checks()))
+            .expect("elaborated declarations serialize"),
+    ) {
         text.push_str(COLLECTIONS_RUNTIME);
+    }
+    if module
+        .declarations
+        .iter()
+        .any(|declaration| crate::ir::semantic::model::declaration_construct(declaration).is_some())
+    {
+        text.push_str(MODELS_RUNTIME);
     }
     let group_of = |index: usize| match module.declarations.get(index) {
         Some(
@@ -1881,7 +2111,7 @@ pub fn render_lean(
         _ => None,
     };
     let mut starts = Vec::with_capacity(module.declarations.len());
-    for (index, declaration) in module.declarations.iter().enumerate() {
+    for (index, source) in module.declarations.iter().enumerate() {
         starts.push(text.len());
         text.push('\n');
         // §17.12: one contiguous mutual group is one Lean `mutual` block.
@@ -1889,6 +2119,14 @@ pub fn render_lean(
         if group.is_some() && (index == 0 || group_of(index - 1) != group) {
             text.push_str("mutual\n");
         }
+        let elaborated = module.elaboration.lowered(index);
+        let own = [source];
+        let declarations: Vec<&SemanticDeclaration> = if elaborated.is_empty() {
+            own.to_vec()
+        } else {
+            elaborated.iter().collect()
+        };
+        for declaration in declarations {
         match declaration {
             SemanticDeclaration::Structure {
                 name,
@@ -2089,6 +2327,23 @@ pub fn render_lean(
                     render.proof(proof, 1)
                 ));
             }
+            SemanticDeclaration::Artifact { .. }
+            | SemanticDeclaration::Contract { .. }
+            | SemanticDeclaration::Realization { .. }
+            | SemanticDeclaration::Evidence { .. }
+            | SemanticDeclaration::Model { .. } => {
+                return Err(Diagnostic::new(
+                    code!("LLI9001"),
+                    format!(
+                        "phase lean-backend: model declaration `{}` was not elaborated",
+                        declaration.name()
+                    ),
+                ));
+            }
+        }
+        }
+        for check in module.elaboration.checks(index) {
+            text.push_str(&render.cross_check(check));
         }
     }
     let end = text.len();
@@ -2165,6 +2420,476 @@ fn latex_closures(body: &SemanticTerm, text: &mut String) {
     });
 }
 
+fn latex_line(text: &mut String, label: &str, value: &str) {
+    text.push_str(&format!(
+        "\\noindent {label}: \\texttt{{{}}}.\\par\n",
+        tex_escape(value)
+    ));
+}
+
+fn latex_use(render: &Render<'_>, model_use: &crate::ir::semantic::ModelUse) -> String {
+    let mut out = render.member(&model_use.member);
+    for argument in &model_use.type_arguments {
+        out.push_str(&format!(" ({})", render.ty(argument)));
+    }
+    out
+}
+
+fn latex_policy(axioms: &[String]) -> String {
+    if axioms.is_empty() {
+        "none".to_owned()
+    } else {
+        format!("exact [{}]", axioms.join(", "))
+    }
+}
+
+/// Language 1.2 (models): what a model declaration states, then exactly
+/// what linking elaborated it to, its generated obligations with the
+/// theorems that discharge them, and the Lean restatements. The document
+/// never calls a claim verified: verification is the attestation's (§22.9).
+#[allow(clippy::too_many_lines)]
+fn latex_model(
+    render: &Render<'_>,
+    module: &SemanticModule,
+    index: usize,
+    declaration: &SemanticDeclaration,
+    text: &mut String,
+) {
+    use crate::ir::semantic::{
+        ArtifactSchema, CompositeForm, CompositeJunction, EvidenceClaim, NeuralDecoder,
+        NeuralLayer, RealizationDescriptor,
+    };
+    let names = |members: &[String]| members.join(", ");
+    let junction = |junction: &CompositeJunction| match junction {
+        CompositeJunction::Unconditional => "unconditional".to_owned(),
+        CompositeJunction::Proved { evidence } => format!("proved by {}", render.member(evidence)),
+        CompositeJunction::Checked => "checked at run time".to_owned(),
+    };
+    match declaration {
+        SemanticDeclaration::Artifact {
+            role,
+            sha256,
+            length,
+            schema,
+            r#type,
+            axioms,
+            ..
+        } => {
+            latex_line(text, "Role", &format!("{role:?}").to_lowercase());
+            latex_line(
+                text,
+                "Schema",
+                &match schema {
+                    ArtifactSchema::Bytes => "bytes".to_owned(),
+                    ArtifactSchema::IntTensor { element, shape } => format!(
+                        "{} integer tensor, little-endian, row-major, shape ({})",
+                        serde_json::to_value(element)
+                            .ok()
+                            .and_then(|value| value.as_str().map(str::to_owned))
+                            .unwrap_or_default(),
+                        shape
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                    ArtifactSchema::Utf8Lines => "UTF-8 lines, each LF-terminated".to_owned(),
+                },
+            );
+            latex_line(text, "Value type", &render.ty(r#type));
+            latex_line(text, "Content", &format!("{length} bytes, SHA-256 {sha256}"));
+            latex_line(text, "Axiom policy", &latex_policy(axioms));
+        }
+        SemanticDeclaration::Contract {
+            type_parameters,
+            input,
+            output,
+            state,
+            precondition,
+            postcondition,
+            invariant,
+            validators,
+            axioms,
+            ..
+        } => {
+            if !type_parameters.is_empty() {
+                latex_line(text, "Type parameters", &format!("({})", names(type_parameters)));
+            }
+            let mut interface = format!(
+                "input {} : {}, output {} : {}",
+                input.name,
+                render.ty(&input.r#type),
+                output.name,
+                render.ty(&output.r#type)
+            );
+            if let Some(state) = state {
+                interface.push_str(&format!(
+                    ", state {} : {} stepping to {}",
+                    state.name,
+                    render.ty(&state.r#type),
+                    state.next
+                ));
+            }
+            latex_line(text, "Interface", &interface);
+            for (label, predicate) in [
+                ("Precondition", precondition),
+                ("Postcondition", postcondition),
+                ("Invariant", invariant),
+            ] {
+                if let Some(predicate) = predicate {
+                    latex_line(text, label, &render.member(predicate));
+                }
+            }
+            for validator in validators {
+                let mut line = format!(
+                    "{} validates the {}, sound by {}",
+                    render.member(&validator.validator),
+                    serde_json::to_value(validator.predicate)
+                        .ok()
+                        .and_then(|value| value.as_str().map(str::to_owned))
+                        .unwrap_or_default(),
+                    render.member(&validator.sound)
+                );
+                if let Some(complete) = &validator.complete {
+                    line.push_str(&format!(", complete by {}", render.member(complete)));
+                }
+                latex_line(text, "Runtime validator", &line);
+            }
+            latex_line(text, "Axiom policy", &latex_policy(axioms));
+        }
+        SemanticDeclaration::Realization {
+            type_parameters,
+            input,
+            output,
+            state,
+            descriptor,
+            executable,
+            axioms,
+            ..
+        } => {
+            if !type_parameters.is_empty() {
+                latex_line(text, "Type parameters", &format!("({})", names(type_parameters)));
+            }
+            let mut interface = format!(
+                "input {} : {}, output {}",
+                input.name,
+                render.ty(&input.r#type),
+                render.ty(output)
+            );
+            if let Some(state) = state {
+                interface.push_str(&format!(
+                    ", state {} : {} from {}",
+                    state.name,
+                    render.ty(&state.r#type),
+                    render.term(&state.initial)
+                ));
+            }
+            latex_line(text, "Interface", &interface);
+            match descriptor {
+                RealizationDescriptor::Deterministic { body } => {
+                    latex_line(text, "Deterministic denotation", &render.term(body));
+                }
+                RealizationDescriptor::Rule { rules, default } => {
+                    for (position, rule) in rules.iter().enumerate() {
+                        latex_line(
+                            text,
+                            &format!("Rule {} ({})", position + 1, tex_escape(&rule.name)),
+                            &format!(
+                                "if {} then {}",
+                                render.term(&rule.guard),
+                                render.term(&rule.action)
+                            ),
+                        );
+                    }
+                    latex_line(text, "Otherwise", &render.term(default));
+                }
+                RealizationDescriptor::Statistical {
+                    features,
+                    width,
+                    width_evidence,
+                    weights,
+                    bias,
+                    labels,
+                    ..
+                } => {
+                    latex_line(
+                        text,
+                        "Statistical scheme",
+                        "linear scoring over mathematical integers, first maximal label",
+                    );
+                    latex_line(
+                        text,
+                        "Features",
+                        &format!(
+                            "{} of width {width}, by {}",
+                            render.term(features),
+                            render.member(width_evidence)
+                        ),
+                    );
+                    latex_line(
+                        text,
+                        "Parameters",
+                        &format!("weights {}, bias {}", render.member(weights), render.member(bias)),
+                    );
+                    latex_line(
+                        text,
+                        "Labels",
+                        &labels.iter().map(|label| render.term(label)).collect::<Vec<_>>().join(", "),
+                    );
+                }
+                RealizationDescriptor::Neural {
+                    encoder,
+                    width,
+                    width_evidence,
+                    layers,
+                    decoder,
+                    ..
+                } => {
+                    latex_line(
+                        text,
+                        "Neural architecture",
+                        "exact integer feed-forward over mathematical integers",
+                    );
+                    latex_line(
+                        text,
+                        "Encoder",
+                        &format!(
+                            "{} of width {width}, by {}",
+                            render.term(encoder),
+                            render.member(width_evidence)
+                        ),
+                    );
+                    for (position, layer) in layers.iter().enumerate() {
+                        latex_line(
+                            text,
+                            &format!("Layer {}", position + 1),
+                            &match layer {
+                                NeuralLayer::Dense {
+                                    inputs,
+                                    outputs,
+                                    weights,
+                                    bias,
+                                } => format!(
+                                    "dense {inputs} to {outputs}, weights {}, bias {}",
+                                    render.member(weights),
+                                    render.member(bias)
+                                ),
+                                NeuralLayer::Relu => "rectified linear".to_owned(),
+                                NeuralLayer::Requantize {
+                                    shift,
+                                    minimum,
+                                    maximum,
+                                } => format!(
+                                    "truncating division by 2^{shift}, clamped to [{minimum}, {maximum}]"
+                                ),
+                            },
+                        );
+                    }
+                    latex_line(
+                        text,
+                        "Decoder",
+                        &match decoder {
+                            NeuralDecoder::Argmax { labels } => format!(
+                                "first maximal of {}",
+                                labels.iter().map(|label| render.term(label)).collect::<Vec<_>>().join(", ")
+                            ),
+                            NeuralDecoder::Function { binder, body } => {
+                                format!("{binder} => {}", render.term(body))
+                            }
+                        },
+                    );
+                }
+                RealizationDescriptor::Composite { form } => {
+                    let line = match form {
+                        CompositeForm::Sequence { stages, junctions } => format!(
+                            "sequence {}; junctions {}",
+                            stages.iter().map(|stage| latex_use(render, stage)).collect::<Vec<_>>().join(", "),
+                            junctions.iter().map(junction).collect::<Vec<_>>().join(", ")
+                        ),
+                        CompositeForm::Fanout { left, right } => {
+                            format!("fan-out of {} and {}", latex_use(render, left), latex_use(render, right))
+                        }
+                        CompositeForm::Product { left, right } => {
+                            format!("product of {} and {}", latex_use(render, left), latex_use(render, right))
+                        }
+                        CompositeForm::Branch {
+                            guard,
+                            then,
+                            r#else,
+                        } => format!(
+                            "if {} then {} else {}",
+                            render.term(guard),
+                            latex_use(render, then),
+                            latex_use(render, r#else)
+                        ),
+                        CompositeForm::Scan { stage, junction: scan } => {
+                            format!("scan of {}; junction {}", latex_use(render, stage), junction(scan))
+                        }
+                    };
+                    latex_line(text, "Composite", &line);
+                }
+            }
+            if *executable {
+                text.push_str("\\noindent Execution: executable, non-escaping closures only.\\par\n");
+            }
+            latex_line(text, "Axiom policy", &latex_policy(axioms));
+        }
+        SemanticDeclaration::Evidence {
+            type_parameters,
+            contract,
+            realization,
+            claims,
+            axioms,
+            ..
+        } => {
+            if !type_parameters.is_empty() {
+                latex_line(text, "Type parameters", &format!("({})", names(type_parameters)));
+            }
+            latex_line(
+                text,
+                "About",
+                &format!(
+                    "realization {} against contract {}",
+                    latex_use(render, realization),
+                    latex_use(render, contract)
+                ),
+            );
+            for claim in claims {
+                let line = match claim {
+                    EvidenceClaim::SatisfiesContract { theorem } => format!(
+                        "satisfies the postcondition under the contract's premises, discharged by {}",
+                        render.member(theorem)
+                    ),
+                    EvidenceClaim::PreservesInvariant { theorem } => format!(
+                        "every step preserves the invariant, discharged by {}",
+                        render.member(theorem)
+                    ),
+                    EvidenceClaim::InitialInvariant { theorem } => format!(
+                        "the initial state satisfies the invariant, discharged by {}",
+                        render.member(theorem)
+                    ),
+                    EvidenceClaim::EquivalentTo { reference, theorem } => format!(
+                        "equals {} under the contract's premises, discharged by {}",
+                        latex_use(render, reference),
+                        render.member(theorem)
+                    ),
+                    EvidenceClaim::DatasetAgreement {
+                        dataset,
+                        comparison,
+                        comparison_sound,
+                        examples,
+                        agreements,
+                        theorem,
+                    } => format!(
+                        "agrees with the expected output on exactly {agreements} of the {examples} examples of {} under {}, sound for equality by {}, discharged by {}",
+                        render.member(dataset),
+                        render.member(comparison),
+                        render.member(comparison_sound),
+                        render.member(theorem)
+                    ),
+                };
+                latex_line(text, "Claim", &line);
+            }
+            latex_line(text, "Axiom policy", &latex_policy(axioms));
+        }
+        SemanticDeclaration::Model {
+            type_parameters,
+            contract,
+            realization,
+            evidence,
+            entry,
+            axioms,
+            ..
+        } => {
+            if !type_parameters.is_empty() {
+                latex_line(text, "Type parameters", &format!("({})", names(type_parameters)));
+            }
+            latex_line(
+                text,
+                "Binds",
+                &format!(
+                    "contract {} to realization {}",
+                    latex_use(render, contract),
+                    latex_use(render, realization)
+                ),
+            );
+            latex_line(
+                text,
+                "Evidence",
+                &if evidence.is_empty() {
+                    "none".to_owned()
+                } else {
+                    evidence.iter().map(|item| latex_use(render, item)).collect::<Vec<_>>().join(", ")
+                },
+            );
+            if !entry.is_empty() {
+                latex_line(
+                    text,
+                    "Entry",
+                    &entry.iter().map(|theorem| render.member(theorem)).collect::<Vec<_>>().join(", "),
+                );
+            }
+            let required = module.elaboration.required(index);
+            latex_line(
+                text,
+                "Runtime checks in executable code",
+                &if required.is_empty() {
+                    "none".to_owned()
+                } else {
+                    required
+                        .iter()
+                        .map(|check| crate::ir::semantic::model::check_name_of(*check))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                },
+            );
+            latex_line(text, "Axiom policy", &latex_policy(axioms));
+        }
+        SemanticDeclaration::Structure { .. }
+        | SemanticDeclaration::Class { .. }
+        | SemanticDeclaration::Instance { .. }
+        | SemanticDeclaration::Inductive { .. }
+        | SemanticDeclaration::Definition { .. }
+        | SemanticDeclaration::Theorem { .. } => {}
+    }
+    for obligation in module.elaboration.obligations(index) {
+        let parameters = render.parameters(&obligation.parameters);
+        latex_line(
+            text,
+            &format!("Obligation ({})", tex_escape(&obligation.role)),
+            &format!(
+                "forall{parameters}, {}; stated exactly by {}",
+                render.term(&obligation.statement),
+                render.member(&obligation.theorem)
+            ),
+        );
+    }
+    for derived in module.elaboration.lowered(index) {
+        if let SemanticDeclaration::Definition {
+            name,
+            parameters,
+            result,
+            body,
+            ..
+        } = derived
+        {
+            latex_line(
+                text,
+                "Elaborates to",
+                &format!(
+                    "{name}{} : {} := {}",
+                    render.parameters(parameters),
+                    render.ty(result),
+                    render.term(body)
+                ),
+            );
+        }
+    }
+    for check in module.elaboration.checks(index) {
+        latex_line(text, "Restated in Lean against the fixed model semantics as", &check.name);
+    }
+}
+
 /// Render the same semantic module as canonical explanatory LaTeX.
 pub fn render_latex(
     checked: &CheckedModule,
@@ -2182,7 +2907,7 @@ pub fn render_latex(
         "\\documentclass[11pt]{article}\n\\usepackage[T1]{fontenc}\n\\usepackage{amsmath,amssymb}\n\\begin{document}\n\\section*{Semantic declarations}\n",
     );
     let mut starts = Vec::with_capacity(module.declarations.len());
-    for declaration in &module.declarations {
+    for (index, declaration) in module.declarations.iter().enumerate() {
         starts.push(text.len());
         text.push_str(&format!(
             "\\subsection*{{\\texttt{{{}}}}}\n\\noindent Kind: \\texttt{{{}}}.\\par\n",
@@ -2372,6 +3097,13 @@ pub fn render_latex(
             | SemanticDeclaration::Class { .. }
             | SemanticDeclaration::Instance { .. }
             | SemanticDeclaration::Inductive { .. } => {}
+            SemanticDeclaration::Artifact { .. }
+            | SemanticDeclaration::Contract { .. }
+            | SemanticDeclaration::Realization { .. }
+            | SemanticDeclaration::Evidence { .. }
+            | SemanticDeclaration::Model { .. } => {
+                latex_model(&render, module, index, declaration, &mut text);
+            }
         }
     }
     let end = text.len();
