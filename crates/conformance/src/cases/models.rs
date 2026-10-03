@@ -1314,6 +1314,20 @@ fn md_06() {
             "evidence is attested through its generated declarations only"
         );
         assert_eq!(fixture.attestation["status"], "verified");
+        // The owner's policy is exact over its elaboration as a whole: an
+        // axiom no generated declaration observes is refused.
+        let overstated = mutated("Recognizer", "DigitEvidence", |declaration| {
+            declaration["axioms"] = json!(["Classical.choice", "propext"]);
+        });
+        overstated.check_ok();
+        let _guard = support::env_lock();
+        let error = overstated.verify_fails_with("LLV7005");
+        assert!(
+            error
+                .to_string()
+                .contains("its generated declarations observe exactly a different set"),
+            "{error}"
+        );
     }
 }
 
@@ -1738,10 +1752,12 @@ impl Differential {
         let mut seeded = Seeded(seed);
         let inputs = (0..SAMPLES).map(|_| seeded.vector(WIDTH, -8, 8)).collect();
         let hidden_weights = seeded.matrix(HIDDEN, WIDTH, -128, 127);
-        let hidden_bias = seeded.vector(HIDDEN, -3000, 3000);
-        let shift = u32::try_from(seeded.within(0, 6)).expect("small");
-        let minimum = seeded.within(-64, 0);
-        let maximum = seeded.within(1, 127);
+        // Small enough that a requantized value is often inside its range,
+        // so truncation, not only clamping, decides the outcome.
+        let hidden_bias = seeded.vector(HIDDEN, -300, 300);
+        let shift = u32::try_from(seeded.within(4, 7)).expect("small");
+        let minimum = seeded.within(-60, -20);
+        let maximum = seeded.within(20, 60);
         let output_weights = seeded.matrix(CLASSES, HIDDEN, -128, 127);
         let output_bias = seeded.vector(CLASSES, -100_000, 100_000);
         // The second half of the tie layer repeats the first, so every
@@ -1813,6 +1829,13 @@ impl Differential {
         let hidden = model_dense(&self.hidden_weights, &self.hidden_bias, input);
         let hidden = model_requantize(&model_relu(&hidden), self.shift, self.minimum, self.maximum);
         model_dense(&self.output_weights, &self.output_bias, &hidden)
+    }
+
+    /// The hidden layer requantized without the rectifier, so negative
+    /// values meet the truncating division.
+    fn quantized(&self, input: &[i64]) -> Vec<i64> {
+        let hidden = model_dense(&self.hidden_weights, &self.hidden_bias, input);
+        model_requantize(&hidden, self.shift, self.minimum, self.maximum)
     }
 
     fn tie(&self, input: &[i64]) -> usize {
@@ -1973,6 +1996,18 @@ impl Differential {
             json!({"kind": "list", "element": {"kind": "int"}}),
         ));
         declarations.push(realization(
+            "Quantized",
+            &json!([
+                {"bias": {"name": "hiddenBias"}, "inputs": WIDTH, "kind": "dense",
+                 "outputs": HIDDEN, "weights": {"name": "hiddenWeights"}},
+                {"kind": "requantize", "maximum": self.maximum.to_string(),
+                 "minimum": self.minimum.to_string(), "shift": self.shift},
+            ]),
+            json!({"binder": "values", "body": {"kind": "var", "name": "values"},
+                   "kind": "function"}),
+            json!({"kind": "list", "element": {"kind": "int"}}),
+        ));
+        declarations.push(realization(
             "Label",
             &layers,
             json!({"kind": "argmax",
@@ -2010,6 +2045,11 @@ impl Differential {
                 format!("logits_{index}"),
                 apply("Logits", index),
                 int_list(&logits),
+            ));
+            declarations.push(theorem(
+                format!("quantized_{index}"),
+                apply("Quantized", index),
+                int_list(&self.quantized(input)),
             ));
             declarations.push(theorem(
                 format!("label_{index}"),
@@ -2077,6 +2117,36 @@ fn md_09() {
             values.iter().filter(|value| **value == best).count() > 1
         }),
         "the seed poses a tie"
+    );
+    let divisor = 1_i64 << differential.shift;
+    let pre: Vec<i64> = differential
+        .inputs
+        .iter()
+        .flat_map(|input| {
+            model_dense(
+                &differential.hidden_weights,
+                &differential.hidden_bias,
+                input,
+            )
+        })
+        .collect();
+    let (low, high) = (differential.minimum, differential.maximum);
+    assert!(
+        pre.iter().any(|value| {
+            let quotient = value / divisor;
+            *value < 0 && value % divisor != 0 && low < quotient && quotient < high
+        }),
+        "the seed poses a negative value that truncation, not flooring, requantizes"
+    );
+    assert!(
+        pre.iter().any(|value| value / divisor < low)
+            && pre.iter().any(|value| value / divisor > high),
+        "the seed poses clamping at both bounds"
+    );
+    assert!(
+        pre.iter()
+            .any(|value| *value > 0 && value / divisor < high && value % divisor != 0),
+        "the seed poses a rectified value inside the range"
     );
     assert!(differential.comparisons.iter().any(|(_, _, less, _)| *less));
     assert!(differential

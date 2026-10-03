@@ -277,7 +277,7 @@ repo-conformance --test conformance -- conformance_pd_04 conformance_pd_05`.
 ```text
 thread 'conformance_pd_05' panicked at crates/conformance/src/cases/production.rs:656:17:
 production-unbounded-type: expected "construct `type.list` requires heap allocation, which target `rust-core` does not provide", got LLT4005: phase production: production root `LanguageTwelve.Main.first` is not eligible for target `rust-core`: effect mismatch: construct `type.list` realizes effect `allocation`, which the root does not admit (in `LanguageTwelve.Main.first`, reached by LanguageTwelve.Main.first; 1 violation(s) in total)
-thread 'conformance_pd_04' panicked at crates/conformance/src/support.rs:390:14:
+thread 'conformance_pd_04' panicked at crates/conformance/src/support.rs:418:14:
 check fails
 ```
 
@@ -290,7 +290,7 @@ conformance_pd_05`. The first fixture whose only violation is an unadmitted
 effect now checks.
 
 ```text
-thread 'conformance_pd_05' panicked at crates/conformance/src/support.rs:390:14:
+thread 'conformance_pd_05' panicked at crates/conformance/src/support.rs:418:14:
 check fails
 ```
 
@@ -418,7 +418,7 @@ Expected: the committed language-1.2 example no longer checks, and the
 negative fixture of a `let` under language 1.1 is accepted.
 
 ```text
-thread 'conformance_sm_23' panicked at crates/conformance/src/support.rs:380:14:
+thread 'conformance_sm_23' panicked at crates/conformance/src/support.rs:408:14:
 check succeeds: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLT4001"), message: "phase link: `let` is a language-1.2 construct; language 1.1 rejects it", ... }] }
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 227 filtered out
 gate failed: tests/negative/language-1.2-construct-under-1.1: step 1 `check ` exited 0, case.toml expects 1
@@ -477,7 +477,7 @@ structural eliminator. Command: `cargo test -p repo-conformance --test
 conformance -- conformance_df_13`.
 
 ```text
-thread 'conformance_df_13' panicked at crates/conformance/src/support.rs:390:14:
+thread 'conformance_df_13' panicked at crates/conformance/src/support.rs:418:14:
 check fails
 ```
 
@@ -491,7 +491,7 @@ well-formed `Wrap` with a constructor field `Tree (Wrap)` is no longer
 rejected at all; only the positivity rule refused it.
 
 ```text
-thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:390:14:
+thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:418:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 230 filtered out
 ```
@@ -580,7 +580,7 @@ Command: `cargo test -p repo-conformance --test conformance --
 conformance_df_17`. Expected: the forged-evidence mutation links.
 
 ```text
-thread 'conformance_df_17' panicked at crates/conformance/src/support.rs:390:14:
+thread 'conformance_df_17' panicked at crates/conformance/src/support.rs:418:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 238 filtered out
 ```
@@ -597,7 +597,7 @@ so a member could call its group on its own argument. Command: `cargo test
 `isOdd (number)` mutation links.
 
 ```text
-thread 'conformance_df_16' panicked at crates/conformance/src/support.rs:390:14:
+thread 'conformance_df_16' panicked at crates/conformance/src/support.rs:418:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 238 filtered out
 ```
@@ -675,7 +675,7 @@ product field. Expected: the renamed type parameter is admitted, and Lean,
 not linking, is the first to refuse the capture.
 
 ```text
-thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:390:14:
+thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:418:14:
 check fails
 
 checked 1 module (source 0eec48d541180c1a6dbf34539884c1063f8a6637964a1f7667a5b6c0f73a4d15, semantic 1fe3fc4d4fa60d781de6ea42be16516d7b6b860a2918f6ed351b40ad6e1e0d2c)
@@ -713,7 +713,7 @@ test -p repo-conformance --test conformance -- conformance_sm_29`.
 Expected: the `02` mutation links.
 
 ```text
-thread 'conformance_sm_29' panicked at crates/conformance/src/support.rs:390:14:
+thread 'conformance_sm_29' panicked at crates/conformance/src/support.rs:418:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
 ```
@@ -1290,7 +1290,7 @@ seeded graphs and the 24-node chain, whose last node is such a successor,
 disagree with the independent model.
 
 ```text
-thread 'conformance_sm_30' panicked at crates/conformance/src/support.rs:1875:10:
+thread 'conformance_sm_30' panicked at crates/conformance/src/support.rs:1903:10:
 the module verifies with real Lean: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLV7002"), message: "Lean rejected `Collections.Main` (error): Tactic `decide` proved that the proposition\n  LexLeanCollections.graphTopological
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
 ```
@@ -1308,7 +1308,7 @@ canonical order disagreed with Lean's `Key Int` instance. Command: `cargo test
 insertion of the source order, fail under verification.
 
 ```text
-thread 'conformance_sm_28' panicked at crates/conformance/src/support.rs:1875:10:
+thread 'conformance_sm_28' panicked at crates/conformance/src/support.rs:1903:10:
 the module verifies with real Lean: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLV7002"), message: "Lean rejected `Collections.Main` (error): Tactic `decide` proved that the proposition\n  [-2, -10, -100, 0, 3, 9, 100] =\n    LexLeanCollections.listFold (fun built element => LexLeanCollections.setInsert built element) []\n      [3, -2, 0, -10, 100, -100, 9]\nis false"
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
 ```
@@ -1325,7 +1325,7 @@ conformance -- conformance_sm_28`. Expected: the seeded union theorems,
 whose right-hand sides come from `BTreeSet`, fail under verification.
 
 ```text
-thread 'conformance_sm_28' panicked at crates/conformance/src/support.rs:1875:10:
+thread 'conformance_sm_28' panicked at crates/conformance/src/support.rs:1903:10:
 the module verifies with real Lean: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLV7002"), message: "Lean rejected `Collections.Main` (error): Tactic `decide` proved that the proposition\n  LexLeanCollections.setUnion [1, 2, 3] [0, 5] = [0, 1, 2, 3, 5]\nis false"
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
 ```
@@ -1719,6 +1719,210 @@ normalized Lean process record to contain `-R $STAGING/lean-src`. Removing the
 `-R` pair makes the attestation comparison fail. The restoring commit is
 `d5a3403df3028bb5bd5af06ab725dbb0b7429581`; the targeted regression passed
 after restoration.
+
+### model evidence statement check can fail
+
+Planted: the statement-exactness check of an evidence claim was skipped
+(`if false { require_statement(env, theorem, &obligation, code!("LLT4009"))?; }`
+at the end of `claim_obligation`). Command: `cargo test -p repo-conformance
+--test conformance -- conformance_md_06`. Expected: claims discharged by
+theorems that state something else link.
+
+```text
+thread 'conformance_md_06' (23724) panicked at crates/conformance/src/support.rs:526:5:
+expected LLT4009, found ["LLT4001"] (LLT4001: phase link: duplicate generated name `DigitEvidence.digit_net_exact`)
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 282 filtered out
+```
+
+Removed: the check was restored; `conformance_md_06` passes and
+`model-forged-evidence` fails with `LLT4009`.
+
+### model runtime boundary can fail
+
+Planted: a contract's precondition was no longer a required runtime check
+(`if false && contract.precondition.is_some()` in `required_checks`).
+Command: `cargo test -p repo-conformance --test conformance --
+conformance_md_07`. Expected: an executable application of a model with an
+unchecked precondition links.
+
+```text
+thread 'conformance_md_07' (23161) panicked at crates/conformance/src/cases/models.rs:1351:9:
+assertion `left == right` failed: SessionModel
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 282 filtered out
+```
+
+Removed: the requirement was restored; `conformance_md_07` passes and
+`model-unvalidated-boundary` fails with `LLT4008`.
+
+### model realization bypass check can fail
+
+Planted: executable code could apply a realization function directly
+(`if false && env.models.realization_functions.contains(&key)` in
+`check_boundary`). Command: `cargo test -p repo-conformance --test
+conformance -- conformance_md_07`. Expected: `classify` calling `DigitNet`
+links.
+
+```text
+thread 'conformance_md_07' (16949) panicked at crates/conformance/src/support.rs:418:14:
+check fails
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 282 filtered out
+```
+
+Removed: the check was restored; `conformance_md_07` passes and
+`model-realization-bypass` fails with `LLT4008`.
+
+### model artifact digest check can fail
+
+Planted: linking no longer compared a configured artifact's bytes with its
+configured digest (`if false && observed != source.sha256` in
+`load_artifacts`). Command: `cargo test -p repo-conformance --test
+conformance -- conformance_md_02`. Expected: tampered bytes are no longer
+refused as a configuration mismatch. The declaration's own digest check still
+refuses them, with another message, so the tampering never reaches a backend.
+
+```text
+thread 'conformance_md_02' (24293) panicked at crates/conformance/src/cases/models.rs:94:5:
+expected "not its configured" under LLR3007, got LLR3007: phase link: artifact `banner` bytes have SHA-256 3733cd977ff8eb18b987357e22ced99f46097f31ecb239e878ae63760e83e4d5, not the declared 3369421cb6a657bcbdbec197a0c3b2a8e208dd7746853513f9d77331d0fa1397
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 282 filtered out
+```
+
+Removed: the check was restored; `conformance_md_02` passes and
+`model-artifact-digest-mismatch` fails with `LLR3007`.
+
+### model artifact schema decoding can fail
+
+Planted: an integer tensor's byte length was no longer checked against its
+shape (`if false && bytes.len() != expected` in `decode`). Command: `cargo
+test -p repo-conformance --test conformance -- conformance_md_02`.
+Expected: a shape the bytes cannot hold is no longer a schema violation.
+
+```text
+thread 'conformance_md_02' (13418) panicked at crates/conformance/src/support.rs:526:5:
+expected LLR3008, found ["LLT4006"] (LLT4006: phase link: neural realization `DigitNet` layer 1 weights `hiddenWeights` is a int_tensor of shape [12, 8]; the slot needs an integer tensor of shape [12, 7])
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 282 filtered out
+```
+
+Removed: the check was restored; `conformance_md_02` passes and
+`model-artifact-schema-violation` fails with `LLR3008`.
+
+### model composition junction check can fail
+
+Planted: a sequence junction was no longer checked against its stage
+(`let _ = junction_check(...)` in `check_composite`). Command: `cargo test
+-p repo-conformance --test conformance -- conformance_md_08`. Expected: an
+unconditional junction before a stage with a precondition links.
+
+```text
+thread 'conformance_md_08' (14466) panicked at crates/conformance/src/support.rs:418:14:
+check fails
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 282 filtered out
+```
+
+Removed: the check was restored; `conformance_md_08` passes and
+`model-composition-missing-junction` fails with `LLT4007`.
+
+### model descriptor slot typing can fail
+
+Planted: descriptor terms were no longer checked against the types their
+slots fix (`let _ = check_slots(...)` in `check_realization`). Command:
+`cargo test -p repo-conformance --test conformance -- conformance_md_04`.
+Expected: a Boolean label of a natural-number output is no longer an
+interface mismatch.
+
+```text
+thread 'conformance_md_04' (15034) panicked at crates/conformance/src/support.rs:526:5:
+expected LLT4006, found ["LLT4001"] (LLT4001: phase link: realization declaration `DigitNet` elaborates to `DigitNet`, which is ill-formed: list head has type Bool, expected Nat)
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 282 filtered out
+```
+
+Removed: the check was restored; `conformance_md_04` passes.
+
+### model claim generator is checked by Lean
+
+Planted: the `dataset_agreement` statement generator compared each expected
+output with itself instead of with the realization's output (an over-claim
+every example would satisfy), and a copy of `examples/models` was edited to
+state exactly the planted statement (`labeled_agreement` over the planted
+fold, 40 of 40, and the claim's `agreements` to 40). Commands: `lexlean
+check`, then `lexlean verify`, in that copy. Expected: linking accepts the
+theorem, because it states the generator's output exactly; Lean refuses the
+restatement against the fixed `LexLeanModels.Agreement`.
+
+```text
+check 0
+verify 1
+error[LLV7002]: Lean rejected `Models.Recognizer` (error): Tactic `decide` proved that the proposition
+  LexLeanModels.Agreement DigitNet sameDigit labeledGlyphs 40 40
+is false
+```
+
+Removed: the generator was restored; the committed example verifies.
+
+### model kernel differential can fail
+
+Planted, one at a time, against `conformance_md_09` (`cargo test -p
+repo-conformance --test conformance -- conformance_md_09`), whose
+expectations come from an independent integer model: the first-maximum
+decoder keeping a later equal value (`less_than(leader, score + 1)`), the
+requantization dividing by `2^(shift+1)`, the rectifier passing negative
+values, and the portable runtime's integer quotient flooring (`Int.ediv`
+for `Int.tdiv`). Expected: Lean refuses the seeded expectations.
+
+```text
+thread 'conformance_md_09' (15625) panicked at crates/conformance/src/support.rs:1903:10:
+the module verifies with real Lean: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLV7002"), message: "Lean rejected `Models.Main` (error): Tactic `decide` proved that the proposition\n  Tie Sample.s0 = 1\nis false", ...
+thread 'conformance_md_09' (18279) panicked at crates/conformance/src/support.rs:1903:10:
+the module verifies with real Lean: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLV7002"), message: "Lean rejected `Models.Main` (error): Tactic `decide` proved that the proposition\n  Logits Sample.s0 = [50075, 63645, 87054, -4700, 27212]\nis false", ...
+thread 'conformance_md_09' (18907) panicked at crates/conformance/src/support.rs:1903:10:
+the module verifies with real Lean: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLV7002"), message: "Lean rejected `Models.Main` (error): Tactic `decide` proved that the proposition\n  Logits Sample.s0 = [50075, 63645, 87054, -4700, 27212]\nis false", ...
+thread 'conformance_md_09' (19553) panicked at crates/conformance/src/support.rs:1903:10:
+the module verifies with real Lean: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLV7002"), message: "Lean rejected `Models.Main` (error): Tactic `decide` proved that the proposition\n  Quantized Sample.s0 = [0, -14, -37, -33, -40, 10, -32, 46]\nis false", ...
+```
+
+A first seed, with large biases, saturated every requantized value, so the
+divisor plant passed unnoticed; the seed now poses, and the case asserts it
+poses, a tie, a negative value that truncation and flooring requantize
+differently, clamping at both bounds, and a rectified value inside the
+range.
+
+Removed: each plant was restored; `conformance_md_09` passes.
+
+### model axiom audit union can fail
+
+Planted: verification no longer required the generated declarations of a
+model declaration to observe exactly its axiom set together (`if false &&
+union... != declaration.axioms()` in `verify/mod.rs`). Command: `cargo test
+-p repo-conformance --test conformance -- conformance_md_06`. Expected:
+evidence stating an axiom none of its declarations observes verifies.
+
+```text
+thread 'conformance_md_06' (21466) panicked at crates/conformance/src/support.rs:445:14:
+verify fails
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 282 filtered out
+```
+
+Removed: the check was restored; `conformance_md_06` passes.
+
+### a planted contract and realization mismatch is refused by verification
+
+Planted: in a copy of `examples/models`, the output bias of digit 8 in
+`artifacts/output-bias.bin` was negated (from -7 to 7), with its digest
+restated in `lexlean.toml` and the `outputBias` declaration and the lock
+regenerated, so linking sees only consistent, content-addressed bytes.
+Commands: `lexlean check`, then `lexlean verify`. Expected: the network no
+longer computes the contract's digit, and only Lean's kernel can see it.
+`conformance_md_12` plants the same mismatch and requires `LLV7002`.
+
+```text
+check 0
+verify 1
+error[LLV7002]: Lean rejected `Models.Recognizer` (error): Tactic `decide` proved that the proposition
+  DigitNet Glyphs.Glyph.g0 = Glyphs.digitOf Glyphs.Glyph.g0
+is false
+  --> src/Recognizer.lex.tex:6:5824
+```
+
+Removed: the copy was discarded; the committed example verifies.
 
 ## End-to-end Lean evidence
 
