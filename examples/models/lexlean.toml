@@ -13,6 +13,11 @@ lean_toolchain = "leanprover/lean4:v4.32.1"
 package = "lexlean.std.nat"
 kind = "builtin"
 
+[[lexicon_source]]
+package = "models.titles"
+kind = "path"
+path = "glossary/models.titles"
+
 [[artifact_source]]
 sha256 = "102bf7ceb176bc23dd4abb56dada713135d79093a79c20c7c79471f751f9a778"
 path = "artifacts/hidden-bias.bin"
