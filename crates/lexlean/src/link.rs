@@ -192,6 +192,9 @@ pub struct CheckedProject {
     pub semantic_id: Sha256Digest,
     /// The canonical lock bytes hashed into the source ID.
     pub canonical_lock: Vec<u8>,
+    /// Language 1.2: every configured model artifact read for linking, as
+    /// `(project-relative path, byte length, SHA-256)` (§10.1, §21.6).
+    pub artifacts: Vec<(String, usize, Sha256Digest)>,
 }
 
 impl CheckedProject {
@@ -829,6 +832,20 @@ fn check_project_inline(
         source_id,
         semantic_id,
         canonical_lock,
+        artifacts: project
+            .config
+            .artifact_sources
+            .iter()
+            .map(|source| {
+                (
+                    source.path.clone(),
+                    artifacts
+                        .get(&source.sha256.to_hex())
+                        .map_or(0, Vec::len),
+                    source.sha256,
+                )
+            })
+            .collect(),
     })
 }
 

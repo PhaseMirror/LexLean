@@ -8632,7 +8632,7 @@ mod tests {
 
     #[test]
     fn semantic_bool_match_is_typed_and_exhaustive() {
-        SemanticModule::parse(BOOL_MATCH, "1.1", "Test", &[], &BTreeMap::new())
+        SemanticModule::parse(BOOL_MATCH, "1.1", "Test", &[], &BTreeMap::new(), &BTreeMap::new())
             .expect("both Boolean constructors form a typed exhaustive match");
 
         let nonexhaustive = BOOL_MATCH.replace(
@@ -8640,7 +8640,7 @@ mod tests {
             "",
         );
         assert!(
-            SemanticModule::parse(&nonexhaustive, "1.1", "Test", &[], &BTreeMap::new())
+            SemanticModule::parse(&nonexhaustive, "1.1", "Test", &[], &BTreeMap::new(), &BTreeMap::new())
                 .expect_err("one Boolean branch is not exhaustive")
                 .to_string()
                 .contains("nonexhaustive or mixed match branches")
@@ -8649,7 +8649,7 @@ mod tests {
 
     #[test]
     fn semantic_theorem_policy_defaults_to_exact_empty() {
-        let module = SemanticModule::parse(EMPTY_POLICY, "1.1", "Test", &[], &BTreeMap::new())
+        let module = SemanticModule::parse(EMPTY_POLICY, "1.1", "Test", &[], &BTreeMap::new(), &BTreeMap::new())
             .expect("omitted policy is exact empty");
         let declaration = module.declarations.first().expect("one theorem");
         assert_eq!(declaration.axiom_policy_kind(), "none");
@@ -8659,7 +8659,7 @@ mod tests {
     #[test]
     fn semantic_theorem_policy_round_trips_a_nonempty_exact_set() {
         let source = theorem_with_axioms(r#"["Classical.choice","propext"]"#);
-        let module = SemanticModule::parse(&source, "1.1", "Test", &[], &BTreeMap::new())
+        let module = SemanticModule::parse(&source, "1.1", "Test", &[], &BTreeMap::new(), &BTreeMap::new())
             .expect("sorted exact policy is valid");
         let declaration = module.declarations.first().expect("one theorem");
         assert_eq!(declaration.axiom_policy_kind(), "exact");
@@ -8684,10 +8684,11 @@ mod tests {
                 "Test",
                 &[],
                 &BTreeMap::new(),
+                &BTreeMap::new(),
             )
             .expect_err("invalid exact policy must fail");
             assert!(
-                error.contains("not sorted, unique, and qualified"),
+                error.reason.contains("not sorted, unique, and qualified"),
                 "{error}"
             );
         }
