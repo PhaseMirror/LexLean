@@ -384,9 +384,10 @@ versions, and the entries below say what each tag does and does not claim.
     integer feed-forward neural (dense, ReLU, truncating requantization,
     first-maximum or function decoder), or composite (sequence, fan-out,
     product, branch, scan with unconditional, proved, or checked
-    junctions; a sequence may thread stateful stages, and a stage whose
-    evidence leaves its postcondition or output invariant open is checked
-    right after it runs); widths, shapes, roles, labels, and descriptor slot
+    junctions; every form but a scan may compose stateful stages, threading
+    the product of their states, proved junctions join stateful stages, and
+    a stage whose evidence leaves its postcondition or output invariant open
+    is checked right after it runs); widths, shapes, roles, labels, and descriptor slot
     types are checked in linking. A tensor declares at most 16 dimensions,
     checked with its declared type before any byte is decoded.
   - Evidence claims (`satisfies_contract`, `preserves_invariant`,

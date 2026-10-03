@@ -1680,7 +1680,7 @@ statement = "Every model application in executable code validates each contract 
 id = "MD-08"
 level = "build"
 suite = "models"
-statement = "Sequence, fan-out, product, branch, and scan composites of models are ordinary typed compositions whose stage interfaces and threaded states match exactly, whose every stage precondition and state invariant is discharged at the model's entry, by a statement-exact junction theorem, or by a run-time check, and whose every check a stage's evidence leaves open after it runs is made at run time; any other composition fails with LLT4007."
+statement = "Sequence, fan-out, product, branch, and scan composites of stateless and stateful models are ordinary typed compositions whose stage interfaces and threaded states match exactly, whose every stage precondition and state invariant is discharged at the model's entry, by a statement-exact junction theorem, or by a run-time check, and whose every check a stage's evidence leaves open after it runs is made at run time; any other composition fails with LLT4007."
 
 [[id]]
 id = "MD-09"

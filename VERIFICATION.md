@@ -1961,6 +1961,24 @@ is false
 Removed: the checks were restored; `conformance_md_08` passes and the example
 verifies.
 
+### model branch state threading can fail
+
+Planted: a branch over stateful stages no longer replaced the state
+component of the arm taken (`.filter(|stateful| **stateful == index &&
+false)` in `check_composite`), so both components were carried unchanged.
+Command: `cargo test -p repo-conformance --test conformance --
+conformance_md_08`. Expected: the kernel-decided outcomes of
+`Flows.ClampOrTally` no longer hold.
+
+```text
+thread 'conformance_md_08' (6664) panicked at crates/conformance/src/cases/models.rs:245:14:
+the models example verifies under pinned Lean: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLV7002"), message: "Lean rejected `Models.Main` (error): Tactic `decide` proved that the proposition\n  branchCode (branchStep (5, 7) 3) = 8007008\nis false", ...
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 282 filtered out
+```
+
+Removed: the update was restored; `conformance_md_08` passes and the example
+verifies.
+
 ### model contract-claim generator is checked by Lean
 
 Planted (review r47, S2): the stateless `satisfies_contract` generator stated

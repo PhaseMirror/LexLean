@@ -2686,8 +2686,9 @@ fn width_obligation(
 
 /// One stage of a composite at its instantiation. A stage's checks after
 /// it runs (its output invariant and postcondition, unless its evidence
-/// discharges them) run right after it, so each needs a sound validator; a
-/// stateful stage is threaded only by a sequence or a scan.
+/// discharges them) run right after it, so each needs a sound validator.
+/// `stateful` is what the form requires of the stage, if anything: a scan
+/// threads exactly one stateful stage.
 fn composite_stage(
     name: &str,
     stage: &ModelUse,

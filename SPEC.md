@@ -3001,50 +3001,66 @@ member or value is an ordinary schema failure (`LLT4001`).
    evidence discharges `preserves_invariant`; `postcondition` when it has a
    postcondition and no evidence discharges `satisfies_contract`; and
    `precondition` when it has a precondition.
-7. **Composition** (`LLT4007`). A composite stage is a prior model. Types
-   match exactly. A stage's *checks after it runs* are the output invariant
-   and the postcondition among its required checks (rule 6); each needs a
-   sound validator, and they run right after the stage in that order, a
-   refusal returning `ContractViolation.output_invariant` or
-   `.postcondition`. So a stage whose only evidence is, for example, a
-   dataset agreement composes, its postcondition checked at run time. A
-   composite with any check at run time (a `checked` junction or a stage's
-   checks after it runs) has the output `result O contract_violation`, `O`
-   its output without checks. The closed forms:
+7. **Composition** (`LLT4007`). A composite stage is a prior model, stateless
+   or stateful. Types match exactly. A stage's *checks after it runs* are the
+   output invariant and the postcondition among its required checks (rule 6);
+   each needs a sound validator, and they run right after the stage in that
+   order, a refusal returning `ContractViolation.output_invariant` or
+   `.postcondition`. So a stage whose only evidence is, for example, a dataset
+   agreement composes, its postcondition checked at run time. A composite with
+   any check at run time (a `checked` junction or a stage's checks after it
+   runs) has the output `result O contract_violation`, `O` its output without
+   checks.
+
+   *State.* A sequence, fan-out, product, or branch with stateful stages
+   declares a state whose type is the right-nested product of those stages'
+   states in stage order (`left` before `right`, `then` before `else`), with
+   any initial value of that type; a composite without stateful stages
+   declares none (`LLT4007` otherwise). Each stateful stage reads its own
+   component and its step replaces exactly that component: a sequence and a
+   fan-out or product replace the component of every stateful stage they run,
+   and a branch replaces only the component of the arm taken, carrying the
+   other unchanged. A refusal returns the state the composite was given, with
+   the violation. A stage's state component is the one the composite was
+   given, so its invariant is established at the composite's entry unless a
+   checked junction validates it at run time.
+
+   The closed forms:
    - `sequence` `{"stages":[...],"junctions":[...]}`: at least two stages,
      one junction per stage after the first, each stage consuming the
-     previous stage's output. Stages may be stateful: the composite then
-     declares a state whose type is the right-nested product of its stateful
-     stages' states in stage order (`LLT4007` otherwise), with any initial
-     value of that type; each stateful stage reads and replaces its own
-     component, and a refusal returns the state the composite was given
-     with the violation. A junction before stage `i+1` is `unconditional`
-     (the stage has neither a precondition nor a state invariant), `proved`
-     `{"evidence":T}` (both stages stateless; `T` states exactly
-     `P_i y -> P_{i+1} (M_i y)`, the premise dropped when stage `i` has no
-     precondition), or `checked` (the stage's invariant validator, on its
-     state component, and its precondition validator run before it, a
-     refusal returning `.input_invariant` or `.precondition`). The first
-     stage's invariant (of its state component) and precondition are the
-     effective preconditions.
-   - `fanout` `{"left":Ml,"right":Mr}`: stateless stages, one input, output
-     `product O_l O_r`; effective preconditions `P_l x` and `P_r x`.
-   - `product` `{"left":Ml,"right":Mr}`: stateless stages, input
-     `product I_l I_r`, output `product O_l O_r`; effective preconditions
-     `P_l (first x)` and `P_r (second x)`.
-   - `branch` `{"guard":g,"then":Mt,"else":Me}`: stateless stages,
-     `g : bool` (another type is `LLT4007`), both arms of the composite's
-     interface; effective preconditions `g = true -> P_t x` and
-     `g = false -> P_e x`.
+     previous stage's output. A junction before stage `i+1` is
+     `unconditional` (the stage has no precondition), `proved`
+     `{"evidence":T}`, or `checked` (the stage's invariant validator, on its
+     component, and its precondition validator run before it, a refusal
+     returning `.input_invariant` or `.precondition`). `T` is over the
+     composite's state `s` (when stateful) and the earlier stage's input `y`,
+     and states exactly that the earlier stage's invariant of its component
+     and its precondition imply the later stage's precondition of its
+     component and the earlier stage's output: `J_i(s_i) -> P_i(s_i, y) ->
+     P_{i+1}(s_{i+1}, out)`, each absent premise dropped and each stateless
+     stage taking no component, where `out` is `M_i(y)`, or
+     `second(M_i(s_i, y))` for a stateful stage. The effective preconditions
+     are the first stage's invariant and precondition and the invariant of
+     every later stateful stage whose junction is not checked.
+   - `fanout` `{"left":Ml,"right":Mr}`: one input, output
+     `product O_l O_r`; effective preconditions each stage's invariant and
+     precondition (`P_l x`, `P_r x`).
+   - `product` `{"left":Ml,"right":Mr}`: input `product I_l I_r`, output
+     `product O_l O_r`; effective preconditions each stage's invariant and
+     precondition (`P_l (first x)`, `P_r (second x)`).
+   - `branch` `{"guard":g,"then":Mt,"else":Me}`: `g : bool` (another type is
+     `LLT4007`), both arms of the composite's interface; effective
+     preconditions `g = true -> R` for each invariant and precondition `R`
+     of the then stage and `g = false -> R` for the else stage's.
    - `scan` `{"stage":Ms,"junction":j}` over one stateful stage: input
      `list I`, threading the stage's state from `Ms.initial` and collecting
-     outputs in order. The junction is `unconditional` (no precondition, no
-     checks after the stage runs, and any invariant carried by
-     `initial_invariant` and `preserves_invariant` evidence), `proved` (that
-     evidence, no checks after the stage, and `T` stating exactly
-     `J s -> P s x`), or `checked` (the invariant and precondition
-     validators run before each step and the checks after it after each
-     step; the first refusal is returned; the output is
+     outputs in order; it declares no state of its own. The junction is
+     `unconditional` (no precondition, no checks after the stage runs, and
+     any invariant carried by `initial_invariant` and `preserves_invariant`
+     evidence), `proved` (that evidence, no checks after the stage, and `T`
+     stating exactly `J s -> P s x`), or `checked` (the invariant and
+     precondition validators run before each step and the checks after it
+     after each step; the first refusal is returned; the output is
      `result (list O) contract_violation`).
 
    Any other composition, junction, or stage is `LLT4007`. A composite's
@@ -6061,7 +6077,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `MD-05` | `models` | A model binds one contract instantiation to a realization of the identical interface, with entry evidence for every effective precondition; an interface mismatch fails with LLT4006 before either backend runs, and a realization whose behavior violates a statement-exact contract claim is refused by Lean's kernel at verification. | §17.12, §22.6 |
 | `MD-06` | `models` | Every evidence claim is a kind of the closed claim set whose statement LexLean generates from the contract and realization, is discharged by a prior theorem stating it exactly, and is restated against the fixed Lean model semantics; an unregistered, vacuous, inexact, or foreign claim fails with LLT4009, the canonical document says only that a claim is discharged, and only the verified attestation records the generated declarations as verified. | §17.12, §22.9 |
 | `MD-07` | `models` | Every model application in executable code validates each contract predicate its evidence does not discharge, through sound validators, in the fixed order input invariant, precondition, output invariant, postcondition, returning the contract violation on refusal; an application missing a required check, naming a check without a sound validator, or applying a realization directly fails with LLT4008. | §17.12 |
-| `MD-08` | `models` | Sequence, fan-out, product, branch, and scan composites of models are ordinary typed compositions whose stage interfaces and threaded states match exactly, whose every stage precondition and state invariant is discharged at the model's entry, by a statement-exact junction theorem, or by a run-time check, and whose every check a stage's evidence leaves open after it runs is made at run time; any other composition fails with LLT4007. | §17.12 |
+| `MD-08` | `models` | Sequence, fan-out, product, branch, and scan composites of stateless and stateful models are ordinary typed compositions whose stage interfaces and threaded states match exactly, whose every stage precondition and state invariant is discharged at the model's entry, by a statement-exact junction theorem, or by a run-time check, and whose every check a stage's evidence leaves open after it runs is made at run time; any other composition fails with LLT4007. | §17.12 |
 | `MD-09` | `models` | The exact integer kernels of dense, rectified-linear, requantization, and first-maximum layers and the less_than primitive agree with an independent integer model on seeded random weights and inputs under Lean. | §17.12 |
 | `MD-10` | `models` | Model declarations are part of the semantic identity, so changing an artifact byte with its declared digest, a descriptor, a claim, or a check changes the semantic ID, and language-1.2 snapshots carry, schema-valid, every elaborated declaration, generated obligation, cross-check, and required check. | §17.12, §21.4 |
 | `MD-11` | `models` | Model constructs have production dispositions under which artifacts, realizations, models, validators, and checked applications are realized through their elaborations while contracts and evidence are erased, the realization table covers every new runtime construct, and production roots applying an artifact-backed model, directly and through its checks, are eligible and extract the same closure through Lean. | §17.13, §17.14, §22.10 |

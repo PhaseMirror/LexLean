@@ -52,7 +52,7 @@ Feature: models
     And a missing check, a check without a sound validator, or a direct realization application fails with LLT4008
 
   @MD-08 @build
-  Scenario: Sequence, fan-out, product, branch, and scan composites of models are ordinary typed compositions whose stage interfaces and threaded states match exactly, whose every stage precondition and state invariant is discharged at the model's entry, by a statement-exact junction theorem, or by a run-time check, and whose every check a stage's evidence leaves open after it runs is made at run time; any other composition fails with LLT4007.
+  Scenario: Sequence, fan-out, product, branch, and scan composites of stateless and stateful models are ordinary typed compositions whose stage interfaces and threaded states match exactly, whose every stage precondition and state invariant is discharged at the model's entry, by a statement-exact junction theorem, or by a run-time check, and whose every check a stage's evidence leaves open after it runs is made at run time; any other composition fails with LLT4007.
     Given sequence, fan-out, product, branch, and scan composites
     When their stages, junctions, and entries are linked
     Then stage interfaces and states match and every stage precondition is discharged
