@@ -2838,7 +2838,9 @@ struct CompositeLowering {
     obligations: Vec<Obligation>,
 }
 
-#[allow(clippy::too_many_lines)]
+// The composite's interface (input, output, state) and its scope are
+// separate inputs of one check; bundling them would only rename them.
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
 fn check_composite(
     name: &str,
     type_parameters: &[String],
