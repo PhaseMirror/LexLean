@@ -3009,7 +3009,7 @@ impl SemanticModule {
             .iter()
             .map(declaration_node_count)
             .sum::<u64>()
-            + self.elaboration.node_count();
+            + self.elaboration.node_count(&self.declarations);
         if semantic_module_spec(crate::LANGUAGE_1_2) == Some(self.spec.as_str()) {
             base + self
                 .declarations

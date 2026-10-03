@@ -570,11 +570,19 @@ impl Elaboration {
     /// source: every declaration a model elaborates to, every ordinary
     /// declaration whose checked applications were elaborated, and every
     /// generated obligation statement.
-    pub(super) fn node_count(&self) -> u64 {
+    /// An ordinary declaration that elaborates to itself is already charged
+    /// as source and is not charged again.
+    pub(super) fn node_count(&self, source: &[SemanticDeclaration]) -> u64 {
         let declarations: u64 = self
             .lowered
             .iter()
-            .flatten()
+            .enumerate()
+            .filter(|(index, lowered)| {
+                source.get(*index).is_none_or(|declaration| {
+                    lowered.as_slice() != std::slice::from_ref(declaration)
+                })
+            })
+            .flat_map(|(_, lowered)| lowered)
             .map(declaration_node_count)
             .sum();
         let obligations: u64 = self
