@@ -18,6 +18,7 @@ mod latex_pdf;
 mod lean_backend;
 mod lexical_closure;
 mod lexicon;
+mod models;
 mod production;
 mod proofs;
 mod repository;
@@ -56,6 +57,7 @@ pub fn run(id: &str) {
         "TC" => calculus::run(id),
         "RB" => rust_backend::run(id),
         "GN" => gnaf::run(id),
+        "MD" => models::run(id),
         _ => panic!("no conformance case is wired for {id}"),
     }
 }
