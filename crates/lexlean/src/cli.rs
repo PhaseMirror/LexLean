@@ -130,11 +130,17 @@ enum CommandKind {
         /// The diagnostic code.
         code: String,
     },
+    /// Canonicalize, sign, timestamp, append, and verify lexeme entries (§33).
+    Lexeme {
+        /// Which stage of the ledger pipeline to run.
+        #[command(subcommand)]
+        action: crate::lexeme::cli::LexemeAction,
+    },
 }
 
 /// The command names, in the order of §23.4.
-const COMMAND_NAMES: [&str; 8] = [
-    "init", "lock", "check", "build", "verify", "fmt", "clean", "explain",
+const COMMAND_NAMES: [&str; 9] = [
+    "init", "lock", "check", "build", "verify", "fmt", "clean", "explain", "lexeme",
 ];
 
 /// The embedded diagnostic registry, for `explain` (§23.4). The registry
@@ -361,6 +367,9 @@ struct Outcome {
     ids: CommandIds,
     summary: String,
     explanation: Option<String>,
+    /// The §33 payload of a `lexeme` command, merged into the one JSON result
+    /// object so that §20.6's single-object rule holds for the ledger too.
+    payload: Option<crate::artifact::canonical_json::Json>,
 }
 
 /// Emit a finished command's result in the selected mode and return the
@@ -381,7 +390,7 @@ fn emit(
     if json_mode {
         let empty = Vec::new();
         let diagnostics = error.as_ref().map_or(&empty, |e| &e.diagnostics);
-        let json = command_result_json(
+        let mut json = command_result_json(
             command_name,
             exit_code,
             &outcome.modules,
@@ -390,6 +399,15 @@ fn emit(
             &outcome.ids,
             outcome.explanation.as_deref(),
         );
+        if let (Some(extra), crate::artifact::canonical_json::Json::Obj(fields)) =
+            (&outcome.payload, &mut json)
+        {
+            if let crate::artifact::canonical_json::Json::Obj(payload) = extra {
+                for (key, value) in payload {
+                    fields.insert(key.clone(), value.clone());
+                }
+            }
+        }
         let _ = stdout.write_all(&json.to_file_bytes());
     } else {
         if exit_code == 0 {
@@ -482,6 +500,7 @@ pub fn run(
         CommandKind::Fmt { .. } => "fmt",
         CommandKind::Clean => "clean",
         CommandKind::Explain { .. } => "explain",
+        CommandKind::Lexeme { .. } => "lexeme",
     };
 
     let mut outcome = Outcome::default();
@@ -495,6 +514,22 @@ pub fn run(
                 "`{requested}` is not a registered diagnostic code"
             ))),
         },
+        // The ledger pipeline does not read a `lexlean.toml` project: it reads
+        // Lean sources and a ledger directory, and its verification must work on
+        // a machine that has neither the project nor the compiler.
+        CommandKind::Lexeme { action } => {
+            let command = crate::lexeme::cli::LexemeCommand { action };
+            let result = crate::lexeme::cli::run(&command, working_directory)?;
+            outcome.modules = result.modules.into_iter().collect();
+            outcome.artifacts = result.artifacts;
+            outcome.ids = result.ids;
+            outcome.summary = result.summary;
+            outcome.payload = result.payload;
+            match result.failure {
+                Some(error) => Err(error),
+                None => Ok(()),
+            }
+        }
         CommandKind::Init {
             path,
             name,
@@ -614,9 +649,9 @@ pub fn run(
                     };
                     Ok(())
                 }
-                CommandKind::Init { .. } | CommandKind::Explain { .. } => {
-                    unreachable!("handled above")
-                }
+                CommandKind::Init { .. }
+                | CommandKind::Explain { .. }
+                | CommandKind::Lexeme { .. } => unreachable!("handled above"),
             }
         }
     })();

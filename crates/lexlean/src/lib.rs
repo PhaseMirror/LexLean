@@ -41,6 +41,8 @@ pub mod grammar;
 #[doc(hidden)]
 pub mod ir;
 #[doc(hidden)]
+pub mod lexeme;
+#[doc(hidden)]
 pub mod lexicon;
 #[doc(hidden)]
 pub mod link;

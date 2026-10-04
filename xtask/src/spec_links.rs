@@ -61,9 +61,10 @@ fn parse_table(spec: &str) -> Result<Vec<TableRow>, Fail> {
 pub fn validate(root: &Path) -> Result<(), Fail> {
     let spec = std::fs::read_to_string(root.join("SPEC.md"))?;
     let rows = parse_table(&spec)?;
-    if rows.len() != 291 {
-        return Err(format!("RP-07: the §31 table has {} rows, not 291", rows.len()).into());
-    }
+    // Derived, not written down: a literal here would keep reporting the old
+    // count after the register grew, which is the failure this gate exists to
+    // catch in the documents it checks. The stated total is compared against
+    // the table below, so the two cannot drift apart.
     // The prose total under the table is part of the contract a reader
     // relies on; a row added without it would leave §31 contradicting itself.
     let marker = "**Total required capability IDs:** ";

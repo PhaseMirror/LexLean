@@ -1753,3 +1753,99 @@ id = "MD-12"
 level = "build"
 suite = "models"
 statement = "The committed models example verifies nontrivial deterministic stateful, rule, statistical, artifact-backed neural, and composite models with every claim kernel-checked, and planting a contract and realization mismatch in it is refused by verification."
+[[id]]
+id = "LG-01"
+level = "build"
+suite = "lexeme"
+statement = "Canonicalization discards comments and layout and orders declarations by fully qualified name, so two sources differing only in those respects have one canonical form and one content digest."
+
+[[id]]
+id = "LG-02"
+level = "build"
+suite = "lexeme"
+statement = "The canonical form is the §21.1 frame encoding under the `lexlean-lexeme-v1` domain, so the same source hashes identically in two distinct build directories and across two runs."
+
+[[id]]
+id = "LG-03"
+level = "build"
+suite = "lexeme"
+statement = "The content-hash record names the source paths, the canonicalization identifier, the toolchain, and the sorted declaration names, and every one of those fields changes the digest when changed."
+
+[[id]]
+id = "LG-04"
+level = "build"
+suite = "lexeme"
+statement = "An entry carries a detached Ed25519 signature over its 32-byte content digest, and verification refuses a digest altered by one bit or a signature checked against a public key other than the one recorded."
+
+[[id]]
+id = "LG-05"
+level = "build"
+suite = "lexeme"
+statement = "A hardware-bound key records its device, slot, algorithm, and pin policy, and signing fails when the device is absent rather than falling back to a software key."
+
+[[id]]
+id = "LG-06"
+level = "build"
+suite = "lexeme"
+statement = "An entry's RFC 3161 token is parsed for its `TSTInfo`, and verification refuses a token whose message imprint names another algorithm, another digest, or another artifact."
+
+[[id]]
+id = "LG-07"
+level = "build"
+suite = "lexeme"
+statement = "The token's signature verifies under the certificate the entry carries, that certificate verifies under the pinned TSA root in the same entry, and the root's validity interval contains the token's `genTime`."
+
+[[id]]
+id = "LG-08"
+level = "build"
+suite = "lexeme"
+statement = "Leaf and internal hashes use the RFC 6962 domain separation `0x00` and `0x01`, so a leaf digest is never an internal node digest and the tree admits no second preimage through the structure."
+
+[[id]]
+id = "LG-09"
+level = "build"
+suite = "lexeme"
+statement = "Appending an entry returns the new tree size, the appended leaf index, and an O(log n) audit path, and the stored head of every prefix equals the root recomputed from that prefix's entries."
+
+[[id]]
+id = "LG-10"
+level = "build"
+suite = "lexeme"
+statement = "An inclusion proof is accepted exactly when the recomputed root equals the published root, and is refused for a wrong-length path, a reordered path, or an index at or beyond the tree size."
+
+[[id]]
+id = "LG-11"
+level = "build"
+suite = "lexeme"
+statement = "Two published tree heads verify as consistent exactly when the consistency proof from the smaller size recomputes the larger root from the smaller root, so a forked history is detectable from the heads alone."
+
+[[id]]
+id = "LG-12"
+level = "build"
+suite = "lexeme"
+statement = "`lexlean lexeme verify` reports canonical hash, signature, timestamp, and inclusion separately and emits a verdict asserting only existence at a stated time, authorship by a stated key, and integrity since."
+
+[[id]]
+id = "LG-13"
+level = "build"
+suite = "lexeme"
+statement = "Every entry is validated against `schemas/lexeme-entry.schema.json` before it is appended, and an entry failing validation is refused with a registered diagnostic code."
+
+[[id]]
+id = "LG-14"
+level = "build"
+suite = "lexeme"
+statement = "Re-verifying a committed ledger directory reproduces every verdict and every published root without network access."
+
+[[id]]
+id = "LG-15"
+level = "build"
+suite = "lexeme"
+statement = "The browser verifier and the CLI reach the same verdict for every entry of the committed corpus, checked by running both against the recorded roots."
+
+[[id]]
+id = "LG-16"
+level = "build"
+suite = "lexeme"
+statement = "The first ledger entry is the ledger's own Lean specification, its artifacts carry the digests of the CLI and the browser verifier, and its entry is signed, timestamped, and included like any other."
+
