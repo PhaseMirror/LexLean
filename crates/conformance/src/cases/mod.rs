@@ -5,6 +5,7 @@
 //! pass before its case exists.
 
 mod artifacts;
+mod base;
 mod calculus;
 mod cli_api;
 mod collections_model;
@@ -16,6 +17,7 @@ mod gnaf;
 mod grammar;
 mod latex_pdf;
 mod lean_backend;
+mod lexeme;
 mod lexical_closure;
 mod lexicon;
 mod models;
@@ -58,6 +60,8 @@ pub fn run(id: &str) {
         "RB" => rust_backend::run(id),
         "GN" => gnaf::run(id),
         "MD" => models::run(id),
+        "LG" => base::run(id),
+        "LP" => lexeme::run(id),
         _ => panic!("no conformance case is wired for {id}"),
     }
 }

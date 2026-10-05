@@ -23,11 +23,16 @@ use super::SIGNATURE_ALGORITHM;
 /// The code arrives as a literal so that it passes through
 /// [`code!`](crate::code), whose compile-time validation is what keeps an
 /// unregistered code from reaching a diagnostic (R5).
+/// Build a lexeme error. The code arrives already validated through the `code!`
+/// macro rather than as a bare literal, because `audit-errors` establishes R5 by
+/// scanning the shipped crate for that macro applied to a literal: a code
+/// reachable only as a macro *parameter* is invisible to the scan, so a
+/// registered code could be genuinely constructed and still read as a claim with
+/// nothing behind it.
 macro_rules! fail {
-    ($code:literal, $message:expr $(,)?) => {
+    ($code:expr, $message:expr $(,)?) => {
         $crate::error::LexLeanError::from_diagnostic($crate::diagnostic::Diagnostic::new(
-            $crate::code!($code),
-            $message,
+            $code, $message,
         ))
     };
 }
@@ -159,20 +164,30 @@ impl Signature {
     /// placeholder nor the right length in hex.
     pub fn from_json(value: &Json) -> Result<Self, crate::error::LexLeanError> {
         let Json::Obj(object) = value else {
-            return Err(fail!("LLG1003", "a signature is not a JSON object".to_owned()));
+            return Err(fail!(
+                crate::code!("LLG1003"),
+                "a signature is not a JSON object".to_owned()
+            ));
         };
         let text = |key: &str| -> Result<String, crate::error::LexLeanError> {
             match object.get(key) {
                 Some(Json::Str(text)) => Ok(text.clone()),
-                _ => Err(fail!("LLG1003", format!("signature `{key}` is absent or not a string"))),
+                _ => Err(fail!(
+                    crate::code!("LLG1003"),
+                    format!("signature `{key}` is absent or not a string")
+                )),
             }
         };
         let bytes = |key: &str, length: usize| -> Result<Vec<u8>, crate::error::LexLeanError> {
-            let raw = hex_decode(&text(key)?)
-                .ok_or_else(|| fail!("LLG1003", format!("signature `{key}` is not hexadecimal")))?;
+            let raw = hex_decode(&text(key)?).ok_or_else(|| {
+                fail!(
+                    crate::code!("LLG1003"),
+                    format!("signature `{key}` is not hexadecimal")
+                )
+            })?;
             if raw.len() != length && !(length == 64 && raw.is_empty()) {
                 return Err(fail!(
-                    "LLG1003",
+                    crate::code!("LLG1003"),
                     format!("signature `{key}` is {} bytes, not {length}", raw.len())
                 ));
             }
@@ -182,7 +197,7 @@ impl Signature {
         let algorithm = text("algorithm")?;
         if algorithm != SIGNATURE_ALGORITHM {
             return Err(fail!(
-                "LLG1003",
+                crate::code!("LLG1003"),
                 format!("`{algorithm}` is not {SIGNATURE_ALGORITHM}")
             ));
         }
@@ -192,19 +207,24 @@ impl Signature {
             "piv" => KeyKind::Piv,
             other => {
                 return Err(fail!(
-                    "LLG1003",
+                    crate::code!("LLG1003"),
                     format!("`{other}` is not a custody claim this specification admits")
                 ))
             }
         };
         let slot = match object.get("slot") {
             Some(Json::Str(slot)) => Some(slot.clone()),
-            Some(_) => return Err(fail!("LLG1003", "a signature slot is not a string".to_owned())),
+            Some(_) => {
+                return Err(fail!(
+                    crate::code!("LLG1003"),
+                    "a signature slot is not a string".to_owned()
+                ))
+            }
             None => None,
         };
         if kind == KeyKind::Piv && slot.is_none() {
             return Err(fail!(
-                "LLG1003",
+                crate::code!("LLG1003"),
                 "a hardware-bound signature must name the device slot"
             ));
         }
@@ -237,9 +257,7 @@ impl Signature {
         let Ok(public_key) = ed25519_dalek::VerifyingKey::from_bytes(&self.public_key) else {
             return false;
         };
-        public_key
-            .verify_strict(digest, &signature)
-            .is_ok()
+        public_key.verify_strict(digest, &signature).is_ok()
     }
 }
 
@@ -252,10 +270,9 @@ impl Signature {
 /// Returns [`LLG1003`](crate::code) when the seed is not 32 bytes.
 pub fn sign_with_seed(digest: &[u8; 32], seed: &[u8]) -> Result<Signature, LexLeanError> {
     if seed.len() != 32 {
-        return Err(fail!("LLG1003", format!(
-                "an Ed25519 seed is 32 bytes, found {}",
-                seed.len()
-            ),
+        return Err(fail!(
+            crate::code!("LLG1003"),
+            format!("an Ed25519 seed is 32 bytes, found {}", seed.len()),
         ));
     }
     let mut fixed = [0u8; 32];
@@ -287,10 +304,16 @@ pub fn sign_with_piv(
     pin: Option<&str>,
 ) -> Result<Signature, LexLeanError> {
     let public_pem = read_piv_public_key(slot, tool, pin)?;
-    let public_key = public_key_from_pem(&public_pem)
-        .map_err(|reason| fail!("LLG1003", format!("the PIV public key is unusable: {reason}")))?;
+    let public_key = public_key_from_pem(&public_pem).map_err(|reason| {
+        fail!(
+            crate::code!("LLG1003"),
+            format!("the PIV public key is unusable: {reason}")
+        )
+    })?;
     let Some(pin) = pin else {
-        return Err(fail!("LLG1004", format!("slot {slot} requires a PIN and none was supplied"),
+        return Err(fail!(
+            crate::code!("LLG1004"),
+            format!("slot {slot} requires a PIN and none was supplied"),
         ));
     };
     let mut command = Command::new(tool);
@@ -304,31 +327,44 @@ pub fn sign_with_piv(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     let mut child = command.spawn().map_err(|error| {
-        fail!("LLG1004", format!("the PIV tool `{tool}` could not be started: {error}"),
+        fail!(
+            crate::code!("LLG1004"),
+            format!("the PIV tool `{tool}` could not be started: {error}"),
         )
     })?;
     {
         use std::io::Write;
         let mut stdin = child.stdin.take().ok_or_else(|| {
-            fail!("LLG1004", "the PIV tool accepted no standard input".to_owned())
+            fail!(
+                crate::code!("LLG1004"),
+                "the PIV tool accepted no standard input".to_owned()
+            )
         })?;
         stdin.write_all(digest).map_err(|error| {
-            fail!("LLG1004", format!("the digest could not reach the PIV tool: {error}"))
+            fail!(
+                crate::code!("LLG1004"),
+                format!("the digest could not reach the PIV tool: {error}")
+            )
         })?;
     }
     let output = child.wait_with_output().map_err(|error| {
-        fail!("LLG1004", format!("the PIV tool did not complete: {error}"))
+        fail!(
+            crate::code!("LLG1004"),
+            format!("the PIV tool did not complete: {error}")
+        )
     })?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(fail!("LLG1004", format!(
+        return Err(fail!(crate::code!("LLG1004"), format!(
                 "the device refused to sign in slot {slot} (a wrong PIN and an absent device are indistinguishable here): {}",
                 stderr.trim()
             ),
         ));
     }
     if output.stdout.len() != 64 {
-        return Err(fail!("LLG1003", format!(
+        return Err(fail!(
+            crate::code!("LLG1003"),
+            format!(
                 "an Ed25519 signature is 64 bytes, the device returned {}",
                 output.stdout.len()
             ),
@@ -340,7 +376,9 @@ pub fn sign_with_piv(
         value: output.stdout,
     };
     if !signature.verify(digest) {
-        return Err(fail!("LLG1003", "the device's signature does not verify under its own public key".to_owned(),
+        return Err(fail!(
+            crate::code!("LLG1003"),
+            "the device's signature does not verify under its own public key".to_owned(),
         ));
     }
     Ok(signature)
@@ -359,12 +397,16 @@ fn read_piv_public_key(slot: &str, tool: &str, pin: Option<&str>) -> Result<Vec<
         command.arg(format!("--pin={pin}"));
     }
     let output = command.output().map_err(|error| {
-        fail!("LLG1004", format!("the PIV tool `{tool}` could not be started: {error}"),
+        fail!(
+            crate::code!("LLG1004"),
+            format!("the PIV tool `{tool}` could not be started: {error}"),
         )
     })?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(fail!("LLG1004", format!("no device answered slot {slot}: {}", stderr.trim()),
+        return Err(fail!(
+            crate::code!("LLG1004"),
+            format!("no device answered slot {slot}: {}", stderr.trim()),
         ));
     }
     Ok(output.stdout)
@@ -386,7 +428,10 @@ fn public_key_from_pem(pem: &[u8]) -> Result<[u8; 32], String> {
     let end = after
         .find("-----END PUBLIC KEY-----")
         .ok_or("no PEM end line")?;
-    let body: String = after[..end].chars().filter(|c| !c.is_whitespace()).collect();
+    let body: String = after[..end]
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect();
     let der = base64_decode(&body).ok_or("the PEM body is not valid base64")?;
     if der.len() < 32 {
         return Err("the DER public key is too short to hold an Ed25519 key".to_owned());
@@ -398,8 +443,7 @@ fn public_key_from_pem(pem: &[u8]) -> Result<[u8; 32], String> {
 
 /// Decode standard base64, rejecting any character outside the alphabet.
 fn base64_decode(text: &str) -> Option<Vec<u8>> {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = Vec::with_capacity(text.len() * 3 / 4);
     let mut accumulator = 0u32;
     let mut bits = 0u32;
@@ -421,8 +465,7 @@ fn base64_decode(text: &str) -> Option<Vec<u8>> {
 /// Encode bytes as standard base64 with padding.
 #[must_use]
 pub fn base64_encode(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
         let mut block = [0u8; 3];
@@ -448,7 +491,7 @@ pub fn base64_encode(bytes: &[u8]) -> String {
 /// alphabet so that a corrupted field is a refusal rather than silent damage.
 #[must_use]
 pub fn base64_decode_strict(text: &str) -> Option<Vec<u8>> {
-    if text.len() % 4 != 0 {
+    if !text.len().is_multiple_of(4) {
         return None;
     }
     base64_decode(text)
@@ -468,7 +511,7 @@ pub fn hex_lower(bytes: &[u8]) -> String {
 /// Decode lowercase or uppercase hexadecimal into bytes.
 #[must_use]
 pub fn hex_decode(text: &str) -> Option<Vec<u8>> {
-    if text.len() % 2 != 0 {
+    if !text.len().is_multiple_of(2) {
         return None;
     }
     let bytes = text.as_bytes();
@@ -476,8 +519,10 @@ pub fn hex_decode(text: &str) -> Option<Vec<u8>> {
     for chunk in bytes.chunks_exact(2) {
         let high = (chunk[0] as char).to_digit(16)?;
         let low = (chunk[1] as char).to_digit(16)?;
-        out.push((u8::try_from(high).expect("a hex digit fits u8") << 4)
-            | u8::try_from(low).expect("a hex digit fits u8"));
+        out.push(
+            (u8::try_from(high).expect("a hex digit fits u8") << 4)
+                | u8::try_from(low).expect("a hex digit fits u8"),
+        );
     }
     Some(out)
 }

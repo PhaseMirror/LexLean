@@ -17,13 +17,18 @@
 
 pub mod canonical;
 pub mod cli;
+pub mod contractivity;
 pub mod entry;
 pub mod ledger;
 pub mod merkle;
+pub mod pirtm;
+pub mod rational;
 pub mod signature;
+pub mod stratum;
 pub mod timestamp;
 pub mod tsa_crypto;
 pub mod verify;
+pub mod zeno;
 
 /// The schema identifier every entry carries (SPEC.md §33.2).
 pub const ENTRY_SPEC: &str = "lexlean/lexeme/1";

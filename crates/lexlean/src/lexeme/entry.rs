@@ -21,7 +21,7 @@ use crate::artifact::content_id::Sha256Digest;
 use super::canonical::{self, CanonicalSource, Declaration};
 use super::signature::Signature;
 use super::timestamp::Timestamp;
-use super::{CANONICAL_DOMAIN, CANONICALIZATION, ENTRY_SPEC};
+use super::{CANONICALIZATION, CANONICAL_DOMAIN, ENTRY_SPEC};
 
 /// One hashed source and the digest of its §33.1 canonical form.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,8 +71,14 @@ pub struct Inclusion {
 impl Inclusion {
     fn to_json(&self) -> Json {
         Json::object(vec![
-            ("leaf_index", Json::Int(i64::try_from(self.leaf_index).unwrap_or(i64::MAX))),
-            ("tree_size", Json::Int(i64::try_from(self.tree_size).unwrap_or(i64::MAX))),
+            (
+                "leaf_index",
+                Json::Int(i64::try_from(self.leaf_index).unwrap_or(i64::MAX)),
+            ),
+            (
+                "tree_size",
+                Json::Int(i64::try_from(self.tree_size).unwrap_or(i64::MAX)),
+            ),
             (
                 "audit_path",
                 Json::Arr(
@@ -112,6 +118,12 @@ pub struct Entry {
     pub timestamp: Option<Timestamp>,
     /// The §33.5 inclusion proof, filled in when the entry is appended.
     pub inclusion: Option<Inclusion>,
+    /// The optional §34 stratification layer.
+    ///
+    /// Every field of it is derived from the fields already above, so it is
+    /// excluded from [`Self::leaf_bytes`] and cannot change a §33 result. See
+    /// [`crate::lexeme::pirtm`] for why.
+    pub pirtm: Option<crate::lexeme::pirtm::PirtmLayer>,
 }
 
 impl Entry {
@@ -155,11 +167,7 @@ impl Entry {
                 ));
             }
         }
-        let content_digest = Self::entry_digest(
-            toolchain,
-            &hashed,
-            &declarations,
-        );
+        let content_digest = Self::entry_digest(toolchain, &hashed, &declarations);
         Ok(Self {
             spec: ENTRY_SPEC.to_owned(),
             title: title.to_owned(),
@@ -171,6 +179,7 @@ impl Entry {
             signature: Signature::unsigned(),
             timestamp: None,
             inclusion: None,
+            pirtm: None,
         })
     }
 
@@ -233,6 +242,11 @@ impl Entry {
         self.inclusion = Some(inclusion);
     }
 
+    /// Attach the §34 stratification layer.
+    pub fn with_pirtm(&mut self, layer: crate::lexeme::pirtm::PirtmLayer) {
+        self.pirtm = Some(layer);
+    }
+
     /// The entry's canonical JSON, which is also the leaf bytes of §33.5.
     #[must_use]
     pub fn to_json(&self) -> Json {
@@ -263,6 +277,9 @@ impl Entry {
         if let Some(inclusion) = &self.inclusion {
             object.push(("inclusion", inclusion.to_json()));
         }
+        if let Some(layer) = &self.pirtm {
+            object.push(("pirtm", layer.to_json()));
+        }
         Json::object(object)
     }
 
@@ -271,13 +288,22 @@ impl Entry {
     ///
     /// The inclusion is omitted because it is what the leaf hash is used to
     /// prove: an entry that carried its own proof inside the bytes the proof
-    /// commits to would be self-referential. Everything else stays, so the leaf
-    /// is the whole signed record and a verifier needs nothing else to check
-    /// steps 1 through 3 of §33.6.
+    /// commits to would be self-referential.
+    ///
+    /// The §34 `pirtm` layer is omitted for the same reason and one more. It is
+    /// what §34.4 requires: a leaf carrying the layer inside the bytes the §33
+    /// checks hash would let attaching the layer change a §33 verdict, which is
+    /// exactly the substitution stratification is defined to avoid. Every value
+    /// in the layer is derived from the fields that remain, so dropping it loses
+    /// no evidence --- a verifier recomputes it rather than reading it.
+    ///
+    /// Everything else stays, so the leaf is the whole signed record and a
+    /// verifier needs nothing else to check steps 1 through 3 of §33.6.
     #[must_use]
     pub fn leaf_bytes(&self) -> Vec<u8> {
         let mut stripped = self.clone();
         stripped.inclusion = None;
+        stripped.pirtm = None;
         stripped.leaf_text().into_bytes()
     }
 
@@ -293,8 +319,9 @@ impl Entry {
     /// Returns [`LLG1002`](crate::code) naming the first field that is absent,
     /// of the wrong type, or malformed. A malformed entry is refused rather than
     /// partially read, because every field of the canonical JSON is part of the
-    /// leaf hash and a field silently defaulted to something plausible would
-
+    /// leaf hash and a field silently defaulted to something plausible would be
+    /// indistinguishable from the value the author wrote.
+    ///
     /// Recompute the content digest from the entry's own fields.
     ///
     /// This is §33.2's validity condition: the digest an entry declares must
@@ -318,7 +345,10 @@ impl Entry {
         for pair in self.sources.windows(2) {
             if pair[0].path.as_bytes() >= pair[1].path.as_bytes() {
                 return Err((
-                    format!("sources are not in ascending path order at `{}`", pair[1].path),
+                    format!(
+                        "sources are not in ascending path order at `{}`",
+                        pair[1].path
+                    ),
                     pair[1].path.clone(),
                 ));
             }
@@ -348,7 +378,8 @@ impl Entry {
         let recomputed = Self::entry_digest(&self.toolchain, &self.sources, &self.declarations);
         if recomputed != self.content_digest {
             return Err((
-                "the recorded content digest is not the digest of the entry's own fields".to_owned(),
+                "the recorded content digest is not the digest of the entry's own fields"
+                    .to_owned(),
                 recomputed.to_hex(),
             ));
         }
@@ -394,7 +425,9 @@ impl Entry {
                     let field = |key: &str| -> Result<String, crate::error::LexLeanError> {
                         match source.get(key) {
                             Some(Json::Str(text)) => Ok(text.clone()),
-                            _ => Err(entry_error(format!("a source's `{key}` is absent or not a string"))),
+                            _ => Err(entry_error(format!(
+                                "a source's `{key}` is absent or not a string"
+                            ))),
                         }
                     };
                     let declarations = match source.get("declarations") {
@@ -407,10 +440,9 @@ impl Entry {
                             .collect::<Result<Vec<String>, crate::error::LexLeanError>>()?,
                         _ => return Err(entry_error("a source has no declaration list")),
                     };
-                    let canonical_digest = Sha256Digest::from_hex(
-                        field("canonical_digest")?.as_str(),
-                    )
-                    .map_err(|reason| entry_error(format!("a source digest: {reason}")))?;
+                    let canonical_digest =
+                        Sha256Digest::from_hex(field("canonical_digest")?.as_str())
+                            .map_err(|reason| entry_error(format!("a source digest: {reason}")))?;
                     sources.push(HashedSource {
                         path: field("path")?,
                         canonical_digest,
@@ -478,17 +510,29 @@ impl Entry {
             signature,
             timestamp,
             inclusion,
+            // Propagated rather than re-wrapped in LLG1002: the layer's own
+            // refusals already carry the specific code the registry lists for
+            // them, and wrapping would replace it with the generic entry code.
+            pirtm: match object.get("pirtm") {
+                None => None,
+                Some(layer) => Some(crate::lexeme::pirtm::PirtmLayer::from_json(layer)?),
+            },
         })
     }
 }
 
 /// Read a non-negative integer field of an inclusion.
-fn unsigned_at(object: &std::collections::BTreeMap<String, Json>, key: &str) -> Result<u64, crate::error::LexLeanError> {
+fn unsigned_at(
+    object: &std::collections::BTreeMap<String, Json>,
+    key: &str,
+) -> Result<u64, crate::error::LexLeanError> {
     match object.get(key) {
         Some(Json::Int(value)) => {
             u64::try_from(*value).map_err(|_| entry_error(format!("inclusion `{key}` is negative")))
         }
-        _ => Err(entry_error(format!("inclusion `{key}` is absent or not an integer"))),
+        _ => Err(entry_error(format!(
+            "inclusion `{key}` is absent or not an integer"
+        ))),
     }
 }
 
@@ -502,14 +546,12 @@ pub(crate) fn entry_error(reason: impl Into<String>) -> crate::error::LexLeanErr
 }
 /// The digest of one source's canonical form, exposed so the artifact store and
 /// the conformance suite hash a source exactly as `Entry::new` did.
-#[must_use]
 pub fn source_digest(toolchain: &str, source: &str) -> Result<Sha256Digest, (String, usize)> {
     let canonical: CanonicalSource = canonical::canonicalize(source)?;
     Ok(canonical.content_digest(toolchain))
 }
 
 /// The declaration names one source contributes.
-#[must_use]
 pub fn source_declarations(source: &str) -> Result<Vec<Declaration>, (String, usize)> {
     canonical::canonicalize(source).map(|canonical| canonical.declarations)
 }

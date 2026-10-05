@@ -104,7 +104,9 @@ impl Timestamp {
     /// object, or carries DER that is not valid base64.
     pub fn from_json(value: &Json) -> Result<Self, crate::error::LexLeanError> {
         let Json::Obj(object) = value else {
-            return Err(timestamp_error("a timestamp is not a JSON object".to_owned()));
+            return Err(timestamp_error(
+                "a timestamp is not a JSON object".to_owned(),
+            ));
         };
         let text = |key: &str| -> Result<String, crate::error::LexLeanError> {
             match object.get(key) {
@@ -135,6 +137,11 @@ fn timestamp_error(reason: impl Into<String>) -> crate::error::LexLeanError {
         crate::code!("LLG1005"),
         reason,
     ))
+}
+
+/// A single-diagnostic token failure about the token's own contents.
+pub(crate) fn malformed_error(reason: impl Into<String>) -> crate::error::LexLeanError {
+    timestamp_error(reason)
 }
 
 /// A single-diagnostic chain failure, which §26 registers separately because a
@@ -169,6 +176,11 @@ pub(crate) fn provider_error(reason: impl Into<String>) -> crate::error::LexLean
 /// §25.5 limit, so nothing was established either way.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenFailure {
+    /// The token is malformed or names another artifact. This is a fact about
+    /// the token's own contents, which `LLG1005` registers and `LLG1006` does
+    /// not, so the two are not folded together: a token whose imprint is over
+    /// other bytes is not a token resting on an untrusted chain.
+    Malformed(String),
     /// The token or its chain does not stand up.
     Invalid(String),
     /// The verification provider could not be reached.
@@ -180,6 +192,7 @@ impl TokenFailure {
     #[must_use]
     pub fn into_error(self) -> crate::error::LexLeanError {
         match self {
+            Self::Malformed(reason) => malformed_error(reason),
             Self::Invalid(reason) => chain_error(reason),
             Self::Provider(reason) => provider_error(reason),
         }
@@ -194,6 +207,7 @@ impl TokenFailure {
     #[must_use]
     pub fn context(self, what: &str) -> Self {
         match self {
+            Self::Malformed(reason) => Self::Malformed(format!("{what}: {reason}")),
             Self::Invalid(reason) => Self::Invalid(format!("{what}: {reason}")),
             Self::Provider(reason) => Self::Provider(format!("{what}: {reason}")),
         }
@@ -212,7 +226,7 @@ impl From<super::tsa_crypto::Pkcs1Failure> for TokenFailure {
 impl std::fmt::Display for TokenFailure {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Invalid(reason) | Self::Provider(reason) => {
+            Self::Malformed(reason) | Self::Invalid(reason) | Self::Provider(reason) => {
                 formatter.write_str(reason)
             }
         }
@@ -262,9 +276,7 @@ impl<'a> Der<'a> {
             }
             (length, 2 + count)
         };
-        let end = header
-            .checked_add(length)
-            .ok_or("a DER length overflows")?;
+        let end = header.checked_add(length).ok_or("a DER length overflows")?;
         if end > self.bytes.len() {
             return Err("a DER element runs past the buffer".to_owned());
         }
@@ -272,14 +284,19 @@ impl<'a> Der<'a> {
     }
 
     /// The children of a constructed element.
+    ///
+    /// Each child is pushed as its whole encoding rather than its content,
+    /// because every accessor here --- `oid`, `octets`, `integer`, `context`,
+    /// `encoded` --- begins by reading a tag and a length, and a content slice
+    /// has neither.
     fn children(&self) -> Result<Vec<Der<'a>>, String> {
+        let (_, content, _) = self.element()?;
         let mut out = Vec::new();
-        let mut rest = self.bytes;
+        let mut rest = content;
         while !rest.is_empty() {
-            let (tag, content, total) = Der::new(rest).element()?;
-            out.push(Der::new(content));
+            let (_, _, total) = Der::new(rest).element()?;
+            out.push(Der::new(&rest[..total]));
             rest = &rest[total..];
-            let _ = tag;
         }
         Ok(out)
     }
@@ -291,12 +308,19 @@ impl<'a> Der<'a> {
     }
 
     /// A context-specific constructed element's content, `[n] EXPLICIT`.
+    /// A context-specific constructed element, `[n] EXPLICIT`.
+    ///
+    /// The result wraps the whole `[n]` encoding rather than its payload. Every
+    /// `Der` in this module wraps a whole encoding --- that is what `element`,
+    /// `encoded`, and every accessor read --- so returning the payload here
+    /// would hand back a slice with no tag of its own, and the caller's next
+    /// `children` would descend past the element it asked about.
     fn context(&self, tag: u8) -> Result<Der<'a>, String> {
-        let (actual, content, _) = self.element()?;
+        let (actual, _, _) = self.element()?;
         if actual != tag {
             return Err(format!("expected DER tag {tag:#04x}, found {actual:#04x}"));
         }
-        Ok(Der::new(content))
+        Ok(Der::new(self.encoded()?))
     }
 
     /// A context-specific constructed element's payload, `[n] IMPLICIT`.
@@ -308,7 +332,9 @@ impl<'a> Der<'a> {
     fn oid(&self) -> Result<String, String> {
         let (tag, content, _) = self.element()?;
         if tag != 0x06 {
-            return Err(format!("expected an OBJECT IDENTIFIER, found tag {tag:#04x}"));
+            return Err(format!(
+                "expected an OBJECT IDENTIFIER, found tag {tag:#04x}"
+            ));
         }
         if content.is_empty() {
             return Err("an empty OBJECT IDENTIFIER".to_owned());
@@ -351,12 +377,18 @@ impl<'a> Der<'a> {
         if content.is_empty() {
             return Err("an empty INTEGER".to_owned());
         }
-        Ok(content.iter().copied().skip_while(|byte| *byte == 0).collect())
+        Ok(content
+            .iter()
+            .copied()
+            .skip_while(|byte| *byte == 0)
+            .collect())
     }
 }
 
 /// `id-ct-TSTInfo`, the content type a timestamp token must carry (RFC 3161 §2.4.1).
 const ID_CT_TST_INFO: &str = "1.2.840.113549.1.9.16.1.4";
+/// The `messageDigest` signed attribute, PKCS#9.
+const ID_MESSAGE_DIGEST: &str = "1.2.840.113549.1.9.4";
 
 /// `id-signedData`, the CMS content type of the token (RFC 5652 §3).
 const ID_SIGNED_DATA: &str = "1.2.840.113549.1.7.2";
@@ -366,14 +398,23 @@ const ID_SIGNED_DATA: &str = "1.2.840.113549.1.7.2";
 pub struct ParsedResponse {
     /// The `TSTInfo` of the token.
     pub info: TstInfo,
-    /// The `SignedData.signerInfos` element, whose signature covers
-    /// [`Self::signed_content`].
+    /// The `SignedData.signerInfos` element.
     pub signer_info_der: Vec<u8>,
-    /// The exact bytes the `SignerInfo` signature is computed over: the
-    /// `encapContentInfo` content octets, that is the `TSTInfo` DER.
+    /// The `encapContentInfo` content octets, that is the `TSTInfo` DER. This
+    /// is the content the token carries, and the thing the message imprint is
+    /// over, whether or not the signature covers it directly.
     pub signed_content: Vec<u8>,
+    /// The exact bytes the `SignerInfo` signature is computed over: the
+    /// retagged `signedAttrs` when the `SignerInfo` carries them, and
+    /// [`Self::signed_content`] when it does not.
+    pub signed_message: Vec<u8>,
     /// The digest algorithm named by the `SignerInfo`, dotted decimal.
     pub signature_digest_algorithm: String,
+    /// The signature algorithm named by the `SignerInfo`, dotted decimal.
+    pub signature_algorithm: String,
+    /// The retagged `SET OF` `signedAttrs` the signature covers, when the
+    /// `SignerInfo` carries any.
+    pub signed_attributes: Option<Vec<u8>>,
     /// The signature octets.
     pub signature: Vec<u8>,
     /// The `Certificate` elements carried in `SignedData.certificates`.
@@ -382,12 +423,22 @@ pub struct ParsedResponse {
 
 /// The owned pieces of a `SignedData` this module reads.
 struct TokenParts {
-    /// The exact bytes the `SignerInfo` signature covers: the `TSTInfo` DER.
+    /// The exact bytes the `SignerInfo` signature covers: the `TSTInfo` DER, or
+    /// the `SET OF` `signedAttrs` when the `SignerInfo` carries any.
     signed_content: Vec<u8>,
+    /// The bytes the signature is actually computed over, which are the
+    /// retagged `signedAttrs` when present and `signed_content` otherwise.
+    signed_message: Vec<u8>,
     /// The `SignerInfo` DER, kept so a caller can report what it checked.
     signer_info_der: Vec<u8>,
     /// The digest algorithm the `SignerInfo` names, dotted decimal.
     signature_digest_algorithm: String,
+    /// The signature algorithm the `SignerInfo` names, dotted decimal. This,
+    /// not the digest algorithm, is what says whether the signature is RSA or
+    /// ECDSA and under which digest.
+    signature_algorithm: String,
+    /// The retagged `SET OF` `signedAttrs` the signature covers, when present.
+    signed_attributes: Option<Vec<u8>>,
     /// The signature octets.
     signature: Vec<u8>,
     /// The `Certificate` elements carried in `SignedData.certificates`.
@@ -433,13 +484,19 @@ pub fn parse_time_stamp_resp(der: &[u8]) -> Result<ParsedResponse, String> {
     let token = parse_signed_data(content_info)?;
     let info = parse_tst_info(&token.signed_content)?;
     if !is_rfc3339_utc(&info.gen_time) {
-        return Err(format!("`{}` is not an RFC 3339 UTC instant", info.gen_time));
+        return Err(format!(
+            "`{}` is not an RFC 3339 UTC instant",
+            info.gen_time
+        ));
     }
     Ok(ParsedResponse {
         info,
         signer_info_der: token.signer_info_der,
         signed_content: token.signed_content,
+        signed_message: token.signed_message,
         signature_digest_algorithm: token.signature_digest_algorithm,
+        signature_algorithm: token.signature_algorithm,
+        signed_attributes: token.signed_attributes,
         signature: token.signature,
         certificates: token.certificates,
     })
@@ -489,7 +546,21 @@ fn parse_signed_data(content_info: &Der<'_>) -> Result<TokenParts, String> {
         .ok_or("the eContent is an OCTET STRING")?
         .octets()?;
 
-    let certificates = match fields.get(3) {
+    // `SignedData` is `version, digestAlgorithms, encapContentInfo,
+    // certificates [0] IMPLICIT OPTIONAL, crls [1] IMPLICIT OPTIONAL,
+    // signerInfos SET` (RFC 5652 §5.1). The two optional fields move the
+    // position of `signerInfos`: a token that carries no certificate at all ---
+    // which is what a TSA returns when the request does not ask for one --- has
+    // `signerInfos` at index 3 rather than 4, and reading index 4 there would
+    // consume the next element of a shorter list. The fields are therefore
+    // selected by their tags, which is the only reading that survives both
+    // shapes, and `certificates` is absent rather than empty when no field
+    // carries it.
+    let certificates = match fields
+        .iter()
+        .skip(3)
+        .find(|field| field.element().is_ok_and(|(tag, _, _)| tag == 0xa0))
+    {
         Some(implicit) => implicit
             .implicit(0xa0)
             .and_then(|inner| inner.children())?
@@ -500,31 +571,106 @@ fn parse_signed_data(content_info: &Der<'_>) -> Result<TokenParts, String> {
     };
 
     let signer_info = fields
-        .get(4)
+        .iter()
+        .skip(3)
+        .find(|field| field.element().is_ok_and(|(tag, _, _)| tag == 0x31))
         .ok_or("a SignedData has signerInfos")?
         .children()?
         .into_iter()
         .next()
         .ok_or("a time stamp token has exactly one SignerInfo")?;
     let signer_fields = signer_info.children()?;
+    // CMS `SignerInfo` is `version, sid, digestAlgorithm, signedAttrs?,
+    // signatureAlgorithm, signature, unsignedAttrs?`, so the digest algorithm
+    // is the third field and not the first: the first is an INTEGER, and
+    // reading children of an INTEGER is not a parse but a read past it. The
+    // signature is the last field unless `unsignedAttrs` follows it.
     let signature_digest_algorithm = signer_fields
-        .first()
+        .get(2)
         .ok_or("a SignerInfo names its digest algorithm")?
         .children()?
         .first()
         .ok_or("an AlgorithmIdentifier names an algorithm")?
         .oid()?;
+    let signature_index = if signer_fields.len() >= 2
+        && signer_fields[signer_fields.len() - 1]
+            .element()
+            .is_ok_and(|(tag, _, _)| tag == 0xa1)
+    {
+        signer_fields.len() - 2
+    } else {
+        signer_fields.len().saturating_sub(1)
+    };
+    let signature_algorithm = signer_fields
+        .get(
+            signature_index
+                .checked_sub(1)
+                .ok_or("a SignerInfo names a signature algorithm")?,
+        )
+        .ok_or("a SignerInfo names a signature algorithm")?
+        .children()?
+        .first()
+        .ok_or("an AlgorithmIdentifier names an algorithm")?
+        .oid()?;
     let signature = signer_fields
-        .get(1)
+        .get(signature_index)
         .ok_or("a SignerInfo carries a signature")?
         .octets()?;
+    // When `signedAttrs` is present it, not the content, is what the signature
+    // covers: CMS signs the DER `SET OF Attribute`, while the token carries the
+    // attributes context-tagged `[0] IMPLICIT`. Verifying over the content in
+    // that case would report a genuine token as forged, and skipping the
+    // retagging would report it as forged in the other direction.
+    let signed_attributes = signer_fields
+        .get(3)
+        .filter(|field| field.element().is_ok_and(|(tag, _, _)| tag == 0xa0))
+        .map(|field| {
+            let mut der = field.encoded()?.to_vec();
+            der[0] = 0x31;
+            Ok::<Vec<u8>, String>(der)
+        })
+        .transpose()?;
+    let signed_message = signed_attributes
+        .clone()
+        .unwrap_or_else(|| signed_content.clone());
     Ok(TokenParts {
         signed_content,
+        signed_message,
         signer_info_der: signer_info.encoded()?.to_vec(),
         signature_digest_algorithm,
+        signature_algorithm,
+        signed_attributes,
         signature,
         certificates,
     })
+}
+
+/// The digest the `messageDigest` signed attribute commits to.
+///
+/// An `Attribute` is `SEQUENCE { attrType OID, attrValues SET OF ANY }`, so the
+/// value is the first element of the second field. The attributes are searched
+/// by OID rather than by position because CMS orders them by DER, not by any
+/// order a signer finds convenient.
+fn message_digest(signed_attributes: &[u8]) -> Option<Vec<u8>> {
+    for attribute in Der::new(signed_attributes).children().ok()? {
+        let fields = attribute.children().ok()?;
+        if fields
+            .first()
+            .and_then(|field| field.oid().ok())
+            .is_none_or(|oid| oid != ID_MESSAGE_DIGEST)
+        {
+            continue;
+        }
+        return fields
+            .get(1)?
+            .children()
+            .ok()?
+            .into_iter()
+            .next()?
+            .octets()
+            .ok();
+    }
+    None
 }
 
 /// Parse a `TSTInfo` (RFC 3161 §2.4.1).
@@ -537,10 +683,7 @@ fn parse_tst_info(der: &[u8]) -> Result<TstInfo, String> {
     let mut index = 0usize;
     // version
     index += 1;
-    let policy = fields
-        .get(index)
-        .ok_or("a TSTInfo names a policy")?
-        .oid()?;
+    let policy = fields.get(index).ok_or("a TSTInfo names a policy")?.oid()?;
     if policy.is_empty() {
         return Err("a TSTInfo has an empty policy".to_owned());
     }
@@ -673,12 +816,13 @@ pub fn build_timestamp_request(digest: &[u8], algorithm: &str) -> Result<Vec<u8>
     }
     let algorithm_identifier = sequence(&[&oid(algorithm)?]);
     let imprint = sequence(&[&algorithm_identifier, &octet_string(digest)]);
-    let request = sequence(&[&version_one(), &imprint]);
-    let mut out = Vec::with_capacity(request.len() + 4);
-    out.extend_from_slice(&[0xa0]);
-    out.push(u8::try_from(request.len()).map_err(|_| "the request is too long")?);
-    out.extend_from_slice(&request);
-    Ok(out)
+    // `TimeStampReq ::= SEQUENCE { version, messageImprint, ... }` (RFC 3161
+    // §2.4.1). The request is that sequence and nothing else: an earlier version
+    // additionally wrapped it in a context tag `[0]`, which is not the type the
+    // authority parses, and FreeTSA rejected every such request as a malformed
+    // one rather than answering it. The length-bearing `wrap` is used so a
+    // request longer than 127 bytes is encoded with a long-form length.
+    Ok(sequence(&[&version_one(), &imprint]))
 }
 
 /// A DER `INTEGER 1`.
@@ -782,23 +926,26 @@ pub fn parse_certificate(der: &[u8]) -> Result<CertificateFacts, String> {
         return Err("an X.509 Certificate is a SEQUENCE".to_owned());
     }
     let fields = certificate.children()?;
-    let tbs = fields
+    let tbs = fields.first().ok_or("a Certificate has a tbsCertificate")?;
+    let mut tbs_fields = tbs.children()?;
+    // `tbsCertificate` opens with an optional EXPLICIT `[0] version`. A v3
+    // certificate has it and a v1 certificate does not, so the fields after it
+    // shift by one. Indexing without dropping it reads `issuer` as `validity`
+    // and `subject` as `subjectPublicKeyInfo`, and every date read off the
+    // result is a field that is not a date.
+    if tbs_fields
         .first()
-        .ok_or("a Certificate has a tbsCertificate")?;
-    let tbs_fields = tbs.children()?;
+        .is_some_and(|field| field.element().is_ok_and(|(tag, _, _)| tag == 0xa0))
+    {
+        tbs_fields.remove(0);
+    }
     // serialNumber, signature, issuer, validity, subject, subjectPublicKeyInfo
     let validity = tbs_fields
         .get(3)
         .ok_or("a tbsCertificate has a validity")?
         .children()?;
-    let not_before = validity
-        .first()
-        .ok_or("a validity has notBefore")?
-        .time()?;
-    let not_after = validity
-        .get(1)
-        .ok_or("a validity has notAfter")?
-        .time()?;
+    let not_before = validity.first().ok_or("a validity has notBefore")?.time()?;
+    let not_after = validity.get(1).ok_or("a validity has notAfter")?.time()?;
     let spki = tbs_fields
         .get(5)
         .ok_or("a tbsCertificate has a subjectPublicKeyInfo")?
@@ -845,17 +992,21 @@ impl Der<'_> {
                 let century = if year >= 50 { 1900 } else { 2000 };
                 format!("{}{}", century + year, &text[2..])
             }
-            0x18 => text.trim_end_matches('Z').to_owned(),
+            0x18 => text.to_owned(),
             other => {
                 return Err(format!(
                     "a certificate time is a UTCTime or GeneralizedTime, found tag {other:#04x}"
                 ))
             }
         };
-        if normalized.len() < 14 || !normalized.bytes().all(|byte| byte.is_ascii_digit()) {
+        // Both encodings end in `Z`, and the UTCTime branch has just prefixed a
+        // century, so the terminator is stripped once here rather than being
+        // expected to be absent from one branch and present in the other.
+        let digits = normalized.trim_end_matches('Z');
+        if digits.len() != 14 || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
             return Err(format!("`{normalized}` is not a certificate time"));
         }
-        Ok(format!("{}Z", &normalized[..14]))
+        Ok(format!("{digits}Z"))
     }
 
     /// The payload bits of a `BIT STRING`, with the unused-bit count removed.
@@ -912,7 +1063,7 @@ pub fn verify_rsa_signature(
     message: &[u8],
     signature: &[u8],
 ) -> Result<(), super::tsa_crypto::Pkcs1Failure> {
-    super::tsa_crypto::verify_pkcs1v15(subject_public_key_info, algorithm, message, signature)
+    super::tsa_crypto::verify_signature(subject_public_key_info, algorithm, message, signature)
 }
 
 /// Verify one timestamp token against the certificate and root the entry
@@ -928,15 +1079,15 @@ pub fn verify_token(
     leaf_certificate: &[u8],
     root_certificate: &[u8],
 ) -> Result<(), TokenFailure> {
-    let expected = digest_for_algorithm(&parsed.info.hash_algorithm, artifact)
-        .ok_or_else(|| {
+    let expected =
+        digest_for_algorithm(&parsed.info.hash_algorithm, artifact).ok_or_else(|| {
             TokenFailure::Invalid(format!(
                 "`{}` is not an admitted digest",
                 parsed.info.hash_algorithm
             ))
         })?;
     if expected != parsed.info.hashed_message {
-        return Err(TokenFailure::Invalid(format!(
+        return Err(TokenFailure::Malformed(format!(
             "the message imprint is over {} bytes, not the {} bytes of the {} artifact",
             parsed.info.hashed_message.len(),
             artifact.len(),
@@ -944,16 +1095,39 @@ pub fn verify_token(
         )));
     }
 
-    let leaf = parse_certificate(leaf_certificate)
-        .map_err(TokenFailure::Invalid)?;
+    // When the `SignerInfo` signs its attributes rather than the content, the
+    // attributes are what carry the binding to this `TSTInfo`, and that binding
+    // has to be checked here. Without it the `signedAttrs` of any genuine token
+    // would verify under the TSA key while the `TSTInfo` beside it was free to
+    // be any `TSTInfo` at all, so the signature would prove nothing about the
+    // instant being reported.
+    if let Some(attributes) = &parsed.signed_attributes {
+        let bound =
+            digest_for_algorithm(&parsed.signature_digest_algorithm, &parsed.signed_content)
+                .ok_or_else(|| {
+                    TokenFailure::Invalid(format!(
+                        "`{}` is not an admitted digest",
+                        parsed.signature_digest_algorithm
+                    ))
+                })?;
+        if message_digest(attributes).ok_or_else(|| {
+            TokenFailure::Malformed("the signed attributes carry no messageDigest".to_owned())
+        })? != bound
+        {
+            return Err(TokenFailure::Malformed(
+                "the signed attributes bind a digest of other content than this TSTInfo".to_owned(),
+            ));
+        }
+    }
+
+    let leaf = parse_certificate(leaf_certificate).map_err(TokenFailure::Invalid)?;
     if !within_validity(&leaf, &parsed.info.gen_time) {
         return Err(TokenFailure::Invalid(format!(
             "the TSA certificate is valid from {} to {}, which does not contain {}",
             leaf.not_before, leaf.not_after, parsed.info.gen_time
         )));
     }
-    let root = parse_certificate(root_certificate)
-        .map_err(TokenFailure::Invalid)?;
+    let root = parse_certificate(root_certificate).map_err(TokenFailure::Invalid)?;
     if !within_validity(&root, &parsed.info.gen_time) {
         return Err(TokenFailure::Invalid(format!(
             "the pinned root is valid from {} to {}, which does not contain {}",
@@ -973,13 +1147,74 @@ pub fn verify_token(
         &leaf.tbs_der,
         &leaf.signature,
     )
-    .map_err(|failure| TokenFailure::from(failure).context("the TSA certificate does not verify under the pinned root"))?;
+    .map_err(|failure| {
+        TokenFailure::from(failure)
+            .context("the TSA certificate does not verify under the pinned root")
+    })?;
     verify_rsa_signature(
         &leaf.subject_public_key_info,
-        &parsed.signature_digest_algorithm,
-        &parsed.signed_content,
+        &parsed.signature_algorithm,
+        &parsed.signed_message,
         &parsed.signature,
     )
-    .map_err(|failure| TokenFailure::from(failure).context("the token's signature does not verify"))?;
+    .map_err(|failure| {
+        TokenFailure::from(failure).context("the token's signature does not verify")
+    })?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_timestamp_request, preferred_digest_oid, Der};
+
+    /// A 32-byte digest, so the SHA-256 algorithm identifier is the admitted one.
+    fn digest() -> Vec<u8> {
+        (0u8..32)
+            .map(|byte| byte.wrapping_mul(7).wrapping_add(3))
+            .collect()
+    }
+
+    /// The request is the `TimeStampReq` `SEQUENCE` itself.
+    ///
+    /// An authority reads the top-level tag to decide what it was handed, and
+    /// `TimeStampReq ::= SEQUENCE { ... }` (RFC 3161 §2.4.1) is a plain
+    /// `SEQUENCE`. The regression this pins is real rather than hypothetical: an
+    /// earlier encoding wrapped the sequence in a context tag `[0]`, and FreeTSA
+    /// answered it with a `PKIStatusInfo` of "Bad request format" instead of a
+    /// token, so no request the tool built could ever be granted.
+    #[test]
+    fn the_request_is_a_time_stamp_req_sequence() {
+        let bytes =
+            build_timestamp_request(&digest(), preferred_digest_oid()).expect("sha256 is admitted");
+        assert_eq!(bytes[0], 0x30, "a TimeStampReq is a SEQUENCE");
+
+        let request = Der::new(&bytes);
+        let fields = request.children().expect("the request parses");
+        assert_eq!(fields.len(), 2, "version and messageImprint");
+        assert_eq!(
+            fields[0].integer().expect("version"),
+            vec![1u8],
+            "version is 1"
+        );
+        let imprint = fields[1].children().expect("the imprint parses");
+        assert_eq!(
+            imprint[0].children().expect("an algorithm identifier")[0]
+                .oid()
+                .expect("an OID"),
+            preferred_digest_oid()
+        );
+        assert_eq!(
+            imprint[1].octets().expect("an octet string"),
+            digest(),
+            "the imprint names the digest that was asked about"
+        );
+    }
+
+    /// A digest of the wrong width, and an algorithm that is not admitted, are
+    /// refused rather than encoded.
+    #[test]
+    fn a_malformed_request_is_refused() {
+        assert!(build_timestamp_request(&[0u8; 31], preferred_digest_oid()).is_err());
+        assert!(build_timestamp_request(&digest(), "1.2.840.113549.1.1.11").is_err());
+    }
 }

@@ -114,6 +114,55 @@ fn digest_flag(algorithm: &str) -> Option<&'static str> {
     }
 }
 
+/// The OpenSSL `-sha*` flag for an ECDSA signature algorithm OID.
+///
+/// §33.4 verifies a token's signature under whatever `SubjectPublicKeyInfo`
+/// the certificate carries, and it does not name an algorithm. A verifier that
+/// admits only RSA therefore refuses every authority whose certificate holds an
+/// elliptic-curve key, and the shipped default authority
+/// (`DEFAULT_TSA_URL`) is such an authority, so an RSA-only reader cannot
+/// verify the configuration it ships with. The OIDs are listed rather than
+/// derived for the same reason [`digest_flag`] lists them: a provider handed an
+/// unrecognised OID may verify under a digest the token never named.
+fn ecdsa_digest_flag(algorithm: &str) -> Option<&'static str> {
+    match algorithm {
+        "1.2.840.10045.4.1" => Some("-sha1"),
+        "1.2.840.10045.4.3.1" => Some("-sha224"),
+        "1.2.840.10045.4.3.2" => Some("-sha256"),
+        "1.2.840.10045.4.3.3" => Some("-sha384"),
+        "1.2.840.10045.4.3.4" => Some("-sha512"),
+        _ => None,
+    }
+}
+
+/// Resolve the provider, make an isolated scratch directory, and run `work` in
+/// it, removing the directory on every path out.
+///
+/// The directory is created with create-new semantics inside a fresh temporary
+/// directory and removed when this function returns, so two verifications
+/// running at once cannot see each other's key material.
+fn with_provider_scratch(
+    work: impl FnOnce(&Utf8Path, Sha256Digest, &Utf8Path) -> Result<(), Pkcs1Failure>,
+) -> Result<(), Pkcs1Failure> {
+    let (program, digest) = provider()?;
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("lexeme-verify-")
+        .tempdir()
+        .map_err(|io_error| {
+            Pkcs1Failure::Provider(format!(
+                "a scratch directory could not be created: {io_error}"
+            ))
+        })?;
+    let scratch =
+        camino::Utf8PathBuf::from_path_buf(scratch_dir.path().to_path_buf()).map_err(|path| {
+            Pkcs1Failure::Provider(format!(
+                "the scratch directory is not valid UTF-8: {}",
+                path.to_string_lossy()
+            ))
+        })?;
+    work(&program, digest, &scratch)
+}
+
 /// Resolve `openssl`, hash the executable, and return the pair a
 /// [`ChildSpec`] needs.
 ///
@@ -164,7 +213,10 @@ fn invoke(
         &normalizer,
     )
     .map_err(|diagnostic| {
-        Pkcs1Failure::Provider(format!("`openssl` did not complete: {}", diagnostic.message))
+        Pkcs1Failure::Provider(format!(
+            "`openssl` did not complete: {}",
+            diagnostic.message
+        ))
     })?;
     Ok((record.exit_code, record.stderr))
 }
@@ -228,7 +280,7 @@ fn public_key_pem(
         return Ok(());
     }
     Err(Pkcs1Failure::Provider(format!(
-        "the key is not an RSA public key in either `SubjectPublicKeyInfo` or PKCS#1 form: {}",
+        "the key is neither an elliptic-curve nor an RSA public key: {}",
         stderr.trim()
     )))
 }
@@ -257,33 +309,51 @@ pub fn verify_pkcs1v15(
             "{algorithm} is not an admitted PKCS#1 v1.5 digest"
         )));
     };
-    let (program, digest) = provider()?;
-    // The directory is owned by `scratch` for the whole call, so it is removed
-    // when this function returns on every path including an early error, and two
-    // verifications running at once cannot see each other's key material.
-    let scratch_dir = tempfile::Builder::new()
-        .prefix("lexeme-verify-")
-        .tempdir()
-        .map_err(|io_error| {
-            Pkcs1Failure::Provider(format!("a scratch directory could not be created: {io_error}"))
-        })?;
-    let scratch = camino::Utf8PathBuf::from_path_buf(scratch_dir.path().to_path_buf()).map_err(
-        |path| {
-            Pkcs1Failure::Provider(format!(
-                "the scratch directory is not valid UTF-8: {}",
-                path.to_string_lossy()
+    with_provider_scratch(|program, digest, scratch| {
+        verify_in(
+            program,
+            digest,
+            scratch,
+            flag,
+            subject_public_key_info,
+            message,
+            signature,
+        )
+    })
+}
+
+/// Verify one signature under the DER public key `subject_public_key_info`,
+/// admitting either RSA PKCS#1 v1.5 or ECDSA as `algorithm` names.
+///
+/// The two families are dispatched on the algorithm OID and share one provider
+/// path, because §33.4 requires the signature to verify under the key the
+/// certificate carries and does not constrain that key's family. Dispatching on
+/// the OID rather than on the key material keeps the reader from verifying
+/// under a digest the token did not name.
+pub fn verify_signature(
+    subject_public_key_info: &[u8],
+    algorithm: &str,
+    message: &[u8],
+    signature: &[u8],
+) -> Result<(), Pkcs1Failure> {
+    let flag = digest_flag(algorithm)
+        .or_else(|| ecdsa_digest_flag(algorithm))
+        .ok_or_else(|| {
+            Pkcs1Failure::Rejected(format!(
+                "{algorithm} is not an admitted signature algorithm"
             ))
-        },
-    )?;
-    verify_in(
-        &program,
-        digest,
-        &scratch,
-        flag,
-        subject_public_key_info,
-        message,
-        signature,
-    )
+        })?;
+    with_provider_scratch(|program, digest, scratch| {
+        verify_in(
+            program,
+            digest,
+            scratch,
+            flag,
+            subject_public_key_info,
+            message,
+            signature,
+        )
+    })
 }
 
 /// The body of [`verify_pkcs1v15`], with the staging directory already made.
@@ -331,15 +401,12 @@ fn verify_in(
 
 #[cfg(test)]
 mod tests {
-    use super::{Pkcs1Failure, digest_flag, verify_pkcs1v15};
+    use super::{digest_flag, verify_pkcs1v15, Pkcs1Failure};
 
     #[test]
     fn the_four_admitted_algorithms_map_to_a_flag() {
         assert_eq!(digest_flag("1.3.14.3.2.29"), Some("-sha1"));
-        assert_eq!(
-            digest_flag("1.2.840.113549.1.1.11"),
-            Some("-sha256")
-        );
+        assert_eq!(digest_flag("1.2.840.113549.1.1.11"), Some("-sha256"));
         assert_eq!(digest_flag("1.2.840.113549.1.1.12"), Some("-sha384"));
         assert_eq!(digest_flag("1.2.840.113549.1.1.13"), Some("-sha512"));
     }

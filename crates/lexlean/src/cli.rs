@@ -399,13 +399,13 @@ fn emit(
             &outcome.ids,
             outcome.explanation.as_deref(),
         );
-        if let (Some(extra), crate::artifact::canonical_json::Json::Obj(fields)) =
-            (&outcome.payload, &mut json)
+        if let (
+            Some(crate::artifact::canonical_json::Json::Obj(payload)),
+            crate::artifact::canonical_json::Json::Obj(fields),
+        ) = (&outcome.payload, &mut json)
         {
-            if let crate::artifact::canonical_json::Json::Obj(payload) = extra {
-                for (key, value) in payload {
-                    fields.insert(key.clone(), value.clone());
-                }
+            for (key, value) in payload {
+                fields.insert(key.clone(), value.clone());
             }
         }
         let _ = stdout.write_all(&json.to_file_bytes());

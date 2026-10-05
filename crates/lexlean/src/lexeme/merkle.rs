@@ -67,7 +67,10 @@ pub fn root_of_leaves(leaves: &[Sha256Digest]) -> Sha256Digest {
     }
     let count = u64::try_from(leaves.len()).expect("a leaf count fits u64");
     let split = usize::try_from(split_point(count)).expect("a split index fits usize");
-    node_hash(&root_of_leaves(&leaves[..split]), &root_of_leaves(&leaves[split..]))
+    node_hash(
+        &root_of_leaves(&leaves[..split]),
+        &root_of_leaves(&leaves[split..]),
+    )
 }
 
 /// The recursive form of RFC 6962 §2.1.1's `PATH`, reading the tree's own
@@ -92,7 +95,10 @@ fn path_into(index: u64, tree_size: u64, leaves: &[Sha256Digest], out: &mut Vec<
 /// (RFC 6962 §2.1.2).
 #[must_use]
 pub fn consistency_path(old_size: u64, leaves: &[Sha256Digest]) -> Vec<Sha256Digest> {
-    assert!(old_size > 0, "a consistency proof cannot start from an empty tree");
+    assert!(
+        old_size > 0,
+        "a consistency proof cannot start from an empty tree"
+    );
     assert!(
         old_size <= u64::try_from(leaves.len()).expect("a leaf count fits u64"),
         "the older head cannot exceed the newer one"
@@ -209,7 +215,6 @@ pub fn audit_path_length(index: u64, tree_size: u64) -> usize {
 ///
 /// The proof comes from the entry's own audit path, so this reads nothing but
 /// the entry: a verifier needs the log's shape, never its contents.
-#[must_use]
 pub fn verify_inclusion(leaf_bytes: &[u8], inclusion: &Inclusion) -> Result<(), InclusionFailure> {
     if inclusion.tree_size == 0 {
         return Err(InclusionFailure::EmptyTree);
@@ -315,7 +320,6 @@ fn check_consistency(
 /// Two heads of the same size are consistent exactly when their roots are
 /// equal, which is the case a forked log presents: two different trees of the
 /// same length both claiming to be the log.
-#[must_use]
 pub fn verify_consistency(
     old_root: &Sha256Digest,
     old_size: u64,
@@ -602,9 +606,7 @@ mod tests {
             verify_consistency(
                 &root_of_leaves(&digests(4)),
                 4,
-                &root_of_leaves(
-                    &right.iter().map(|leaf| leaf_hash(leaf)).collect::<Vec<_>>()
-                ),
+                &root_of_leaves(&right.iter().map(|leaf| leaf_hash(leaf)).collect::<Vec<_>>()),
                 4,
                 &[]
             ),

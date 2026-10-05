@@ -14,7 +14,7 @@
 
 use crate::artifact::content_id::{FramedHasher, Sha256Digest};
 
-use super::{CANONICAL_DOMAIN, CANONICALIZATION};
+use super::{CANONICALIZATION, CANONICAL_DOMAIN};
 
 /// One lexical token, reduced to the distinctions the canonical form keeps.
 ///
@@ -42,6 +42,27 @@ pub struct Declaration {
     pub body: Vec<Token>,
     /// One-based source line of the declaration's first token.
     pub line: usize,
+}
+
+impl Declaration {
+    /// This declaration's **body proper**: its canonical token stream with the
+    /// declaration head removed.
+    ///
+    /// The head is the two leading tokens the splitter has already identified,
+    /// the keyword and the declared name, so the body proper is exactly
+    /// `body[2..]`. §34.2 takes both the reference relation `A[i][j]` and the
+    /// token count `t_j` over this stream rather than over `body` as a whole,
+    /// because the head contains the declaration's own name and scanning it
+    /// would make every atom trivially reference itself.
+    ///
+    /// This returns `body` itself rather than a slice whenever the head is not
+    /// actually there, so a hand-built `Declaration` cannot panic here. The
+    /// splitter only ever builds declarations with a head, so the fallback is
+    /// unreachable through the canonicalizer.
+    #[must_use]
+    pub fn body_proper(&self) -> &[Token] {
+        self.body.get(2..).unwrap_or(&self.body)
+    }
 }
 
 /// The result of canonicalizing one source.
@@ -177,7 +198,15 @@ pub fn render_tokens(tokens: &[Token]) -> String {
 /// The declaration keywords of §33.1 step 3, all four characters or fewer, so
 /// the match is exact rather than a prefix.
 const DECLARATION_KEYWORDS: [&str; 9] = [
-    "abbrev", "theorem", "example", "inductive", "instance", "structure", "axiom", "class", "def",
+    "abbrev",
+    "theorem",
+    "example",
+    "inductive",
+    "instance",
+    "structure",
+    "axiom",
+    "class",
+    "def",
 ];
 
 /// A cursor over a source that tracks the display coordinates §20.1 reports in
@@ -305,7 +334,10 @@ pub fn lex(source: &str) -> Vec<Token> {
         }
         if is_identifier_start(ch) {
             let mut text = String::from(ch);
-            while let Some(next) = cursor.source.get(cursor.at..).and_then(|rest| rest.chars().next())
+            while let Some(next) = cursor
+                .source
+                .get(cursor.at..)
+                .and_then(|rest| rest.chars().next())
             {
                 if !is_identifier_continue(next) {
                     break;

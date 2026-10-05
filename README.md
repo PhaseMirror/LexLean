@@ -135,7 +135,7 @@ just vv        # the complete normative acceptance gate (SPEC.md §9.2)
 just release   # vv, then the §30 release criterion; refused until 1.0.0
 ```
 
-All 291 registered conformance IDs are implemented and pass; `just vv` runs clean from a checkout with the pinned toolchain installed.
+All 319 registered conformance IDs are declared in `model/ids.toml` and generated into `CONFORMANCE.md`. `just vv` is the gate that decides whether each one is implemented and passing; it must run clean from a checkout with the pinned toolchain installed.
 
 `just vv` is the Linux x86-64 gate. On the other four supported hosts (§8.3) the crate builds and every test runs. A case whose assertions need something the host does not have runs its platform-independent assertions and prints which ones it skipped: the pinned toolchain, a `#!/bin/sh` program for the external-provider cases, a filesystem that distinguishes two names differing only in case, or one that accepts a name that is not valid UTF-8. Each is detected at run time rather than assumed from the target triple, and on Linux x86-64 the toolchain gate is mandatory, so nothing there passes vacuously.
 
@@ -165,6 +165,8 @@ Every row is validated by `just vv`; the IDs link the claim to its register row,
 | The canonical Rust backend: a closed, checked Rust AST whose every construct corresponds to the calculus; hygienic identifiers, single ownership, exact failure typing, and no hidden allocation; deterministic packages with checked exports, a declared lint gate, and provenance | `RB-01`..`RB-07` | `build` |
 | GNAF requests over the calculus: an optimizer-independent complete-system universe, a machine contract that accounts every action, scalar and Pareto orders without weighting, fail-closed validation, and kernel-checked answers and authority vectors | `GN-01`..`GN-08` | `build` |
 | Language-1.2 models: content-addressed typed artifacts, contracts with sound validators, exact deterministic, rule, statistical, neural, and composite realizations, generated evidence obligations restated in Lean, checked runtime boundaries, and their identity, production, and verification | `MD-01`..`MD-12` | `build` |
+| The lexeme ledger: a layout-independent canonical form and content digest, a closed entry schema, Ed25519 authorship, RFC 3161 external time, RFC 6962 inclusion and consistency proofs, a five-check verdict worded to assert nothing the cryptography does not carry, an append-only ledger, a self-contained browser verifier, and the ledger's own Lean specification as its first entry | `LG-01`..`LG-16` | `build` |
+| The PIRTM stratification layer: a recomputable prime-indexed snapaddr, the reference adjacency matrix and its exact rational contraction factors, a contractivity receipt accepted only below one, theorem anchors, the Zeno-Finton signal, and the field-drop equivalence that leaves every §33 verdict bit-identical | `LP-01`..`LP-12` | `build` |
 | The literal `nat-add-zero` example, the Lean-verified feature examples, and the complete negative fixture suite | `EX-01`..`EX-08` | `build` |
 
 Range rows abbreviate consecutive registered IDs; every individual ID in each range is registered in [`model/ids.toml`](model/ids.toml) at the stated level with its own scenario and test.

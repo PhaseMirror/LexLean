@@ -197,6 +197,41 @@ title = "Timestamp verification provider unavailable"
 statement = "The RFC 3161 signature verifier could not be reached, would not start, or exceeded a child limit, so the timestamp is unestablished rather than disproved; no weaker check is substituted."
 
 [[error]]
+code = "LLG1011"
+class = "language"
+exit = 1
+title = "Lexeme is not a prime-indexed stratum"
+statement = "A lexeme has no declarations, so it is not a stratum, or the prime index recorded for it is not the least prime not below its atom count."
+
+[[error]]
+code = "LLG1012"
+class = "cli-configuration"
+exit = 2
+title = "Contractivity anchor names an absent declaration"
+statement = "A contractivity receipt's theorem anchor names a declaration that is not an atom of the lexeme's stratum, which the receipt cannot certify."
+
+[[error]]
+code = "LLG1013"
+class = "cli-configuration"
+exit = 2
+title = "Contractivity receipt malformed"
+statement = "A contractivity receipt carries a rational that is not reduced, a negative numerator or non-positive denominator, a status its norm does not imply, or a receipt hash that is not the digest of its own frames."
+
+[[error]]
+code = "LLG1014"
+class = "cli-configuration"
+exit = 2
+title = "Contractivity norm not below one"
+statement = "The exact rational one-norm of the reference graph is not below one, so the receipt is refused and states the reduced value that failed."
+
+[[error]]
+code = "LLG1015"
+class = "cli-configuration"
+exit = 2
+title = "Zeno-Finton gain offered as a time anchor"
+statement = "A Zeno-Finton gain was offered to satisfy a §33.4 timestamp check or to appear in a verdict; the gain is supplementary and an external RFC 3161 token is the only time anchor."
+
+[[error]]
 code = "LLI9001"
 class = "internal"
 exit = 70

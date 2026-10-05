@@ -1849,3 +1849,75 @@ level = "build"
 suite = "lexeme"
 statement = "The first ledger entry is the ledger's own Lean specification, its artifacts carry the digests of the CLI and the browser verifier, and its entry is signed, timestamped, and included like any other."
 
+
+[[id]]
+id = "LP-01"
+level = "build"
+suite = "lexeme"
+statement = "The snapaddr is the SHA-256 of the §34.1 frame encoding under `lexlean-pirtm-v1` and is recomputable from the entry's own fields."
+
+[[id]]
+id = "LP-02"
+level = "build"
+suite = "lexeme"
+statement = "The prime index is the least prime not below the atom count, is itself prime, and a lexeme with no declarations is refused."
+
+[[id]]
+id = "LP-03"
+level = "build"
+suite = "lexeme"
+statement = "Two sources differing only in comments, layout, and declaration order have one snapaddr, and changing any atom body changes it."
+
+[[id]]
+id = "LP-04"
+level = "build"
+suite = "lexeme"
+statement = "The reference adjacency matrix is the non-negative integer matrix of whole-token references over each atom's body proper in canonical atom order, and is recomputable from the canonical form."
+
+[[id]]
+id = "LP-05"
+level = "build"
+suite = "lexeme"
+statement = "Each contraction factor is the exact rational `1/(1+t)` for its atom's body proper token count, with numerator one."
+
+[[id]]
+id = "LP-06"
+level = "build"
+suite = "lexeme"
+statement = "The norm is the maximum absolute column sum of `A·diag(λ)` computed in exact rationals and reported as a reduced pair, and no float appears in a receipt."
+
+[[id]]
+id = "LP-07"
+level = "build"
+suite = "lexeme"
+statement = "A receipt is accepted exactly when the norm is below one, a norm of exactly one is refused, and a refusal states the exact value."
+
+[[id]]
+id = "LP-08"
+level = "build"
+suite = "lexeme"
+statement = "The receipt hash is LexLean's own domain-separated hash over the named frames, and an entry states that it is not the PIRTM `seal_hash`."
+
+[[id]]
+id = "LP-09"
+level = "build"
+suite = "lexeme"
+statement = "The theorem anchor must name an atom of the stratum, so an anchor naming an absent declaration is refused."
+
+[[id]]
+id = "LP-10"
+level = "build"
+suite = "lexeme"
+statement = "The Zeno-Finton gain is the exact rational `2^(-index)`, strictly decreasing, positive at every finite index, and never zero."
+
+[[id]]
+id = "LP-11"
+level = "build"
+suite = "lexeme"
+statement = "The Zeno-Finton signal never satisfies a §33.4 check, never appears in the §33.6 verdict, and an entry carrying only it is untimestamped."
+
+[[id]]
+id = "LP-12"
+level = "build"
+suite = "lexeme"
+statement = "Dropping every §34 field leaves every §33 check and the §33.6 verdict bit-identical, and an entry omitting the layer is a valid §33 entry."

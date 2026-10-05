@@ -230,17 +230,22 @@ fn read_entry(path: &Utf8Path) -> Result<Entry, LexLeanError> {
 }
 
 /// Write canonical JSON through a temporary file and a rename.
-fn write_json(path: &Utf8Path, value: &crate::artifact::canonical_json::Json) -> Result<(), LexLeanError> {
+fn write_json(
+    path: &Utf8Path,
+    value: &crate::artifact::canonical_json::Json,
+) -> Result<(), LexLeanError> {
     let temporary = path.with_extension("tmp");
-    std::fs::write(&temporary, value.to_file_bytes()).map_err(|error| {
-        ledger_failure(format!("{}: {error}", temporary.as_str()))
-    })?;
+    std::fs::write(&temporary, value.to_file_bytes())
+        .map_err(|error| ledger_failure(format!("{}: {error}", temporary.as_str())))?;
     std::fs::rename(&temporary, path)
         .map_err(|error| ledger_failure(format!("{}: {error}", path.as_str())))
 }
 
 /// Run one lexeme verb.
-pub fn run(command: &LexemeCommand, working_directory: &Utf8Path) -> Result<LexemeOutcome, LexLeanError> {
+pub fn run(
+    command: &LexemeCommand,
+    working_directory: &Utf8Path,
+) -> Result<LexemeOutcome, LexLeanError> {
     match &command.action {
         LexemeAction::Hash(arguments) => hash(arguments, working_directory),
         LexemeAction::Sign(arguments) => sign(arguments, working_directory),
@@ -274,9 +279,8 @@ fn collect_lean(
     directory: &Utf8Path,
     found: &mut Vec<(String, String)>,
 ) -> Result<(), LexLeanError> {
-    let entries = std::fs::read_dir(directory).map_err(|error| {
-        ledger_failure(format!("{}: {error}", directory.as_str()))
-    })?;
+    let entries = std::fs::read_dir(directory)
+        .map_err(|error| ledger_failure(format!("{}: {error}", directory.as_str())))?;
     for entry in entries.flatten() {
         let path = Utf8PathBuf::from_path_buf(entry.path())
             .map_err(|path| ledger_failure(format!("{} is not UTF-8", path.display())))?;
@@ -291,9 +295,8 @@ fn collect_lean(
             .strip_prefix(root)
             .map_err(|error| ledger_failure(format!("{}: {error}", path.as_str())))?
             .to_string();
-        let text = std::fs::read_to_string(&path).map_err(|error| {
-            ledger_failure(format!("{}: {error}", path.as_str()))
-        })?;
+        let text = std::fs::read_to_string(&path)
+            .map_err(|error| ledger_failure(format!("{}: {error}", path.as_str())))?;
         found.push((relative, text));
     }
     Ok(())
@@ -397,23 +400,30 @@ fn stamp(arguments: &LexemeStampArgs) -> Result<LexemeOutcome, LexLeanError> {
 
     if let Some(request) = &arguments.request {
         let parsed = entry.signature.timestamplable_bytes().to_vec();
-        let digest = timestamp::digest_for_algorithm(
-            timestamp::preferred_digest_oid(),
-            &parsed,
-        )
-        .ok_or_else(|| ledger_failure("the preferred digest algorithm is unavailable"))?;
+        let digest = timestamp::digest_for_algorithm(timestamp::preferred_digest_oid(), &parsed)
+            .ok_or_else(|| ledger_failure("the preferred digest algorithm is unavailable"))?;
         let der = timestamp::build_timestamp_request(&digest, timestamp::preferred_digest_oid())
             .map_err(ledger_failure)?;
-        std::fs::write(request, &der).map_err(|error| {
-            ledger_failure(format!("{}: {error}", request.as_str()))
-        })?;
+        std::fs::write(request, &der)
+            .map_err(|error| ledger_failure(format!("{}: {error}", request.as_str())))?;
         let query = crate::artifact::canonical_json::Json::object(vec![
-            ("spec", crate::artifact::canonical_json::Json::Str("lexlean/tsa-query/1".to_owned())),
-            ("tsa", crate::artifact::canonical_json::Json::Str(arguments.tsa.clone())),
-            ("artifact", crate::artifact::canonical_json::Json::Str(TIMESTAMP_ARTIFACT.to_owned())),
+            (
+                "spec",
+                crate::artifact::canonical_json::Json::Str("lexlean/tsa-query/1".to_owned()),
+            ),
+            (
+                "tsa",
+                crate::artifact::canonical_json::Json::Str(arguments.tsa.clone()),
+            ),
+            (
+                "artifact",
+                crate::artifact::canonical_json::Json::Str(TIMESTAMP_ARTIFACT.to_owned()),
+            ),
             (
                 "hash_algorithm",
-                crate::artifact::canonical_json::Json::Str(timestamp::preferred_digest_oid().to_owned()),
+                crate::artifact::canonical_json::Json::Str(
+                    timestamp::preferred_digest_oid().to_owned(),
+                ),
             ),
             (
                 "hashed_message",
@@ -447,28 +457,31 @@ fn stamp(arguments: &LexemeStampArgs) -> Result<LexemeOutcome, LexLeanError> {
         tsa: arguments.tsa.clone(),
         gen_time: String::new(),
         artifact: TIMESTAMP_ARTIFACT.to_owned(),
-        tsr_der: std::fs::read(tsr).map_err(|error| {
-            ledger_failure(format!("{}: {error}", tsr.as_str()))
-        })?,
-        tsa_certificate: std::fs::read(certificate).map_err(|error| {
-            ledger_failure(format!("{}: {error}", certificate.as_str()))
-        })?,
-        tsa_root: std::fs::read(root).map_err(|error| {
-            ledger_failure(format!("{}: {error}", root.as_str()))
-        })?,
+        tsr_der: std::fs::read(tsr)
+            .map_err(|error| ledger_failure(format!("{}: {error}", tsr.as_str())))?,
+        tsa_certificate: std::fs::read(certificate)
+            .map_err(|error| ledger_failure(format!("{}: {error}", certificate.as_str())))?,
+        tsa_root: std::fs::read(root)
+            .map_err(|error| ledger_failure(format!("{}: {error}", root.as_str())))?,
     };
     // Check the token before recording it: an entry that carries a token which
     // does not verify is worse than one that carries none, because it looks
     // timed.
+    //
+    // The code is carried over rather than restated as `LLG1005`. Prefixing the
+    // reason is right, because a token that does not verify before it is
+    // recorded is the fact being reported, but restating the code would report
+    // an untrusted chain and a missing verifier as a malformed token, and those
+    // three are registered apart.
     anchor.verify(&parsed_signature(&entry)?).map_err(|error| {
+        let Some(first) = error.diagnostics.first() else {
+            return ledger_failure("the token does not verify before it is recorded");
+        };
         LexLeanError::from_diagnostic(Diagnostic::new(
-            crate::code!("LLG1005"),
+            first.code,
             format!(
                 "the token does not verify before it is recorded: {}",
-                error
-                    .diagnostics
-                    .first()
-                    .map_or_else(|| "unknown".to_owned(), |d| d.message.clone())
+                first.message
             ),
         ))
     })?;
@@ -519,10 +532,10 @@ fn append(
     // The entry is rewritten carrying the proof the append produced, so that
     // the artifact a reader holds is the one whose four remaining claims can be
     // checked without the ledger directory.
-    let out = arguments
-        .out
-        .as_ref()
-        .map_or_else(|| entry_path.clone(), |target| resolve(working_directory, target));
+    let out = arguments.out.as_ref().map_or_else(
+        || entry_path.clone(),
+        |target| resolve(working_directory, target),
+    );
     write_json(&out, &appended.to_json())?;
     Ok(LexemeOutcome {
         artifacts: vec![out.to_string(), ledger_path.to_string()],
@@ -607,9 +620,8 @@ fn bootstrap(
     .map_err(|(reason, location)| source_failure(reason, location))?;
 
     let ledger_path = resolve(working_directory, &arguments.ledger);
-    std::fs::create_dir_all(ledger_path.as_std_path()).map_err(|error| {
-        ledger_failure(format!("{}: {error}", ledger_path.as_str()))
-    })?;
+    std::fs::create_dir_all(ledger_path.as_std_path())
+        .map_err(|error| ledger_failure(format!("{}: {error}", ledger_path.as_str())))?;
     let mut ledger = Ledger::open(ledger_path.as_std_path())?;
 
     if let Some(seed) = &arguments.seed {
@@ -662,13 +674,11 @@ fn collect_plain(
     directory: &Utf8Path,
     found: &mut Vec<(String, String)>,
 ) -> Result<(), LexLeanError> {
-    let entries = std::fs::read_dir(directory).map_err(|error| {
-        ledger_failure(format!("{}: {error}", directory.as_str()))
-    })?;
+    let entries = std::fs::read_dir(directory)
+        .map_err(|error| ledger_failure(format!("{}: {error}", directory.as_str())))?;
     for entry in entries.flatten() {
-        let path = Utf8PathBuf::from_path_buf(entry.path()).map_err(|path| {
-            ledger_failure(format!("{} is not UTF-8", path.display()))
-        })?;
+        let path = Utf8PathBuf::from_path_buf(entry.path())
+            .map_err(|path| ledger_failure(format!("{} is not UTF-8", path.display())))?;
         if path.is_dir() {
             collect_plain(root, &path, found)?;
             continue;
@@ -677,9 +687,8 @@ fn collect_plain(
             .strip_prefix(root)
             .map_err(|error| ledger_failure(format!("{}: {error}", path.as_str())))?
             .to_string();
-        let text = std::fs::read_to_string(&path).map_err(|error| {
-            ledger_failure(format!("{}: {error}", path.as_str()))
-        })?;
+        let text = std::fs::read_to_string(&path)
+            .map_err(|error| ledger_failure(format!("{}: {error}", path.as_str())))?;
         found.push((relative, text));
     }
     Ok(())

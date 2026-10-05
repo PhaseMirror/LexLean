@@ -39,7 +39,7 @@ Outside `vv`:
 
 ## Falsifiability records
 
-Each gate below was made to fail by planting a defect, running the gate's command, recording the failure, and removing the defect. The observed lines are verbatim gate output (paths abbreviated to the repository root). `cargo xtask release-check` requires a `### <gate> can fail` record for every gate and audit named in `repo_model::release::GATES`.
+Each gate below was made to fail by planting a defect, running the gate's command, recording the failure, and removing the defect. The observed lines are verbatim gate output (paths abbreviated to the repository root, and the harness's thread identifier and elapsed-time suffix elided). `cargo xtask release-check` requires a `### <gate> can fail` record for every gate and audit named in `repo_model::release::GATES`.
 
 ### release inventory can fail
 
@@ -1910,6 +1910,206 @@ gate failed: RP-07: `RP-03`'s statement differs between the table and the regist
 ```
 
 Removed: the register row was restored; the gate reports 216 bijective rows.
+
+### conformance RP-07 suite coverage can fail
+
+RP-07 previously asserted a literal `§31 has 291 rows`, which fired on every
+capability added since and said nothing about the property it was there to
+protect: that the §31 table actually covers the register. The count is now
+derived, and the anti-vacuity is armed on the suites instead of a number.
+
+Planted: a register row naming a suite the §31 table does not cover, added to
+`model/ids.toml`. Command: `cargo test -p repo-conformance --test conformance
+conformance_rp_07`. Expected: RP-07 reports the uncovered suite rather than
+passing on a row count.
+
+```text
+thread 'conformance_rp_07' panicked at crates/conformance/src/cases/repository.rs:422:17:
+§31 has no row for the registered ZZ-01 suite ZZ
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 318 filtered out
+```
+
+Removed: the planted row was deleted; RP-07 passes again.
+
+### conformance LG-06 imprint reading can fail
+
+`conformance_lg_06` reads a committed RFC 3161 token and checks that its
+imprint names this entry's algorithm, digest, and artifact. Each of the three is
+broken separately, and a fourth case covers the `signedAttrs` binding, because a
+CMS `SignerInfo` that carries `signedAttrs` signs the attributes rather than the
+content, and the attributes bind the content only through their `messageDigest`.
+Every plant is made in `verify_token`
+(`crates/lexlean/src/lexeme/timestamp.rs`), which is the reading the case
+exercises, and each is reverted.
+
+Planted: the imprint's algorithm was read as SHA-256 whatever the token names,
+so `digest_for_algorithm` was called with `2.16.840.1.101.3.4.2.1` in place of
+`parsed.info.hash_algorithm`. Command: `cargo test -p repo-conformance --test
+conformance conformance_lg_06`. Expected: the two "another algorithm" refusals
+stop being refusals.
+
+```text
+thread 'conformance_lg_06' panicked at crates/conformance/src/cases/base.rs:1308:10:
+an imprint naming 2.16.840.1.101.3.4.2.3 is refused: ()
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 318 filtered out
+```
+
+Planted: the comparison of the recomputed digest against the imprint was
+disabled. Same command. Expected: the "another artifact" case is accepted.
+
+```text
+thread 'conformance_lg_06' panicked at crates/conformance/src/cases/base.rs:1254:10:
+an imprint over another artifact is refused: ()
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 318 filtered out
+```
+
+Planted: the `messageDigest` binding check was deleted. Same command. Expected:
+a token whose signed attributes bind other content is accepted, which is the
+replay hole the check exists to close.
+
+```text
+thread 'conformance_lg_06' panicked at crates/conformance/src/cases/base.rs:1331:6:
+attributes that bind other content are refused: ()
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 318 filtered out
+```
+
+Removed: all three plants were reverted; `conformance_lg_06` passes.
+
+### conformance LG-07 chain reading can fail
+
+`conformance_lg_07` verifies the committed chain whole and then breaks the chain
+in each of the five places §33.4 asks for, one at a time, asserting that the
+refusal names the check that refused. Each plant disables exactly one reading in
+`verify_token` (`crates/lexlean/src/lexeme/timestamp.rs`). Command for all five:
+`cargo test -p repo-conformance --test conformance conformance_lg_07`.
+
+Planted: the pinned root's own self-signature check deleted. Expected: a root
+that does not sign itself is reported as a working one, and its case fails.
+
+```text
+thread 'conformance_lg_07' panicked at crates/conformance/src/cases/base.rs:1454:6:
+a pinned root that does not sign itself is refused: ()
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 318 filtered out
+```
+
+Planted: the check that the TSA certificate verifies under the pinned root
+deleted. Expected: a self-signed root that does not sign this chain accepts the
+token.
+
+```text
+thread 'conformance_lg_07' panicked at crates/conformance/src/cases/base.rs:1389:6:
+a certificate that does not chain to a self-signed root is refused: ()
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 318 filtered out
+```
+
+Planted: the token's own signature check deleted. Expected: a token with one
+signature byte flipped is reported as timed.
+
+```text
+thread 'conformance_lg_07' panicked at crates/conformance/src/cases/base.rs:1411:6:
+a token whose signature does not verify is refused: ()
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 318 filtered out
+```
+
+Planted: the TSA certificate's validity interval check deleted. Expected: the
+pre-issuance instant is accepted. The committed root's interval still contains
+that instant, which is what keeps this plant about the leaf's interval alone.
+
+```text
+thread 'conformance_lg_07' panicked at crates/conformance/src/cases/base.rs:1430:6:
+an instant before the TSA certificate was issued is refused: ()
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 318 filtered out
+```
+
+Planted: the pinned root's validity interval check deleted. Expected: the
+out-of-window root is no longer refused for its interval, and the refusal becomes
+a signature one, so the case that asserts the reason names a different check.
+
+```text
+thread 'conformance_lg_07' panicked at crates/conformance/src/cases/base.rs:1481:5:
+the refusal names the interval, not a signature: the TSA certificate does not verify under the pinned root: the signature does not verify: Error verifying data
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 318 filtered out
+```
+
+One of the case's six refusals cannot be falsified by a single plant: passing
+the TSA certificate as the pinned root is refused by the self-signature reading,
+and, with that reading deleted, by the certificate-under-root reading instead.
+It is kept because it asserts the refusal carries `LLG1006` on a chain whose two
+intervals both contain the `genTime`, which is a property of the reading and not
+of one check.
+
+Removed: all five plants were reverted; `conformance_lg_07` passes.
+
+### conformance LG-13 schema validation can fail
+
+Planted: `title` was removed from the committed schema's `required` list. The
+case loads `schemas/lexeme-entry.schema.json` from the repository and validates
+the entry against those bytes, so the schema the gate reads is the schema the
+commit carries. Command: `cargo test -p repo-conformance --test conformance
+conformance_lg_13`. Expected: an entry without a title is accepted where §33.2
+requires one.
+
+```text
+thread 'conformance_lg_13' panicked at crates/conformance/src/cases/base.rs:1055:9:
+the §33.2 schema must require `title`
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 318 filtered out
+```
+
+Removed: the schema was restored; `conformance_lg_13` passes.
+
+### conformance LG-14 offline re-verification can fail
+
+`conformance_lg_14` reads the committed corpus at `lexeme/corpus/`, checks that
+every published root is the head it belongs to and that every head is consistent
+with its predecessor, re-verifies every committed entry against the recorded
+verdict in `lexeme/corpus/verdicts.json`, and then re-verifies each entry again in
+a process that cannot open a socket.
+
+Planted: the last line of `lexeme/corpus/ledger/roots.txt` changed. Command:
+`cargo test -p repo-conformance --test conformance conformance_lg_14`. Expected:
+the published root no longer equals the root recomputed from the log.
+
+```text
+thread 'conformance_lg_14' panicked at crates/conformance/src/cases/base.rs:1556:9:
+assertion `left == right` failed: the published root of 3 leaves is that head's root
+  left: "6c07bc84bcea5372302795f82a795038dd4c13fe8586c458dbba5c0d4bb45cf3"
+ right: "fc07bc84bcea5372302795f82a795038dd4c13fe8586c458dbba5c0d4bb45cf3"
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 318 filtered out
+```
+
+Planted: one byte of the audit path of `lexeme/corpus/entries/gamma.json`
+changed. Same command. Expected: the entry no longer verifies against its
+recorded verdict, which is the recorded oracle rather than the entry's own claim.
+
+```text
+thread 'conformance_lg_14' panicked at crates/conformance/src/cases/base.rs:1605:9:
+assertion `left == right` failed: entries/gamma.json re-verifies to its recorded verdict
+  left: Some(false)
+ right: Some(true)
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 318 filtered out
+```
+
+Planted: `lexlean lexeme verify` made to open a connection to the TSA before
+reading the entry, so the reading depends on reaching one. Same command, after
+`cargo build -p lexlean`. Expected: the socket-denied child cannot verify, which
+is what makes "no network access" an observation rather than an assertion.
+
+```text
+thread 'conformance_lg_14' panicked at crates/conformance/src/cases/base.rs:1808:9:
+entries/alpha.json does not re-verify without a network: error[LLG1009]: the TSA could not be reached
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 318 filtered out
+```
+
+The denial is itself checked before it is believed: the case compiles a probe
+that opens a socket and asserts it fails under the same interposition, so a host
+where the preload does not take reports no evidence instead of passing. On this
+host the strongest available isolation is the interposition --- `unshare --net`
+returns `Operation not permitted` --- and both `cc` and the built `lexlean` binary
+are present, so both tiers ran. Where neither the binary nor a C compiler is
+present the case prints the host it declined on (§8.3) rather than passing in
+silence.
+
+Removed: all three plants were reverted; `conformance_lg_14` passes.
 
 ### lint can fail
 

@@ -67,7 +67,10 @@ pub struct TreeHead {
 impl TreeHead {
     fn to_json(&self) -> Json {
         Json::object(vec![
-            ("tree_size", Json::Int(i64::try_from(self.tree_size).unwrap_or(i64::MAX))),
+            (
+                "tree_size",
+                Json::Int(i64::try_from(self.tree_size).unwrap_or(i64::MAX)),
+            ),
             ("root_hash", Json::Str(self.root_hash.to_hex())),
             (
                 "consistency_proof",
@@ -118,7 +121,9 @@ impl Ledger {
     /// The recomputed root of the entries stored here.
     #[must_use]
     pub fn root(&self) -> Option<Sha256Digest> {
-        self.leaf_bytes().as_deref().and_then(super::merkle::root_of)
+        self.leaf_bytes()
+            .as_deref()
+            .and_then(super::merkle::root_of)
     }
 
     /// The leaf bytes of every stored entry, in index order.
@@ -226,7 +231,10 @@ impl Ledger {
                     .collect::<Vec<String>>(),
             ),
         )?;
-        write_atomic(&self.directory.join(HEADS_FILE), &joined(&heads_json(&heads)))?;
+        write_atomic(
+            &self.directory.join(HEADS_FILE),
+            &joined(&heads_json(&heads)),
+        )?;
         self.entries = entries;
         self.leaves = stored_leaves;
         self.roots = roots;
@@ -261,9 +269,7 @@ impl Ledger {
                 Some(root) => {
                     return Err(storage_failure(format!(
                         "the head at size {} records {} and its entries recompute to {}",
-                        head.tree_size,
-                        head.root_hash,
-                        root
+                        head.tree_size, head.root_hash, root
                     )))
                 }
                 None => {
@@ -339,7 +345,10 @@ fn read_heads(path: &Path) -> Result<Vec<TreeHead>, LexLeanError> {
             let value = Json::parse(line.as_bytes())
                 .map_err(|reason| storage_failure(format!("{}: {reason}", path.display())))?;
             let Json::Obj(object) = value else {
-                return Err(storage_failure(format!("{}: a head is not an object", path.display())));
+                return Err(storage_failure(format!(
+                    "{}: a head is not an object",
+                    path.display()
+                )));
             };
             let size = object
                 .get("tree_size")
@@ -347,14 +356,18 @@ fn read_heads(path: &Path) -> Result<Vec<TreeHead>, LexLeanError> {
                     Json::Int(size) => u64::try_from(*size).ok(),
                     _ => None,
                 })
-                .ok_or_else(|| storage_failure(format!("{}: a head has no tree_size", path.display())))?;
+                .ok_or_else(|| {
+                    storage_failure(format!("{}: a head has no tree_size", path.display()))
+                })?;
             let root = object
                 .get("root_hash")
                 .and_then(|value| match value {
                     Json::Str(text) => Sha256Digest::from_hex(text).ok(),
                     _ => None,
                 })
-                .ok_or_else(|| storage_failure(format!("{}: a head has no root_hash", path.display())))?;
+                .ok_or_else(|| {
+                    storage_failure(format!("{}: a head has no root_hash", path.display()))
+                })?;
             let proof = match object.get("consistency_proof") {
                 Some(Json::Arr(items)) => items
                     .iter()

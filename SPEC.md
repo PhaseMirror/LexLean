@@ -447,6 +447,7 @@ The completed repository MUST have this layout. Additional files are allowed onl
 │   ├── gnaf-request.schema.json
 │   ├── lexicon.schema.json
 │   ├── lexicon-v2.schema.json
+│   ├── lexeme-entry.schema.json
 │   ├── lock.schema.json
 │   ├── lock-1.1.schema.json
 │   ├── lock-v2.schema.json
@@ -4446,12 +4447,14 @@ nested partition of the embedded tree. The language-1.2 ID covers the whole
 tree. The language-1.1 ID excludes the files introduced solely for 1.2:
 `language/bootstrap-1.2.toml`, `language/semantics-1.2.toml`,
 `language/production-1.2.toml`, `language/lcnf-1.2/`, `language/core-1.2/`,
-`language/std/{bool,int,nat}-1.2/`, `schemas/attestation-v2.schema.json`,
+`language/std/{bool,int,nat}-1.2/`, `language/pirtm-spec-1.2/`,
+`schemas/attestation-v2.schema.json`,
 `schemas/build-manifest-v2.schema.json`,
 `schemas/compiler-input.schema.json`, `schemas/gnaf-fixture.schema.json`,
 `schemas/gnaf-request.schema.json`,
-`schemas/lexicon-v2.schema.json`, `schemas/lock-1.1.schema.json`,
-`schemas/lock-v2.schema.json`, `schemas/production-eligibility.schema.json`,
+`schemas/lexeme-entry.schema.json`, `schemas/lexicon-v2.schema.json`,
+`schemas/lock-1.1.schema.json`, `schemas/lock-v2.schema.json`,
+`schemas/production-eligibility.schema.json`,
 `schemas/project-v2.schema.json`, `schemas/rust-package.schema.json`,
 `schemas/rust-provenance.schema.json`,
 `schemas/semantic-module-v2.schema.json`,
@@ -6412,8 +6415,8 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `LP-01` | `lexeme` | The snapaddr is the SHA-256 of the §34.1 frame encoding under `lexlean-pirtm-v1` and is recomputable from the entry's own fields. | §34.1 |
 | `LP-02` | `lexeme` | The prime index is the least prime not below the atom count, is itself prime, and a lexeme with no declarations is refused. | §34.1 |
 | `LP-03` | `lexeme` | Two sources differing only in comments, layout, and declaration order have one snapaddr, and changing any atom body changes it. | §34.1 |
-| `LP-04` | `lexeme` | The reference adjacency matrix is the non-negative integer matrix of whole-token references in canonical atom order, and is recomputable from the canonical form. | §34.2 |
-| `LP-05` | `lexeme` | Each contraction factor is the exact rational `1/(1+t)` for its atom's body token count, with numerator one. | §34.2 |
+| `LP-04` | `lexeme` | The reference adjacency matrix is the non-negative integer matrix of whole-token references over each atom's body proper in canonical atom order, and is recomputable from the canonical form. | §34.2 |
+| `LP-05` | `lexeme` | Each contraction factor is the exact rational `1/(1+t)` for its atom's body proper token count, with numerator one. | §34.2 |
 | `LP-06` | `lexeme` | The norm is the maximum absolute column sum of `A·diag(λ)` computed in exact rationals and reported as a reduced pair, and no float appears in a receipt. | §34.2 |
 | `LP-07` | `lexeme` | A receipt is accepted exactly when the norm is below one, a norm of exactly one is refused, and a refusal states the exact value. | §34.2 |
 | `LP-08` | `lexeme` | The receipt hash is LexLean's own domain-separated hash over the named frames, and an entry states that it is not the PIRTM `seal_hash`. | §34.2 |
@@ -6498,13 +6501,19 @@ A ledger entry is a canonical JSON document validated against
 | `spec` | string | exactly `lexlean/lexeme/1` |
 | `title` | string | human-readable subject, not a normative claim |
 | `canonicalization` | string | the §33.1 identifier |
-| `source_paths` | array of string | the project-relative sources hashed |
+| `sources` | array of object | each object is `path` (the project-relative source hashed), `canonical_digest` (64 hex digits, the SHA-256 of that source's own §33.1 canonical form), and `declarations` (that source's §33.1 declaration names, sorted) |
 | `declarations` | array of string | the §33.1 declaration names, sorted |
 | `content_digest` | 64 hex digits | SHA-256 over the §33.1 canonical form |
 | `toolchain` | string | the pinned Lean toolchain the source elaborates under |
-| `signature` | object | `algorithm`, `public_key`, `value` (§33.3) |
+| `signature` | object | `algorithm`, `public_key`, `value` (§33.3); MAY carry `device`, `slot`, `pin_policy` |
 | `timestamp` | object, omitted when absent | `tsa`, `gen_time`, `artifact`, `tsr_der` base64, `tsa_certificate` base64, `tsa_root` base64 (§33.4) |
 | `inclusion` | object, omitted when absent | `leaf_index`, `tree_size`, `audit_path`, `root_hash` (§33.5) |
+| `pirtm` | object, omitted when absent | `prime_index`, `snapaddr`, `contractivity`, `zeno_finton` (§34.2, §34.3) |
+
+`sources` is an array of objects rather than an array of paths because the
+schema's own closing condition requires it: `content_digest` is recomputable
+from the entry alone, so the per-source frames must be carried by the entry
+rather than re-read from the inventor's filesystem.
 
 An entry has no absent-but-present fields: the canonical JSON of §21.7 has no
 `null`, so an entry without a timestamp or without an inclusion proof omits the
@@ -6515,7 +6524,7 @@ presence of the field as the presence of the claim.
 fields carry bare lowercase hex.
 
 An entry is **valid** when it satisfies the schema, when `content_digest`
-equals the SHA-256 of the §33.1 canonical form of `source_paths`, and when the
+equals the SHA-256 of the §33.1 canonical form of its `sources`, and when the
 frames of §33.1 are recomputable from the entry alone. Verification never
 reads the inventor's filesystem.
 
@@ -6780,13 +6789,32 @@ opaque label.
 
 For a stratum of `n` atoms in canonical order, the **reference adjacency
 matrix** `A` is the `n × n` matrix of non-negative integers where `A[i][j]` is
-`1` when atom `i`'s body token stream contains the unqualified final segment of
-atom `j`'s name as a whole token, and `0` otherwise. `A` is symmetric in no way
-and is not required to be: it is a reference relation, not a similarity.
-`A[i][i]` MAY be `1` for a self-referential declaration.
+the number of whole-token occurrences of the unqualified final segment of atom
+`j`'s name in atom `i`'s **body proper**. A mention is counted once per
+occurrence, so a body that names the same atom twice contributes `2`. `A` is
+symmetric in no way and is not required to be: it is a reference relation, not
+a similarity. `A[i][i]` is `0` unless the declaration genuinely refers to itself
+through its body proper, and counts those self-mentions when it does.
+
+The **body proper** of an atom is its §33.1 token stream with the declaration
+head removed --- the two leading tokens the keyword and the declared name. It is
+the stream both `A[i][j]` and `t_j` are taken over, so a third party recovers
+`A` and `λ` from one substring of the canonical form without having to decide
+separately where the head ends. The snapaddr of §34.1 continues to frame the
+full §33.1 token stream of each atom, head included: a snapaddr is an identity
+of the declaration and must change if the declaration is renamed, whereas the
+norm is a function of the references the body makes.
+
+The head is excluded because a declaration's head contains the declaration's own
+name. Scanned whole, every atom would trivially reference itself: `A[i][i]` would
+be at least `1` for every `i`, `refs(j)` would be at least one for every `j`, and
+the receipt would assert a reference the lexeme does not contain. Whether a
+declaration genuinely refers to itself is a fact about its body, and `A[i][i]`
+reports exactly that fact.
 
 The **contraction factors** are `λ[j] = 1 / (1 + t_j)`, where `t_j` is the token
-count of atom `j`'s body. Each factor is an exact rational with numerator `1`.
+count of atom `j`'s body proper. Each factor is an exact rational with numerator
+`1`.
 
 The **gains** are `G = A · diag(λ)`, so the `j`-th column of `G` sums to
 `λ[j] · refs(j)`, where `refs(j) = Σ_i A[i][j]` is the number of atoms that
@@ -6847,6 +6875,26 @@ signal therefore MUST NOT be reported as a timestamp, MUST NOT appear in the
 
 ### 34.4 Stratification
 
+The layer is carried by an optional entry field `pirtm`, an object with:
+
+- `snapaddr`, the §34.1 bare hex digest, and `prime-index`, its integer;
+- `contractivity`, the §34.2 receipt object, present when one was computed;
+- `zeno-finton`, the §34.3 signal object, present when one was recorded.
+
+Every field is optional, and the whole object MAY be absent. An entry that
+omits it entirely is a valid §33 entry.
+
+The `pirtm` object is **excluded from the §33.5 leaf bytes**, on the same
+ground the inclusion proof is: it is not part of the signed record, and a leaf
+that carried the layer inside the bytes the §33 checks hash would make the layer
+retroactively change a §33 result. Every value in it is derived --- the snapaddr
+and the prime index from the entry's own canonical sources, the receipt from
+those and the reference graph, the Zeno-Finton signal from the leaf index ---
+and a derived value gains no integrity from being signed, because a verifier
+recomputes it instead of trusting it. So the layer is additive by construction:
+the same sources yield the same §33 leaf bytes and the same §33 verdict whether
+or not a `pirtm` object is attached, which is precisely the property below.
+
 The layer is additive, and the property is testable rather than asserted:
 dropping every field this section defines MUST leave every §33 check and the
 §33.6 verdict bit-identical. An entry that omits the layer entirely is a valid
@@ -6861,8 +6909,8 @@ to believe the layer should carry the base claims.
 | `LP-01` | `lexeme` | The snapaddr is the SHA-256 of the §34.1 frame encoding under `lexlean-pirtm-v1` and is recomputable from the entry's own fields. |
 | `LP-02` | `lexeme` | The prime index is the least prime not below the atom count, is itself prime, and a lexeme with no declarations is refused. |
 | `LP-03` | `lexeme` | Two sources differing only in comments, layout, and declaration order have one snapaddr, and changing any atom body changes it. |
-| `LP-04` | `lexeme` | The reference adjacency matrix is the non-negative integer matrix of whole-token references in canonical atom order, and is recomputable from the canonical form. |
-| `LP-05` | `lexeme` | Each contraction factor is the exact rational `1/(1+t)` for its atom's body token count, with numerator one. |
+| `LP-04` | `lexeme` | The reference adjacency matrix is the non-negative integer matrix of whole-token references over each atom's body proper in canonical atom order, and is recomputable from the canonical form. |
+| `LP-05` | `lexeme` | Each contraction factor is the exact rational `1/(1+t)` for its atom's body proper token count, with numerator one. |
 | `LP-06` | `lexeme` | The norm is the maximum absolute column sum of `A·diag(λ)` computed in exact rationals and reported as a reduced pair, and no float appears in a receipt. |
 | `LP-07` | `lexeme` | A receipt is accepted exactly when the norm is below one, a norm of exactly one is refused, and a refusal states the exact value. |
 | `LP-08` | `lexeme` | The receipt hash is LexLean's own domain-separated hash over the named frames, and an entry states that it is not the PIRTM `seal_hash`. |

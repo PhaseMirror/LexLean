@@ -33,6 +33,26 @@ pub struct Check {
     pub passed: bool,
     /// What was established, or why it was not established.
     pub detail: String,
+    /// The registered code this check reports when it is the first failure.
+    ///
+    /// Most steps have exactly one code, so the step determines it. The
+    /// timestamp step does not: §26 registers a malformed token, an untrusted
+    /// chain, and an unavailable verifier apart, and that step carries the code
+    /// its own diagnostic already has rather than one inferred from the number.
+    pub code: crate::diagnostic::DiagnosticCode,
+}
+
+/// The code a step reports when its failure has exactly one.
+///
+/// Step 3 is absent because it is not one of them.
+fn step_code(step: u8) -> crate::diagnostic::DiagnosticCode {
+    match step {
+        1 => crate::code!("LLG1002"),
+        2 => crate::code!("LLG1003"),
+        4 => crate::code!("LLG1007"),
+        5 => crate::code!("LLG1008"),
+        _ => crate::code!("LLG1005"),
+    }
 }
 
 impl Check {
@@ -42,6 +62,7 @@ impl Check {
             name,
             passed: true,
             detail,
+            code: step_code(step),
         }
     }
 
@@ -51,6 +72,22 @@ impl Check {
             name,
             passed: false,
             detail,
+            code: step_code(step),
+        }
+    }
+
+    fn fail_with_code(
+        step: u8,
+        name: &'static str,
+        detail: String,
+        code: crate::diagnostic::DiagnosticCode,
+    ) -> Self {
+        Self {
+            step,
+            name,
+            passed: false,
+            detail,
+            code,
         }
     }
 }
@@ -83,13 +120,16 @@ impl Verdict {
             .checks
             .iter()
             .find(|check| check.step == 3)
-            .map_or_else(|| "no stated time".to_owned(), |check| {
-                if check.passed {
-                    check.detail.clone()
-                } else {
-                    "no stated time".to_owned()
-                }
-            });
+            .map_or_else(
+                || "no stated time".to_owned(),
+                |check| {
+                    if check.passed {
+                        check.detail.clone()
+                    } else {
+                        "no stated time".to_owned()
+                    }
+                },
+            );
         let key = self
             .checks
             .iter()
@@ -121,46 +161,20 @@ impl Verdict {
     /// error keeps §26's registry the single source of what can go wrong.
     #[must_use]
     pub fn failure(&self) -> LexLeanError {
-        let passed = Check {
-            step: 1,
-            name: "content digest recomputed from the entry's own fields",
-            passed: true,
-            detail: String::new(),
-        };
+        let passed = Check::pass(
+            1,
+            "content digest recomputed from the entry's own fields",
+            String::new(),
+        );
         let first = self
             .checks
             .iter()
             .find(|check| !check.passed)
             .unwrap_or(&passed);
-        let code = match first.step {
-            1 => "LLG1002",
-            2 => "LLG1003",
-            3 => "LLG1005",
-            4 => "LLG1007",
-            _ => "LLG1008",
-        };
-        match code {
-            "LLG1002" => LexLeanError::from_diagnostic(Diagnostic::new(
-                crate::code!("LLG1002"),
-                format!("step 1: {}", first.detail),
-            )),
-            "LLG1003" => LexLeanError::from_diagnostic(Diagnostic::new(
-                crate::code!("LLG1003"),
-                format!("step 2: {}", first.detail),
-            )),
-            "LLG1005" => LexLeanError::from_diagnostic(Diagnostic::new(
-                crate::code!("LLG1005"),
-                format!("step 3: {}", first.detail),
-            )),
-            "LLG1007" => LexLeanError::from_diagnostic(Diagnostic::new(
-                crate::code!("LLG1007"),
-                format!("step 4: {}", first.detail),
-            )),
-            _ => LexLeanError::from_diagnostic(Diagnostic::new(
-                crate::code!("LLG1008"),
-                format!("step 5: {}", first.detail),
-            )),
-        }
+        LexLeanError::from_diagnostic(Diagnostic::new(
+            first.code,
+            format!("step {}: {}", first.step, first.detail),
+        ))
     }
 
     /// The canonical JSON a caller writes to stdout.
@@ -237,7 +251,10 @@ pub fn verify_entry(entry: &Entry, ledger: Option<&Ledger>) -> Result<Verdict, L
         checks.push(Check::fail(
             2,
             "detached Ed25519 signature over the content digest",
-            format!("`{}` is not {SIGNATURE_ALGORITHM}", entry.signature.key.algorithm),
+            format!(
+                "`{}` is not {SIGNATURE_ALGORITHM}",
+                entry.signature.key.algorithm
+            ),
         ));
     } else if entry.signature.verify(&digest_bytes) {
         checks.push(Check::pass(
@@ -283,14 +300,18 @@ pub fn verify_entry(entry: &Entry, ledger: Option<&Ledger>) -> Result<Verdict, L
                         "RFC 3161 timestamp over the detached signature",
                         format!("{} UTC by {}", anchor.gen_time, anchor.tsa),
                     )),
-                    Err(error) => checks.push(Check::fail(
-                        3,
-                        "RFC 3161 timestamp over the detached signature",
-                        error
-                            .diagnostics
-                            .first()
-                            .map_or_else(|| "the token did not verify".to_owned(), |d| d.message.clone()),
-                    )),
+                    Err(error) => {
+                        let diagnostic = error.diagnostics.first();
+                        checks.push(Check::fail_with_code(
+                            3,
+                            "RFC 3161 timestamp over the detached signature",
+                            diagnostic.map_or_else(
+                                || "the token did not verify".to_owned(),
+                                |d| d.message.clone(),
+                            ),
+                            diagnostic.map_or_else(|| crate::code!("LLG1005"), |d| d.code),
+                        ));
+                    }
                 }
             }
         }
@@ -447,12 +468,14 @@ pub fn verify_heads(ledger: &Ledger) -> Result<(), LexLeanError> {
 /// # Errors
 /// Returns [`LLG1002`](crate::code) when the field is not 64 hexadecimal digits.
 pub fn digest_from_hex(text: &str) -> Result<[u8; 32], LexLeanError> {
-    let bytes = hex_decode(text).filter(|bytes| bytes.len() == 32).ok_or_else(|| {
-        crate::error::LexLeanError::from_diagnostic(Diagnostic::new(
-            crate::code!("LLG1002"),
-            "a content digest is 64 hexadecimal digits",
-        ))
-    })?;
+    let bytes = hex_decode(text)
+        .filter(|bytes| bytes.len() == 32)
+        .ok_or_else(|| {
+            crate::error::LexLeanError::from_diagnostic(Diagnostic::new(
+                crate::code!("LLG1002"),
+                "a content digest is 64 hexadecimal digits",
+            ))
+        })?;
     let mut out = [0u8; 32];
     out.copy_from_slice(&bytes);
     Ok(out)
