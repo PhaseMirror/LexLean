@@ -75,14 +75,13 @@ check the chain.
 - **The entries are not claims about their subject matter.** Each verdict states
   existence at a stated time, authorship by a stated key, and integrity since
   (§33.6), and nothing else.
-- **The heads are not signed.** `SPEC.md:6634` requires every published head to
-  be signed by the log key, and `LLG1009` registers the refusal for one that is
-  not (`model/errors.toml:186-189`). `heads.json` carries `tree_size`,
-`root_hash`, and `consistency_proof` and no signature, because `TreeHead`
-(`crates/lexlean/src/lexeme/ledger.rs:57`) has no signature field. That gap is
-work package 2 of `docs/LexLean MVP Plan.md`; until it lands, `LG-14` is checked
-against heads that do not satisfy §33.7 in full, and this paragraph is the
-record of it.
+- **The heads are signed.** `SPEC.md:6634` requires every published head to be
+  signed by the log key, and `LLG1009` registers the refusal for one that is
+  not (`model/errors.toml:186-189`). `heads.json` now carries each head's own
+  §33.3 `Signature` (`key`, `public_key`, `value`) alongside `tree_size`,
+  `root_hash`, and `consistency_proof`, and `Ledger::check_stored_head`
+  verifies it. That is work package 2 of `docs/LexLean MVP Plan.md`, landed
+  2026-10-05.
 - **The entries carry no §34 stratification layer.** `pirtm` is absent from all
   three, so nothing here exercises `contractivity`, `zeno_finton`, or
   `snapaddr`.

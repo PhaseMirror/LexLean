@@ -83,7 +83,8 @@ that must fire for it to count as evidence (§27.9). A package is not done until
 its plant has been observed and reverted.
 
 Status: **WP-1 landed 2026-10-05** (three plants, record in `VERIFICATION.md`);
-WP-2 through WP-7 are open.
+**WP-2 landed 2026-10-05** (signed heads, rebuilt corpus, four plants); WP-3
+through WP-7 are open.
 
 ### WP-1 Committed corpus and `LG-14`
 

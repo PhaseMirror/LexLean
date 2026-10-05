@@ -6631,9 +6631,19 @@ A ledger is a directory:
 ```text
 <ledger>/
   log.json          the appended entries, one canonical JSON document per line
-  heads.json        the published tree heads, each signed by the log key
+  heads.json        the published tree heads, each carrying its own
+                    §33.3 Signature (key, public_key, value) and signed by
+                    the log key
   roots.txt         one root hash per published head, in order
 ```
+
+Each head's signature is over the head's own fields --- `tree_size`,
+`root_hash`, and `consistency_proof` --- as they appear in `heads.json`, and
+nothing else, so a head is self-verifying: a reader re-derives those bytes,
+recomputes their digest, and checks the signature against the recorded public
+key. The signature is what makes "the root matches published log" a statement
+about a publisher rather than about a file, because a head anyone may publish
+is not a head. `LLG1009` names the first head whose signature does not verify.
 
 Appending is atomic: the entry, the tree head, and the new root are written
 through a temporary file and renamed, so an interrupted append leaves the
