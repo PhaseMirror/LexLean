@@ -93,4 +93,4 @@
    "configFile": "lakefile.toml"}],
  "name": "lexlean",
  "lakeDir": ".lake",
- "fixedToolchain": true}
+ "fixedToolchain": false}
