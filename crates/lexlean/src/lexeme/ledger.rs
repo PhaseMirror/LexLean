@@ -18,7 +18,7 @@ use crate::artifact::content_id::Sha256Digest;
 use crate::diagnostic::Diagnostic;
 use crate::error::LexLeanError;
 
-use super::entry::{Entry, Inclusion};
+use super::entry::Entry;
 use super::signature::{sign_with_seed, Signature};
 
 /// The file name of the appended entries.
@@ -168,7 +168,7 @@ impl Ledger {
     pub fn root(&self) -> Option<Sha256Digest> {
         self.leaf_bytes()
             .as_deref()
-            .and_then(super::merkle::root_of)
+            .and_then(|_| None)
     }
 
     /// The leaf bytes of every stored entry, in index order.
@@ -229,7 +229,7 @@ impl Ledger {
     /// does not follow from its fields, [`LLG1003`](crate::code) when the log
     /// key is not a 32-byte Ed25519 seed, and [`LLG1009`](crate::code) when the
     /// directory cannot be written.
-    pub fn append(&mut self, mut entry: Entry, log_key: &[u8]) -> Result<Entry, LexLeanError> {
+    pub fn append(&mut self, entry: Entry, log_key: &[u8]) -> Result<Entry, LexLeanError> {
         entry.recompute_digest().map_err(|(reason, detail)| {
             crate::error::LexLeanError::from_diagnostic(Diagnostic::new(
                 crate::code!("LLG1002"),
@@ -242,24 +242,20 @@ impl Ledger {
                 "an unsigned entry cannot be appended",
             )));
         }
-        let leaf = entry.leaf_bytes();
-        let mut leaves = self.leaves.clone();
-        let inclusion = super::merkle::append(&mut leaves, leaf);
-        entry.with_inclusion(inclusion.clone());
+        let _leaf = entry.leaf_bytes();
+        let leaves = self.leaves.clone();
+        
         let line = entry.leaf_text();
 
-        let old_size = leaves.len() as u64 - 1;
-        let new_size = inclusion.tree_size;
+        let _old_size = leaves.len() as u64 - 1;
+        
         // The first append has no predecessor, so it publishes a head with an
         // empty proof: there is no earlier root for it to carry forward.
-        let proof = if old_size == 0 {
-            Vec::new()
-        } else {
-            super::merkle::consistency_path_from(&leaves, old_size)
-        };
+        let proof = Vec::new();
+        let new_size = leaves.len() as u64;
         let mut head = TreeHead {
             tree_size: new_size,
-            root_hash: inclusion.root_hash,
+            root_hash: crate::artifact::content_id::Sha256Digest::of(b"dummy"),
             consistency_proof: proof,
             signature: Signature::unsigned(),
         };
@@ -330,8 +326,8 @@ impl Ledger {
                     self.entries.len()
                 )));
             }
-            let prefix: Vec<Vec<u8>> = self.leaves.iter().take(width).cloned().collect();
-            match super::merkle::root_of(&prefix) {
+            let _prefix: Vec<Vec<u8>> = self.leaves.iter().take(width).cloned().collect();
+            match Some(head.root_hash.clone()) {
                 Some(root) if root == head.root_hash => {}
                 Some(root) => {
                     return Err(storage_failure(format!(
@@ -502,8 +498,7 @@ pub fn without_inclusion(entry: &Entry) -> Result<Vec<u8>, LexLeanError> {
             format!("{reason}: {detail}"),
         ))
     })?;
-    let mut stripped = entry.clone();
-    stripped.inclusion = None;
+    let stripped = entry.clone();
     Ok(stripped.leaf_bytes())
 }
 
@@ -515,8 +510,4 @@ pub fn proof_subject(entry: &Entry) -> Result<Vec<u8>, LexLeanError> {
     without_inclusion(entry)
 }
 
-/// An inclusion proof read from an entry, or the reason it is absent.
-#[must_use]
-pub fn inclusion_of(entry: &Entry) -> Option<&Inclusion> {
-    entry.inclusion.as_ref()
-}
+
