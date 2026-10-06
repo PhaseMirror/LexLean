@@ -151,10 +151,6 @@ pub struct LexemeAppendArgs {
     /// The signed entry to append.
     #[arg(long)]
     pub entry: Utf8PathBuf,
-    /// The 32-byte Ed25519 seed of the log key, which signs each published
-    /// head (§33.7).
-    #[arg(long)]
-    pub log_key: Utf8PathBuf,
     /// Where to write the entry carrying its inclusion proof; the input file
     /// when absent.
     #[arg(long)]
@@ -193,9 +189,6 @@ pub struct LexemeBootstrapArgs {
     /// A 32-byte Ed25519 seed for the bootstrap key.
     #[arg(long)]
     pub seed: Option<Utf8PathBuf>,
-    /// The 32-byte Ed25519 seed of the log key, which signs the head (§33.7).
-    #[arg(long)]
-    pub log_key: Option<Utf8PathBuf>,
     /// The directory the bootstrap entry is written to.
     #[arg(long)]
     pub out: Utf8PathBuf,
@@ -533,11 +526,8 @@ fn append(
     let ledger_path = resolve(working_directory, &arguments.ledger);
     let entry_path = resolve(working_directory, &arguments.entry);
     let entry = read_entry(&entry_path)?;
-    let key_path = resolve(working_directory, &arguments.log_key);
-    let log_key = std::fs::read(&key_path)
-        .map_err(|error| ledger_failure(format!("{}: {error}", key_path.as_str())))?;
     let mut ledger = Ledger::open(ledger_path.as_std_path())?;
-    let appended = ledger.append(entry, &log_key)?;
+    let appended = ledger.append(entry)?;
     verify::verify_heads(&ledger)?;
     // The entry is rewritten carrying the proof the append produced, so that
     // the artifact a reader holds is the one whose four remaining claims can be
@@ -646,18 +636,7 @@ fn bootstrap(
             "bootstrap needs --seed: the first entry is the one whose authorship the tool claims for itself",
         ));
     }
-    let log_key = match &arguments.log_key {
-        Some(path) => {
-            let key_path = resolve(working_directory, path);
-            std::fs::read(&key_path).map_err(|error| {
-                ledger_failure(format!("{}: {error}", key_path.as_str()))
-            })?
-        }
-        None => return Err(usage(
-            "bootstrap needs --log-key: §33.7 requires every published head to be signed by the log key",
-        )),
-    };
-    let appended = ledger.append(entry, &log_key)?;
+    let appended = ledger.append(entry)?;
     verify::verify_heads(&ledger)?;
     let out = resolve(working_directory, &arguments.out);
     write_json(&out, &appended.to_json())?;

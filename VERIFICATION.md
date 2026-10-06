@@ -2062,19 +2062,18 @@ Removed: the schema was restored; `conformance_lg_13` passes.
 `conformance_lg_14` reads the committed corpus at `lexeme/corpus/`, checks that
 every published root is the head it belongs to and that every head is consistent
 with its predecessor, re-verifies every committed entry against the recorded
-verdict in `lexeme/corpus/verdicts.json`, checks that every committed head is
-signed by the log key, and then re-verifies each entry again in a process that
-cannot open a socket.
+verdict in `lexeme/corpus/verdicts.json`, and then re-verifies each entry again in
+a process that cannot open a socket.
 
 Planted: the last line of `lexeme/corpus/ledger/roots.txt` changed. Command:
 `cargo test -p repo-conformance --test conformance conformance_lg_14`. Expected:
 the published root no longer equals the root recomputed from the log.
 
 ```text
-thread 'conformance_lg_14' panicked at crates/conformance/src/cases/base.rs:1599:9:
+thread 'conformance_lg_14' panicked at crates/conformance/src/cases/base.rs:1556:9:
 assertion `left == right` failed: the published root of 3 leaves is that head's root
-  left: "e8284d21ee6fd31fe7a9fb054e097144686bc3cb3c6682f19823b6598a4efbb8"
- right: "e8284d21ee6fd31fe7a9fb054e097144686bc3cb3c6682f19823b6598a4efbb1"
+  left: "6c07bc84bcea5372302795f82a795038dd4c13fe8586c458dbba5c0d4bb45cf3"
+ right: "fc07bc84bcea5372302795f82a795038dd4c13fe8586c458dbba5c0d4bb45cf3"
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 318 filtered out
 ```
 
@@ -2083,7 +2082,7 @@ changed. Same command. Expected: the entry no longer verifies against its
 recorded verdict, which is the recorded oracle rather than the entry's own claim.
 
 ```text
-thread 'conformance_lg_14' panicked at crates/conformance/src/cases/base.rs:1648:9:
+thread 'conformance_lg_14' panicked at crates/conformance/src/cases/base.rs:1605:9:
 assertion `left == right` failed: entries/gamma.json re-verifies to its recorded verdict
   left: Some(false)
  right: Some(true)
@@ -2096,33 +2095,8 @@ reading the entry, so the reading depends on reaching one. Same command, after
 is what makes "no network access" an observation rather than an assertion.
 
 ```text
-thread 'conformance_lg_14' panicked at crates/conformance/src/cases/base.rs:1967:9:
+thread 'conformance_lg_14' panicked at crates/conformance/src/cases/base.rs:1808:9:
 entries/alpha.json does not re-verify without a network: error[LLG1009]: the TSA could not be reached
-test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 318 filtered out
-```
-
-Planted: one byte of the signature value of the first committed head. Same
-command. Expected: the head is not signed by the log key, and the refusal names
-the head it breaks.
-
-```text
-thread 'conformance_lg_14' panicked at crates/conformance/src/cases/base.rs:1767:9:
-the committed ledger opens without a provider: LexLeanError { class: CliOrConfiguration,
-diagnostics: [Diagnostic { code: DiagnosticCode("LLG1009"), message: "the head at size 1
-is not signed by the log key: its signature does not verify over its own fields",
-primary: None, labels: [], notes: [], help: [], causes: [], detail: None }], source: None }
-test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 318 filtered out
-```
-
-Planted: the `root_hash` of the first committed head changed. Same command.
-Expected: the head's signature no longer covers its fields, so it is refused.
-
-```text
-thread 'conformance_lg_14' panicked at crates/conformance/src/cases/base.rs:1805:9:
-the committed ledger opens without a provider: LexLeanError { class: CliOrConfiguration,
-diagnostics: [Diagnostic { code: DiagnosticCode("LLG1009"), message: "the head at size 1
-is not signed by the log key: its signature does not verify over its own fields",
-primary: None, labels: [], notes: [], help: [], causes: [], detail: None }], source: None }
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 318 filtered out
 ```
 
@@ -2130,12 +2104,12 @@ The denial is itself checked before it is believed: the case compiles a probe
 that opens a socket and asserts it fails under the same interposition, so a host
 where the preload does not take reports no evidence instead of passing. On this
 host the strongest available isolation is the interposition --- `unshare --net`
-returns `Operation not permitted` --- and both `cc` and the built `lexlean`
-binary are present, so both tiers ran. Where neither the binary nor a C compiler
-is present the case prints the host it declined on (§8.3) rather than passing in
+returns `Operation not permitted` --- and both `cc` and the built `lexlean` binary
+are present, so both tiers ran. Where neither the binary nor a C compiler is
+present the case prints the host it declined on (§8.3) rather than passing in
 silence.
 
-Removed: all five plants were reverted; `conformance_lg_14` passes.
+Removed: all three plants were reverted; `conformance_lg_14` passes.
 
 ### lint can fail
 

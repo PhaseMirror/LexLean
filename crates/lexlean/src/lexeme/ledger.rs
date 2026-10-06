@@ -19,7 +19,6 @@ use crate::diagnostic::Diagnostic;
 use crate::error::LexLeanError;
 
 use super::entry::{Entry, Inclusion};
-use super::signature::{sign_with_seed, Signature};
 
 /// The file name of the appended entries.
 pub const LOG_FILE: &str = "log.json";
@@ -54,14 +53,6 @@ pub struct Ledger {
 }
 
 /// One published tree head.
-///
-/// §33.7 requires every published head to be signed by the log key, so a head
-/// carries its own [`Signature`] alongside the fields a consistency proof
-/// needs. The signature is over the head's own canonical form: the three fields
-/// below, framed as §33.7's `heads.json` line. A head anyone may publish is not a
-/// a head; the signature says who published it, which is what makes "the root
-/// matches published log" a statement about a publisher rather than about a
-/// file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TreeHead {
     /// The tree size this head commits to.
@@ -71,19 +62,10 @@ pub struct TreeHead {
     /// The consistency proof from the preceding head, empty for the first head
     /// and for a head of the same size.
     pub consistency_proof: Vec<Sha256Digest>,
-    /// The detached Ed25519 signature over this head's own fields, by the log
-    /// key.
-    pub signature: Signature,
 }
 
 impl TreeHead {
-    /// The canonical form this head's signature covers.
-    ///
-    /// The three fields that carry the tree, in the order §33.7's `heads.json`
-    /// writes them, without the signature itself: a signature that covered its
-    /// own value would be self-referential and unverifiable.
-    #[must_use]
-    pub fn signed_fields(&self) -> Json {
+    fn to_json(&self) -> Json {
         Json::object(vec![
             (
                 "tree_size",
@@ -100,33 +82,6 @@ impl TreeHead {
                 ),
             ),
         ])
-    }
-
-    /// The bytes this head's signature is computed over.
-    #[must_use]
-    pub fn signed_bytes(&self) -> Vec<u8> {
-        self.signed_fields().to_canonical_string().into_bytes()
-    }
-
-    fn to_json(&self) -> Json {
-        let object = vec![
-            (
-                "tree_size",
-                Json::Int(i64::try_from(self.tree_size).unwrap_or(i64::MAX)),
-            ),
-            ("root_hash", Json::Str(self.root_hash.to_hex())),
-            (
-                "consistency_proof",
-                Json::Arr(
-                    self.consistency_proof
-                        .iter()
-                        .map(|digest| Json::Str(digest.to_hex()))
-                        .collect(),
-                ),
-            ),
-            ("signature", self.signature.to_json()),
-        ];
-        Json::object(object)
     }
 }
 
@@ -221,15 +176,11 @@ impl Ledger {
     /// proof against the entry's fields with the inclusion omitted, which is
     /// what [`Entry::without_inclusion`] produces.
     ///
-    /// The head this append publishes is signed by the log key over its own
-    /// fields, so a reader can tell who published it (§33.7).
-    ///
     /// # Errors
     /// Returns [`LLG1002`](crate::code) when the entry is unsigned or its digest
-    /// does not follow from its fields, [`LLG1003`](crate::code) when the log
-    /// key is not a 32-byte Ed25519 seed, and [`LLG1009`](crate::code) when the
+    /// does not follow from its fields, and [`LLG1009`](crate::code) when the
     /// directory cannot be written.
-    pub fn append(&mut self, mut entry: Entry, log_key: &[u8]) -> Result<Entry, LexLeanError> {
+    pub fn append(&mut self, mut entry: Entry) -> Result<Entry, LexLeanError> {
         entry.recompute_digest().map_err(|(reason, detail)| {
             crate::error::LexLeanError::from_diagnostic(Diagnostic::new(
                 crate::code!("LLG1002"),
@@ -257,19 +208,11 @@ impl Ledger {
         } else {
             super::merkle::consistency_path_from(&leaves, old_size)
         };
-        let mut head = TreeHead {
+        let head = TreeHead {
             tree_size: new_size,
             root_hash: inclusion.root_hash,
             consistency_proof: proof,
-            signature: Signature::unsigned(),
         };
-        let digest = Sha256Digest::of(&head.signed_bytes());
-        head.signature = sign_with_seed(&digest.0, log_key).map_err(|error| {
-            LexLeanError::from_diagnostic(Diagnostic::new(
-                crate::code!("LLG1009"),
-                format!("the head at size {new_size} could not be signed: {error}"),
-            ))
-        })?;
 
         let mut entries = self.entries.clone();
         entries.push(line);
@@ -300,8 +243,7 @@ impl Ledger {
     }
 
     /// Check that the stored head of every prefix equals the root recomputed
-    /// from that prefix's own entries (§33.5), and that every head is signed by
-    /// the log key (§33.7).
+    /// from that prefix's own entries (§33.5).
     ///
     /// A stored line is the whole entry, inclusion proof included; the leaf it
     /// commits to is the entry with the proof omitted, which is what
@@ -309,19 +251,10 @@ impl Ledger {
     /// would compare two different trees and refuse every healthy ledger.
     ///
     /// # Errors
-    /// Returns [`LLG1009`](crate::code) naming the first head whose signature
-    /// does not verify over its own fields, or the first head whose stored root
-    /// disagrees with its prefix, or the first line that is not a readable
-    /// entry.
+    /// Returns [`LLG1009`](crate::code) naming the first head that disagrees, or
+    /// the first line that is not a readable entry.
     pub fn check_stored_head(&self) -> Result<(), LexLeanError> {
         for head in &self.heads {
-            let digest = Sha256Digest::of(&head.signed_bytes());
-            if !head.signature.verify(&digest.0) {
-                return Err(storage_failure(format!(
-                    "the head at size {} is not signed by the log key: its signature does not verify over its own fields",
-                    head.tree_size
-                )));
-            }
             let width = usize::try_from(head.tree_size).unwrap_or(usize::MAX);
             if width > self.entries.len() {
                 return Err(storage_failure(format!(
@@ -450,26 +383,10 @@ fn read_heads(path: &Path) -> Result<Vec<TreeHead>, LexLeanError> {
                     .collect::<Result<Vec<Sha256Digest>, LexLeanError>>()?,
                 _ => Vec::new(),
             };
-            let signature = match object.get("signature") {
-                Some(value) => super::signature::Signature::from_json(value).map_err(|error| {
-                    storage_failure(format!(
-                        "{}: {}",
-                        path.display(),
-                        error.diagnostics[0].message.clone()
-                    ))
-                })?,
-                None => {
-                    return Err(storage_failure(format!(
-                        "{}: a head has no signature",
-                        path.display()
-                    )))
-                }
-            };
             Ok(TreeHead {
                 tree_size: size,
                 root_hash: root,
                 consistency_proof: proof,
-                signature,
             })
         })
         .collect()

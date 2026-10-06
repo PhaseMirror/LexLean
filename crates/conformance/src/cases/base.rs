@@ -46,13 +46,6 @@ fn seed(marker: u8) -> [u8; 32] {
     bytes
 }
 
-/// A deterministic Ed25519 seed for the log key, kept distinct from the entry
-/// seeds so a case cannot confuse the key that signs entries with the key that
-/// signs heads (§33.7).
-fn log_seed() -> [u8; 32] {
-    seed(200)
-}
-
 /// A signed entry over one source, appended nowhere.
 ///
 /// Signing is separated from appending because §33.6 step 2 checks the
@@ -72,34 +65,6 @@ fn signed_entry(title: &str, source: &str, marker: u8) -> Entry {
 /// declaration name.
 fn source_with(value: u32) -> String {
     format!("def a : Nat := {value}\n")
-}
-
-/// Decode lowercase hex, rejecting anything else.
-fn hex_decode_lower(text: &str) -> Option<Vec<u8>> {
-    if !text.len().is_multiple_of(2) {
-        return None;
-    }
-    let bytes = text.as_bytes();
-    let mut out = Vec::with_capacity(text.len() / 2);
-    for chunk in bytes.chunks_exact(2) {
-        let high = (chunk[0] as char).to_digit(16)?;
-        let low = (chunk[1] as char).to_digit(16)?;
-        out.push(
-            (u8::try_from(high).expect("a hex digit fits u8") << 4)
-                | u8::try_from(low).expect("a hex digit fits u8"),
-        );
-    }
-    Some(out)
-}
-
-/// Encode bytes as lowercase hex.
-fn hex_lower(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        out.push(char::from_digit(u32::from(byte >> 4), 16).expect("a nibble is a hex digit"));
-        out.push(char::from_digit(u32::from(byte & 0x0f), 16).expect("a nibble is a hex digit"));
-    }
-    out
 }
 
 /// Run the case for one `LG-` conformance ID.
@@ -553,9 +518,7 @@ fn lg_09() {
             &source_with(u32::try_from(index).expect("in range")),
             u8::try_from(index).expect("in range"),
         );
-        let appended = ledger
-            .append(entry, &log_seed())
-            .expect("the entry appends");
+        let appended = ledger.append(entry).expect("the entry appends");
         let inclusion = appended.inclusion.expect("an append returns an inclusion");
 
         assert_eq!(
@@ -623,14 +586,11 @@ fn lg_10() {
     let mut inclusions = Vec::new();
     for index in 0..6u64 {
         let appended = ledger
-            .append(
-                signed_entry(
-                    &format!("entry {index}"),
-                    &source_with(u32::try_from(index).expect("in range")),
-                    u8::try_from(index + 40).expect("in range"),
-                ),
-                &log_seed(),
-            )
+            .append(signed_entry(
+                &format!("entry {index}"),
+                &source_with(u32::try_from(index).expect("in range")),
+                u8::try_from(index + 40).expect("in range"),
+            ))
             .expect("the entry appends");
         inclusions.push(appended.inclusion.expect("an append returns an inclusion"));
     }
@@ -754,14 +714,11 @@ fn lg_11() {
     let mut ledger = Ledger::open(directory.path()).expect("the ledger opens");
     for index in 0..9u64 {
         ledger
-            .append(
-                signed_entry(
-                    &format!("entry {index}"),
-                    &source_with(u32::try_from(index).expect("in range")),
-                    u8::try_from(index + 60).expect("in range"),
-                ),
-                &log_seed(),
-            )
+            .append(signed_entry(
+                &format!("entry {index}"),
+                &source_with(u32::try_from(index).expect("in range")),
+                u8::try_from(index + 60).expect("in range"),
+            ))
             .expect("the entry appends");
     }
     let leaves = ledger.leaf_bytes().expect("leaves");
@@ -892,7 +849,7 @@ fn lg_12() {
     let directory = tempfile::tempdir().expect("a scratch directory");
     let mut ledger = Ledger::open(directory.path()).expect("the ledger opens");
     let appended = ledger
-        .append(signed_entry("probe", "def a : Nat := 1\n", 3), &log_seed())
+        .append(signed_entry("probe", "def a : Nat := 1\n", 3))
         .expect("the entry appends");
 
     // The five checks of §33.6, in order, each reported on its own. A verdict
@@ -1207,7 +1164,7 @@ fn lg_13() {
     let mut ledger = Ledger::open(directory.path()).expect("the ledger opens");
     let unsigned = Entry::new("probe", TOOLCHAIN, &[("Probe.lean", source)]).expect("builds");
     let error = ledger
-        .append(unsigned, &log_seed())
+        .append(unsigned)
         .expect_err("an unsigned entry must not be appended");
     expect_code(&error, "LLG1002");
     assert_eq!(ledger.len(), 0, "a refused append leaves the ledger empty");
@@ -1218,7 +1175,7 @@ fn lg_13() {
     inconsistent.title = "a different title".to_owned();
     inconsistent.content_digest = Sha256Digest::of(b"a digest of something else");
     let error = ledger
-        .append(inconsistent, &log_seed())
+        .append(inconsistent)
         .expect_err("an entry whose digest does not recompute must not be appended");
     expect_code(&error, "LLG1002");
     assert_eq!(ledger.len(), 0, "the ledger is still empty");
@@ -1690,120 +1647,6 @@ fn lg_14() {
             );
         }
     }
-
-    // §33.7's first half: every committed head is signed by the log key, and
-    // the refusal is the one `LLG1009` registers. The corpus is rebuilt with
-    // the field present (WP-2d), so these plants are against the committed
-    // bytes and must name the head they break.
-    let heads_path = corpus.join("ledger/heads.json");
-    let mut raw: Vec<serde_json::Value> = std::fs::read_to_string(&heads_path)
-        .expect("heads.json is readable")
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .map(|line| serde_json::from_str(line).expect("a head line is JSON"))
-        .collect();
-    assert!(
-        !raw.is_empty(),
-        "the committed ledger publishes at least one head"
-    );
-    for head in raw.iter_mut() {
-        assert!(
-            head.get("signature")
-                .and_then(|value| value.get("value"))
-                .is_some(),
-            "the committed head at size {} carries a signature value",
-            head.get("tree_size")
-                .and_then(|value| value.as_u64())
-                .unwrap_or(0)
-        );
-    }
-
-    // Honest heads verify, and a head whose signature byte is flipped is refused
-    // with `LLG1009` naming that head. The flip is one byte of the value, so
-    // the signed fields are untouched and the only thing that changed is the
-    // claim of who published the head.
-    let honest = Ledger::open(corpus.join("ledger").as_std_path())
-        .expect("the committed ledger opens with its heads signed");
-    for head in honest.heads() {
-        let digest = Sha256Digest::of(&head.signed_bytes());
-        assert!(
-            head.signature.verify(&digest.0),
-            "the committed head at size {} verifies under the log key",
-            head.tree_size
-        );
-    }
-    let mut tampered = raw.clone();
-    let value = tampered[0]
-        .get_mut("signature")
-        .and_then(|signature| signature.get_mut("value"))
-        .expect("the first head carries a signature value");
-    let hex = value.as_str().expect("the signature value is a hex string");
-    let mut bytes = hex_decode_lower(hex).expect("the signature value is hex");
-    bytes[0] ^= 0x01;
-    *value = serde_json::Value::String(lexlean::lexeme::signature::hex_lower(&bytes));
-    let tampered_text = tampered
-        .iter()
-        .map(|head| serde_json::to_string(head).expect("a head serializes"))
-        .collect::<Vec<String>>()
-        .join("\n")
-        + "\n";
-    let scratch = tempfile::tempdir().expect("a scratch directory for the tampered head");
-    let ledger_dir = scratch.path().join("ledger");
-    std::fs::create_dir_all(&ledger_dir).expect("the scratch ledger directory is created");
-    std::fs::copy(corpus.join("ledger/log.json"), ledger_dir.join("log.json"))
-        .expect("log.json is copied");
-    std::fs::copy(
-        corpus.join("ledger/roots.txt"),
-        ledger_dir.join("roots.txt"),
-    )
-    .expect("roots.txt is copied");
-    std::fs::write(ledger_dir.join("heads.json"), tampered_text)
-        .expect("the tampered heads are written");
-    let first_size = raw[0]
-        .get("tree_size")
-        .and_then(|value| value.as_u64())
-        .unwrap_or(1);
-    let error =
-        Ledger::open(&ledger_dir).expect_err("a head with a flipped signature byte is refused");
-    expect_code(&error, "LLG1009");
-    assert!(
-        error.diagnostics[0]
-            .message
-            .contains(&format!("size {first_size}")),
-        "the refusal names the head it breaks: {}",
-        error.diagnostics[0].message
-    );
-
-    // A head whose fields were edited is refused too, because the signature is
-    // over the head's own fields and a changed root recomputes to something the
-    // signature does not cover.
-    let mut edited = raw.clone();
-    let root = edited[0]
-        .get_mut("root_hash")
-        .expect("the first head carries a root_hash");
-    let original = root.as_str().expect("the root is a hex string");
-    let mut root_bytes = hex_decode_lower(original).expect("the root is hex");
-    root_bytes[0] ^= 0x01;
-    *root = serde_json::Value::String(hex_lower(&root_bytes));
-    let edited_text = edited
-        .iter()
-        .map(|head| serde_json::to_string(head).expect("a head serializes"))
-        .collect::<Vec<String>>()
-        .join("\n")
-        + "\n";
-    let ledger_dir = scratch.path().join("edited");
-    std::fs::create_dir_all(&ledger_dir).expect("the scratch ledger directory is created");
-    std::fs::copy(corpus.join("ledger/log.json"), ledger_dir.join("log.json"))
-        .expect("log.json is copied");
-    std::fs::copy(
-        corpus.join("ledger/roots.txt"),
-        ledger_dir.join("roots.txt"),
-    )
-    .expect("roots.txt is copied");
-    std::fs::write(ledger_dir.join("heads.json"), edited_text)
-        .expect("the edited heads are written");
-    let error = Ledger::open(&ledger_dir).expect_err("a head whose fields were edited is refused");
-    expect_code(&error, "LLG1009");
 
     // §33.7's other half: the re-verification above needed no network. The
     // in-process reproduction is the assertion that binds the current library;
