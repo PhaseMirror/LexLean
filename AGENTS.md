@@ -7,7 +7,7 @@ repository.
 
 LexLean: a closed-lexicon LaTeX-to-Lean 4 compiler whose canonical document and
 prose-free Lean program are generated from one semantic representation.
-`SPEC.md` is the complete implementation contract; nothing here is normative
+`SPEC.md` is the functional implementation contract; `AGENTS.md` is the normative Phase Mirror verification methodology
 beyond what it authorizes. Read `README.md` for the shape of the repository,
 then `VERIFICATION.md` for which gate discharges what.
 

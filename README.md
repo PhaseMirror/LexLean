@@ -10,14 +10,14 @@ There are no vacuous claims. Every statement is physically backed by tested code
 The definitive status of all features and subsystems is maintained in the canonical claim matrix:
 * **Table Location:** `docs/PIRTM-README-Claim-Table.md`
 * **Release Artifact:** `artifacts/PIRTM-README-Claim-Table.md`
-* **Current SHA-256:** `32fdac3b9cc89fd93fef6ddf041e2c61fc6da2a18ecee02c1cf1b062bbd65836`
+* **Current SHA-256:** `3c43a294bedc703ef0cbf4a959a7207b5fee68afae8974d236161ecf73535d8a`
 
 ### Major Milestones Completed
-1. **UORC Core Crates (`uorc-core`)**: Fully implemented parsing, evaluating, deterministic checkpointing, and synthesis for universal object references. 58 passing tests with 0 `clippy` warnings.
+1. **UORC Core Crates (`uorc-core`)**: Fully implemented parsing, evaluating, deterministic checkpointing, and synthesis for universal object references. 60 passing tests with 0 `clippy` warnings.
 2. **Formal Theorem Closure**: Integrated `TheoremRegister` structurally into the `uorc-core` crate mapping exact Lean 4 mathematical statements to executable logic gates.
 3. **Lean 4 Proof Integration**: Implemented Phase Mirror governance theorems covering Bounded Iteration and Zeno Damping inside `lean/ADR`.
 4. **Axiom Ledger**: All "Proof Debts" (unproven constraints) are explicitly tracked in `docs/PIRTM-axiom-ledger.md` instead of hidden within `sorry` blocks.
-5. **Zero-Drift CI Validation**: `sedona_spine_ci.yml` strictly enforces toolchain pinning (`leanprover/lean4:v4.33.0-rc2`), prevents `sorry` leaks, and mandates reproducible builds via the `just vv` acceptance boundary.
+5. **Zero-Drift CI Validation**: `sedona_spine_ci.yml` strictly enforces toolchain pinning (`leanprover/lean4:v4.33.0-rc2`), prevents `sorry` leaks, ensures code axioms match ledger claims, and mandates reproducible builds via the `just vv` acceptance boundary.
 
 ## What it does
 

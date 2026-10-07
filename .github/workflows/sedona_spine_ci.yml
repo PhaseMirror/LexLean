@@ -24,10 +24,17 @@ jobs:
             exit 1
           fi
 
-      - name: Proof Debt Detection
+      - name: Proof Debt Detection (sorry and axiom)
         run: |
           if grep -r "sorry" lean/ | grep -v "test/"; then
             echo "Error: Found 'sorry' in Lean proofs!"
+            exit 1
+          fi
+          # Ensure every axiom is tracked in the ledger
+          LEAN_AXIOMS=$(grep -r "axiom " lean/ | wc -l)
+          LEDGER_AXIOMS=$(grep -c "AX-" docs/PIRTM-axiom-ledger.md || echo "0")
+          if [ "$LEAN_AXIOMS" -ne "$LEDGER_AXIOMS" ]; then
+            echo "Error: Mismatch between number of axioms in code ($LEAN_AXIOMS) and Axiom Ledger ($LEDGER_AXIOMS)"
             exit 1
           fi
 
