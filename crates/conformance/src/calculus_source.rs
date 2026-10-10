@@ -2766,7 +2766,8 @@ pub fn main_module() -> String {
         ),
     );
     // `Main` is the project's root, so the GNAF model and its fixtures
-    // (§17.15) are elaborated, replayed, and audited only if it imports them.
+    // (§17.15) and the certification model and its certificates (§17.18)
+    // are elaborated, replayed, and audited only if it imports them.
     let mut imports = vec![SYNTAX, SEMANTICS, ORACLE];
     imports.extend(crate::calculus::reasoning::ORACLE_MODULES);
     imports.extend([
@@ -2776,6 +2777,8 @@ pub fn main_module() -> String {
         crate::rust_source::RUST_SEMANTICS,
         lexlean::gnaf::MODEL,
         crate::gnaf::FIXTURES_MODULE,
+        crate::certification_model::NAME,
+        crate::certification::MODULE,
     ]);
     module_tex("Main", &imports, vec![empty_program])
 }

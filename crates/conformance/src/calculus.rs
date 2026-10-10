@@ -3595,11 +3595,17 @@ pub fn files() -> BTreeMap<String, Vec<u8>> {
 }
 
 /// The directories whose every file, at any depth, is generated.
-const GENERATED_DIRECTORIES: [&str; 3] = ["compiler/fixtures", "compiler/gnaf", "compiler/rust"];
+const GENERATED_DIRECTORIES: [&str; 4] = [
+    "compiler/certificates",
+    "compiler/fixtures",
+    "compiler/gnaf",
+    "compiler/rust",
+];
 
 /// Compare (or, with `write`, rewrite) the generated files of the calculus
-/// (§17.14), of the GNAF model and requests over it (§17.15), and of the
-/// fixtures' Rust packages and the negative package manifests (§17.16).
+/// (§17.14), of the GNAF model and requests over it (§17.15), of the
+/// certification model and the certificates over those requests (§17.18),
+/// and of the fixtures' Rust packages and the negative package manifests (§17.16).
 ///
 /// # Errors
 ///
@@ -3615,6 +3621,7 @@ pub fn check(root: &Path, write: bool) -> Result<usize, String> {
     };
     let mut files = files();
     files.extend(crate::gnaf::files());
+    files.extend(crate::certification::files());
     for directory in GENERATED_DIRECTORIES {
         for entry in walkdir::WalkDir::new(root.join(directory))
             .into_iter()

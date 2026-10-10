@@ -168,6 +168,8 @@ fn is_v1_2_file(path: &str) -> bool {
         || path.starts_with("language/lcnf-1.2/")
         || path.starts_with("language/preservation-1.2/")
         || path == "schemas/compiler-input.schema.json"
+        || path == "schemas/gnaf-certificate-fixture.schema.json"
+        || path == "schemas/gnaf-certificate.schema.json"
         || path == "schemas/gnaf-fixture.schema.json"
         || path == "schemas/gnaf-request.schema.json"
         || path == "schemas/target-fixture.schema.json"

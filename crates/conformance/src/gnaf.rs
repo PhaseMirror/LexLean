@@ -233,12 +233,50 @@ fn diverging(at: u64) -> Function {
     })
 }
 
+/// The last element by one index: straight-line code, every node of which
+/// runs once, padded by `padding` bindings of the list's length that nothing
+/// reads. The more padding, the larger the code and the more it costs.
+fn last_by_index(padding: u64) -> Function {
+    let one = Expr::Value {
+        ty: nat_t(),
+        value: natv(1),
+    };
+    let mut body = prim(
+        Prim::Index,
+        vec![
+            var(0),
+            prim(
+                Prim::NatSub,
+                vec![prim(Prim::Length, vec![var(0)]), one],
+            ),
+        ],
+    );
+    for level in 0..padding {
+        body = Expr::Let {
+            name: 10 + level,
+            ty: nat_t(),
+            bound: Box::new(prim(Prim::Length, vec![var(0)])),
+            body: Box::new(body),
+        };
+    }
+    function(body)
+}
+
 /// The problem: the last element of a list of naturals.
 fn reference() -> Program {
     Program {
         spec: PROGRAM_SPEC.to_owned(),
         adts: Vec::new(),
         functions: vec![last_by_recursion(0)],
+    }
+}
+
+/// The problem as slicing solves it, which any list length fits in fuel.
+fn sliced_reference() -> Program {
+    Program {
+        spec: PROGRAM_SPEC.to_owned(),
+        adts: Vec::new(),
+        functions: vec![last_by_slice()],
     }
 }
 
@@ -331,6 +369,17 @@ fn pareto_envelope() -> Carrier {
         ],
         Vec::new(),
     )
+}
+
+/// The domain of the requests that certify a bound over systems whose cost is
+/// unknown: six lists on which plain recursion is expensive and a list on
+/// which it runs out of fuel.
+fn exhausting_domain() -> Vec<Value> {
+    let medium: Vec<u64> = (1..=20).collect();
+    let long: Vec<u64> = (1..=80).collect();
+    let mut out = vec![listv(&medium); 6];
+    out.push(listv(&long));
+    out
 }
 
 /// A request as written, its universe identity left to [`identified`].
@@ -478,6 +527,51 @@ fn requests() -> Vec<(&'static str, Request)> {
             "infeasible-universe",
             Request {
                 carrier: grammar(vec![plan(first_element())], Vec::new()),
+                ..scalar()
+            },
+        ),
+        // Straight-line plans: no recursion, no dispatch, and every node of a
+        // plan runs once, so a system's size bounds what it pays.
+        (
+            "bridge-straight-line",
+            Request {
+                carrier: grammar(
+                    vec![
+                        plan(last_by_index(2)),
+                        plan(last_by_index(0)),
+                        plan(last_by_index(1)),
+                        plan(last_by_index(3)),
+                    ],
+                    Vec::new(),
+                ),
+                domain: vec![
+                    listv(&[4, 1, 7]),
+                    listv(&[2, 9, 3, 5, 6]),
+                    listv(&[8, 8, 1, 2, 3, 4, 5, 6]),
+                ],
+                claim: ClaimClass::GlobalOptimal,
+                ..scalar()
+            },
+        ),
+        // GNAF-VEC-08: the same problem, plans, and domain on an enlarged
+        // machine is another universe; nothing certified for the smaller
+        // machine is certified for it.
+        (
+            "vec08-enlarged",
+            with_machine(|machine| machine.fuel *= 2),
+        ),
+        // Plain recursion runs out of fuel on the long list, so every system
+        // that runs it there has an unknown cost.
+        (
+            "bound-over-unresolved",
+            Request {
+                carrier: grammar(
+                    vec![plan(last_by_slice()), plan(last_by_recursion(2))],
+                    vec![3],
+                ),
+                reference: sliced_reference(),
+                domain: exhausting_domain(),
+                claim: ClaimClass::ArgminComplete,
                 ..scalar()
             },
         ),
@@ -1055,21 +1149,21 @@ fn calculus_definitions() -> serde_json::Map<String, Json> {
         .clone()
 }
 
-fn schema_id(name: &str) -> String {
+pub(crate) fn schema_id(name: &str) -> String {
     format!("https://github.com/afflom/lexlean/schemas/{name}")
 }
 
-fn closed(properties: Json) -> Json {
+pub(crate) fn closed(properties: Json) -> Json {
     let required: Vec<&String> = properties.as_object().expect("properties").keys().collect();
     json!({"additionalProperties": false, "properties": properties, "required": required,
            "type": "object"})
 }
 
-fn natural() -> Json {
+pub(crate) fn natural() -> Json {
     json!({"minimum": 0, "type": "integer"})
 }
 
-fn named_enum(names: &[&str]) -> Json {
+pub(crate) fn named_enum(names: &[&str]) -> Json {
     json!({"enum": names, "type": "string"})
 }
 
@@ -1088,7 +1182,7 @@ fn snake(name: &str) -> String {
 
 /// The definitions of a request, an answer, and their parts.
 #[allow(clippy::too_many_lines)]
-fn gnaf_definitions() -> serde_json::Map<String, Json> {
+pub(crate) fn gnaf_definitions() -> serde_json::Map<String, Json> {
     let mut out = calculus_definitions();
     let reference = |name: &str| json!({"$ref": format!("#/$defs/{name}")});
     let kinds: Vec<String> = ActionKind::ALL
