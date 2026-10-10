@@ -33,7 +33,7 @@ versions, and the entries below say what each tag does and does not claim.
   or `not_certified`). The hand-written library
   `compiler/proofs/LexLeanCertification/` proves the checker sound over
   `Gnaf.expand` at the request's fuel and every larger one; its declarations'
-  axioms are pinned in `compiler/proofs/library.toml`. Forty-two certificate
+  axioms are pinned in `compiler/proofs/library.toml`. Fifty-three certificate
   fixtures under `compiler/certificates/` are reduced to the host's verdict by
   the kernel; the host transcription refuses a certificate beyond 65,536
   premises, 1,024 positions in a list, or numbers of 2^32 with `LLS8002`. The

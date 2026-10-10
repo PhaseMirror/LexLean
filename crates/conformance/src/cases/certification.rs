@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 
 use lexlean::gnaf::certification::{
     self as certification, Bridge, Certificate, CertificateFixture, Certified, Established,
-    Obligation, Premise, Refusal, Route, Schema, Verdict, CERTIFICATE_SPEC, FIXTURE_SPEC,
+    Obligation, Premise, Refusal, Route, Schema, Trial, Verdict, CERTIFICATE_SPEC, FIXTURE_SPEC,
     MAX_NUMBER, MAX_POSITIONS, MAX_PREMISES, VERIFIER,
 };
 use lexlean::gnaf::{
@@ -683,6 +683,71 @@ fn gc_03() {
             }
         )
     );
+    // A tied system bounded exactly at the bound is not strictly above it, so
+    // an argmin may not leave it out of the attainers.
+    assert_eq!(
+        verdict("lb-tie-bounded"),
+        incomplete(
+            Obligation::MemberUnproven { position: 5 },
+            Established::CorrectOnly {
+                system: 4,
+                steps: 167,
+                size: 46
+            }
+        )
+    );
+    // Evidence is of distinct arguments, of a system that does not agree
+    // elsewhere, of a cost the fuel resolves, and of a system the premise
+    // measures.
+    for (name, position) in [("lb-positions-repeated", 0), ("lb-excluded-admitted", 0)] {
+        assert_eq!(
+            verdict(name),
+            incomplete(
+                Obligation::MemberUnproven { position },
+                Established::CorrectOnly {
+                    system: 3,
+                    steps: 167,
+                    size: 46
+                }
+            ),
+            "{name}"
+        );
+    }
+    assert_eq!(
+        verdict("lb-unresolved-measured"),
+        incomplete(
+            Obligation::UnresolvedMember { position: 1 },
+            Established::CorrectOnly {
+                system: 0,
+                steps: 880,
+                size: 26
+            }
+        ),
+        "a system the fuel does not resolve is not an excluded one"
+    );
+    assert_eq!(
+        verdict("lb-attainer-bounded"),
+        incomplete(
+            Obligation::AttainerUnmeasured { position: 3 },
+            Established::NotCertified
+        ),
+        "an attainer is measured, not bounded"
+    );
+    for name in ["lb-attainers-unordered", "lb-attainer-out-of-range"] {
+        assert_eq!(
+            verdict(name),
+            incomplete(Obligation::AttainersMalformed, Established::NotCertified),
+            "{name}: attainers are positions of the expansion in increasing order"
+        );
+    }
+    // The preparation each invocation is charged is part of a bound.
+    assert_eq!(
+        verdict("lb-preparation-charged"),
+        certified(Certified::Optimum {
+            members: vec![0],
+            steps: 180
+        })
+    );
     // Every mutation of a certified lower bound is uncertified: a premise
     // dropped or weakened, the bound moved either way, an attainer dropped
     // or added.
@@ -1035,6 +1100,31 @@ fn gc_05() {
         ),
         "a schema that does not apply reduces nothing"
     );
+    assert_eq!(
+        verdict("reduction-collapse-distinct"),
+        incomplete(
+            Obligation::ReductionIncomplete { position: 3 },
+            Established::NotCertified
+        ),
+        "a dispatch of two different plans is not collapsed"
+    );
+    // Lists as long as the threshold run the large plan: the large
+    // specialization applies and the small one does not.
+    assert_eq!(
+        verdict("reduction-threshold-edge"),
+        certified(Certified::Optimum {
+            members: vec![0],
+            steps: 48
+        })
+    );
+    assert_eq!(
+        verdict("reduction-small-at-threshold"),
+        incomplete(
+            Obligation::ReductionIncomplete { position: 2 },
+            Established::NotCertified
+        ),
+        "no list is shorter than the threshold"
+    );
     // The library registers the preservation theorems.
     let registered: BTreeSet<String> = library::registry()
         .declaration
@@ -1358,6 +1448,65 @@ fn gc_07() {
         }
     }
     assert!(valid >= 2, "several bridges are valid and attained");
+    // A system bounded exactly at the bridge's line meets it: the bound is
+    // evidence of cost at least the line, not above it.
+    let posed = request("bridge-straight-line");
+    let mut tight = 0;
+    for slope in 0..=8 {
+        for offset in 0..=70 {
+            let holds = costs
+                .iter()
+                .all(|(steps, size)| *steps >= slope * size + offset);
+            if !(holds && costs[1].0 == slope * costs[1].1 + offset) {
+                continue;
+            }
+            let mut premises = base.premises.clone();
+            for (position, (_, size)) in costs
+                .iter()
+                .enumerate()
+                .filter(|(position, _)| *position != 1)
+            {
+                let limit = slope * size + offset;
+                let selector = gnaf::expand(&posed.carrier)[position];
+                let (trials, charge, _) =
+                    certification::trials(&posed, selector).expect("evaluates");
+                let found = (0..1_u64 << trials.len()).find_map(|mask| {
+                    let positions: Vec<u64> = (0..trials.len() as u64)
+                        .filter(|index| mask >> index & 1 == 1)
+                        .collect();
+                    let sum: Option<u64> = positions
+                        .iter()
+                        .map(|index| match trials[*index as usize] {
+                            Trial::Agrees { steps } => Some(steps),
+                            Trial::Disagrees | Trial::Unknown => None,
+                        })
+                        .sum::<Option<u64>>()
+                        .map(|steps| steps + charge);
+                    (sum == Some(limit) && limit < costs[position].0).then_some(positions)
+                });
+                if let Some(positions) = found {
+                    premises[position] = Premise::PaysAtLeast { positions };
+                    tight += 1;
+                }
+            }
+            let verdict = check(
+                "bridge-straight-line",
+                &Certificate {
+                    route: Route::Representation {
+                        normal: 1,
+                        bridge: Some(Bridge { slope, offset }),
+                    },
+                    premises,
+                    ..base.clone()
+                },
+            );
+            assert!(
+                is_certified(&verdict),
+                "slope {slope}, offset {offset}: a system bounded exactly at the line meets it: {verdict:?}"
+            );
+        }
+    }
+    assert!(tight > 0, "some system is bounded exactly at some line");
 }
 
 /// §17.18: every verdict is a closed claim status.

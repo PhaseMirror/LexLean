@@ -554,6 +554,19 @@ fn requests() -> Vec<(&'static str, Request)> {
         // machine is another universe; nothing certified for the smaller
         // machine is certified for it.
         ("vec08-enlarged", with_machine(|machine| machine.fuel *= 2)),
+        // Every list is exactly as long as the threshold: the dispatches run
+        // their large plan on all of them.
+        (
+            "threshold-edge",
+            Request {
+                carrier: grammar(
+                    vec![plan(last_by_recursion(1)), plan(last_by_slice())],
+                    vec![2],
+                ),
+                domain: vec![listv(&[5, 9]), listv(&[8, 1])],
+                ..scalar()
+            },
+        ),
         // Plain recursion runs out of fuel on the long list, so every system
         // that runs it there has an unknown cost.
         (

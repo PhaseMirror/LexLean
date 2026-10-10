@@ -252,6 +252,8 @@ const ARGMIN: &str = "argmin-over-systems";
 const TIE: &str = "argmin-tie";
 const UNRESOLVED: &str = "bound-over-unresolved";
 const UNKNOWN: &str = "unknown-cost-incomplete";
+const PREPARED: &str = "preparation-charged";
+const EDGE: &str = "threshold-edge";
 const SHORT: &str = "internal-best-on-short-lists";
 const VEC02: &str = crate::gnaf::PARETO_ENVELOPE;
 const FRONTIER_TIE: &str = "frontier-tie";
@@ -488,6 +490,135 @@ fn certificates(
         ),
     );
 
+    // A tied system bounded exactly at the bound is not shown strictly above
+    // it: the argmin may not leave it out of the attainers.
+    let mut premises = bounded(tie, tied_steps, &tied[..1], true);
+    premises[tied[1] as usize] = all_agreeing(&systems(tie)[tied[1] as usize]);
+    add(
+        "lb-tie-bounded",
+        TIE,
+        certificate(
+            tie,
+            Route::LowerBound {
+                bound: tied_steps,
+                attainers: tied[..1].to_vec(),
+            },
+            premises,
+        ),
+    );
+    // An argument listed twice is not evidence of twice its steps: a bound
+    // from positions that do not strictly increase is no evidence.
+    let repeated = position_where(argmin, |system| {
+        matches!(system.status, Status::Admitted { .. })
+            && matches!(system.trials.first(), Some(Trial::Agrees { steps }) if 0 < *steps)
+    });
+    let Trial::Agrees { steps: first } = systems(argmin)[repeated as usize].trials[0] else {
+        unreachable!("the system agrees on its first argument")
+    };
+    let mut premises = bounded(argmin, steps, &members, false);
+    premises[repeated as usize] = Premise::PaysAtLeast {
+        positions: vec![0; usize::try_from(steps / first + 1).expect("a small count")],
+    };
+    add(
+        "lb-positions-repeated",
+        ARGMIN,
+        certificate(
+            argmin,
+            Route::LowerBound {
+                bound: steps,
+                attainers: members.clone(),
+            },
+            premises,
+        ),
+    );
+    // A system that agrees on an argument is not excluded by it.
+    let mut premises = bounded(argmin, steps, &members, false);
+    premises[repeated as usize] = Premise::Excluded { position: 0 };
+    add(
+        "lb-excluded-admitted",
+        ARGMIN,
+        certificate(
+            argmin,
+            Route::LowerBound {
+                bound: steps,
+                attainers: members.clone(),
+            },
+            premises,
+        ),
+    );
+    // A system whose cost is unknown at the fuel is not an inadmissible one:
+    // its measurement leaves the bound open.
+    let mut premises = bounded(unresolved, best_cost, &[best], true);
+    let first_unresolved = position_where(unresolved, |system| system.status == Status::Unresolved);
+    premises[first_unresolved as usize] = Premise::Measured;
+    add(
+        "lb-unresolved-measured",
+        UNRESOLVED,
+        certificate(
+            unresolved,
+            Route::LowerBound {
+                bound: best_cost,
+                attainers: vec![best],
+            },
+            premises,
+        ),
+    );
+    // An attainer is measured, not bounded.
+    let mut premises = bounded(argmin, steps, &members, false);
+    premises[members[0] as usize] = all_agreeing(&systems(argmin)[members[0] as usize]);
+    add(
+        "lb-attainer-bounded",
+        ARGMIN,
+        certificate(
+            argmin,
+            Route::LowerBound {
+                bound: steps,
+                attainers: members.clone(),
+            },
+            premises,
+        ),
+    );
+    // Attainers are positions of the expansion, in increasing order.
+    add(
+        "lb-attainers-unordered",
+        TIE,
+        certificate(
+            tie,
+            Route::LowerBound {
+                bound: tied_steps,
+                attainers: tied.iter().rev().copied().collect(),
+            },
+            bounded(tie, tied_steps, &tied, true),
+        ),
+    );
+    add(
+        "lb-attainer-out-of-range",
+        ARGMIN,
+        certificate(
+            argmin,
+            Route::LowerBound {
+                bound: steps,
+                attainers: members.iter().copied().chain([100]).collect(),
+            },
+            bounded(argmin, steps, &members, false),
+        ),
+    );
+    // A bound over systems whose preparation is charged to each invocation.
+    let prepared = request(PREPARED);
+    let (prepared_members, prepared_steps) = answer_members(prepared);
+    add(
+        "lb-preparation-charged",
+        PREPARED,
+        certificate(
+            prepared,
+            Route::LowerBound {
+                bound: prepared_steps,
+                attainers: prepared_members.clone(),
+            },
+            bounded(prepared, prepared_steps, &prepared_members, false),
+        ),
+    );
+
     // --- bindings -----------------------------------------------------------------
     let base = certificate(
         argmin,
@@ -593,6 +724,40 @@ fn certificates(
         "reduction-ineligible",
         SHORT,
         certificate(short, Route::Reduction, premises),
+    );
+    // A dispatch of two different plans is not collapsed.
+    let distinct = position_where(
+        short,
+        |system| matches!(system.selector, Selector::Dispatch { small, large, .. } if small != large),
+    );
+    let mut premises = reduced(short);
+    premises[distinct as usize] = Premise::Reduced {
+        schema: Schema::Collapse,
+    };
+    add(
+        "reduction-collapse-distinct",
+        SHORT,
+        certificate(short, Route::Reduction, premises),
+    );
+    // Lists of exactly the threshold's length run the large plan: the
+    // large specialization applies, the small one does not.
+    let edge = request(EDGE);
+    add(
+        "reduction-threshold-edge",
+        EDGE,
+        certificate(edge, Route::Reduction, reduced(edge)),
+    );
+    let at_threshold = position_where(edge, |system| {
+        matches!(system.selector, Selector::Dispatch { .. })
+    });
+    let mut premises = reduced(edge);
+    premises[at_threshold as usize] = Premise::Reduced {
+        schema: Schema::SpecializeSmall,
+    };
+    add(
+        "reduction-small-at-threshold",
+        EDGE,
+        certificate(edge, Route::Reduction, premises),
     );
     // A reduction over a request whose dispatches the domain does not collapse
     // reduces only what the schemas allow.
