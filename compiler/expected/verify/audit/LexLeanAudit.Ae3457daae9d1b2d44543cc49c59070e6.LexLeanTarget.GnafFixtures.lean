@@ -176,6 +176,10 @@ import LexLeanTarget.GnafFixtures
 #print axioms LexLeanTarget.GnafFixtures.rejectZeroCostPreprocessingAnswer
 #print axioms LexLeanTarget.GnafFixtures.rejectZeroCostPreprocessingRequest
 #print axioms LexLeanTarget.GnafFixtures.rejectZeroCostPreprocessingUniverse
+#print axioms LexLeanTarget.GnafFixtures.thresholdEdgeAnswer
+#print axioms LexLeanTarget.GnafFixtures.thresholdEdgeRequest
+#print axioms LexLeanTarget.GnafFixtures.thresholdEdgeStatuses
+#print axioms LexLeanTarget.GnafFixtures.thresholdEdgeUniverse
 #print axioms LexLeanTarget.GnafFixtures.unknownCostIncompleteAnswer
 #print axioms LexLeanTarget.GnafFixtures.unknownCostIncompleteRequest
 #print axioms LexLeanTarget.GnafFixtures.unknownCostIncompleteStatuses
