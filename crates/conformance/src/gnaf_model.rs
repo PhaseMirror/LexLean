@@ -44,21 +44,21 @@ const SIMP_AXIOMS: [&str; 1] = ["propext"];
 const ID: &str = "Id";
 
 /// Names for binders the branch body never reads; see the module comment.
-struct Unused {
+pub(crate) struct Unused {
     count: Cell<u32>,
 }
 
 impl Unused {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             count: Cell::new(0),
         }
     }
-    fn named(&self, base: &str) -> String {
+    pub(crate) fn named(&self, base: &str) -> String {
         self.count.set(self.count.get() + 1);
         format!("{base}{}", self.count.get())
     }
-    fn next(&self) -> String {
+    pub(crate) fn next(&self) -> String {
         self.named("ignored")
     }
 }
@@ -75,7 +75,7 @@ macro_rules! binders {
 
 /// §12.4 claim classes in the authority's order: each with the types of
 /// the constants it carries.
-fn claims() -> Vec<(&'static str, Vec<Json>)> {
+pub(crate) fn claims() -> Vec<(&'static str, Vec<Json>)> {
     let string_t = lx::string_t;
     let named = |name: &'static str| (name, Vec::new());
     vec![
@@ -2291,20 +2291,24 @@ fn binders_of(names: &[&str]) -> Vec<String> {
 /// A structural fold over `TargetSyntax.Expr` in the mutual group `group`:
 /// `leaf` for a node without subexpressions, `node` for one with, and
 /// `reference` for the function a call or closure names.
-struct ExprFold<'a> {
-    group: &'a str,
-    expr: &'a str,
-    exprs: &'a str,
-    arms: &'a str,
-    arm: &'a str,
-    result: Json,
-    empty: Json,
+pub(crate) struct ExprFold<'a> {
+    pub(crate) group: &'a str,
+    pub(crate) expr: &'a str,
+    pub(crate) exprs: &'a str,
+    pub(crate) arms: &'a str,
+    pub(crate) arm: &'a str,
+    pub(crate) result: Json,
+    pub(crate) empty: Json,
     /// Combine a node's own contribution with its children's.
-    combine: fn(Json, Json) -> Json,
+    pub(crate) combine: fn(Json, Json) -> Json,
     /// A node's own contribution.
-    own: Json,
+    pub(crate) own: Json,
     /// The contribution of a call or closure of `function`.
-    reference: fn(Json) -> Json,
+    pub(crate) reference: fn(Json) -> Json,
+    /// The contribution of a call alone, where it differs from a closure's.
+    pub(crate) call_reference: Option<fn(Json) -> Json>,
+    /// The contribution of an application, where it differs from `own`.
+    pub(crate) apply_own: Option<Json>,
 }
 
 impl ExprFold<'_> {
@@ -2312,7 +2316,7 @@ impl ExprFold<'_> {
         local_call(self.expr, vec![var(name)])
     }
     #[allow(clippy::too_many_lines)]
-    fn declarations(&self, unused: &Unused) -> Vec<Json> {
+    pub(crate) fn declarations(&self, unused: &Unused) -> Vec<Json> {
         let combine = self.combine;
         let own = || self.own.clone();
         let operands = |head: Json| combine(head, local_call(self.exprs, vec![var("operands")]));
@@ -2356,7 +2360,7 @@ impl ExprFold<'_> {
                 syntax_arm(
                     "Expr.call",
                     binders!["function", "operands"],
-                    operands((self.reference)(var("function"))),
+                    operands((self.call_reference.unwrap_or(self.reference))(var("function"))),
                 ),
                 syntax_arm(
                     "Expr.closure",
@@ -2367,7 +2371,7 @@ impl ExprFold<'_> {
                     "Expr.apply",
                     binders!["target", "operands"],
                     combine(
-                        own(),
+                        self.apply_own.clone().unwrap_or_else(own),
                         combine(
                             self.of("target"),
                             local_call(self.exprs, vec![var("operands")]),
@@ -2496,6 +2500,8 @@ fn reachable_code(unused: &Unused) -> Vec<Json> {
         combine: plus,
         own: nat(1),
         reference: no_reference,
+        call_reference: None,
+        apply_own: None,
     }
     .declarations(unused);
     out.extend(
@@ -2510,6 +2516,8 @@ fn reachable_code(unused: &Unused) -> Vec<Json> {
             combine: concatenated,
             own: nil(nat_t()),
             reference: names_function,
+            call_reference: None,
+            apply_own: None,
         }
         .declarations(unused),
     );

@@ -14,6 +14,7 @@ pub mod cases;
 pub mod differential;
 pub mod fixtures;
 pub mod gnaf;
+pub mod certification_model;
 pub mod gnaf_model;
 mod lx;
 pub mod machine;
