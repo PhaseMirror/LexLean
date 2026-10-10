@@ -3138,7 +3138,7 @@ Planted: a panic of the evaluation thread was reported as the platform's
 planted panic surfaces as a platform failure.
 
 ```text
-thread 'gnaf::tests::a_panicking_evaluation_is_an_internal_failure' (28684) panicked at crates/lexlean/src/gnaf.rs:1769:9:
+thread 'gnaf::tests::a_panicking_evaluation_is_an_internal_failure' (28684) panicked at crates/lexlean/src/gnaf.rs:1778:9:
 assertion `left == right` failed
   left: ["LLV7010"]
  right: ["LLI9001"]
@@ -4682,6 +4682,125 @@ certificates' natural additions into subtractions) and `preservation-drift`
 and `LLV7014` with nothing published, and `certificate-b-rejected` (the
 overlay turns every `nat_add` call of each certificate B's crate into
 `nat_sub`, leaving certificate A intact) with `LLV7015`.
+
+## GNAF certification (Issue #23)
+
+`conformance_gc_01` reads every certificate fixture under
+`compiler/certificates/` (53) as published, requires canonical bytes, the
+framed SHA-256 identity of the certificate, the schemas, and the host's
+verdict, and refuses malformed certificates with `LLB6007` and certificates
+beyond 65,536 premises, 1,024 positions in a list, or numbers of 2^32 with
+`LLS8002`. `conformance_gc_02` requires the committed `Certification`,
+`GnafCertificates`, and model sources to equal their generators, runs the
+compiler project's `verify` (the kernel reduces `Certification.check` on each
+of the 53 certificates to the verdict the host gives it), and compiles a
+module stating four false verdicts (a certified optimum for a certificate
+missing a competitor's premise, an unattained bound, a locally normal system,
+and a premise-free bound over unresolved systems), each of which Lean rejects
+as "Not a definitional equality". `conformance_gc_03`..`conformance_gc_08`
+assert the verdict, obligation, and established status of every fixture, sweep
+mutations of the certified lower bounds (every premise dropped or weakened, the
+bound moved, an attainer dropped or added), sweep every affine bridge below the
+committed one, compare the certificate with enumeration where enumeration
+answers, and require that `normalityVerdict` is the only reader of `isNormal`.
+`conformance_gc_09` compiles the 13 modules of
+`compiler/proofs/LexLeanCertification/` over the compiler project's generated
+modules and the shipped preservation library, audits their text for forbidden
+tokens, compares the exact axioms of the 102 registered declarations
+(`compiler/proofs/library.toml`) with Lean's `#print axioms`, instantiates the
+soundness theorems at every certified fixture, replays the library and the
+instances through `leanchecker` (the same kernel, §22.4, not an independent
+checker), and requires Lean to reject the library when the checker's strict
+test is weakened. `conformance_gc_10` requires the generated files to be
+deterministic and every identity to be recomputed from content. Each theorem
+is a kernel-checked proof about the evaluator and the checker as generated;
+the host transcription and the fixtures are `build` evidence validated against
+that kernel.
+
+### GNAF certification can fail (host transcription)
+
+Each defect below was planted one at a time in
+`crates/lexlean/src/gnaf/certification.rs`, with `cargo test -p
+repo-conformance --test conformance -- <tests> conformance_gc_01`, and
+restored. Every one was refused by the named case, with the panic line of
+`verdict` (`certification.rs:102`) or of the sweep in `conformance_gc_01`
+(`certification.rs:255`) and the fixture it names:
+
+| Planted | Refused by | Fixture that fails |
+| --- | --- | --- |
+| the premise-count check skipped for an extra premise | `gc_03`, `gc_08` | `lb-extra-premise` |
+| the premise-count check skipped for a missing premise | `gc_03`, `gc_08` | `lb-premise-omitted` |
+| a strict lower bound read as `bound <= cost` | `gc_03`, `gc_01` | `lb-tie-bounded` |
+| a non-strict bound read as `bound < cost` | `gc_03`, `gc_01` | `lb-undercut`, `lb-no-attainer` |
+| an omitted tie not reported | `gc_03` | `lb-tie-dropped` |
+| the eligibility test (no plan calls the entry) dropped | `gc_05` | a plan calling the entry blocks every schema |
+| the universe identity not compared | `gc_08` | `reused-enlarged` |
+| an absent bridge read as slope 1, offset 0 | `gc_07` | `bridge-missing` |
+| a bridge violation read as `cost <= limit` | `gc_07` | `bridge-attained` |
+| a bound at the line read as unproved (`cost <= limit`) | `gc_07` | the tight-line sweep |
+| preparation dropped from a bound | `gc_03`, `gc_01` | `lb-preparation-charged` |
+| a premise `excluded` read as proving exclusion of an admitted system | `gc_03`, `gc_01` | `lb-excluded-admitted` |
+| an unresolved measurement read as inadmissible | `gc_03`, `gc_01` | `lb-unresolved-measured` |
+| an attainer allowed to be bounded | `gc_03`, `gc_01` | `lb-attainer-bounded` |
+| attainers not required to be in order | `gc_03`, `gc_01` | `lb-attainers-unordered` |
+| a normality certificate returning the optimum | `gc_06` | `normal-not-global` |
+| a system always GNAF-normal | `gc_06` | `normality-improvable` |
+| a frontier non-member not required to be dominated | `gc_04` | `frontier-tie-dropped` |
+| a dominated member accepted | `gc_04` | `frontier-dominated-member` |
+| a frontier bound not required to be dominated | `gc_04` | `frontier-premise-weakened` |
+| a reduction accepting a bound as complete | `gc_05` | `reduction-incomplete` |
+| the small specialization allowed at the threshold | `gc_05` | `reduction-small-at-threshold` |
+| the large specialization refused at the threshold | `gc_05` | `reduction-threshold-edge` |
+
+The first run of these plants left thirteen unrefused. Nine are now refused
+by a fixture or a sweep added for them (a bound at a tie, preparation in a
+bound, a premise excluding an admitted system, an unresolved system offered as
+measured, a bounded attainer, attainers out of order, both thresholds' edges,
+and a bridge bound exactly at its line). Four cannot be refused: each removes
+a conjunct that another conjunct makes redundant, so the mutant computes the
+same function. Dropping `ascending` from `pays_at_least` leaves `pickFrom`'s
+own length check, which already refuses a position listed twice or out of
+order (the fixture `lb-positions-repeated` states that refusal); dropping
+`small == large` from the collapse eligibility leaves `rewrite`, which is
+`none` for a dispatch of two plans (`reduction-collapse-distinct`); and
+dropping either the size or the preparation comparison from `improves` changes
+nothing, because the rewriting of a dispatch to one plan's fixed system reaches
+a subset of the dispatch's code. They are kept as the statements of UOR-GNAF
+§6.3 and are equivalent mutants, not evidence.
+
+### GNAF certification can fail (model and library)
+
+Planted in `crates/conformance/src/certification_model.rs`: the strict
+lower-bound test `blt(bound, cost)` as `ble(bound, cost)`; `cargo xtask
+check-calculus --write` regenerated `compiler/src/Certification.lex.tex`.
+Command: `cargo test -p repo-conformance --test conformance --
+conformance_gc_02`. Expected: the kernel disagrees with the host on a
+committed verdict.
+
+```text
+thread 'conformance_gc_02' panicked at crates/conformance/src/support.rs:1837:17:
+the compiler project verifies under pinned Lean 4.32.1: LexLeanError {
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 324 filtered out; finished in 196.38s
+```
+
+Removed: the generator was restored and the module regenerated.
+
+Planted in `compiler/proofs/LexLeanCertification/Soundness.lean`: `exact
+sorry` at the head of `normality_never_certifies`; then the statement
+`check req cert ≠ .certified x` as `= .certified x`. Command: `cargo test -p
+repo-conformance --test conformance -- conformance_gc_09`.
+
+```text
+thread 'conformance_gc_09' panicked at crates/conformance/src/cases/certification.rs:1709:37:
+Soundness: the library's token audit: the forbidden token `sorry`
+thread 'conformance_gc_09' panicked at crates/conformance/src/certification_library.rs:209:9:
+the module `LexLeanCertification.Soundness` was rejected by Lean:
+```
+
+Removed: both edits were reverted. A third defect is planted by the case
+itself: a copy of the generated `Certification` whose strict test is weakened
+(`Nat.ble` for `Nat.blt`) is valid Lean, and the library's proofs of the
+lower-bound route are rejected over it.
 
 ## Runtime of `just vv` (Issue #25, merged with #31)
 
