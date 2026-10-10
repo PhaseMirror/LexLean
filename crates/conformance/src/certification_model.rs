@@ -819,48 +819,6 @@ fn schemas(unused: &Unused) -> Vec<Json> {
                 ),
             ),
         ),
-        // GNAF-normal: no schema applies (§6.4). Necessary for a global
-        // optimum and never sufficient for one.
-        definition(
-            "isNormal",
-            vec![
-                p("request", g("Request")),
-                p("grammar", g("Grammar")),
-                p("selector", g("Selector")),
-            ],
-            bool_t(),
-            and(
-                not(f(
-                    "eligible",
-                    vec![
-                        var("request"),
-                        var("grammar"),
-                        var("selector"),
-                        c("Schema.collapse", Vec::new()),
-                    ],
-                )),
-                and(
-                    not(f(
-                        "eligible",
-                        vec![
-                            var("request"),
-                            var("grammar"),
-                            var("selector"),
-                            c("Schema.specializeSmall", Vec::new()),
-                        ],
-                    )),
-                    not(f(
-                        "eligible",
-                        vec![
-                            var("request"),
-                            var("grammar"),
-                            var("selector"),
-                            c("Schema.specializeLarge", Vec::new()),
-                        ],
-                    )),
-                ),
-            ),
-        ),
     ]);
     out
 }
@@ -913,6 +871,81 @@ fn statics() -> Vec<Json> {
     ]
 }
 
+/// A schema improves a system when it applies, the rewritten system is a
+/// system of the grammar's expansion by construction, and its code and
+/// preparation are no larger (§6.3: improving adjacency). The step saving is
+/// the schema's theorem, not a decision.
+fn improvement() -> Vec<Json> {
+    let size_of = |selector: &str| f("staticSize", vec![var("grammar"), var(selector)]);
+    let charge_of = |selector: &str| {
+        f(
+            "staticCharge",
+            vec![var("request"), var("grammar"), var(selector)],
+        )
+    };
+    let improves = |schema: &str| {
+        f(
+            "improves",
+            vec![
+                var("request"),
+                var("grammar"),
+                var("selector"),
+                c(&format!("Schema.{schema}"), Vec::new()),
+            ],
+        )
+    };
+    vec![
+        definition(
+            "improves",
+            vec![
+                p("request", g("Request")),
+                p("grammar", g("Grammar")),
+                p("selector", g("Selector")),
+                p("schema", t("Schema")),
+            ],
+            bool_t(),
+            on_option(
+                f("rewrite", vec![var("schema"), var("selector")]),
+                no(),
+                "target",
+                and(
+                    f(
+                        "eligible",
+                        vec![
+                            var("request"),
+                            var("grammar"),
+                            var("selector"),
+                            var("schema"),
+                        ],
+                    ),
+                    and(
+                        ble(size_of("target"), size_of("selector")),
+                        ble(charge_of("target"), charge_of("selector")),
+                    ),
+                ),
+            ),
+        ),
+        // GNAF-normal: no schema improves the system (§6.4). Necessary for a
+        // global optimum and never sufficient for one.
+        definition(
+            "isNormal",
+            vec![
+                p("request", g("Request")),
+                p("grammar", g("Grammar")),
+                p("selector", g("Selector")),
+            ],
+            bool_t(),
+            and(
+                not(improves("collapse")),
+                and(
+                    not(improves("specializeSmall")),
+                    not(improves("specializeLarge")),
+                ),
+            ),
+        ),
+    ]
+}
+
 /// What one premise establishes about one system. The only definitions of
 /// this module that evaluate a program.
 #[allow(clippy::too_many_lines)]
@@ -929,43 +962,27 @@ fn facts(unused: &Unused) -> Vec<Json> {
             ),
         )
     };
-    let size_of = |selector: &str| f("staticSize", vec![var("grammar"), var(selector)]);
-    let charge_of = |selector: &str| {
+    let on_target = on_option(
         f(
-            "staticCharge",
-            vec![var("request"), var("grammar"), var(selector)],
-        )
-    };
-    let on_target = {
-        let both_cheaper = and(
-            ble(size_of("target"), size_of("selector")),
-            ble(charge_of("target"), charge_of("selector")),
-        );
-        on_option(
+            "positionOf",
+            vec![var("selectors"), var("target"), nat(0)],
+        ),
+        unproven(),
+        "targetPosition",
+        ite(
             f(
-                "positionOf",
-                vec![var("selectors"), var("target"), nat(0)],
+                "improves",
+                vec![
+                    var("request"),
+                    var("grammar"),
+                    var("selector"),
+                    var("schema"),
+                ],
             ),
+            fact("reduces", vec![var("targetPosition")]),
             unproven(),
-            "targetPosition",
-            ite(
-                and(
-                    f(
-                        "eligible",
-                        vec![
-                            var("request"),
-                            var("grammar"),
-                            var("selector"),
-                            var("schema"),
-                        ],
-                    ),
-                    both_cheaper,
-                ),
-                fact("reduces", vec![var("targetPosition")]),
-                unproven(),
-            ),
-        )
-    };
+        ),
+    );
     let premise_body = m(
         var("premise"),
         vec![
@@ -2371,6 +2388,7 @@ fn declarations() -> Vec<Json> {
     out.extend(domain_conditions(&unused));
     out.extend(schemas(&unused));
     out.extend(statics());
+    out.extend(improvement());
     out.extend(facts(&unused));
     out.extend(lower_bound(&unused));
     out.extend(frontier(&unused));
