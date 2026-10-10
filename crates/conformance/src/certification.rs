@@ -146,12 +146,11 @@ fn bounded(request: &Request, bound: u64, attainers: &[u64], strict: bool) -> Ve
             match system.status {
                 Status::Inadmissible => first_disagreement(system)
                     .map_or(Premise::Measured, |position| Premise::Excluded { position }),
-                Status::Admitted { .. } | Status::Unresolved => {
-                    prefix(system, enough).unwrap_or_else(|| match system.status {
+                Status::Admitted { .. } | Status::Unresolved => prefix(system, enough)
+                    .unwrap_or_else(|| match system.status {
                         Status::Admitted { .. } => Premise::Measured,
                         Status::Inadmissible | Status::Unresolved => all_agreeing(system),
-                    })
-                }
+                    }),
             }
         })
         .collect()
@@ -177,9 +176,7 @@ fn covered(request: &Request, members: &[u64]) -> Vec<Premise> {
             }
             let dominated = |cost: u64, size: u64| {
                 member_costs.iter().any(|(steps, member_size)| {
-                    *steps <= cost
-                        && *member_size <= size
-                        && (*steps < cost || *member_size < size)
+                    *steps <= cost && *member_size <= size && (*steps < cost || *member_size < size)
                 })
             };
             match system.status {
@@ -264,7 +261,9 @@ const REJECTED_SCOPE: &str = "reject-calculus-program-scope";
 
 /// Every certificate, by name, with the name of its request.
 #[allow(clippy::too_many_lines)]
-fn certificates(requests: &BTreeMap<String, Request>) -> Vec<(&'static str, &'static str, Certificate)> {
+fn certificates(
+    requests: &BTreeMap<String, Request>,
+) -> Vec<(&'static str, &'static str, Certificate)> {
     let request = |name: &str| &requests[name];
     let mut out: Vec<(&'static str, &'static str, Certificate)> = Vec::new();
     let mut add = |name: &'static str, request_name: &'static str, certificate: Certificate| {
@@ -546,11 +545,7 @@ fn certificates(requests: &BTreeMap<String, Request>) -> Vec<(&'static str, &'st
         REJECTED_SCOPE,
         Certificate {
             scope: gnaf::Scope::CalculusPrograms,
-            ..certificate(
-                request(REJECTED_SCOPE),
-                Route::Reduction,
-                Vec::new(),
-            )
+            ..certificate(request(REJECTED_SCOPE), Route::Reduction, Vec::new())
         },
     );
     // A certificate that is for another universe: the same grammar and plans
@@ -752,9 +747,7 @@ fn certificates(requests: &BTreeMap<String, Request>) -> Vec<(&'static str, &'st
         ARGMIN,
         certificate(
             argmin,
-            Route::Normality {
-                system: members[0],
-            },
+            Route::Normality { system: members[0] },
             only_measured(argmin, &members),
         ),
     );
@@ -972,7 +965,10 @@ fn definitions() -> serde_json::Map<String, Json> {
                 closed(json!({"kind": {"const": "reduced"}, "schema": schema_names})),
             ]}),
         ),
-        ("bridge", closed(json!({"offset": natural(), "slope": natural()}))),
+        (
+            "bridge",
+            closed(json!({"offset": natural(), "slope": natural()})),
+        ),
         (
             "route",
             json!({"oneOf": [
@@ -1092,7 +1088,14 @@ pub fn schemas() -> [(&'static str, Json); 2] {
         "LexLean GNAF certificate over a request (SPEC.md §17.18)",
     );
     let mut certificate_definitions = definitions.clone();
-    for name in ["certificate", "refusal", "obligation", "established", "certified", "verdict"] {
+    for name in [
+        "certificate",
+        "refusal",
+        "obligation",
+        "established",
+        "certified",
+        "verdict",
+    ] {
         certificate_definitions.remove(name);
     }
     certificate["$defs"] = Json::Object(certificate_definitions);

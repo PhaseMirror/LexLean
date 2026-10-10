@@ -11,11 +11,12 @@
 pub mod calculus;
 pub mod calculus_source;
 pub mod cases;
+pub mod certification;
+pub mod certification_library;
+pub mod certification_model;
 pub mod differential;
 pub mod fixtures;
 pub mod gnaf;
-pub mod certification;
-pub mod certification_model;
 pub mod gnaf_model;
 mod lx;
 pub mod machine;

@@ -342,8 +342,8 @@ fn check_capacity(certificate: &Certificate) -> Result<(), LexLeanError> {
 /// `lexlean/gnaf-certificate/1`; `LLS8002` for a certificate beyond the
 /// host's capacity.
 pub fn load(bytes: &[u8]) -> Result<Certificate, LexLeanError> {
-    let certificate: Certificate = serde_json::from_slice(bytes)
-        .map_err(|error| malformed(&format!("malformed: {error}")))?;
+    let certificate: Certificate =
+        serde_json::from_slice(bytes).map_err(|error| malformed(&format!("malformed: {error}")))?;
     if certificate.spec != CERTIFICATE_SPEC {
         return Err(malformed(&format!(
             "spec `{}`, expected `{CERTIFICATE_SPEC}`",
@@ -463,12 +463,9 @@ fn rewrite(schema: Schema, selector: super::Selector) -> Option<super::Selector>
     use super::Selector::{Dispatch, Fixed};
     match (schema, selector) {
         (_, Fixed { .. }) => None,
-        (
-            Schema::Collapse,
-            Dispatch {
-                small, large, ..
-            },
-        ) => (small == large).then_some(Fixed { plan: small }),
+        (Schema::Collapse, Dispatch { small, large, .. }) => {
+            (small == large).then_some(Fixed { plan: small })
+        }
         (Schema::SpecializeSmall, Dispatch { small, .. }) => Some(Fixed { plan: small }),
         (Schema::SpecializeLarge, Dispatch { large, .. }) => Some(Fixed { plan: large }),
     }
@@ -479,10 +476,7 @@ fn eligible(request: &Request, selector: super::Selector, schema: Schema) -> boo
     let Carrier::Grammar { plans, .. } = &request.carrier else {
         return false;
     };
-    if !plans
-        .iter()
-        .all(|plan| expr_isolated(&plan.function.body))
-    {
+    if !plans.iter().all(|plan| expr_isolated(&plan.function.body)) {
         return false;
     }
     match selector {
@@ -493,7 +487,11 @@ fn eligible(request: &Request, selector: super::Selector, schema: Schema) -> boo
             large,
         } => match schema {
             Schema::Collapse => {
-                small == large && request.domain.iter().all(|value| list_length(value).is_some())
+                small == large
+                    && request
+                        .domain
+                        .iter()
+                        .all(|value| list_length(value).is_some())
             }
             Schema::SpecializeSmall => request
                 .domain
@@ -508,8 +506,7 @@ fn eligible(request: &Request, selector: super::Selector, schema: Schema) -> boo
 }
 
 fn static_size(request: &Request, selector: super::Selector) -> u64 {
-    realize(&request.carrier, selector)
-        .map_or(0, |system| super::program_size(&system))
+    realize(&request.carrier, selector).map_or(0, |system| super::program_size(&system))
 }
 
 fn static_charge(request: &Request, selector: super::Selector) -> Result<u64, LexLeanError> {
@@ -661,9 +658,7 @@ fn lower_position(
     position: u64,
 ) -> Option<Obligation> {
     match fact {
-        Fact::Inadmissible => {
-            attainer.then_some(Obligation::AttainerInadmissible { position })
-        }
+        Fact::Inadmissible => attainer.then_some(Obligation::AttainerInadmissible { position }),
         Fact::Admitted { cost, .. } => {
             if attainer {
                 if cost == bound {
@@ -712,7 +707,10 @@ fn established_from(facts: &[Fact], attainers: &[u64]) -> Established {
     let Some(head) = attainers.first() else {
         return not_certified();
     };
-    match usize::try_from(*head).ok().and_then(|index| facts.get(index)) {
+    match usize::try_from(*head)
+        .ok()
+        .and_then(|index| facts.get(index))
+    {
         Some(Fact::Admitted { cost, size }) => Established::CorrectOnly {
             system: *head,
             steps: *cost,
@@ -731,7 +729,11 @@ fn established_from(facts: &[Fact], attainers: &[u64]) -> Established {
 
 /// `Certification.lowerVerdict`.
 fn lower_verdict(strict: bool, bound: u64, attainers: &[u64], facts: &[Fact]) -> Verdict {
-    if !ascending(attainers) || !attainers.iter().all(|position| *position < facts.len() as u64) {
+    if !ascending(attainers)
+        || !attainers
+            .iter()
+            .all(|position| *position < facts.len() as u64)
+    {
         return incomplete(Obligation::AttainersMalformed, not_certified());
     }
     for (index, fact) in facts.iter().enumerate() {
@@ -820,17 +822,18 @@ fn frontier_verdict(members: &[u64], facts: &[Fact]) -> Verdict {
         .into_iter()
         .filter(|(position, _)| members.contains(position))
         .collect();
-    if !ascending(members) || !members.iter().all(|position| *position < facts.len() as u64) {
+    if !ascending(members)
+        || !members
+            .iter()
+            .all(|position| *position < facts.len() as u64)
+    {
         return incomplete(Obligation::AttainersMalformed, not_certified());
     }
     for (index, fact) in facts.iter().enumerate() {
         let position = index as u64;
-        if let Some(obligation) = frontier_position(
-            members.contains(&position),
-            &member_rows,
-            *fact,
-            position,
-        ) {
+        if let Some(obligation) =
+            frontier_position(members.contains(&position), &member_rows, *fact, position)
+        {
             return incomplete(obligation, not_certified());
         }
     }
@@ -875,7 +878,10 @@ fn reduction_verdict(shape: u64, facts: &[Fact]) -> Verdict {
 
 /// `Certification.bridgePosition`.
 fn bridge_position(bridge: Bridge, fact: Fact, size: u64, position: u64) -> Option<Obligation> {
-    let limit = bridge.slope.saturating_mul(size).saturating_add(bridge.offset);
+    let limit = bridge
+        .slope
+        .saturating_mul(size)
+        .saturating_add(bridge.offset);
     match fact {
         Fact::Inadmissible => None,
         Fact::Admitted { cost, .. } => {
@@ -935,7 +941,10 @@ fn representation_verdict(
         .slope
         .saturating_mul(normal_size)
         .saturating_add(bridge.offset);
-    match usize::try_from(normal).ok().and_then(|index| facts.get(index)) {
+    match usize::try_from(normal)
+        .ok()
+        .and_then(|index| facts.get(index))
+    {
         Some(Fact::Admitted { cost, size }) => {
             if *cost == limit {
                 Verdict::Certified {
@@ -1160,26 +1169,24 @@ fn ids(members: &[u64]) -> Json {
 
 fn premise_term(premise: &Premise) -> Json {
     match premise {
-        Premise::Excluded { position } => {
-            model("Premise.excluded", vec![term::nat(*position)])
-        }
-        Premise::PaysAtLeast { positions } => {
-            model("Premise.paysAtLeast", vec![ids(positions)])
-        }
+        Premise::Excluded { position } => model("Premise.excluded", vec![term::nat(*position)]),
+        Premise::PaysAtLeast { positions } => model("Premise.paysAtLeast", vec![ids(positions)]),
         Premise::Measured => model("Premise.measured", Vec::new()),
         Premise::Reduced { schema } => model(
             "Premise.reduced",
-            vec![model(&format!("Schema.{}", schema.constructor()), Vec::new())],
+            vec![model(
+                &format!("Schema.{}", schema.constructor()),
+                Vec::new(),
+            )],
         ),
     }
 }
 
 fn route_term(route: &Route) -> Json {
     match route {
-        Route::LowerBound { bound, attainers } => model(
-            "Route.lowerBound",
-            vec![term::nat(*bound), ids(attainers)],
-        ),
+        Route::LowerBound { bound, attainers } => {
+            model("Route.lowerBound", vec![term::nat(*bound), ids(attainers)])
+        }
         Route::FrontierCover { members } => model("Route.frontierCover", vec![ids(members)]),
         Route::Reduction => model("Route.reduction", Vec::new()),
         Route::Representation { normal, bridge } => {
@@ -1188,18 +1195,15 @@ fn route_term(route: &Route) -> Json {
                 None => json!({"kind": "constructor", "constructor": {"name": "Option.none"},
                                "arguments": [], "type_arguments": [bridge_type]}),
                 Some(bridge) => json!({"kind": "constructor",
-                    "constructor": {"name": "Option.some"},
-                    "type_arguments": [bridge_type],
-                    "arguments": [json!({"kind": "record", "type": term::member(MODEL, "Bridge"),
-                        "fields": [
-                            {"field": "slope", "value": term::nat(bridge.slope)},
-                            {"field": "offset", "value": term::nat(bridge.offset)},
-                        ]})]}),
+                "constructor": {"name": "Option.some"},
+                "type_arguments": [bridge_type],
+                "arguments": [json!({"kind": "record", "type": term::member(MODEL, "Bridge"),
+                    "fields": [
+                        {"field": "slope", "value": term::nat(bridge.slope)},
+                        {"field": "offset", "value": term::nat(bridge.offset)},
+                    ]})]}),
             };
-            model(
-                "Route.representation",
-                vec![term::nat(*normal), bridge],
-            )
+            model("Route.representation", vec![term::nat(*normal), bridge])
         }
         Route::Normality { system } => model("Route.normality", vec![term::nat(*system)]),
     }
@@ -1219,7 +1223,10 @@ pub fn certificate_term(certificate: &Certificate) -> Json {
     };
     let claim = super::claim(&certificate.claim);
     let fields = vec![
-        ("verifier", json!({"kind": "string", "value": certificate.verifier})),
+        (
+            "verifier",
+            json!({"kind": "string", "value": certificate.verifier}),
+        ),
         (
             "universe",
             json!({"kind": "string", "value": certificate.universe.to_hex()}),
@@ -1260,17 +1267,14 @@ fn refusal_term(refusal: &Refusal) -> Json {
         Refusal::MissingPremise { position } => {
             model("Refusal.missingPremise", vec![term::nat(*position)])
         }
-        Refusal::ExtraPremise { count } => {
-            model("Refusal.extraPremise", vec![term::nat(*count)])
-        }
+        Refusal::ExtraPremise { count } => model("Refusal.extraPremise", vec![term::nat(*count)]),
     }
 }
 
 fn obligation_term(obligation: &Obligation) -> Json {
     let simple = |name: &str| model(&format!("Obligation.{name}"), Vec::new());
-    let at = |name: &str, position: u64| {
-        model(&format!("Obligation.{name}"), vec![term::nat(position)])
-    };
+    let at =
+        |name: &str, position: u64| model(&format!("Obligation.{name}"), vec![term::nat(position)]);
     match obligation {
         Obligation::UnresolvedMember { position } => at("unresolvedMember", *position),
         Obligation::MemberUnproven { position } => at("memberUnproven", *position),
@@ -1336,9 +1340,7 @@ pub fn verdict_term(verdict: &Verdict) -> Json {
                 Certified::Argmin { members, steps } => {
                     model("Certified.argmin", vec![ids(members), term::nat(*steps)])
                 }
-                Certified::Frontier { members } => {
-                    model("Certified.frontier", vec![ids(members)])
-                }
+                Certified::Frontier { members } => model("Certified.frontier", vec![ids(members)]),
             }],
         ),
         Verdict::Incomplete {

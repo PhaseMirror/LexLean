@@ -245,10 +245,7 @@ fn last_by_index(padding: u64) -> Function {
         Prim::Index,
         vec![
             var(0),
-            prim(
-                Prim::NatSub,
-                vec![prim(Prim::Length, vec![var(0)]), one],
-            ),
+            prim(Prim::NatSub, vec![prim(Prim::Length, vec![var(0)]), one]),
         ],
     );
     for level in 0..padding {
@@ -556,10 +553,7 @@ fn requests() -> Vec<(&'static str, Request)> {
         // GNAF-VEC-08: the same problem, plans, and domain on an enlarged
         // machine is another universe; nothing certified for the smaller
         // machine is certified for it.
-        (
-            "vec08-enlarged",
-            with_machine(|machine| machine.fuel *= 2),
-        ),
+        ("vec08-enlarged", with_machine(|machine| machine.fuel *= 2)),
         // Plain recursion runs out of fuel on the long list, so every system
         // that runs it there has an unknown cost.
         (

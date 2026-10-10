@@ -278,7 +278,7 @@ pub fn staged(project: &P, certified: &[Certified]) -> Workspace {
     workspace(&user, &certificates).expect("the workspace stages")
 }
 
-fn toolchain_bin() -> PathBuf {
+pub(crate) fn toolchain_bin() -> PathBuf {
     real_elan_home()
         .join("toolchains")
         .join(mangled_toolchain_name())
@@ -307,7 +307,7 @@ fn pinned(program: &str, root: &Path) -> Command {
     )
 }
 
-fn pinned_with(program: &str, root: &Path, search: &[PathBuf]) -> Command {
+pub(crate) fn pinned_with(program: &str, root: &Path, search: &[PathBuf]) -> Command {
     let bin = toolchain_bin();
     let path = std::env::join_paths(std::iter::once(bin.clone()).chain(std::env::split_paths(
         &std::env::var_os("PATH").unwrap_or_default(),
@@ -324,9 +324,9 @@ fn pinned_with(program: &str, root: &Path, search: &[PathBuf]) -> Command {
 /// The modules every workspace shares: the calculus and Rust machine modules
 /// and the preservation library, which no project's modules or certificates
 /// change.
-struct Shipped {
+pub(crate) struct Shipped {
     /// The directory the compiled modules are found in.
-    build: PathBuf,
+    pub(crate) build: PathBuf,
     /// Their names.
     modules: std::collections::BTreeSet<String>,
 }
@@ -343,7 +343,7 @@ struct Shipped {
 /// renaming a finished directory, so a process that finds it finds all of it.
 /// Each workspace still compiles and replays every module that depends on a
 /// project, and `leanchecker` replays what a certificate imports as well.
-fn shipped() -> &'static Shipped {
+pub(crate) fn shipped() -> &'static Shipped {
     static SHIPPED: std::sync::OnceLock<Shipped> = std::sync::OnceLock::new();
     SHIPPED.get_or_init(|| {
         let staged = workspace(&[], &[]).expect("the shipped environment stages");
@@ -429,7 +429,7 @@ fn lean(root: &Path, arguments: &[String]) -> std::process::Output {
         .expect("lean runs")
 }
 
-fn joined(output: &std::process::Output) -> String {
+pub(crate) fn joined(output: &std::process::Output) -> String {
     format!(
         "{}{}",
         String::from_utf8_lossy(&output.stdout),

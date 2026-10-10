@@ -2360,7 +2360,9 @@ impl ExprFold<'_> {
                 syntax_arm(
                     "Expr.call",
                     binders!["function", "operands"],
-                    operands((self.call_reference.unwrap_or(self.reference))(var("function"))),
+                    operands((self.call_reference.unwrap_or(self.reference))(var(
+                        "function",
+                    ))),
                 ),
                 syntax_arm(
                     "Expr.closure",

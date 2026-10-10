@@ -22,8 +22,8 @@ use serde_json::Value as Json;
 use crate::gnaf_model::{claims, ExprFold, Unused, RUN_AXIOMS};
 use crate::lx::{
     self, add, and, axioms, beq, ble, blt, boolean, call, call_at, cons, definition, first, ite,
-    let_in, list, list_t, local_t, nat, nat_t, nil, none, not, option_t, pair,
-    parameter, prim, product_t, project, recursive, second, some, string_t, structure, var,
+    let_in, list, list_t, local_t, nat, nat_t, nil, none, not, option_t, pair, parameter, prim,
+    product_t, project, recursive, second, some, string_t, structure, var,
 };
 
 /// The path of the generated module, relative to the repository root.
@@ -454,10 +454,7 @@ fn lookups() -> Vec<Json> {
             "items",
             definition(
                 name,
-                vec![
-                    p("items", list_t(element.clone())),
-                    p("index", nat_t()),
-                ],
+                vec![p("items", list_t(element.clone())), p("index", nat_t())],
                 option_t(element.clone()),
                 on_list(
                     var("items"),
@@ -533,10 +530,7 @@ fn lookups() -> Vec<Json> {
                             beq(var("wanted"), var("index")),
                             cons(
                                 var("head"),
-                                f(
-                                    "pickFrom",
-                                    vec![var("rest"), next("index"), var("later")],
-                                ),
+                                f("pickFrom", vec![var("rest"), next("index"), var("later")]),
                             ),
                             f(
                                 "pickFrom",
@@ -673,19 +667,20 @@ fn schemas(unused: &Unused) -> Vec<Json> {
     .declarations(unused);
     let fixed = |plan: Json| gc("Selector.fixed", vec![plan]);
     let selector_option = || option_t(g("Selector"));
-    let on_dispatch = |selector: Json, small_large: &dyn Fn(&str, &str) -> Json, otherwise: Json| {
-        m(
-            selector,
-            vec![
-                ga("Selector.fixed", binders![unused.next()], otherwise),
-                ga(
-                    "Selector.dispatch",
-                    binders![unused.next(), "small", "large"],
-                    small_large("small", "large"),
-                ),
-            ],
-        )
-    };
+    let on_dispatch =
+        |selector: Json, small_large: &dyn Fn(&str, &str) -> Json, otherwise: Json| {
+            m(
+                selector,
+                vec![
+                    ga("Selector.fixed", binders![unused.next()], otherwise),
+                    ga(
+                        "Selector.dispatch",
+                        binders![unused.next(), "small", "large"],
+                        small_large("small", "large"),
+                    ),
+                ],
+            )
+        };
     out.extend([
         // Every plan's code neither calls the entry nor applies a
         // closure, so a system's entry is the only code its plans cannot
@@ -963,10 +958,7 @@ fn facts(unused: &Unused) -> Vec<Json> {
         )
     };
     let on_target = on_option(
-        f(
-            "positionOf",
-            vec![var("selectors"), var("target"), nat(0)],
-        ),
+        f("positionOf", vec![var("selectors"), var("target"), nat(0)]),
         unproven(),
         "targetPosition",
         ite(
@@ -1027,12 +1019,7 @@ fn facts(unused: &Unused) -> Vec<Json> {
                         on_status(
                             gf(
                                 "statusOn",
-                                vec![
-                                    var("system"),
-                                    request("reference"),
-                                    fuel(),
-                                    var("picked"),
-                                ],
+                                vec![var("system"), request("reference"), fuel(), var("picked")],
                             ),
                             (
                                 binders!["steps", unused.next()],
@@ -1040,10 +1027,7 @@ fn facts(unused: &Unused) -> Vec<Json> {
                                     "atLeast",
                                     vec![
                                         cost_here(var("steps")),
-                                        f(
-                                            "staticSize",
-                                            vec![var("grammar"), var("selector")],
-                                        ),
+                                        f("staticSize", vec![var("grammar"), var("selector")]),
                                     ],
                                 ),
                             ),
@@ -1401,10 +1385,7 @@ fn lower_bound(unused: &Unused) -> Vec<Json> {
                         vec![(
                             "admitted",
                             binders!["cost", "size"],
-                            established(
-                                "correctOnly",
-                                vec![var("head"), var("cost"), var("size")],
-                            ),
+                            established("correctOnly", vec![var("head"), var("cost"), var("size")]),
                         )],
                         &established("notCertified", Vec::new()),
                     ),
@@ -1542,14 +1523,8 @@ fn frontier(unused: &Unused) -> Vec<Json> {
         ],
         &closed(),
     );
-    let scan_arguments = |facts: Json, position: Json| {
-        vec![
-            var("members"),
-            var("memberRows"),
-            facts,
-            position,
-        ]
-    };
+    let scan_arguments =
+        |facts: Json, position: Json| vec![var("members"), var("memberRows"), facts, position];
     vec![
         definition(
             "frontierPosition",
@@ -1607,10 +1582,7 @@ fn frontier(unused: &Unused) -> Vec<Json> {
                 rows_t(),
                 f(
                     "rowsOfMembers",
-                    vec![
-                        f("factRows", vec![var("facts"), nat(0)]),
-                        var("members"),
-                    ],
+                    vec![f("factRows", vec![var("facts"), nat(0)]), var("members")],
                 ),
                 ite(
                     not(and(
@@ -1638,10 +1610,7 @@ fn frontier(unused: &Unused) -> Vec<Json> {
                         "obligation",
                         c(
                             "Verdict.incomplete",
-                            vec![
-                                var("obligation"),
-                                established("notCertified", Vec::new()),
-                            ],
+                            vec![var("obligation"), established("notCertified", Vec::new())],
                         ),
                     ),
                 ),
@@ -1748,10 +1717,7 @@ fn reduction(unused: &Unused) -> Vec<Json> {
                 "obligation",
                 c(
                     "Verdict.incomplete",
-                    vec![
-                        var("obligation"),
-                        established("notCertified", Vec::new()),
-                    ],
+                    vec![var("obligation"), established("notCertified", Vec::new())],
                 ),
             ),
         ),
@@ -1859,12 +1825,7 @@ fn representation(unused: &Unused) -> Vec<Json> {
                     on_option(
                         f(
                             "bridgePosition",
-                            vec![
-                                var("bridge"),
-                                var("head"),
-                                var("measuredSize"),
-                                position(),
-                            ],
+                            vec![var("bridge"), var("head"), var("measuredSize"), position()],
                         ),
                         f(
                             "scanBridge",
@@ -1898,14 +1859,14 @@ fn representation(unused: &Unused) -> Vec<Json> {
                 binders!["cost", "size"],
                 ite(
                     beq(var("cost"), var("limit")),
-                    certified("optimum", vec![list(nat_t(), vec![var("normal")]), var("cost")]),
+                    certified(
+                        "optimum",
+                        vec![list(nat_t(), vec![var("normal")]), var("cost")],
+                    ),
                     incomplete(
                         "boundUnattained",
                         Vec::new(),
-                        established(
-                            "correctOnly",
-                            vec![var("normal"), var("cost"), var("size")],
-                        ),
+                        established("correctOnly", vec![var("normal"), var("cost"), var("size")]),
                     ),
                 ),
             )],
@@ -1933,10 +1894,7 @@ fn representation(unused: &Unused) -> Vec<Json> {
         "obligation",
         c(
             "Verdict.incomplete",
-            vec![
-                var("obligation"),
-                established("notCertified", Vec::new()),
-            ],
+            vec![var("obligation"), established("notCertified", Vec::new())],
         ),
     );
     let measured = on_option(
@@ -2297,7 +2255,10 @@ fn checker(unused: &Unused) -> Vec<Json> {
         guarded(
             f(
                 "sameObjective",
-                vec![certificate("objective"), project(var("request"), "objective")],
+                vec![
+                    certificate("objective"),
+                    project(var("request"), "objective"),
+                ],
             ),
             "objectiveMismatch",
             guarded(
@@ -2363,10 +2324,7 @@ fn checker(unused: &Unused) -> Vec<Json> {
                 ],
                 t("Verdict"),
                 ite(
-                    not(text_equal(
-                        certificate("verifier"),
-                        lx::string(VERIFIER),
-                    )),
+                    not(text_equal(certificate("verifier"), lx::string(VERIFIER))),
                     refused("verifierMismatch", Vec::new()),
                     on_option(
                         gf("validate", vec![var("request")]),
@@ -2402,5 +2360,9 @@ fn declarations() -> Vec<Json> {
 /// The `Certification` module.
 #[must_use]
 pub fn module() -> String {
-    lx::module_tex(NAME, &[term::SYNTAX, term::SEMANTICS, MODEL], declarations())
+    lx::module_tex(
+        NAME,
+        &[term::SYNTAX, term::SEMANTICS, MODEL],
+        declarations(),
+    )
 }
