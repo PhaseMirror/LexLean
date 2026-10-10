@@ -300,6 +300,7 @@ The completed repository MUST have this layout. Additional files are allowed onl
 ├── rust-toolchain.toml
 ├── rustfmt.toml
 ├── compiler/
+│   ├── certificates/
 │   ├── expected/
 │   ├── fixtures/
 │   ├── gnaf/
@@ -309,6 +310,7 @@ The completed repository MUST have this layout. Additional files are allowed onl
 │   ├── lean-toolchain
 │   ├── lexlean.lock
 │   ├── lexlean.toml
+│   ├── proofs/
 │   ├── rust/
 │   └── src/
 ├── crates/
@@ -447,6 +449,8 @@ The completed repository MUST have this layout. Additional files are allowed onl
 │   ├── coverage.schema.json
 │   ├── diagnostic.schema.json
 │   ├── entry.schema.json
+│   ├── gnaf-certificate-fixture.schema.json
+│   ├── gnaf-certificate.schema.json
 │   ├── gnaf-fixture.schema.json
 │   ├── gnaf-request.schema.json
 │   ├── lexicon.schema.json
@@ -4149,8 +4153,11 @@ theorems of `Gnaf` over the same `argmin`, `frontier`, and certification the
 answers are computed by, decided by the kernel. `compiler/gnaf.manifest.json`
 is the dependency manifest §20 requires: the draft's revision and SHA-256,
 every kind, operation, machine, cost, proof, interchange, and address profile
-with its role, every restriction of the admitted universe, and the claim
-classes the model actually answers. The authority's requirements are
+with its role, the certificate profiles of §17.18, every restriction of the
+admitted universe, and the claim classes the model actually answers. An answer
+enumerates the universe; a claim over it is certified without enumerating it
+only by a certificate (§17.18), and an enumeration answer, a correct system,
+or a GNAF-normal one is never that certificate. The authority's requirements are
 `some-true` here: reproduced from the cited document, a copy of which is
 vendored at `model/authorities/UOR-GNAF-v1-draft.2.md` and whose SHA-256
 `cargo xtask validate-model` recomputes. The model and its fixtures are
@@ -5862,7 +5869,9 @@ tree. The language-1.1 ID excludes the files introduced solely for 1.2:
 `language/preservation-1.2/`, `language/core-1.2/`,
 `language/std/{bool,int,nat}-1.2/`, `schemas/attestation-v2.schema.json`,
 `schemas/build-manifest-v2.schema.json`,
-`schemas/compiler-input.schema.json`, `schemas/gnaf-fixture.schema.json`,
+`schemas/compiler-input.schema.json`,
+`schemas/gnaf-certificate-fixture.schema.json`,
+`schemas/gnaf-certificate.schema.json`, `schemas/gnaf-fixture.schema.json`,
 `schemas/gnaf-request.schema.json`,
 `schemas/lexicon-v2.schema.json`, `schemas/lock-1.1.schema.json`,
 `schemas/lock-v2.schema.json`, `schemas/preservation.schema.json`,

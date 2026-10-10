@@ -1,0 +1,389 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\begin{document}
+\section*{Semantic declarations}
+\subsection*{\texttt{Schema}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{collapse}: \texttt{()}.\par
+\noindent Constructor \texttt{specializeSmall}: \texttt{()}.\par
+\noindent Constructor \texttt{specializeLarge}: \texttt{()}.\par
+\subsection*{\texttt{Premise}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{excluded}: \texttt{(Nat)}.\par
+\noindent Constructor \texttt{paysAtLeast}: \texttt{(List (Nat))}.\par
+\noindent Constructor \texttt{measured}: \texttt{()}.\par
+\noindent Constructor \texttt{reduced}: \texttt{(Schema)}.\par
+\subsection*{\texttt{Bridge}}
+\noindent Kind: \texttt{structure}.\par
+\noindent Field \texttt{slope}: \texttt{Nat}.\par
+\noindent Field \texttt{offset}: \texttt{Nat}.\par
+\subsection*{\texttt{Route}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{lowerBound}: \texttt{(Nat, List (Nat))}.\par
+\noindent Constructor \texttt{frontierCover}: \texttt{(List (Nat))}.\par
+\noindent Constructor \texttt{reduction}: \texttt{()}.\par
+\noindent Constructor \texttt{representation}: \texttt{(Nat, Option (Bridge))}.\par
+\noindent Constructor \texttt{normality}: \texttt{(Nat)}.\par
+\subsection*{\texttt{Certificate}}
+\noindent Kind: \texttt{structure}.\par
+\noindent Field \texttt{verifier}: \texttt{String}.\par
+\noindent Field \texttt{universe}: \texttt{String}.\par
+\noindent Field \texttt{objective}: \texttt{LexLeanTarget.Gnaf.Objective}.\par
+\noindent Field \texttt{claim}: \texttt{LexLeanTarget.Gnaf.ClaimClass}.\par
+\noindent Field \texttt{scope}: \texttt{LexLeanTarget.Gnaf.Scope}.\par
+\noindent Field \texttt{route}: \texttt{Route}.\par
+\noindent Field \texttt{premises}: \texttt{List (Premise)}.\par
+\subsection*{\texttt{Fact}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{inadmissible}: \texttt{()}.\par
+\noindent Constructor \texttt{admitted}: \texttt{(Nat, Nat)}.\par
+\noindent Constructor \texttt{atLeast}: \texttt{(Nat, Nat)}.\par
+\noindent Constructor \texttt{reduces}: \texttt{(Nat)}.\par
+\noindent Constructor \texttt{unresolved}: \texttt{()}.\par
+\noindent Constructor \texttt{unproven}: \texttt{()}.\par
+\subsection*{\texttt{Refusal}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{verifierMismatch}: \texttt{()}.\par
+\noindent Constructor \texttt{requestRejected}: \texttt{(LexLeanTarget.Gnaf.Rejection)}.\par
+\noindent Constructor \texttt{noGrammar}: \texttt{()}.\par
+\noindent Constructor \texttt{universeMismatch}: \texttt{()}.\par
+\noindent Constructor \texttt{objectiveMismatch}: \texttt{()}.\par
+\noindent Constructor \texttt{claimMismatch}: \texttt{()}.\par
+\noindent Constructor \texttt{scopeMismatch}: \texttt{()}.\par
+\noindent Constructor \texttt{routeIncompatible}: \texttt{()}.\par
+\noindent Constructor \texttt{missingPremise}: \texttt{(Nat)}.\par
+\noindent Constructor \texttt{extraPremise}: \texttt{(Nat)}.\par
+\subsection*{\texttt{Obligation}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{unresolvedMember}: \texttt{(Nat)}.\par
+\noindent Constructor \texttt{memberUnproven}: \texttt{(Nat)}.\par
+\noindent Constructor \texttt{memberBelowBound}: \texttt{(Nat)}.\par
+\noindent Constructor \texttt{attainerOmitted}: \texttt{(Nat)}.\par
+\noindent Constructor \texttt{attainerUnmeasured}: \texttt{(Nat)}.\par
+\noindent Constructor \texttt{attainerInadmissible}: \texttt{(Nat)}.\par
+\noindent Constructor \texttt{attainerAboveBound}: \texttt{(Nat)}.\par
+\noindent Constructor \texttt{attainersMalformed}: \texttt{()}.\par
+\noindent Constructor \texttt{boundUnattained}: \texttt{()}.\par
+\noindent Constructor \texttt{frontierMemberUnmeasured}: \texttt{(Nat)}.\par
+\noindent Constructor \texttt{frontierMemberDominated}: \texttt{(Nat)}.\par
+\noindent Constructor \texttt{frontierMemberOmitted}: \texttt{(Nat)}.\par
+\noindent Constructor \texttt{reductionIncomplete}: \texttt{(Nat)}.\par
+\noindent Constructor \texttt{noAdmittedMember}: \texttt{()}.\par
+\noindent Constructor \texttt{bridgeMissing}: \texttt{()}.\par
+\noindent Constructor \texttt{bridgeViolated}: \texttt{(Nat)}.\par
+\noindent Constructor \texttt{bridgeUnproved}: \texttt{(Nat)}.\par
+\noindent Constructor \texttt{normalOutOfRange}: \texttt{()}.\par
+\noindent Constructor \texttt{normalNotMinimal}: \texttt{(Nat)}.\par
+\noindent Constructor \texttt{normalUnmeasured}: \texttt{()}.\par
+\noindent Constructor \texttt{optimalityUnproved}: \texttt{()}.\par
+\noindent Constructor \texttt{systemNotNormal}: \texttt{()}.\par
+\subsection*{\texttt{Established}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{notCertified}: \texttt{()}.\par
+\noindent Constructor \texttt{correctOnly}: \texttt{(Nat, Nat, Nat)}.\par
+\noindent Constructor \texttt{locallyNormalized}: \texttt{(Nat)}.\par
+\noindent Constructor \texttt{representationMinimal}: \texttt{(Nat, Nat)}.\par
+\subsection*{\texttt{Certified}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{optimum}: \texttt{(List (Nat), Nat)}.\par
+\noindent Constructor \texttt{argmin}: \texttt{(List (Nat), Nat)}.\par
+\noindent Constructor \texttt{frontier}: \texttt{(List (Nat))}.\par
+\subsection*{\texttt{Verdict}}
+\noindent Kind: \texttt{inductive}.\par
+\noindent Constructor \texttt{refused}: \texttt{(Refusal)}.\par
+\noindent Constructor \texttt{certified}: \texttt{(Certified)}.\par
+\noindent Constructor \texttt{incomplete}: \texttt{(Obligation, Established)}.\par
+\subsection*{\texttt{positionOf}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(selectors : List (LexLeanTarget.Gnaf.Selector)) (selector : LexLeanTarget.Gnaf.Selector) (next : Nat)}.\par
+\noindent Type: \texttt{Option (Nat)}.\par
+\noindent Definition: \texttt{(match selectors with | List.nil => Option.none | List.cons head rest => (if LexLeanTarget.Gnaf.selectorEq (selector) (head) then Option.some (next) else positionOf (rest) (selector) ((next + 1))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{selectorAt}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(items : List (LexLeanTarget.Gnaf.Selector)) (index : Nat)}.\par
+\noindent Type: \texttt{Option (LexLeanTarget.Gnaf.Selector)}.\par
+\noindent Definition: \texttt{(match items with | List.nil => Option.none | List.cons head rest => (match index with | Nat.zero => Option.some (head) | Nat.succ remaining => selectorAt (rest) (remaining)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{valueAt}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(items : List (LexLeanTarget.TargetSyntax.Value)) (index : Nat)}.\par
+\noindent Type: \texttt{Option (LexLeanTarget.TargetSyntax.Value)}.\par
+\noindent Definition: \texttt{(match items with | List.nil => Option.none | List.cons head rest => (match index with | Nat.zero => Option.some (head) | Nat.succ remaining => valueAt (rest) (remaining)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{factAt}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(items : List (Fact)) (index : Nat)}.\par
+\noindent Type: \texttt{Option (Fact)}.\par
+\noindent Definition: \texttt{(match items with | List.nil => Option.none | List.cons head rest => (match index with | Nat.zero => Option.some (head) | Nat.succ remaining => factAt (rest) (remaining)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{natAt}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(items : List (Nat)) (index : Nat)}.\par
+\noindent Type: \texttt{Option (Nat)}.\par
+\noindent Definition: \texttt{(match items with | List.nil => Option.none | List.cons head rest => (match index with | Nat.zero => Option.some (head) | Nat.succ remaining => natAt (rest) (remaining)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{pickFrom}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(values : List (LexLeanTarget.TargetSyntax.Value)) (index : Nat) (positions : List (Nat))}.\par
+\noindent Type: \texttt{List (LexLeanTarget.TargetSyntax.Value)}.\par
+\noindent Definition: \texttt{(match values with | List.nil => ([] : List (LexLeanTarget.TargetSyntax.Value)) | List.cons head rest => (match positions with | List.nil => ([] : List (LexLeanTarget.TargetSyntax.Value)) | List.cons wanted later => (if (Nat.beq (wanted) (index)) then (head :: pickFrom (rest) ((index + 1)) (later)) else pickFrom (rest) ((index + 1)) (positions))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{ascending}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(positions : List (Nat)) (lower : Nat)}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match positions with | List.nil => true | List.cons head rest => ((Nat.ble (lower) (head)) \&\& ascending (rest) ((head + 1))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{allBelow}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(positions : List (Nat)) (bound : Nat)}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match positions with | List.nil => true | List.cons head rest => ((Nat.blt (head) (bound)) \&\& allBelow (rest) (bound)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{isList}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(value : LexLeanTarget.TargetSyntax.Value) (limit : Nat)}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match value with | LexLeanTarget.TargetSyntax.Value.unit => false | LexLeanTarget.TargetSyntax.Value.bool \_ => false | LexLeanTarget.TargetSyntax.Value.nat \_ => false | LexLeanTarget.TargetSyntax.Value.int \_ => false | LexLeanTarget.TargetSyntax.Value.u8 \_ => false | LexLeanTarget.TargetSyntax.Value.u16 \_ => false | LexLeanTarget.TargetSyntax.Value.u32 \_ => false | LexLeanTarget.TargetSyntax.Value.u64 \_ => false | LexLeanTarget.TargetSyntax.Value.i8 \_ => false | LexLeanTarget.TargetSyntax.Value.i16 \_ => false | LexLeanTarget.TargetSyntax.Value.i32 \_ => false | LexLeanTarget.TargetSyntax.Value.i64 \_ => false | LexLeanTarget.TargetSyntax.Value.string \_ => false | LexLeanTarget.TargetSyntax.Value.bytes \_ => false | LexLeanTarget.TargetSyntax.Value.ordering \_ => false | LexLeanTarget.TargetSyntax.Value.none => false | LexLeanTarget.TargetSyntax.Value.some \_ => false | LexLeanTarget.TargetSyntax.Value.ok \_ => false | LexLeanTarget.TargetSyntax.Value.error \_ => false | LexLeanTarget.TargetSyntax.Value.list \_ => true | LexLeanTarget.TargetSyntax.Value.pair \_ \_ => false | LexLeanTarget.TargetSyntax.Value.adt \_ \_ => false | LexLeanTarget.TargetSyntax.Value.closure \_ \_ => false)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{isShorter}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(value : LexLeanTarget.TargetSyntax.Value) (limit : Nat)}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match value with | LexLeanTarget.TargetSyntax.Value.unit => false | LexLeanTarget.TargetSyntax.Value.bool \_ => false | LexLeanTarget.TargetSyntax.Value.nat \_ => false | LexLeanTarget.TargetSyntax.Value.int \_ => false | LexLeanTarget.TargetSyntax.Value.u8 \_ => false | LexLeanTarget.TargetSyntax.Value.u16 \_ => false | LexLeanTarget.TargetSyntax.Value.u32 \_ => false | LexLeanTarget.TargetSyntax.Value.u64 \_ => false | LexLeanTarget.TargetSyntax.Value.i8 \_ => false | LexLeanTarget.TargetSyntax.Value.i16 \_ => false | LexLeanTarget.TargetSyntax.Value.i32 \_ => false | LexLeanTarget.TargetSyntax.Value.i64 \_ => false | LexLeanTarget.TargetSyntax.Value.string \_ => false | LexLeanTarget.TargetSyntax.Value.bytes \_ => false | LexLeanTarget.TargetSyntax.Value.ordering \_ => false | LexLeanTarget.TargetSyntax.Value.none => false | LexLeanTarget.TargetSyntax.Value.some \_ => false | LexLeanTarget.TargetSyntax.Value.ok \_ => false | LexLeanTarget.TargetSyntax.Value.error \_ => false | LexLeanTarget.TargetSyntax.Value.list items => (Nat.blt ((LexLeanRuntime.length (items) : Nat)) (limit)) | LexLeanTarget.TargetSyntax.Value.pair \_ \_ => false | LexLeanTarget.TargetSyntax.Value.adt \_ \_ => false | LexLeanTarget.TargetSyntax.Value.closure \_ \_ => false)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{isLong}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(value : LexLeanTarget.TargetSyntax.Value) (limit : Nat)}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match value with | LexLeanTarget.TargetSyntax.Value.unit => false | LexLeanTarget.TargetSyntax.Value.bool \_ => false | LexLeanTarget.TargetSyntax.Value.nat \_ => false | LexLeanTarget.TargetSyntax.Value.int \_ => false | LexLeanTarget.TargetSyntax.Value.u8 \_ => false | LexLeanTarget.TargetSyntax.Value.u16 \_ => false | LexLeanTarget.TargetSyntax.Value.u32 \_ => false | LexLeanTarget.TargetSyntax.Value.u64 \_ => false | LexLeanTarget.TargetSyntax.Value.i8 \_ => false | LexLeanTarget.TargetSyntax.Value.i16 \_ => false | LexLeanTarget.TargetSyntax.Value.i32 \_ => false | LexLeanTarget.TargetSyntax.Value.i64 \_ => false | LexLeanTarget.TargetSyntax.Value.string \_ => false | LexLeanTarget.TargetSyntax.Value.bytes \_ => false | LexLeanTarget.TargetSyntax.Value.ordering \_ => false | LexLeanTarget.TargetSyntax.Value.none => false | LexLeanTarget.TargetSyntax.Value.some \_ => false | LexLeanTarget.TargetSyntax.Value.ok \_ => false | LexLeanTarget.TargetSyntax.Value.error \_ => false | LexLeanTarget.TargetSyntax.Value.list items => (Nat.ble (limit) ((LexLeanRuntime.length (items) : Nat))) | LexLeanTarget.TargetSyntax.Value.pair \_ \_ => false | LexLeanTarget.TargetSyntax.Value.adt \_ \_ => false | LexLeanTarget.TargetSyntax.Value.closure \_ \_ => false)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{allLists}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(values : List (LexLeanTarget.TargetSyntax.Value)) (limit : Nat)}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match values with | List.nil => true | List.cons head rest => (isList (head) (limit) \&\& allLists (rest) (limit)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{allShorter}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(values : List (LexLeanTarget.TargetSyntax.Value)) (limit : Nat)}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match values with | List.nil => true | List.cons head rest => (isShorter (head) (limit) \&\& allShorter (rest) (limit)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{allLong}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(values : List (LexLeanTarget.TargetSyntax.Value)) (limit : Nat)}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match values with | List.nil => true | List.cons head rest => (isLong (head) (limit) \&\& allLong (rest) (limit)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{exprIsolated}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Mutual recursion group \texttt{ExpressionIsolation}, decreasing on \texttt{expression}.\par
+\noindent Parameters: \texttt{(expression : LexLeanTarget.TargetSyntax.Expr)}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match expression with | LexLeanTarget.TargetSyntax.Expr.value \_ \_ => true | LexLeanTarget.TargetSyntax.Expr.var \_ => true | LexLeanTarget.TargetSyntax.Expr.<U+00AB>let<U+00BB> \_ \_ bound body => (true \&\& (exprIsolated (bound) \&\& exprIsolated (body))) | LexLeanTarget.TargetSyntax.Expr.cond condition thenBranch elseBranch => (true \&\& (exprIsolated (condition) \&\& (exprIsolated (thenBranch) \&\& exprIsolated (elseBranch)))) | LexLeanTarget.TargetSyntax.Expr.<U+00AB>match<U+00BB> \_ scrutinee arms => (true \&\& (exprIsolated (scrutinee) \&\& armsIsolated (arms))) | LexLeanTarget.TargetSyntax.Expr.build \_ \_ operands => (true \&\& exprsIsolated (operands)) | LexLeanTarget.TargetSyntax.Expr.call function operands => ((!(Nat.beq (function) (0))) \&\& exprsIsolated (operands)) | LexLeanTarget.TargetSyntax.Expr.closure \_ operands => (true \&\& exprsIsolated (operands)) | LexLeanTarget.TargetSyntax.Expr.apply target operands => (false \&\& (exprIsolated (target) \&\& exprsIsolated (operands))) | LexLeanTarget.TargetSyntax.Expr.prim \_ operands => (true \&\& exprsIsolated (operands)) | LexLeanTarget.TargetSyntax.Expr.first inner => (true \&\& exprIsolated (inner)) | LexLeanTarget.TargetSyntax.Expr.second inner => (true \&\& exprIsolated (inner)) | LexLeanTarget.TargetSyntax.Expr.field inner \_ => (true \&\& exprIsolated (inner)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{exprsIsolated}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Mutual recursion group \texttt{ExpressionIsolation}, decreasing on \texttt{expressions}.\par
+\noindent Parameters: \texttt{(expressions : List (LexLeanTarget.TargetSyntax.Expr))}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match expressions with | List.nil => true | List.cons head rest => (exprIsolated (head) \&\& exprsIsolated (rest)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{armsIsolated}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Mutual recursion group \texttt{ExpressionIsolation}, decreasing on \texttt{arms}.\par
+\noindent Parameters: \texttt{(arms : List (LexLeanTarget.TargetSyntax.Arm))}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match arms with | List.nil => true | List.cons head rest => (armIsolated (head) \&\& armsIsolated (rest)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{armIsolated}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Mutual recursion group \texttt{ExpressionIsolation}, decreasing on \texttt{arm}.\par
+\noindent Parameters: \texttt{(arm : LexLeanTarget.TargetSyntax.Arm)}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match arm with | LexLeanTarget.TargetSyntax.Arm.arm \_ \_ body => (true \&\& exprIsolated (body)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{plansIsolated}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(plans : List (LexLeanTarget.Gnaf.Plan))}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match plans with | List.nil => true | List.cons plan rest => (exprIsolated (((plan).function).body) \&\& plansIsolated (rest)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{rewrite}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(schema : Schema) (selector : LexLeanTarget.Gnaf.Selector)}.\par
+\noindent Type: \texttt{Option (LexLeanTarget.Gnaf.Selector)}.\par
+\noindent Definition: \texttt{(match schema with | Schema.collapse => (match selector with | LexLeanTarget.Gnaf.Selector.fixed \_ => Option.none | LexLeanTarget.Gnaf.Selector.dispatch \_ small large => (if (Nat.beq (small) (large)) then Option.some (LexLeanTarget.Gnaf.Selector.fixed (small)) else Option.none)) | Schema.specializeSmall => (match selector with | LexLeanTarget.Gnaf.Selector.fixed \_ => Option.none | LexLeanTarget.Gnaf.Selector.dispatch \_ small \_ => Option.some (LexLeanTarget.Gnaf.Selector.fixed (small))) | Schema.specializeLarge => (match selector with | LexLeanTarget.Gnaf.Selector.fixed \_ => Option.none | LexLeanTarget.Gnaf.Selector.dispatch \_ \_ large => Option.some (LexLeanTarget.Gnaf.Selector.fixed (large))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{eligible}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(request : LexLeanTarget.Gnaf.Request) (grammar : LexLeanTarget.Gnaf.Grammar) (selector : LexLeanTarget.Gnaf.Selector) (schema : Schema)}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(plansIsolated ((grammar).plans) \&\& (match selector with | LexLeanTarget.Gnaf.Selector.fixed \_ => false | LexLeanTarget.Gnaf.Selector.dispatch threshold small large => (match schema with | Schema.collapse => ((Nat.beq (small) (large)) \&\& allLists ((request).domain) (0)) | Schema.specializeSmall => allShorter ((request).domain) (threshold) | Schema.specializeLarge => allLong ((request).domain) (threshold))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{staticSize}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(grammar : LexLeanTarget.Gnaf.Grammar) (selector : LexLeanTarget.Gnaf.Selector)}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(let system : LexLeanTarget.TargetSyntax.Program := LexLeanTarget.Gnaf.realize (grammar) (selector); LexLeanTarget.Gnaf.reachableSize ((system).functions) (LexLeanTarget.Gnaf.reachable ((system).functions)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{staticCharge}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(request : LexLeanTarget.Gnaf.Request) (grammar : LexLeanTarget.Gnaf.Grammar) (selector : LexLeanTarget.Gnaf.Selector)}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(let system : LexLeanTarget.TargetSyntax.Program := LexLeanTarget.Gnaf.realize (grammar) (selector); (LexLeanRuntime.multiply ((LexLeanRuntime.length ((request).domain) : Nat)) (LexLeanTarget.Gnaf.reachableCharge (((request).machine).actions) ((grammar).plans) (LexLeanTarget.Gnaf.reachable ((system).functions))) : Nat))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{improves}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(request : LexLeanTarget.Gnaf.Request) (grammar : LexLeanTarget.Gnaf.Grammar) (selector : LexLeanTarget.Gnaf.Selector) (schema : Schema)}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match rewrite (schema) (selector) with | Option.none => false | Option.some target => (eligible (request) (grammar) (selector) (schema) \&\& ((Nat.ble (staticSize (grammar) (target)) (staticSize (grammar) (selector))) \&\& (Nat.ble (staticCharge (request) (grammar) (target)) (staticCharge (request) (grammar) (selector))))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{isNormal}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(request : LexLeanTarget.Gnaf.Request) (grammar : LexLeanTarget.Gnaf.Grammar) (selector : LexLeanTarget.Gnaf.Selector)}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{((!improves (request) (grammar) (selector) (Schema.collapse)) \&\& ((!improves (request) (grammar) (selector) (Schema.specializeSmall)) \&\& (!improves (request) (grammar) (selector) (Schema.specializeLarge))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{premiseFact}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(request : LexLeanTarget.Gnaf.Request) (grammar : LexLeanTarget.Gnaf.Grammar) (selectors : List (LexLeanTarget.Gnaf.Selector)) (selector : LexLeanTarget.Gnaf.Selector) (premise : Premise)}.\par
+\noindent Type: \texttt{Fact}.\par
+\noindent Definition: \texttt{(let system : LexLeanTarget.TargetSyntax.Program := LexLeanTarget.Gnaf.realize (grammar) (selector); (match premise with | Premise.excluded position => (match valueAt ((request).domain) (position) with | Option.none => Fact.unproven | Option.some argument => (match LexLeanTarget.Gnaf.statusOn (system) ((request).reference) (((request).machine).fuel) ((argument :: ([] : List (LexLeanTarget.TargetSyntax.Value)))) with | LexLeanTarget.Gnaf.Status.admitted \_ \_ => Fact.unproven | LexLeanTarget.Gnaf.Status.inadmissible => Fact.inadmissible | LexLeanTarget.Gnaf.Status.unresolved => Fact.unproven)) | Premise.paysAtLeast positions => (let picked : List (LexLeanTarget.TargetSyntax.Value) := pickFrom ((request).domain) (0) (positions); (if ((Nat.beq ((LexLeanRuntime.length (picked) : Nat)) ((LexLeanRuntime.length (positions) : Nat))) \&\& ascending (positions) (0)) then (match LexLeanTarget.Gnaf.statusOn (system) ((request).reference) (((request).machine).fuel) (picked) with | LexLeanTarget.Gnaf.Status.admitted steps \_ => Fact.atLeast ((steps + staticCharge (request) (grammar) (selector))) (staticSize (grammar) (selector)) | LexLeanTarget.Gnaf.Status.inadmissible => Fact.unproven | LexLeanTarget.Gnaf.Status.unresolved => Fact.unproven) else Fact.unproven)) | Premise.measured => (match LexLeanTarget.Gnaf.status (request) (grammar) (selector) with | LexLeanTarget.Gnaf.Status.admitted cost size => Fact.admitted (cost) (size) | LexLeanTarget.Gnaf.Status.inadmissible => Fact.inadmissible | LexLeanTarget.Gnaf.Status.unresolved => Fact.unresolved) | Premise.reduced schema => (match rewrite (schema) (selector) with | Option.none => Fact.unproven | Option.some target => (match positionOf (selectors) (target) (0) with | Option.none => Fact.unproven | Option.some targetPosition => (if improves (request) (grammar) (selector) (schema) then Fact.reduces (targetPosition) else Fact.unproven)))))}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{factsOf}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(request : LexLeanTarget.Gnaf.Request) (grammar : LexLeanTarget.Gnaf.Grammar) (all : List (LexLeanTarget.Gnaf.Selector)) (selectors : List (LexLeanTarget.Gnaf.Selector)) (premises : List (Premise))}.\par
+\noindent Type: \texttt{List (Fact)}.\par
+\noindent Definition: \texttt{(match selectors with | List.nil => ([] : List (Fact)) | List.cons selector rest => (match premises with | List.nil => (Fact.unproven :: factsOf (request) (grammar) (all) (rest) (premises)) | List.cons premise later => (premiseFact (request) (grammar) (all) (selector) (premise) :: factsOf (request) (grammar) (all) (rest) (later))))}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{sizesOf}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(grammar : LexLeanTarget.Gnaf.Grammar) (selectors : List (LexLeanTarget.Gnaf.Selector))}.\par
+\noindent Type: \texttt{List (Nat)}.\par
+\noindent Definition: \texttt{(match selectors with | List.nil => ([] : List (Nat)) | List.cons selector rest => (staticSize (grammar) (selector) :: sizesOf (grammar) (rest)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{factRows}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(facts : List (Fact)) (position : Nat)}.\par
+\noindent Type: \texttt{List ((Prod (Nat) (List (Nat))))}.\par
+\noindent Definition: \texttt{(match facts with | List.nil => ([] : List ((Prod (Nat) (List (Nat))))) | List.cons head rest => (match head with | Fact.inadmissible => factRows (rest) ((position + 1)) | Fact.admitted cost size => ((position, (cost :: (size :: ([] : List (Nat))))) :: factRows (rest) ((position + 1))) | Fact.atLeast \_ \_ => factRows (rest) ((position + 1)) | Fact.reduces \_ => factRows (rest) ((position + 1)) | Fact.unresolved => factRows (rest) ((position + 1)) | Fact.unproven => factRows (rest) ((position + 1))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{rowsOfMembers}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(rows : List ((Prod (Nat) (List (Nat))))) (members : List (Nat))}.\par
+\noindent Type: \texttt{List ((Prod (Nat) (List (Nat))))}.\par
+\noindent Definition: \texttt{(match rows with | List.nil => ([] : List ((Prod (Nat) (List (Nat))))) | List.cons row rest => (if LexLeanTarget.Gnaf.natIn ((row).1) (members) then (row :: rowsOfMembers (rest) (members)) else rowsOfMembers (rest) (members)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{lowerPosition}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(strict : Bool) (bound : Nat) (attainer : Bool) (fact : Fact) (position : Nat)}.\par
+\noindent Type: \texttt{Option (Obligation)}.\par
+\noindent Definition: \texttt{(match fact with | Fact.inadmissible => (if attainer then Option.some (Obligation.attainerInadmissible (position)) else Option.none) | Fact.admitted cost \_ => (if attainer then (if (Nat.beq (cost) (bound)) then Option.none else (if (Nat.blt (cost) (bound)) then Option.some (Obligation.memberBelowBound (position)) else Option.some (Obligation.attainerAboveBound (position)))) else (if (Nat.blt (cost) (bound)) then Option.some (Obligation.memberBelowBound (position)) else (if (strict \&\& (Nat.beq (cost) (bound))) then Option.some (Obligation.attainerOmitted (position)) else Option.none))) | Fact.atLeast cost \_ => (if attainer then Option.some (Obligation.attainerUnmeasured (position)) else (if strict then (if (Nat.blt (bound) (cost)) then Option.none else Option.some (Obligation.memberUnproven (position))) else (if (Nat.ble (bound) (cost)) then Option.none else Option.some (Obligation.memberUnproven (position))))) | Fact.reduces \_ => (if attainer then Option.some (Obligation.attainerUnmeasured (position)) else Option.none) | Fact.unresolved => Option.some (Obligation.unresolvedMember (position)) | Fact.unproven => Option.some (Obligation.memberUnproven (position)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{scanLower}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(strict : Bool) (bound : Nat) (attainers : List (Nat)) (facts : List (Fact)) (position : Nat)}.\par
+\noindent Type: \texttt{Option (Obligation)}.\par
+\noindent Definition: \texttt{(match facts with | List.nil => Option.none | List.cons head rest => (match lowerPosition (strict) (bound) (LexLeanTarget.Gnaf.natIn (position) (attainers)) (head) (position) with | Option.none => scanLower (strict) (bound) (attainers) (rest) ((position + 1)) | Option.some obligation => Option.some (obligation)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{establishedFrom}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(facts : List (Fact)) (attainers : List (Nat))}.\par
+\noindent Type: \texttt{Established}.\par
+\noindent Definition: \texttt{(match attainers with | List.nil => Established.notCertified | List.cons head \_ => (match factAt (facts) (head) with | Option.none => Established.notCertified | Option.some found => (match found with | Fact.inadmissible => Established.notCertified | Fact.admitted cost size => Established.correctOnly (head) (cost) (size) | Fact.atLeast \_ \_ => Established.notCertified | Fact.reduces \_ => Established.notCertified | Fact.unresolved => Established.notCertified | Fact.unproven => Established.notCertified)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{lowerVerdict}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(strict : Bool) (bound : Nat) (attainers : List (Nat)) (facts : List (Fact))}.\par
+\noindent Type: \texttt{Verdict}.\par
+\noindent Definition: \texttt{(if (!(ascending (attainers) (0) \&\& allBelow (attainers) ((LexLeanRuntime.length (facts) : Nat)))) then Verdict.incomplete (Obligation.attainersMalformed) (Established.notCertified) else (match scanLower (strict) (bound) (attainers) (facts) (0) with | Option.none => (match attainers with | List.nil => Verdict.incomplete (Obligation.boundUnattained) (Established.notCertified) | List.cons \_ \_ => (if strict then Verdict.certified (Certified.argmin (attainers) (bound)) else Verdict.certified (Certified.optimum (attainers) (bound)))) | Option.some obligation => Verdict.incomplete (obligation) (establishedFrom (facts) (attainers))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{frontierPosition}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(member : Bool) (memberRows : List ((Prod (Nat) (List (Nat))))) (fact : Fact) (position : Nat)}.\par
+\noindent Type: \texttt{Option (Obligation)}.\par
+\noindent Definition: \texttt{(if member then (match fact with | Fact.inadmissible => Option.some (Obligation.frontierMemberUnmeasured (position)) | Fact.admitted cost size => (if LexLeanTarget.Gnaf.dominatedIn (Nat) ((cost :: (size :: ([] : List (Nat))))) (memberRows) then Option.some (Obligation.frontierMemberDominated (position)) else Option.none) | Fact.atLeast \_ \_ => Option.some (Obligation.frontierMemberUnmeasured (position)) | Fact.reduces \_ => Option.some (Obligation.frontierMemberUnmeasured (position)) | Fact.unresolved => Option.some (Obligation.unresolvedMember (position)) | Fact.unproven => Option.some (Obligation.memberUnproven (position))) else (match fact with | Fact.inadmissible => Option.none | Fact.admitted cost size => (if LexLeanTarget.Gnaf.dominatedIn (Nat) ((cost :: (size :: ([] : List (Nat))))) (memberRows) then Option.none else Option.some (Obligation.frontierMemberOmitted (position))) | Fact.atLeast cost size => (if LexLeanTarget.Gnaf.dominatedIn (Nat) ((cost :: (size :: ([] : List (Nat))))) (memberRows) then Option.none else Option.some (Obligation.memberUnproven (position))) | Fact.reduces \_ => Option.none | Fact.unresolved => Option.some (Obligation.unresolvedMember (position)) | Fact.unproven => Option.some (Obligation.memberUnproven (position))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{scanFrontier}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(members : List (Nat)) (memberRows : List ((Prod (Nat) (List (Nat))))) (facts : List (Fact)) (position : Nat)}.\par
+\noindent Type: \texttt{Option (Obligation)}.\par
+\noindent Definition: \texttt{(match facts with | List.nil => Option.none | List.cons head rest => (match frontierPosition (LexLeanTarget.Gnaf.natIn (position) (members)) (memberRows) (head) (position) with | Option.none => scanFrontier (members) (memberRows) (rest) ((position + 1)) | Option.some obligation => Option.some (obligation)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{frontierVerdict}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(members : List (Nat)) (facts : List (Fact))}.\par
+\noindent Type: \texttt{Verdict}.\par
+\noindent Definition: \texttt{(let memberRows : List ((Prod (Nat) (List (Nat)))) := rowsOfMembers (factRows (facts) (0)) (members); (if (!(ascending (members) (0) \&\& allBelow (members) ((LexLeanRuntime.length (facts) : Nat)))) then Verdict.incomplete (Obligation.attainersMalformed) (Established.notCertified) else (match scanFrontier (members) (memberRows) (facts) (0) with | Option.none => (match members with | List.nil => Verdict.incomplete (Obligation.noAdmittedMember) (Established.notCertified) | List.cons \_ \_ => Verdict.certified (Certified.frontier (members))) | Option.some obligation => Verdict.incomplete (obligation) (Established.notCertified))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{scanReduction}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(facts : List (Fact)) (position : Nat)}.\par
+\noindent Type: \texttt{Option (Obligation)}.\par
+\noindent Definition: \texttt{(match facts with | List.nil => Option.none | List.cons head rest => (match (match head with | Fact.inadmissible => Option.none | Fact.admitted \_ \_ => Option.none | Fact.atLeast \_ \_ => Option.some (Obligation.reductionIncomplete (position)) | Fact.reduces \_ => Option.none | Fact.unresolved => Option.some (Obligation.unresolvedMember (position)) | Fact.unproven => Option.some (Obligation.reductionIncomplete (position))) with | Option.none => scanReduction (rest) ((position + 1)) | Option.some obligation => Option.some (obligation)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{reductionVerdict}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(shape : Nat) (facts : List (Fact))}.\par
+\noindent Type: \texttt{Verdict}.\par
+\noindent Definition: \texttt{(match scanReduction (facts) (0) with | Option.none => (let rows : List ((Prod (Nat) (List (Nat)))) := factRows (facts) (0); (if (Nat.blt (shape) (3)) then (match LexLeanTarget.Gnaf.argmin (Nat) (LexLeanTarget.Gnaf.scalarRows (rows)) with | Option.none => Verdict.incomplete (Obligation.noAdmittedMember) (Established.notCertified) | Option.some found => lowerVerdict ((Nat.beq (shape) (2))) ((found).2) ((found).1) (facts)) else (match rows with | List.nil => Verdict.incomplete (Obligation.noAdmittedMember) (Established.notCertified) | List.cons \_ \_ => frontierVerdict (LexLeanTarget.Gnaf.frontier (Nat) (rows)) (facts)))) | Option.some obligation => Verdict.incomplete (obligation) (Established.notCertified))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{bridgePosition}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(bridge : Bridge) (fact : Fact) (measuredSize : Nat) (position : Nat)}.\par
+\noindent Type: \texttt{Option (Obligation)}.\par
+\noindent Definition: \texttt{(match fact with | Fact.inadmissible => Option.none | Fact.admitted cost \_ => (if (Nat.ble (((LexLeanRuntime.multiply ((bridge).slope) (measuredSize) : Nat) + (bridge).offset)) (cost)) then Option.none else Option.some (Obligation.bridgeViolated (position))) | Fact.atLeast cost \_ => (if (Nat.ble (((LexLeanRuntime.multiply ((bridge).slope) (measuredSize) : Nat) + (bridge).offset)) (cost)) then Option.none else Option.some (Obligation.bridgeUnproved (position))) | Fact.reduces \_ => Option.some (Obligation.bridgeUnproved (position)) | Fact.unresolved => Option.some (Obligation.unresolvedMember (position)) | Fact.unproven => Option.some (Obligation.bridgeUnproved (position)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{firstSmaller}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(sizes : List (Nat)) (limit : Nat) (position : Nat)}.\par
+\noindent Type: \texttt{Option (Nat)}.\par
+\noindent Definition: \texttt{(match sizes with | List.nil => Option.none | List.cons head rest => (if (Nat.blt (head) (limit)) then Option.some (position) else firstSmaller (rest) (limit) ((position + 1))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{scanBridge}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(bridge : Bridge) (facts : List (Fact)) (sizes : List (Nat)) (position : Nat)}.\par
+\noindent Type: \texttt{Option (Obligation)}.\par
+\noindent Definition: \texttt{(match facts with | List.nil => Option.none | List.cons head rest => (match sizes with | List.nil => Option.some (Obligation.bridgeUnproved (position)) | List.cons measuredSize laterSizes => (match bridgePosition (bridge) (head) (measuredSize) (position) with | Option.none => scanBridge (bridge) (rest) (laterSizes) ((position + 1)) | Option.some obligation => Option.some (obligation))))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{representationVerdict}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(normal : Nat) (bridgeOption : Option (Bridge)) (facts : List (Fact)) (sizes : List (Nat))}.\par
+\noindent Type: \texttt{Verdict}.\par
+\noindent Definition: \texttt{(match natAt (sizes) (normal) with | Option.none => Verdict.incomplete (Obligation.normalOutOfRange) (Established.notCertified) | Option.some normalSize => (match firstSmaller (sizes) (normalSize) (0) with | Option.none => (match bridgeOption with | Option.none => Verdict.incomplete (Obligation.bridgeMissing) (Established.representationMinimal (normal) (normalSize)) | Option.some given => (let bridge : Bridge := given; (match scanBridge (bridge) (facts) (sizes) (0) with | Option.none => (let limit : Nat := ((LexLeanRuntime.multiply ((bridge).slope) (normalSize) : Nat) + (bridge).offset); (match factAt (facts) (normal) with | Option.none => Verdict.incomplete (Obligation.normalUnmeasured) (Established.notCertified) | Option.some found => (match found with | Fact.inadmissible => Verdict.incomplete (Obligation.normalUnmeasured) (Established.notCertified) | Fact.admitted cost size => (if (Nat.beq (cost) (limit)) then Verdict.certified (Certified.optimum ((normal :: ([] : List (Nat)))) (cost)) else Verdict.incomplete (Obligation.boundUnattained) (Established.correctOnly (normal) (cost) (size))) | Fact.atLeast \_ \_ => Verdict.incomplete (Obligation.normalUnmeasured) (Established.notCertified) | Fact.reduces \_ => Verdict.incomplete (Obligation.normalUnmeasured) (Established.notCertified) | Fact.unresolved => Verdict.incomplete (Obligation.normalUnmeasured) (Established.notCertified) | Fact.unproven => Verdict.incomplete (Obligation.normalUnmeasured) (Established.notCertified)))) | Option.some obligation => Verdict.incomplete (obligation) (Established.notCertified)))) | Option.some smaller => Verdict.incomplete (Obligation.normalNotMinimal (smaller)) (Established.notCertified)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{normalityVerdict}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(request : LexLeanTarget.Gnaf.Request) (grammar : LexLeanTarget.Gnaf.Grammar) (selectors : List (LexLeanTarget.Gnaf.Selector)) (normal : Nat) (facts : List (Fact))}.\par
+\noindent Type: \texttt{Verdict}.\par
+\noindent Definition: \texttt{(match factAt (facts) (normal) with | Option.none => Verdict.incomplete (Obligation.normalUnmeasured) (Established.notCertified) | Option.some found => (match found with | Fact.inadmissible => Verdict.incomplete (Obligation.normalUnmeasured) (Established.notCertified) | Fact.admitted cost size => (match selectorAt (selectors) (normal) with | Option.none => Verdict.incomplete (Obligation.normalOutOfRange) (Established.notCertified) | Option.some selector => (if isNormal (request) (grammar) (selector) then Verdict.incomplete (Obligation.optimalityUnproved) (Established.locallyNormalized (normal)) else Verdict.incomplete (Obligation.systemNotNormal) (Established.correctOnly (normal) (cost) (size)))) | Fact.atLeast \_ \_ => Verdict.incomplete (Obligation.normalUnmeasured) (Established.notCertified) | Fact.reduces \_ => Verdict.incomplete (Obligation.normalUnmeasured) (Established.notCertified) | Fact.unresolved => Verdict.incomplete (Obligation.normalUnmeasured) (Established.notCertified) | Fact.unproven => Verdict.incomplete (Obligation.normalUnmeasured) (Established.notCertified)))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{claimShape}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(claim : LexLeanTarget.Gnaf.ClaimClass)}.\par
+\noindent Type: \texttt{Nat}.\par
+\noindent Definition: \texttt{(match claim with | LexLeanTarget.Gnaf.ClaimClass.exact => 0 | LexLeanTarget.Gnaf.ClaimClass.normalForm => 0 | LexLeanTarget.Gnaf.ClaimClass.canonical => 0 | LexLeanTarget.Gnaf.ClaimClass.representationMinimal => 0 | LexLeanTarget.Gnaf.ClaimClass.comparisonTheorem => 0 | LexLeanTarget.Gnaf.ClaimClass.profileDefinedComparison \_ \_ \_ => 0 | LexLeanTarget.Gnaf.ClaimClass.inputTotal => 0 | LexLeanTarget.Gnaf.ClaimClass.globalOptimal => 1 | LexLeanTarget.Gnaf.ClaimClass.argminComplete => 2 | LexLeanTarget.Gnaf.ClaimClass.paretoOptimal => 3 | LexLeanTarget.Gnaf.ClaimClass.frontierComplete => 4 | LexLeanTarget.Gnaf.ClaimClass.pointwiseEnvelopeComplete => 0 | LexLeanTarget.Gnaf.ClaimClass.queryFamilyAnswerComplete => 0 | LexLeanTarget.Gnaf.ClaimClass.useCaseGlobalOptimal => 0 | LexLeanTarget.Gnaf.ClaimClass.workloadArgminComplete => 0 | LexLeanTarget.Gnaf.ClaimClass.workloadParetoOptimal => 0 | LexLeanTarget.Gnaf.ClaimClass.workloadFrontierComplete => 0 | LexLeanTarget.Gnaf.ClaimClass.familyOptimal => 0 | LexLeanTarget.Gnaf.ClaimClass.competitiveBound => 0 | LexLeanTarget.Gnaf.ClaimClass.competitiveOptimal => 0 | LexLeanTarget.Gnaf.ClaimClass.asymptoticBound => 0 | LexLeanTarget.Gnaf.ClaimClass.asymptoticOptimal => 0 | LexLeanTarget.Gnaf.ClaimClass.useCaseClassComplete => 0 | LexLeanTarget.Gnaf.ClaimClass.useCaseClassAnswerComplete => 0 | LexLeanTarget.Gnaf.ClaimClass.maintainedUseCaseClass => 0 | LexLeanTarget.Gnaf.ClaimClass.restrictedUniverseOptimal => 0 | LexLeanTarget.Gnaf.ClaimClass.revisionPreserved => 0 | LexLeanTarget.Gnaf.ClaimClass.bestKnown => 0 | LexLeanTarget.Gnaf.ClaimClass.measuredBestAmongTested => 0 | LexLeanTarget.Gnaf.ClaimClass.heuristicSelected => 0 | LexLeanTarget.Gnaf.ClaimClass.instanceOptimal \_ \_ => 0)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{sameObjective}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(left : LexLeanTarget.Gnaf.Objective) (right : LexLeanTarget.Gnaf.Objective)}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match left with | LexLeanTarget.Gnaf.Objective.scalar => (match right with | LexLeanTarget.Gnaf.Objective.scalar => true | LexLeanTarget.Gnaf.Objective.vector => false) | LexLeanTarget.Gnaf.Objective.vector => (match right with | LexLeanTarget.Gnaf.Objective.scalar => false | LexLeanTarget.Gnaf.Objective.vector => true))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{sameScope}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(left : LexLeanTarget.Gnaf.Scope) (right : LexLeanTarget.Gnaf.Scope)}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match left with | LexLeanTarget.Gnaf.Scope.grammarUniverse => (match right with | LexLeanTarget.Gnaf.Scope.grammarUniverse => true | LexLeanTarget.Gnaf.Scope.calculusPrograms => false | LexLeanTarget.Gnaf.Scope.rustPrograms => false) | LexLeanTarget.Gnaf.Scope.calculusPrograms => (match right with | LexLeanTarget.Gnaf.Scope.grammarUniverse => false | LexLeanTarget.Gnaf.Scope.calculusPrograms => true | LexLeanTarget.Gnaf.Scope.rustPrograms => false) | LexLeanTarget.Gnaf.Scope.rustPrograms => (match right with | LexLeanTarget.Gnaf.Scope.grammarUniverse => false | LexLeanTarget.Gnaf.Scope.calculusPrograms => false | LexLeanTarget.Gnaf.Scope.rustPrograms => true))}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{check}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(request : LexLeanTarget.Gnaf.Request) (certificate : Certificate)}.\par
+\noindent Type: \texttt{Verdict}.\par
+\noindent Definition: \texttt{(if (!(LexLeanRuntime.equal ((certificate).verifier) ("lexlean/gnaf-certification/1") : Bool)) then Verdict.refused (Refusal.verifierMismatch) else (match LexLeanTarget.Gnaf.validate (request) with | Option.none => (match (request).carrier with | LexLeanTarget.Gnaf.Carrier.grammar grammar => (if (!(LexLeanRuntime.equal ((certificate).<U+00AB>universe<U+00BB>) ((request).<U+00AB>universe<U+00BB>) : Bool)) then Verdict.refused (Refusal.universeMismatch) else (if (!sameObjective ((certificate).objective) ((request).objective)) then Verdict.refused (Refusal.objectiveMismatch) else (if (!((!(Nat.beq (claimShape ((certificate).claim)) (0))) \&\& (Nat.beq (claimShape ((certificate).claim)) (claimShape ((request).claim))))) then Verdict.refused (Refusal.claimMismatch) else (if (!sameScope ((certificate).scope) ((request).scope)) then Verdict.refused (Refusal.scopeMismatch) else (let selectors : List (LexLeanTarget.Gnaf.Selector) := LexLeanTarget.Gnaf.expand (grammar); (let count : Nat := (LexLeanRuntime.length (selectors) : Nat); (let given : Nat := (LexLeanRuntime.length ((certificate).premises) : Nat); (if (Nat.blt (given) (count)) then Verdict.refused (Refusal.missingPremise (given)) else (if (Nat.blt (count) (given)) then Verdict.refused (Refusal.extraPremise (count)) else (let facts : List (Fact) := factsOf (request) (grammar) (selectors) (selectors) ((certificate).premises); (let shape : Nat := claimShape ((certificate).claim); (match (certificate).route with | Route.lowerBound bound attainers => (if (Nat.blt (shape) (3)) then lowerVerdict ((Nat.beq (shape) (2))) (bound) (attainers) (facts) else Verdict.refused (Refusal.routeIncompatible)) | Route.frontierCover members => (if (Nat.ble (3) (shape)) then frontierVerdict (members) (facts) else Verdict.refused (Refusal.routeIncompatible)) | Route.reduction => reductionVerdict (shape) (facts) | Route.representation normal bridge => (if (Nat.beq (shape) (1)) then representationVerdict (normal) (bridge) (facts) (sizesOf (grammar) (selectors)) else Verdict.refused (Refusal.routeIncompatible)) | Route.normality normal => normalityVerdict (request) (grammar) (selectors) (normal) (facts))))))))))))) | LexLeanTarget.Gnaf.Carrier.internalPlans => Verdict.refused (Refusal.noGrammar) | LexLeanTarget.Gnaf.Carrier.optimizerOutput => Verdict.refused (Refusal.noGrammar) | LexLeanTarget.Gnaf.Carrier.discovered \_ => Verdict.refused (Refusal.noGrammar) | LexLeanTarget.Gnaf.Carrier.cached => Verdict.refused (Refusal.noGrammar)) | Option.some rejection => Verdict.refused (Refusal.requestRejected (rejection))))}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\end{document}

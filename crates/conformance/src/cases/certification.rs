@@ -1828,6 +1828,33 @@ fn gc_10() {
     ] {
         assert!(files.contains_key(expected), "{expected} is generated");
     }
+    // The dependency manifest names the certificate profiles, the capacity,
+    // and what a certificate does not claim.
+    let manifest = read_json("compiler/gnaf.manifest.json");
+    let profiles: BTreeSet<&str> = manifest["profiles"]
+        .as_array()
+        .expect("profiles")
+        .iter()
+        .filter_map(|profile| profile["name"].as_str())
+        .collect();
+    for profile in [
+        "certificate",
+        "certificate-proof",
+        "certificate-transcription",
+    ] {
+        assert!(profiles.contains(profile), "the manifest names {profile}");
+    }
+    let lines = |field: &str| -> String {
+        manifest[field]
+            .as_array()
+            .expect("lines")
+            .iter()
+            .filter_map(Json::as_str)
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    assert!(lines("restrictions").contains(&format!("{MAX_PREMISES} premises")));
+    assert!(lines("non_claims").contains("is not a certified global claim"));
     let main = read("compiler/src/Main.lex.tex");
     for import in ["Certification", "GnafCertificates"] {
         assert!(

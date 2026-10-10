@@ -46,6 +46,12 @@ A GNAF request is not a closed `lexlean/gnaf-request/1` document, its reference 
 
 Class: `language`. Exit code: 1.
 
+## `LLB6007` --- GNAF certificate malformed
+
+A GNAF certificate is not a closed `lexlean/gnaf-certificate/1` document, or a certificate fixture states an identity other than its certificate's.
+
+Class: `language`. Exit code: 1.
+
 ## `LLC0001` --- Invalid command-line usage
 
 Invalid command-line usage.

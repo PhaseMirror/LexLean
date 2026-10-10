@@ -1100,6 +1100,15 @@ pub fn manifest() -> Json {
             {"name": "transcription", "role": "realization-only",
              "source": "crates/lexlean/src/gnaf.rs",
              "statement": "lexlean::gnaf loads a request, checks it, and computes the answer the model gives it; its answers are evidence through the kernel's agreement on the committed requests."},
+            {"name": "certificate", "role": "semantic",
+             "source": "compiler/src/Certification.lex.tex",
+             "statement": "Certification.check decides a certificate against a request: a global or Pareto claim over the universe is certified only by a universal lower bound with its attainers, or by a frontier cover, each over a premise for every competitor; local normality, correctness, and representation-minimality are separate, weaker statuses (SPEC.md §17.18)."},
+            {"name": "certificate-proof", "role": "verification-only",
+             "source": "compiler/proofs/library.toml",
+             "statement": "The library under compiler/proofs/LexLeanCertification proves Certification.check sound for the evaluator at the request's fuel and every larger fuel, and proves that a certified optimum is locally normal and that normality never certifies, with the axioms registered per declaration."},
+            {"name": "certificate-transcription", "role": "realization-only",
+             "source": "crates/lexlean/src/gnaf/certification.rs",
+             "statement": "lexlean::gnaf::certification loads a certificate, refuses what exceeds its capacity before reading a premise, and gives the verdict the model gives it; its verdicts are evidence through the kernel's agreement on the committed certificates."},
             {"name": "interchange", "role": "realization-only",
              "source": "schemas/gnaf-request.schema.json",
              "statement": "lexlean/gnaf-request/1 is LexLean's own request form; no UOR-GNAF interchange profile is claimed."},
@@ -1115,6 +1124,7 @@ pub fn manifest() -> Json {
             "The domain is a finite nonempty list of arguments on which the reference returns a value.",
             "Preparation is a declared constant per invocation of each plan needing it, or a prepared artifact bound in the common initial state.",
             "The capacity is at most the host evaluator's: fuel 4096, 1024 arguments, 65536 systems, and charges of 2^32.",
+            "A certificate has at most 65536 premises, lists of at most 1024 positions, and numbers of at most 2^32; a larger one is refused with LLS8002 before a premise is read.",
         ],
         "strongest_claims": [
             {"class": "global_optimal", "scope": "grammar_universe", "objective": "scalar"},
@@ -1126,6 +1136,8 @@ pub fn manifest() -> Json {
             "No claim is made over calculus programs outside the grammar or over Rust programs.",
             "No claim is made about machine time; a cost is the calculus's step accounting.",
             "UOR-NAF is informative to UOR-GNAF and is neither cited nor relied upon.",
+            "An enumeration answer, a locally normal system, or a correct-only system is not a certified global claim; only a certificate the checker accepts is, and an incomplete or refused certificate leaves the claim not certified.",
+            "No claim is made that a certificate exists for a request, or that Certification.check finds one; a certificate is evidence supplied to it.",
         ],
     })
 }
