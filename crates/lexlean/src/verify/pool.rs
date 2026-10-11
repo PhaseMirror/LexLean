@@ -19,9 +19,9 @@ use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 
+use crate::code;
 use crate::diagnostic::Diagnostic;
 use crate::error::LexLeanError;
-use crate::code;
 use crate::verify::telemetry;
 
 fn internal(message: &str) -> LexLeanError {
@@ -75,8 +75,7 @@ where
                     let _installed = telemetry::install(context);
                     loop {
                         let position = next.fetch_add(1, Ordering::SeqCst);
-                        if position >= items.len() || position > stop_after.load(Ordering::SeqCst)
-                        {
+                        if position >= items.len() || position > stop_after.load(Ordering::SeqCst) {
                             break;
                         }
                         let result = job(items[position]);
@@ -183,7 +182,11 @@ mod tests {
             vec![3, 2, 1, 0],
             "the jobs really did finish in reverse order"
         );
-        assert_eq!(consumed, vec![0, 1, 2, 3], "and were consumed in item order");
+        assert_eq!(
+            consumed,
+            vec![0, 1, 2, 3],
+            "and were consumed in item order"
+        );
     }
 
     /// Two items fail; the one with the least position is the one reported,
@@ -270,7 +273,9 @@ mod tests {
 
     #[test]
     fn no_items_is_nothing_to_do() {
-        run_ordered(3, &[], &|item: usize| item, &|_: &usize| false, |_, _| Ok(()))
-            .expect("empty");
+        run_ordered(3, &[], &|item: usize| item, &|_: &usize| false, |_, _| {
+            Ok(())
+        })
+        .expect("empty");
     }
 }

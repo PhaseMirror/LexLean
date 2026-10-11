@@ -109,7 +109,10 @@ pub fn check_test_inventory(root: &Path) -> Result<(), Fail> {
     let justfile = std::fs::read_to_string(root.join("Justfile"))?;
     let ordinary_line = recipe_command(&justfile, "test")?;
     let owned_line = recipe_command(&justfile, "bdd")?;
-    let reference: Vec<String> = inventory::REFERENCE.iter().map(|s| (*s).to_owned()).collect();
+    let reference: Vec<String> = inventory::REFERENCE
+        .iter()
+        .map(|s| (*s).to_owned())
+        .collect();
     let workspace = list_tests(root, &reference)?;
     let ordinary = list_tests(root, &inventory::recipe_arguments(&ordinary_line)?)?;
     let owned = list_tests(root, &inventory::recipe_arguments(&owned_line)?)?;
@@ -175,7 +178,8 @@ fn json_lines(directory: &Path, file: &str) -> Vec<Value> {
 
 /// Summarize the evidence directory of a gate run into `summary.md`.
 pub fn ci_summary(root: &Path, arguments: &[String]) -> Result<(), Fail> {
-    let directory = PathBuf::from(option(arguments, "--evidence").unwrap_or_else(|| "ci-evidence".to_owned()));
+    let directory =
+        PathBuf::from(option(arguments, "--evidence").unwrap_or_else(|| "ci-evidence".to_owned()));
     let justfile = std::fs::read_to_string(root.join("Justfile"))?;
     let log = std::fs::read_to_string(directory.join("vv.txt")).unwrap_or_default();
     let spans = evidence::recipe_spans(&justfile, &log);
@@ -187,7 +191,11 @@ pub fn ci_summary(root: &Path, arguments: &[String]) -> Result<(), Fail> {
     let summary = evidence::render_summary(&spans, &samples, &verifier, &examples);
     std::fs::write(directory.join("summary.md"), &summary)?;
     if let Some(step) = std::env::var_os("GITHUB_STEP_SUMMARY") {
-        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(step) {
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(step)
+        {
             writeln!(file, "{summary}").ok();
         }
     }

@@ -155,8 +155,9 @@ pub fn compare(
     owned_crates: &BTreeSet<String>,
 ) -> Result<Summary, String> {
     if workspace.entries.is_empty() {
-        return Err("RP-13: the workspace lists no test at all; the inventory proves nothing"
-            .to_owned());
+        return Err(
+            "RP-13: the workspace lists no test at all; the inventory proves nothing".to_owned(),
+        );
     }
     let twice: Vec<&Entry> = ordinary.entries.intersection(&owned.entries).collect();
     if let Some(first) = twice.first() {
@@ -326,7 +327,10 @@ conformance_rp_02: test
             &crates(),
         )
         .expect("the phases partition the workspace");
-        assert_eq!((summary.workspace, summary.ordinary, summary.owned), (6, 2, 4));
+        assert_eq!(
+            (summary.workspace, summary.ordinary, summary.owned),
+            (6, 2, 4)
+        );
     }
 
     #[test]
@@ -349,7 +353,10 @@ conformance_rp_02: test
         ))
         .expect("parses");
         let error = compare(&workspace, &misplaced, &owned_ok, &crates()).expect_err("misplaced");
-        assert!(error.contains("sole owner") || error.contains("does not list"), "{error}");
+        assert!(
+            error.contains("sole owner") || error.contains("does not list"),
+            "{error}"
+        );
 
         // Lost: `bdd` runs the meta-gate target alone (what it used to be).
         let lost = parse(
@@ -384,7 +391,12 @@ conformance_rp_02: test
         assert_eq!(
             recipe_arguments("cargo test --workspace --exclude repo-conformance --all-features")
                 .expect("parses"),
-            ["--workspace", "--exclude", "repo-conformance", "--all-features"]
+            [
+                "--workspace",
+                "--exclude",
+                "repo-conformance",
+                "--all-features"
+            ]
         );
         assert!(recipe_arguments("cargo build").is_err());
         assert!(recipe_arguments("cargo test -- --nocapture").is_err());

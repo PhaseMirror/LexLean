@@ -939,13 +939,8 @@ impl Engine {
         // stage, and the verified-set publication (§21.8).
         let guard = acquire_lock(&self.project)?;
         publish_build_locked(&self.project, &rendered, &guard)?;
-        let outcome = crate::verify::run(
-            &self.project,
-            &lock,
-            &checked,
-            &mut rendered,
-            &operational,
-        )?;
+        let outcome =
+            crate::verify::run(&self.project, &lock, &checked, &mut rendered, &operational)?;
         drop(guard);
         Ok(VerifiedProject {
             source_id: checked.source_id,

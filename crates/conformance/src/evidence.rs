@@ -267,7 +267,8 @@ pub fn render_summary(
         let low = within.iter().map(|s| s.available_kib).min();
         let swap = within.iter().map(|s| s.swap_used_kib).max();
         let top = within.iter().map(|s| s.top_rss_kib).max();
-        let cell = |value: Option<u64>| value.map_or_else(|| "n/a".to_owned(), |v| mib(v).to_string());
+        let cell =
+            |value: Option<u64>| value.map_or_else(|| "n/a".to_owned(), |v| mib(v).to_string());
         total += span.seconds();
         let _ = writeln!(
             out,
@@ -305,19 +306,27 @@ pub fn render_summary(
         }
     }
     if !projects.is_empty() {
-        out.push_str("\n## Verifications\n\n| Project | Verifications | Seconds |\n| --- | ---: | ---: |\n");
+        out.push_str(
+            "\n## Verifications\n\n| Project | Verifications | Seconds |\n| --- | ---: | ---: |\n",
+        );
         let mut rows: Vec<_> = projects.iter().collect();
-        rows.sort_by(|a, b| b.1 .1.cmp(&a.1 .1));
+        rows.sort_by_key(|row| std::cmp::Reverse(row.1 .1));
         for (project, (count, wall)) in rows {
-            let _ = writeln!(out, "| {project} | {count} | {:.1} |", *wall as f64 / 1000.0);
+            let _ = writeln!(
+                out,
+                "| {project} | {count} | {:.1} |",
+                *wall as f64 / 1000.0
+            );
         }
-        out.push_str("\n## Verification stages (all verifications)\n\n| Stage | Seconds |\n| --- | ---: |\n");
+        out.push_str(
+            "\n## Verification stages (all verifications)\n\n| Stage | Seconds |\n| --- | ---: |\n",
+        );
         let mut by_stage: std::collections::BTreeMap<&str, u64> = std::collections::BTreeMap::new();
         for ((_, stage), (_, wall)) in &stages {
             *by_stage.entry(stage).or_insert(0) += wall;
         }
         let mut rows: Vec<_> = by_stage.into_iter().collect();
-        rows.sort_by(|a, b| b.1.cmp(&a.1));
+        rows.sort_by_key(|row| std::cmp::Reverse(row.1));
         for (stage, wall) in rows {
             let _ = writeln!(out, "| {stage} | {:.1} |", wall as f64 / 1000.0);
         }
@@ -347,7 +356,9 @@ pub fn render_summary(
         }
     }
     if !examples.is_empty() {
-        out.push_str("\n## Examples\n\n| Example | Seconds | Verifier width |\n| --- | ---: | ---: |\n");
+        out.push_str(
+            "\n## Examples\n\n| Example | Seconds | Verifier width |\n| --- | ---: | ---: |\n",
+        );
         for event in examples {
             let _ = writeln!(
                 out,
@@ -399,7 +410,10 @@ vv: the acceptance gate passed
 
     #[test]
     fn a_log_cut_short_ends_at_its_last_stamp_and_misses_the_recipes_not_reached() {
-        let spans = recipe_spans(JUSTFILE, "[10.0] cargo a\n[25.0] cargo b --flag\n[40.0] other\n");
+        let spans = recipe_spans(
+            JUSTFILE,
+            "[10.0] cargo a\n[25.0] cargo b --flag\n[40.0] other\n",
+        );
         assert_eq!(spans.len(), 2);
         assert_eq!(spans[1].seconds(), 15.0);
     }
@@ -412,7 +426,13 @@ vv: the acceptance gate passed
         );
         assert_eq!(samples.len(), 3);
         let summary = render_summary(&recipe_spans(JUSTFILE, log), &samples, &[], &[]);
-        assert!(summary.contains("| `a` | 60 | 1.0 | 2929 | 1000 | 3906 |"), "{summary}");
-        assert!(summary.contains("| `b` | 60 | 1.0 | 6835 | 0 | 976 |"), "{summary}");
+        assert!(
+            summary.contains("| `a` | 60 | 1.0 | 2929 | 1000 | 3906 |"),
+            "{summary}"
+        );
+        assert!(
+            summary.contains("| `b` | 60 | 1.0 | 6835 | 0 | 976 |"),
+            "{summary}"
+        );
     }
 }

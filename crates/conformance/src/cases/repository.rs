@@ -894,10 +894,14 @@ pub(crate) fn run(id: &str) {
             );
             assert_eq!(bdd, "cargo test -p repo-conformance --all-features");
             assert_eq!(inventory, "cargo xtask check-test-inventory");
-            let test_arguments = crate::inventory::recipe_arguments(&test).expect("test is cargo test");
-            let bdd_arguments = crate::inventory::recipe_arguments(&bdd).expect("bdd is cargo test");
+            let test_arguments =
+                crate::inventory::recipe_arguments(&test).expect("test is cargo test");
+            let bdd_arguments =
+                crate::inventory::recipe_arguments(&bdd).expect("bdd is cargo test");
             assert!(
-                test_arguments.windows(2).any(|pair| pair == ["--exclude", "repo-conformance"]),
+                test_arguments
+                    .windows(2)
+                    .any(|pair| pair == ["--exclude", "repo-conformance"]),
                 "the ordinary phase excludes repo-conformance"
             );
             assert!(
@@ -907,7 +911,12 @@ pub(crate) fn run(id: &str) {
                 )),
                 "`bdd` selects no target of the crate it owns: {bdd_arguments:?}"
             );
-            let vv = recipes.get("vv").expect("vv").0.split_whitespace().collect::<Vec<_>>();
+            let vv = recipes
+                .get("vv")
+                .expect("vv")
+                .0
+                .split_whitespace()
+                .collect::<Vec<_>>();
             let position = |name: &str| {
                 vv.iter()
                     .position(|recipe| *recipe == name)
@@ -917,14 +926,19 @@ pub(crate) fn run(id: &str) {
                 position("test") < position("bdd") && position("bdd") < position("inventory"),
                 "the inventory follows both phases"
             );
-            assert_eq!(vv.iter().filter(|recipe| **recipe == "inventory").count(), 1);
+            assert_eq!(
+                vv.iter().filter(|recipe| **recipe == "inventory").count(),
+                1
+            );
 
             // The comparison refuses a test run twice, a test lost, and a
             // target of the owned crate in the ordinary phase.
             let list = |targets: &[(&str, &str, &[&str])]| -> crate::inventory::Parsed {
                 let mut text = String::new();
                 for (description, binary, tests) in targets {
-                    text.push_str(&format!("     Running {description} (target/debug/deps/{binary})\n"));
+                    text.push_str(&format!(
+                        "     Running {description} (target/debug/deps/{binary})\n"
+                    ));
                     for name in *tests {
                         text.push_str(&format!("{name}: test\n"));
                     }
@@ -935,7 +949,11 @@ pub(crate) fn run(id: &str) {
                 .into_iter()
                 .map(str::to_owned)
                 .collect();
-            let unit = ("unittests src/lib.rs", "lexlean-0123456789abcdef", &["a", "b"][..]);
+            let unit = (
+                "unittests src/lib.rs",
+                "lexlean-0123456789abcdef",
+                &["a", "b"][..],
+            );
             let conformance = (
                 "tests/conformance.rs",
                 "conformance-0123456789abcdef",
@@ -947,13 +965,9 @@ pub(crate) fn run(id: &str) {
             let owned = list(&[conformance, bdd_target]);
             crate::inventory::compare(&whole, &ordinary, &owned, &crates)
                 .expect("a partition is accepted");
-            let twice = crate::inventory::compare(
-                &whole,
-                &list(&[unit, conformance]),
-                &owned,
-                &crates,
-            )
-            .expect_err("a test run in both phases");
+            let twice =
+                crate::inventory::compare(&whole, &list(&[unit, conformance]), &owned, &crates)
+                    .expect_err("a test run in both phases");
             assert!(twice.contains("both phases"), "{twice}");
             let lost = crate::inventory::compare(&whole, &ordinary, &list(&[bdd_target]), &crates)
                 .expect_err("tests lost");
@@ -969,18 +983,17 @@ pub(crate) fn run(id: &str) {
                     verification.contains(&format!("`{recipe_command}`")),
                     "VERIFICATION.md names the command `{recipe_command}`"
                 );
-                assert!(spec.contains(recipe_command.as_str()), "SPEC.md names `{recipe_command}`");
+                assert!(
+                    spec.contains(recipe_command.as_str()),
+                    "SPEC.md names `{recipe_command}`"
+                );
             }
             // The honesty workflow keeps its own signal, and the host matrix
             // (not part of vv) keeps the whole workspace on every host.
-            assert!(
-                root_file(".github/workflows/honesty.yml")
-                    .contains("cargo test --locked -p repo-conformance --test bdd")
-            );
-            assert!(
-                root_file(".github/workflows/ci.yml")
-                    .contains("cargo test --locked --workspace --all-features")
-            );
+            assert!(root_file(".github/workflows/honesty.yml")
+                .contains("cargo test --locked -p repo-conformance --test bdd"));
+            assert!(root_file(".github/workflows/ci.yml")
+                .contains("cargo test --locked --workspace --all-features"));
         }
         // §9.4: the normative job runs on the standard runner at the default
         // width and keeps no cache, filter, or skipped recipe.

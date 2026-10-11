@@ -28,7 +28,10 @@ pub(crate) fn run(id: &str) {
     }
 }
 
-fn verify_at(project: &P, operational: Operational) -> Result<lexlean::VerifiedProject, lexlean::LexLeanError> {
+fn verify_at(
+    project: &P,
+    operational: Operational,
+) -> Result<lexlean::VerifiedProject, lexlean::LexLeanError> {
     operational.scoped(|| {
         project.engine().verify(VerifyRequest {
             selection: Selection::Entrypoints,
@@ -41,7 +44,8 @@ fn tree(root: &camino::Utf8Path) -> std::collections::BTreeMap<String, Vec<u8>> 
     support::file_set(root)
         .into_iter()
         .map(|name| {
-            let bytes = std::fs::read(root.join(&name).as_std_path()).expect("a verified file reads");
+            let bytes =
+                std::fs::read(root.join(&name).as_std_path()).expect("a verified file reads");
             (name, bytes)
         })
         .collect()
@@ -146,11 +150,9 @@ fn width_is_operational() {
             "{name} records the width"
         );
     }
-    assert!(
-        crate::evidence::telemetry_in(wide.root.as_std_path())
-            .expect("scans")
-            .is_empty()
-    );
+    assert!(crate::evidence::telemetry_in(wide.root.as_std_path())
+        .expect("scans")
+        .is_empty());
 }
 
 /// The imports of a project's modules, as `module -> imports`, from source.
@@ -180,7 +182,8 @@ fn frontiers(graph: &std::collections::BTreeMap<String, Vec<String>>) -> Vec<usi
         let ready: Vec<&str> = graph
             .iter()
             .filter(|(module, imports)| {
-                !placed.contains(module.as_str()) && imports.iter().all(|i| placed.contains(i.as_str()))
+                !placed.contains(module.as_str())
+                    && imports.iter().all(|i| placed.contains(i.as_str()))
             })
             .map(|(module, _)| module.as_str())
             .collect();
@@ -255,10 +258,12 @@ fn width_invariance() {
         &|item: &usize| *item == 1 || *item == 3,
         |item, value| {
             if value == 1 || value == 3 {
-                Err(lexlean::LexLeanError::from_diagnostic(lexlean::Diagnostic::new(
-                    lexlean::code!("LLI9001"),
-                    format!("item {item} failed"),
-                )))
+                Err(lexlean::LexLeanError::from_diagnostic(
+                    lexlean::Diagnostic::new(
+                        lexlean::code!("LLI9001"),
+                        format!("item {item} failed"),
+                    ),
+                ))
             } else {
                 Ok(())
             }
@@ -295,15 +300,26 @@ fn width_invariance() {
         serde_json::from_slice(&files["attestation.json"]).expect("attestation parses")
     };
     let (a1, a3) = (attestation(&one), attestation(&three));
-    assert_eq!(a1["declarations"], a3["declarations"], "observed axiom sets and policy results");
-    assert_eq!(a1["processes"], a3["processes"], "process records, in order");
-    assert_eq!(a1["compiler_input"], a3["compiler_input"], "compiler input (absent for language 1.0)");
+    assert_eq!(
+        a1["declarations"], a3["declarations"],
+        "observed axiom sets and policy results"
+    );
+    assert_eq!(
+        a1["processes"], a3["processes"],
+        "process records, in order"
+    );
+    assert_eq!(
+        a1["compiler_input"], a3["compiler_input"],
+        "compiler input (absent for language 1.0)"
+    );
     assert_eq!(a1["attestation_id"], a3["attestation_id"]);
 
     // The wide run really ran side by side: the frontier of three was one
     // frontier of three members at width 3.
     let events: Vec<serde_json::Value> = std::fs::read_to_string(
-        telemetry.path().join(lexlean::verify::telemetry::VERIFY_FILE),
+        telemetry
+            .path()
+            .join(lexlean::verify::telemetry::VERIFY_FILE),
     )
     .expect("telemetry was written")
     .lines()
@@ -315,12 +331,18 @@ fn width_invariance() {
         .filter(|event| event["event"] == "frontier")
         .filter_map(|event| event["members"].as_u64())
         .collect();
-    assert_eq!(members, [1, 3, 1], "the frontiers of the project at width 3");
+    assert_eq!(
+        members,
+        [1, 3, 1],
+        "the frontiers of the project at width 3"
+    );
 
     // A prior verification is never taken in place of the work: a published
     // directory that no longer equals what this run staged is refused, at the
     // wide width as at the narrow one.
-    let process_record = at_three.root.join("process/lean/PeanoArithmetic.Addition.json");
+    let process_record = at_three
+        .root
+        .join("process/lean/PeanoArithmetic.Addition.json");
     let mut tampered = std::fs::read(process_record.as_std_path()).expect("reads");
     tampered.push(b' ');
     std::fs::write(process_record.as_std_path(), tampered).expect("tampers");
@@ -328,7 +350,8 @@ fn width_invariance() {
         .err()
         .expect("a tampered published directory is not reused");
     assert!(
-        error.to_string().contains("LLB6003") && error.to_string().contains("refusing to overwrite"),
+        error.to_string().contains("LLB6003")
+            && error.to_string().contains("refusing to overwrite"),
         "{error}"
     );
 }
@@ -350,8 +373,14 @@ fn quoted_words(text: &str, marker: &str) -> Vec<String> {
 /// VR-22: telemetry is evidence, never artifact.
 fn telemetry_is_noncanonical() {
     // The vocabulary the gate refuses is the vocabulary §22.12 states.
-    let stated = quoted_words(support::spec_text(), "Every key it uses is in a closed vocabulary");
-    assert_eq!(stated, VOCABULARY, "§22.12 and the verifier name the same keys");
+    let stated = quoted_words(
+        support::spec_text(),
+        "Every key it uses is in a closed vocabulary",
+    );
+    assert_eq!(
+        stated, VOCABULARY,
+        "§22.12 and the verifier name the same keys"
+    );
     assert!(
         LABELS.iter().all(|label| !VOCABULARY.contains(label)),
         "a label of an event is not a measurement"
@@ -366,7 +395,9 @@ fn telemetry_is_noncanonical() {
         br#"{"tool":"lean","exit_code":0}"#,
     )
     .expect("write");
-    assert!(crate::evidence::telemetry_in(directory.path()).expect("scans").is_empty());
+    assert!(crate::evidence::telemetry_in(directory.path())
+        .expect("scans")
+        .is_empty());
     for key in VOCABULARY {
         std::fs::write(
             directory.path().join("process/lean/M.json"),
@@ -382,7 +413,8 @@ fn telemetry_is_noncanonical() {
         return;
     }
     let project = P::example();
-    let without = verify_at(&project, Operational::new(1, None).expect("width 1")).expect("verifies");
+    let without =
+        verify_at(&project, Operational::new(1, None).expect("width 1")).expect("verifies");
     let sink = tempfile::tempdir().expect("tempdir");
     assert!(
         !sink.path().starts_with(project.root.as_std_path()),
@@ -395,10 +427,21 @@ fn telemetry_is_noncanonical() {
     )
     .expect("verifies with telemetry");
     assert_eq!(with.attestation_id, without.attestation_id);
-    assert_trees_equal(&tree(&with.root), &tree(&without.root), "telemetry on and off");
-    assert!(crate::evidence::telemetry_in(with.root.as_std_path()).expect("scans").is_empty());
+    assert_trees_equal(
+        &tree(&with.root),
+        &tree(&without.root),
+        "telemetry on and off",
+    );
+    assert!(crate::evidence::telemetry_in(with.root.as_std_path())
+        .expect("scans")
+        .is_empty());
     assert!(
-        !other.root.join(".lexlean").join("verified").join("verify-telemetry.jsonl").exists(),
+        !other
+            .root
+            .join(".lexlean")
+            .join("verified")
+            .join("verify-telemetry.jsonl")
+            .exists(),
         "no telemetry is written beside the artifacts"
     );
 
@@ -411,11 +454,24 @@ fn telemetry_is_noncanonical() {
     let allowed: BTreeSet<&str> = VOCABULARY.iter().chain(LABELS.iter()).copied().collect();
     for event in &events {
         for key in event.as_object().expect("an object").keys() {
-            assert!(allowed.contains(key.as_str()), "`{key}` is in no vocabulary: {event}");
+            assert!(
+                allowed.contains(key.as_str()),
+                "`{key}` is in no vocabulary: {event}"
+            );
         }
     }
-    let kinds: BTreeSet<&str> = events.iter().filter_map(|event| event["event"].as_str()).collect();
-    for kind in ["verify_begin", "stage", "frontier", "process", "completion", "verify_end"] {
+    let kinds: BTreeSet<&str> = events
+        .iter()
+        .filter_map(|event| event["event"].as_str())
+        .collect();
+    for kind in [
+        "verify_begin",
+        "stage",
+        "frontier",
+        "process",
+        "completion",
+        "verify_end",
+    ] {
         assert!(kinds.contains(kind), "no `{kind}` event: {kinds:?}");
     }
     let stages: BTreeSet<&str> = events
@@ -423,7 +479,14 @@ fn telemetry_is_noncanonical() {
         .filter(|event| event["event"] == "stage")
         .filter_map(|event| event["stage"].as_str())
         .collect();
-    for stage in ["probe", "elaboration", "replay", "audit", "policy", "attestation"] {
+    for stage in [
+        "probe",
+        "elaboration",
+        "replay",
+        "audit",
+        "policy",
+        "attestation",
+    ] {
         assert!(stages.contains(stage), "no `{stage}` stage: {stages:?}");
     }
     assert_eq!(events.last().expect("events")["ok"], true);

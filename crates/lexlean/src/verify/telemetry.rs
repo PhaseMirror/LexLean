@@ -45,7 +45,15 @@ pub const VOCABULARY: [&str; 11] = [
 /// measurement. They also appear in artifacts, which is why they are not
 /// part of the vocabulary the gate refuses.
 pub const LABELS: [&str; 10] = [
-    "event", "project", "stage", "module", "tool", "exit_code", "frontier", "members", "item",
+    "event",
+    "project",
+    "stage",
+    "module",
+    "tool",
+    "exit_code",
+    "frontier",
+    "members",
+    "item",
     "ok",
 ];
 

@@ -59,3 +59,11 @@ codegen-units = 1
 # one dependency in the dev profile changes no value it computes.
 [profile.dev.package.sha2]
 opt-level = 3
+
+# Backtraces keep their file and line, which is all a failing gate needs from
+# debug information. Full variable-level information doubled the size of every
+# test binary (the conformance binary: 279 MB, 136 MB with this) and a cold
+# build of the workspace's tests took 86 s against 61 s (the test profile
+# inherits this one), on a runner whose disk also holds the proof evidence.
+[profile.dev]
+debug = "line-tables-only"

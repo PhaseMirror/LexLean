@@ -620,7 +620,9 @@ pub fn run(
             exit_code: status.code().unwrap_or(-1),
             started,
             peak_rss_kib: watch.as_ref().and_then(telemetry::GroupWatch::peak_rss_kib),
-            peak_swap_kib: watch.as_ref().and_then(telemetry::GroupWatch::peak_swap_kib),
+            peak_swap_kib: watch
+                .as_ref()
+                .and_then(telemetry::GroupWatch::peak_swap_kib),
         });
     }
     let stdout_bytes = stdout_reader.join().unwrap_or_default();
