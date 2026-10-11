@@ -13,7 +13,6 @@
 //! by name rather than by luck.
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -399,14 +398,19 @@ pub fn completed(item: usize, sequence: usize) {
 /// A proof process is started as the leader of a group of its own, so the
 /// group is the process and what it started (`lake` starts `lean`). The
 /// kernel keeps each process's high-water mark (`VmHWM`), so a spike between
-/// two samples is not lost while the process lives; the group's peak is the
-/// sum of those marks, which is exact for one process and an upper bound for
-/// several. Swap is a level, not a mark, so its peak is the largest sum seen.
-/// Where the host has no `/proc` the watch reports nothing.
+/// two samples is not lost while the process lives. A sample is the sum of the
+/// high-water marks of the processes alive in the group at that moment, and
+/// the group's peak is the largest sample: the processes of a long run that
+/// follow one another are never added together, and the processes that overlap
+/// are. Swap is a level, not a mark, so it is the sum of the current swap of
+/// the live processes. A process that starts and ends between two samples is
+/// not seen, which is why a run's resident peak is a measurement and not a
+/// bound. Where the host has no `/proc` the watch reports nothing.
 pub struct GroupWatch {
     group: u32,
-    marks: BTreeMap<u32, u64>,
+    rss_peak: u64,
     swap_peak: u64,
+    seen: bool,
     sampled: Option<Instant>,
 }
 
@@ -419,8 +423,9 @@ impl GroupWatch {
     pub fn new(group: u32) -> Self {
         Self {
             group,
-            marks: BTreeMap::new(),
+            rss_peak: 0,
             swap_peak: 0,
+            seen: false,
             sampled: None,
         }
     }
@@ -442,7 +447,7 @@ impl GroupWatch {
         let Ok(entries) = std::fs::read_dir("/proc") else {
             return;
         };
-        let mut swap_now = 0u64;
+        let (mut rss_now, mut swap_now, mut alive) = (0u64, 0u64, false);
         for entry in entries.flatten() {
             let Some(pid) = entry
                 .file_name()
@@ -467,24 +472,29 @@ impl GroupWatch {
                 continue;
             };
             if let Some(mark) = kib_field(&status, "VmHWM") {
-                let slot = self.marks.entry(pid).or_insert(0);
-                *slot = (*slot).max(mark);
+                alive = true;
+                rss_now += mark;
+                swap_now += kib_field(&status, "VmSwap").unwrap_or(0);
             }
-            swap_now += kib_field(&status, "VmSwap").unwrap_or(0);
         }
-        self.swap_peak = self.swap_peak.max(swap_now);
+        if alive {
+            self.seen = true;
+            self.rss_peak = self.rss_peak.max(rss_now);
+            self.swap_peak = self.swap_peak.max(swap_now);
+        }
     }
 
-    /// The summed high-water marks, in KiB, when any process was seen.
+    /// The largest sample of summed high-water marks, in KiB, when any process
+    /// was seen.
     #[must_use]
     pub fn peak_rss_kib(&self) -> Option<u64> {
-        (!self.marks.is_empty()).then(|| self.marks.values().sum())
+        self.seen.then_some(self.rss_peak)
     }
 
     /// The largest swap total seen, in KiB, when any process was seen.
     #[must_use]
     pub fn peak_swap_kib(&self) -> Option<u64> {
-        (!self.marks.is_empty()).then_some(self.swap_peak)
+        self.seen.then_some(self.swap_peak)
     }
 }
 

@@ -310,7 +310,7 @@ fn measure_one(
                     .ok();
             }
         }
-        std::thread::sleep(Duration::from_millis(500));
+        std::thread::sleep(Duration::from_millis(200));
     };
     let child_wall = started.elapsed();
     let log_text = std::fs::read_to_string(&log_path).unwrap_or_default();
