@@ -15,6 +15,23 @@ versions, and the entries below say what each tag does and does not claim.
 
 ## Unreleased
 
+- CI execution on the standard runner (#48, SPEC.md §9.2, §9.4, §22.11,
+  §22.12; VERIFICATION.md, "Execution of `just vv` (Issue #48)"): `test` is
+  `cargo test --workspace --exclude repo-conformance --all-features` and `bdd`
+  is `cargo test -p repo-conformance --all-features`, the sole owner of the
+  complete conformance suite, with a new `inventory` recipe
+  (`cargo xtask check-test-inventory`) that lists the tests of both and requires
+  them to partition `cargo test --workspace --all-features` (RP-13); the
+  verifier's process width is an operational profile read from
+  `LEXLEAN_VERIFY_WIDTH` (default 1, `LLV7017` when malformed), recorded in no
+  artifact, scheduled by an ordered pool whose results never depend on completion
+  order, and shown invariant on a multi-module project (VR-20, VR-21); performance
+  telemetry (`LEXLEAN_CI_TELEMETRY`) goes to CI evidence only and a measurement in
+  a verified artifact fails the gate (VR-22); `ci.yml` stamps each recipe,
+  samples the host, and uploads a per-recipe, per-stage, per-module summary
+  (RP-14). Every verification no longer hashes the running executable (4.7 s in a
+  debug build), and the dev profile keeps line tables only. Register: 320 IDs,
+  69 codes (`LLV7017`).
 - The acceptance gate fits its job again (SPEC.md §9.2, VERIFICATION.md,
   "Runtime of `just vv`"): the run of this branch was cancelled at the
   360-minute limit. `bdd` is `cargo test -p repo-conformance --test bdd`, the
