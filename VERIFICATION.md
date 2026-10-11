@@ -3017,7 +3017,7 @@ conformance -- conformance_gn_04`. Expected: a request that declares
 observation free is answered instead of refused.
 
 ```text
-thread 'conformance_gn_04' panicked at crates/conformance/src/cases/gnaf.rs:1060:9:
+thread 'conformance_gn_04' panicked at crates/conformance/src/cases/gnaf.rs:1068:9:
 assertion `left == right` failed: reject-free-observation
 ```
 
@@ -3032,7 +3032,7 @@ uniform shift the review found. Command: `cargo test -p repo-conformance
 system, which cannot run the slicing plan, is charged its preprocessing.
 
 ```text
-thread 'conformance_gn_04' panicked at crates/conformance/src/cases/gnaf.rs:1111:9:
+thread 'conformance_gn_04' panicked at crates/conformance/src/cases/gnaf.rs:1119:9:
 assertion `left == right` failed: Fixed { plan: 0 }
 ```
 
@@ -3046,7 +3046,7 @@ prepared boundary whether or not an artifact it prepared is bound
 repo-conformance --test conformance -- conformance_gn_04`.
 
 ```text
-thread 'conformance_gn_04' panicked at crates/conformance/src/cases/gnaf.rs:1060:9:
+thread 'conformance_gn_04' panicked at crates/conformance/src/cases/gnaf.rs:1068:9:
 assertion `left == right` failed: reject-unbound-prepared-state
 ```
 
@@ -3059,7 +3059,7 @@ Planted: the host's `validate` skipped the operand-size rule
 `cargo test -p repo-conformance --test conformance -- conformance_gn_04`.
 
 ```text
-thread 'conformance_gn_04' panicked at crates/conformance/src/cases/gnaf.rs:1060:9:
+thread 'conformance_gn_04' panicked at crates/conformance/src/cases/gnaf.rs:1068:9:
 assertion `left == right` failed: reject-unit-cost-operands
 ```
 
@@ -3076,7 +3076,7 @@ machine's capacity is answered; (2) a request charging 2^40 per invocation
 loads, so its cost could leave the host's integers.
 
 ```text
-thread 'conformance_gn_04' panicked at crates/conformance/src/cases/gnaf.rs:1060:9:
+thread 'conformance_gn_04' panicked at crates/conformance/src/cases/gnaf.rs:1068:9:
 assertion `left == right` failed: reject-beyond-capacity
 ```
 
@@ -3125,7 +3125,7 @@ Planted: the host's `check_claim` accepted `restricted_universe_optimal`
 conformance_gn_05`.
 
 ```text
-thread 'conformance_gn_05' panicked at crates/conformance/src/cases/gnaf.rs:1197:9:
+thread 'conformance_gn_05' panicked at crates/conformance/src/cases/gnaf.rs:1205:9:
 assertion `left == right` failed: reject-restricted-universe-alias
 ```
 
@@ -3156,7 +3156,7 @@ statement's own numbers. Command: `cargo test -p repo-conformance --test
 conformance -- conformance_gn_07`.
 
 ```text
-thread 'conformance_gn_07' panicked at crates/conformance/src/cases/gnaf.rs:1540:5:
+thread 'conformance_gn_07' panicked at crates/conformance/src/cases/gnaf.rs:1548:5:
 assertion `left == right` failed
   left: [(0, [1, 3]), (1, [2, 2]), (2, [3, 1]), (3, [3, 4])]
  right: [(0, [1, 3]), (1, [2, 2]), (2, [3, 1]), (3, [3, 3])]
@@ -3174,7 +3174,7 @@ the strongest claims, and `cargo xtask check-calculus --write` regenerated
 class the model refuses.
 
 ```text
-thread 'conformance_gn_08' panicked at crates/conformance/src/cases/gnaf.rs:1829:5:
+thread 'conformance_gn_08' panicked at crates/conformance/src/cases/gnaf.rs:1837:5:
 assertion `left == right` failed
   left: [("global_optimal", "scalar"), ("argmin_complete", "scalar"), ("restricted_universe_optimal", "scalar"), ("pareto_optimal", "vector"), ("frontier_complete", "vector")]
  right: [("global_optimal", "scalar"), ("argmin_complete", "scalar"), ("pareto_optimal", "vector"), ("frontier_complete", "vector")]
@@ -4801,6 +4801,22 @@ Removed: both edits were reverted. A third defect is planted by the case
 itself: a copy of the generated `Certification` whose strict test is weakened
 (`Nat.ble` for `Nat.blt`) is valid Lean, and the library's proofs of the
 lower-bound route are rejected over it.
+
+### Runtime added by GNAF certification
+
+Measured in the reference container (4 vCPUs) on the final tree, alone unless
+stated: `conformance_gc_01` 13 s, `conformance_gc_02` 290 s (it runs the
+compiler project's `verify` once and compiles the planted verdicts),
+`conformance_gc_09` 59 s (the library, its instances, `leanchecker`, and the
+weakened checker; the generated environment is compiled once per machine and
+shared), and every other `GC` case under 3 s. `conformance_gn_02` states the
+unplanted fixtures in its planted module and takes 451 s alone. The full
+`cargo test --workspace --all-features` took 3811 s, with the 325 conformance
+tests in 3426 s; `cargo xtask verify-examples` took 301 s for the `compiler`
+project (it verifies `Certification` and the 53 certificate theorems with the
+kernel) and 1126 s for the nine language-1.2 examples and the `compiler` project in
+all, without `uor-atlas`. The addition to `just vv` is about ten minutes of the 276 projected
+for the gate, well under twenty.
 
 ## Runtime of `just vv` (Issue #25, merged with #31)
 
