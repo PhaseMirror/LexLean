@@ -549,11 +549,26 @@ fn argument_status(
     )
 }
 
-/// `Certification.keepsObservation` and `Certification.cheaperObservation`
-/// together: wherever the system is admitted on an argument, its rewriting is
-/// admitted on it as well, and at strictly fewer steps. Returns `(keeps,
-/// cheaper)` over the request's domain.
-fn observations(
+/// `Certification.sameObservations` and `Certification.strictlyCheaper`
+/// together: wherever the system is admitted on an argument of the request's
+/// domain, its rewriting is admitted on it as well (`keeps`), and at strictly
+/// fewer steps (`cheaper`). Any two systems of the universe can be compared;
+/// a schema's rewriting is the case `preserves` asks about.
+///
+/// # Errors
+///
+/// `LLS8002` beyond the host's integers, `LLV7010` and `LLI9001` as `check`.
+pub fn observations(
+    request: &Request,
+    selector: super::Selector,
+    target: super::Selector,
+) -> Result<(bool, bool), LexLeanError> {
+    on_evaluation_stack(request, |request| {
+        observations_inner(request, selector, target)
+    })?
+}
+
+fn observations_inner(
     request: &Request,
     selector: super::Selector,
     target: super::Selector,
@@ -601,7 +616,7 @@ fn preserves_inner(
     if !improves(request, selector, schema)? {
         return Ok(false);
     }
-    let (keeps, cheaper) = observations(request, selector, target)?;
+    let (keeps, cheaper) = observations_inner(request, selector, target)?;
     Ok(keeps && cheaper)
 }
 

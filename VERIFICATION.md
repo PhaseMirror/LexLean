@@ -4686,36 +4686,45 @@ overlay turns every `nat_add` call of each certificate B's crate into
 ## GNAF certification (Issue #23)
 
 `conformance_gc_01` reads every certificate fixture under
-`compiler/certificates/` (53) as published, requires canonical bytes, the
+`compiler/certificates/` (66) as published, requires canonical bytes, the
 framed SHA-256 identity of the certificate, the schemas, and the host's
 verdict, and refuses malformed certificates with `LLB6007` and certificates
 beyond 65,536 premises, 1,024 positions in a list, or numbers of 2^32 with
 `LLS8002`. `conformance_gc_02` requires the committed `Certification`,
 `GnafCertificates`, and model sources to equal their generators, runs the
 compiler project's `verify` (the kernel reduces `Certification.check` on each
-of the 53 certificates to the verdict the host gives it), and compiles a
-module stating four false verdicts (a certified optimum for a certificate
-missing a competitor's premise, an unattained bound, a locally normal system,
-and a premise-free bound over unresolved systems), each of which Lean rejects
-as "Not a definitional equality". `conformance_gc_03`..`conformance_gc_08`
-assert the verdict, obligation, and established status of every fixture, sweep
-mutations of the certified lower bounds (every premise dropped or weakened, the
-bound moved, an attainer dropped or added), sweep every affine bridge below the
-committed one, compare the certificate with enumeration where enumeration
-answers, and require that `normalityVerdict` is the only reader of `isNormal`.
-`conformance_gc_09` compiles the 13 modules of
+of the 66 certificates to the verdict the host gives it, and, for each
+certificate with a `reduced` premise, decides `certificateReductionsPreserve`),
+and compiles a module stating five false claims (a certified optimum for a
+certificate missing a competitor's premise, an unattained bound, a locally
+normal system, a premise-free bound over unresolved systems, and the
+preservation of an ineligible reduction), each of which Lean rejects as "Not a
+definitional equality". `conformance_gc_03`..`conformance_gc_08` assert the
+verdict, obligation, and established status of every fixture, sweep mutations
+of the certified lower bounds (every premise dropped or weakened, the bound
+moved, an attainer dropped or added), sweep every affine bridge below the
+committed one (including a system bounded exactly on the bridge's line), pose
+the unresolved requests as frontiers and as bridge claims, compare the
+certificate with enumeration where enumeration answers, compare the host's
+`observations` with the trials of every pair of systems of four requests,
+check `preserves` against `improves` for every schema application of six
+requests, and require that `normalityVerdict` is the only reader of
+`isNormal`. `conformance_gc_09` compiles the 13 modules of
 `compiler/proofs/LexLeanCertification/` over the compiler project's generated
 modules and the shipped preservation library, audits their text for forbidden
-tokens, compares the exact axioms of the 102 registered declarations
+tokens, compares the exact axioms of the 107 registered declarations
 (`compiler/proofs/library.toml`) with Lean's `#print axioms`, instantiates the
-soundness theorems at every certified fixture, replays the library and the
-instances through `leanchecker` (the same kernel, §22.4, not an independent
-checker), and requires Lean to reject the library when the checker's strict
-test is weakened. `conformance_gc_10` requires the generated files to be
-deterministic and every identity to be recomputed from content. Each theorem
-is a kernel-checked proof about the evaluator and the checker as generated;
-the host transcription and the fixtures are `build` evidence validated against
-that kernel.
+soundness theorems at every certified fixture, elaborates the preservation
+theorems at ascriptions stated in the module's own relations (so the library
+cannot be proving a second copy), replays the library and the instances
+through `leanchecker` (the same kernel, §22.4, not an independent checker), and
+requires Lean to reject the library when the checker's strict test is weakened
+and when a false lemma (the schema's strict saving reversed) is planted in a
+staged copy of `Schemas`. `conformance_gc_10` requires the generated files to
+be deterministic and every identity to be recomputed from content. Each
+theorem is a kernel-checked proof about the evaluator and the checker as
+generated; the host transcription and the fixtures are `build` evidence
+validated against that kernel.
 
 ### GNAF certification can fail (host transcription)
 
@@ -4768,6 +4777,44 @@ nothing, because the rewriting of a dispatch to one plan's fixed system reaches
 a subset of the dispatch's code. They are kept as the statements of UOR-GNAF
 §6.3 and are equivalent mutants, not evidence.
 
+A one-line mutation sweep of the transcription then found seventeen more
+survivors (adversarial review `r23a`: every `open(Obligation::..)` replaced by
+`None` and every `<`, `<=`, `==`, `&&`, `||` flipped in the lines of
+`certification.rs` from `eligible` to `check`, 60 mutants, each run against
+`conformance_gc_01` and `gc_03`..`gc_08`, `gc_10`). Each real one is now
+refused by a named case, and the sweep was run again on the final tree:
+
+| Mutant | Refused by | Fixture or sweep that fails |
+| --- | --- | --- |
+| lower-bound attainer index `< premises` as `<=` | `gc_03` | `lb-attainer-at-count` |
+| frontier member index `< premises` as `<=` | `gc_04` | `frontier-member-at-count` |
+| frontier members "in order and in range" as "or" | `gc_04` | `frontier-members-unordered`, `frontier-member-at-count` |
+| a frontier member with an unproven fact accepted | `gc_04` | `frontier-member-unproven` |
+| a frontier non-member with an unproven fact accepted | `gc_04` | `frontier-nonmember-unproven` |
+| a frontier member or non-member the fuel leaves unresolved ignored | `gc_04` | the unresolved request posed as a frontier |
+| a reduction over an unresolved system ignored | `gc_05` | `reduction-over-unresolved` |
+| a bridge accepting a reduced or unproven system | `gc_07` | `bridge-reduced`, `bridge-unproven` |
+| a bridge accepting an unresolved system | `gc_07` | the unresolved request posed as a bridge claim |
+| an out-of-domain position in `pays_at_least` accepted (host and kernel would disagree) | `gc_03` | `lb-position-out-of-domain` |
+| a Pareto claim routed as a scalar reduction or lower bound | `gc_04`, `gc_03` | `reduction-pareto`, `route-lower-bound-pareto` |
+| a measured system above an argmin's bound, or a measured tie under an optimum, read as an omission | `gc_03` | `lb-argmin-measured`, `lb-optimum-tie-measured` |
+| `after < steps` as `<=` in the observations of a rewriting | `gc_05` | `observations` against the trials of every pair of systems |
+
+Five mutants of the final sweep are not refused, and each is equivalent: the
+mutant computes the function the original does on every input that reaches it.
+`small == large && domain-of-lists` in the collapse eligibility as `||`:
+`rewrite` is `none` for a dispatch of two plans, so the conjunct is never the
+deciding one. `size(target) <= size(selector)` in `improves` as `<`: a
+dispatch carries its dispatching function and both plans, so it is strictly
+larger than the fixed system of one plan (and dropping the size or the
+preparation comparison altogether changes nothing, because the rewriting
+reaches a subset of the dispatch's code). `keeps && cheaper` in `preserves` as
+`||`: it is evaluated only after `improves` holds, and `improves_preserves`
+proves both sides then. The position of the rewriting in the expansion, which
+a `reduces` fact carries and no verdict reads. `cost < bound` after
+`cost == bound` was excluded, which `<=` leaves unchanged. Two further
+mutants (`||` read as `&&` in a closure's head) do not compile.
+
 ### GNAF certification can fail (model and library)
 
 Planted in `crates/conformance/src/certification_model.rs`: the strict
@@ -4800,7 +4847,11 @@ the module `LexLeanCertification.Soundness` was rejected by Lean:
 Removed: both edits were reverted. A third defect is planted by the case
 itself: a copy of the generated `Certification` whose strict test is weakened
 (`Nat.ble` for `Nat.blt`) is valid Lean, and the library's proofs of the
-lower-bound route are rejected over it.
+lower-bound route are rejected over it; and a false lemma, `schema_cheaper`
+concluding `c < c'` where it concludes `c' < c`, is planted in a staged copy
+of `Schemas` beside the library's compiled modules, and Lean refuses it. The
+GC-02 module of false claims gained a fifth, the preservation of an ineligible
+reduction (`Certification.certificateReductionsPreserve` is `false` for it).
 
 ### Runtime added by GNAF certification
 

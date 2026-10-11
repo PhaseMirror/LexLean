@@ -1171,6 +1171,51 @@ fn gc_05() {
     // with `improves` on every schema application of the committed requests,
     // and the committed module states, for each certificate with a reduction,
     // whether every one of its reductions preserves.
+    // The relations themselves, for every pair of systems of a request (not
+    // only a schema's rewriting): read back from the trials of each system on
+    // each argument, independently of the transcription.
+    let mut pairs = 0;
+    for name in [
+        "internal-best-on-short-lists",
+        "argmin-over-systems",
+        "threshold-edge",
+        "bound-over-unresolved",
+    ] {
+        let posed = request(name);
+        let selectors = gnaf::expand(&posed.carrier);
+        let trials: Vec<_> = selectors
+            .iter()
+            .map(|selector| {
+                certification::trials(&posed, *selector)
+                    .expect("evaluates")
+                    .0
+            })
+            .collect();
+        for (before, selector) in trials.iter().zip(&selectors) {
+            for (after, target) in trials.iter().zip(&selectors) {
+                let mut keeps = true;
+                let mut cheaper = true;
+                for (was, now) in before.iter().zip(after) {
+                    if let Trial::Agrees { steps } = was {
+                        match now {
+                            Trial::Agrees { steps: fewer } => cheaper &= fewer < steps,
+                            Trial::Disagrees | Trial::Unknown => {
+                                keeps = false;
+                                cheaper = false;
+                            }
+                        }
+                    }
+                }
+                assert_eq!(
+                    certification::observations(&posed, *selector, *target).expect("evaluates"),
+                    (keeps, cheaper),
+                    "{name}: {selector:?} against {target:?}"
+                );
+                pairs += 1;
+            }
+        }
+    }
+    assert!(pairs >= 80, "many pairs of systems: {pairs}");
     let model_names: BTreeSet<String> = declarations("compiler/src/Certification.lex.tex")
         .iter()
         .filter_map(|declaration| declaration["name"].as_str().map(str::to_owned))
