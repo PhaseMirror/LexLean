@@ -1004,6 +1004,68 @@ pub(crate) fn run(id: &str) {
             }
         }
         "CL-21" => super::typed_diagnostics::run(),
+        // §24.6: the host-driven end of the children the library started is
+        // one public function, the only kill path, and a registered refusal.
+        "CL-22" => {
+            let lifeline = std::fs::read_to_string(
+                support::repo_root()
+                    .join("crates/lexlean/src/verify/lifeline.rs")
+                    .as_std_path(),
+            )
+            .expect("lifeline.rs");
+            assert!(
+                lifeline.contains("pub fn end_live_children() -> Vec<ChildGroupEnd>"),
+                "§24.6: end_live_children is public with the documented return"
+            );
+            assert!(
+                lifeline.contains("pub fn allow_children()"),
+                "§24.6: the host re-enables children explicitly"
+            );
+            assert!(
+                lifeline.contains("pub enum GroupEnd {")
+                    && lifeline.contains("Ended,")
+                    && lifeline.contains("AlreadyGone,")
+                    && lifeline.contains("Failed("),
+                "§24.6: the outcome is per group: ended, already gone, or failing"
+            );
+            // Exactly one kill path: the group signal is sent in one place,
+            // and the executable's interrupt thread goes through the public
+            // function rather than signalling anything itself.
+            let signals = lifeline.matches("kill_process_group(").count()
+                - lifeline.matches("test_kill_process_group(").count();
+            assert_eq!(
+                signals, 1,
+                "§24.6: the process group is signalled in exactly one place, found {signals}"
+            );
+            let handler = lifeline
+                .split("signals.forever()")
+                .nth(1)
+                .expect("the interrupt thread waits for the signals")
+                .split("emulate_default_handler")
+                .next()
+                .expect("the signal's own action is restored");
+            assert!(
+                handler.contains("end_live_children"),
+                "§24.6: the interrupt thread ends the live groups through the public function"
+            );
+            assert!(
+                !handler.contains("kill_process_group"),
+                "§24.6: the interrupt thread has no kill path of its own"
+            );
+            // The refusal of a child started after the end is registered.
+            let model = repo_model::Model::load_from_repo_root().expect("the model loads");
+            let row = model
+                .errors
+                .error
+                .iter()
+                .find(|row| row.code == "LLV7017")
+                .expect("LLV7017 is registered");
+            assert_eq!(
+                row.class, "environment",
+                "LLV7017 is an environment failure"
+            );
+            assert_eq!(row.exit, 3, "LLV7017 exits 3");
+        }
         other => panic!("no cli-api case is wired for {other}"),
     }
 }

@@ -2154,6 +2154,90 @@ Removed: all seven were restored (the unit test of the audit,
 dependency with no role, a role with no dependency, and a SPEC without the
 table).
 
+### a host ends the children the library started
+
+A host that embeds the library (`lexlean::cli::run`, a service, a test
+harness) owns its own signals and its own termination, and the library
+installs no handler for it; until this change it had no way to end the
+children the library had started, so an interrupted host left its `lake` and
+`lean` running. The library now exposes `lexlean::verify::end_live_children`,
+which ends every child process group it started in this process and has not
+seen exit and reports each group as `Ended`, `AlreadyGone`, or `Failed` with
+the OS error, and `lexlean::verify::allow_children`, which re-enables starting
+children after the call. The shutdown state is set and the live list is taken
+under the one lock that registers a child, so a child started concurrently
+with the call is either ended by it or refused (`LLV7017`), never left
+running; a zombie in a group counts as ended, and the host's own process and
+process group are never signalled. The executable's interrupt thread ends the
+live groups through the same function, so exactly one implementation of "end
+the live groups" exists and the executable is its first user.
+
+`crates/lexlean/tests/end_children.rs` runs an embedding host that calls
+`lexlean::cli::run` against a fake `git` that starts a long `sleep`, ends the
+live children while it runs, and requires that no process of the group
+remains, that the call reports every group ended, and that the run returns a
+diagnostic rather than hanging; it delivers a real `SIGINT` and `SIGTERM` to a
+host that registered its own handling and ends the children from that
+handling's thread, and requires that the host survives, that both children are
+reported ended, and that the host's pid and pgid are untouched (leading its
+own group where it can); and it covers the no-op, the idempotent second call,
+a child that already exited (`AlreadyGone`), the refusal of a child started
+after the call, and a concurrent-starts stress. `conformance_cl_22` holds the
+register, the public functions, the single kill path, and the registered
+`LLV7017` to the source.
+
+Planted: `end_group` ends only the direct child and not its group
+(`kill_process` for `kill_process_group`). Command: `cargo test -p lexlean
+--test end_children an_embedding_host_ends_every_live_group`. Expected: the
+grandchild survives and its group is reported failing, not ended.
+
+```text
+thread 'an_embedding_host_ends_every_live_group' (5469) panicked at crates/lexlean/tests/end_children.rs:158:5:
+every live group is reported ended: [ChildGroupEnd { group: 5472, outcome: Failed("processes of group 5472 still existed 2000 ms after SIGKILL") }]
+```
+
+Planted: `end_group` signals the host's own process group
+(`kill_process_group(getpgid(None))` for the child's group). Command: `cargo
+test -p lexlean --test end_children the_host_ends_children_from_its_own_signal_thread`
+under `setsid`. Expected: the host process is killed by its own `SIGKILL`,
+before it can report anything.
+
+```text
+bash: line 1:  2284 Killed                     timeout -s KILL 60 'target/debug/deps/end_children-27e04c5c257ce40d' the_host_ends_children_from_its_own_signal_thread > /dev/null 2>&1
+RC=137
+```
+
+Planted: `signal_outcome` takes any refusal for success (`Err(_errno) =>
+Some(GroupEnd::Ended)`). Command: `cargo test -p lexlean --lib
+verify::lifeline::tests::a_refused_group_is_reported`. Expected: a simulated
+`EPERM` is reported ended, not failed.
+
+```text
+thread 'verify::lifeline::tests::a_refused_group_is_reported' (5813) panicked at crates/lexlean/src/verify/lifeline.rs:594:17:
+EPERM is reported, not taken for success: Some(Ended)
+```
+
+Planted: the executable's interrupt thread signals the live groups itself
+instead of calling the public function. Command: `cargo test -p repo-conformance
+--test conformance -- conformance_cl_22`. Expected: the "exactly one kill
+path" check finds a second signal site in the module.
+
+```text
+thread 'conformance_cl_22' (7282) panicked at crates/conformance/src/cases/cli_api.rs:1036:13:
+assertion `left == right` failed: §24.6: the process group is signalled in exactly one place, found 2
+  left: 2
+ right: 1
+```
+
+Planted: the shutdown state is dropped from `end_live_children` (the
+`SHUTDOWN.store(true, Ordering::SeqCst)` removed), so a child started after
+the call is no longer refused. Command: `cargo test -p lexlean --test
+end_children a_child_started_after_the_end_is_refused`. Expected: the child
+starts, and the case fails at its own refusal assertion
+(`a child started after the end must be refused`).
+
+Removed: every plant was restored; the tests pass.
+
 ### a module is a namespace at every segment
 
 Module `Sub.Nat` with a function `blt`, imported by `Sub.Other`, was accepted by

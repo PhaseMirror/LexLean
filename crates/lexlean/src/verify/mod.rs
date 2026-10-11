@@ -23,10 +23,15 @@
 pub mod axiom;
 pub mod child;
 pub mod leanchecker;
-pub(crate) mod lifeline;
+pub mod lifeline;
 pub mod source_audit;
 pub mod toolchain;
 pub mod workspace;
+
+// The host-driven end of the children the library started (SPEC.md §24.6),
+// re-exported so the documented path `lexlean::verify::end_live_children`
+// does not name the module that implements it.
+pub use lifeline::{allow_children, end_live_children, ChildGroupEnd, GroupEnd};
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;

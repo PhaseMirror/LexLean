@@ -15,6 +15,18 @@ versions, and the entries below say what each tag does and does not claim.
 
 ## Unreleased
 
+- A host that embeds the library can end the children the library started
+  (SPEC.md §17.17, §24.6, `CL-22`): `lexlean::verify::end_live_children` ends
+  every child process group the library started in this process and has not
+  seen exit, reporting each as `Ended`, `AlreadyGone`, or `Failed` with the OS
+  error, and `lexlean::verify::allow_children` re-enables starting children
+  afterwards. The shutdown state is set under the same lock that registers a
+  child, so a child started concurrently with the call is ended or refused
+  (`LLV7017`), never left running; the library installs no handler, changes no
+  signal disposition, and never signals the host's own process or group, and
+  the executable's interrupt thread now ends the live groups through the same
+  function. `CL-22` and `LLV7017` are registered, and the falsifiability
+  record is in `VERIFICATION.md`.
 - The acceptance gate fits its job again (SPEC.md §9.2, VERIFICATION.md,
   "Runtime of `just vv`"): the run of this branch was cancelled at the
   360-minute limit. `bdd` is `cargo test -p repo-conformance --test bdd`, the

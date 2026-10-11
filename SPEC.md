@@ -4575,12 +4575,15 @@ shipped image does, is the parent of the grandchildren it killed, reaps the
 ones it can, and does not wait for the rest). A child in a group of its
 own is not reached by the terminal's Ctrl-C, nor by the `SIGTERM` that
 `timeout(1)` or a service manager sends to the compiler alone, so the
-`lexlean` executable (and no embedding host: the library never installs a
-signal handler, and a host that calls `lexlean::cli::run` keeps its own
-signals and its own termination) watches for `SIGINT`, `SIGTERM`, `SIGHUP`,
-and `SIGQUIT` from the first child on, kills every live child group when one
-arrives, and then lets the signal end the process as it would have (the exit
-status is the signal's). A signal that the process was started ignoring (what
+`lexlean` executable watches for `SIGINT`, `SIGTERM`, `SIGHUP`,
+and `SIGQUIT` from the first child on, ends every live child group when one
+arrives through `lexlean::verify::end_live_children` (§24.6), and then lets
+the signal end the process as it would have (the exit
+status is the signal's). The library never installs a signal handler and
+never changes a signal disposition: a host that calls `lexlean::cli::run`
+keeps its own signals and its own termination, and ends the children it
+started through the same function (§24.6), called from its own signal
+handling or shutdown path. A signal that the process was started ignoring (what
 `nohup` does to `SIGHUP`, and a non-interactive shell to `SIGINT` and
 `SIGQUIT` of a background job) is not watched and stays ignored; on a host that
 can report neither `/proc/self/status` nor `ps -o ignored`, `SIGHUP` is not
@@ -6534,6 +6537,37 @@ change or a claim of unchanged struct-literal source compatibility.
 
 No public function panics for malformed user input, filesystem races, child failure, invalid UTF-8 input, invalid TOML/JSON, or unexpected external output.
 
+### 24.6 Ending the children the library started
+
+Every child the library starts (`lake`, `lean`, `leanchecker`, `git`, the PDF provider) leads a process group of its own (§17.17). A host that embeds the library ends the ones still live through:
+
+```rust
+pub enum GroupEnd {
+    Ended,
+    AlreadyGone,
+    Failed(String),
+}
+
+pub struct ChildGroupEnd {
+    pub group: u32,
+    pub outcome: GroupEnd,
+}
+
+pub fn end_live_children() -> Vec<ChildGroupEnd>;
+pub fn allow_children();
+```
+
+at `lexlean::verify`, part of the embedding surface versioned with the stable compiler API. The contract:
+
+- `end_live_children` ends every child process group the library has started in this process and has not yet seen exit, and returns one row per such group, in registration order: `Ended` (the group was live and is now ended), `AlreadyGone` (it had already exited), or `Failed` with the OS error. A failure to end a group is reported in its row, never swallowed, and never a bare success of the whole.
+- It is idempotent and a no-op when no child is live: the return is empty.
+- It installs no signal handler, alters no signal disposition, and never signals or terminates the host's own process or process group. The groups it ends are exactly the ones the library registered.
+- It is callable from any ordinary thread of the host. It is not async-signal-safe (it takes a lock, waits, and reaps): a host calls it from an ordinary thread — its signal-handling thread, its shutdown path, or a timeout of its own — never from inside a signal handler.
+- After the call, starting a new child in this process fails with `LLV7017` until the host calls `allow_children`. The shutdown state is set and the live list is taken under the one lock that registers a child, so a child started concurrently with the call is either ended by it or refused; none is left running.
+- A zombie in a group counts as ended. Zombies that are children of the host process are reaped with a targeted `waitpid` on exactly those process IDs, never a wait-for-any; the group's leader is reaped by the run that owns its child handle.
+- On unix the group is signalled directly through the audited process-group signalling dependency (§8.5); no `kill` executable is looked up on `PATH`. On Windows the process tree is ended with `taskkill /PID <pid> /T /F`, and a `taskkill` that fails is reported in the row like a group that could not be ended.
+- The `lexlean` executable's interrupt thread (§17.17) ends the live groups through this same function: exactly one implementation of "end the live groups" exists, and the executable is its first user. The library still installs no handler for an embedding host.
+
 ---
 
 ## 25. Security and operational behavior
@@ -7604,6 +7638,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `CL-19` | `cli-api` | Snapshot returns a stable owned canonical semantic envelope without writing artifacts or invoking a backend. | §24.1 |
 | `CL-20` | `cli-api` | Language-1.1 init creates and verifies a declarative Lake workspace containing no source Lean module. | §23.4 |
 | `CL-21` | `cli-api` | Native diagnostics distinguish package-import cycles and unqualified cross-package term ambiguities without changing diagnostic wire bytes. | §24.5 |
+| `CL-22` | `cli-api` | A host that embeds the library ends every child process group the library started and has not seen exit through the public function `lexlean::verify::end_live_children`, which installs no signal handler, alters no signal disposition, never signals the host's own process or group, reports each group as ended, already gone, or failing with the OS error, and refuses a later child start with LLV7017 until the host re-enables it, and the `lexlean` executable ends its interrupted children through the same function. | §17.17, §24.6 |
 | `SE-01` | `security` | Source, package, workspace, resource, and output paths are confined and symlinks are rejected. | §25.1 |
 | `SE-02` | `security` | Special files, duplicate filesystem identities, and case-fold collisions are rejected before processing. | §25.1 |
 | `SE-03` | `security` | All child processes use direct executable and argv invocation with no shell. | §25.2 |
@@ -7697,7 +7732,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `RS-13` | `reasoning` | GNAF requests over forward-chaining plans of the clinical rule base charge rule search as execution in calculus steps and are answered over their declared plans, each plan computes on every patient of the request's domain the level the oracle's Triage derives from the same findings as the kernel decides, and a request whose search is charged nothing or whose universe is the candidates a search discovered is refused. | §17.15 |
 | `RS-14` | `reasoning` | The committed reasoning example verifies a multi-step clinical forward derivation with its invariant and termination, a generic terminating countdown, a deduplicating breadth-first planner, a depth-first search and a generate-and-verify reasoner over model-generated candidates, and an answer proved correct with its check erased, with every generated theorem kernel-checked, and planting a rule-threshold mutation in it is refused by verification. | §17.12, §28.6 |
 
-**Total required capability IDs:** 315.
+**Total required capability IDs:** 316.
 
 No row may be downgraded to `some-true` or `open`. Upstream Lean facts are ledger/authority rows, not substitutions for these build behaviors.
 
