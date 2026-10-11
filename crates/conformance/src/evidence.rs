@@ -372,6 +372,205 @@ pub fn render_summary(
     out
 }
 
+/// The detail of a run for finding where its time and memory went: the slowest
+/// conformance cases, every project's stages, and, for the longest single
+/// verification, its slowest frontiers, its stages with the host's lowest free
+/// memory and highest swap, and the processes that were slowest, largest, or
+/// swapped. A project's name separates verifications of different projects; two
+/// verifications of one project that overlap in time share their rows.
+#[must_use]
+pub fn render_detail(verifier: &[serde_json::Value], cases: &[serde_json::Value]) -> String {
+    use std::fmt::Write as _;
+    let ms = |event: &serde_json::Value| event["wall_ms"].as_u64().unwrap_or(0);
+    let secs = |value: u64| value as f64 / 1000.0;
+    let mib = |event: &serde_json::Value, key: &str| {
+        event[key]
+            .as_u64()
+            .map_or_else(|| "n/a".to_owned(), |kib| (kib / 1024).to_string())
+    };
+    let mut out = String::new();
+    if !cases.is_empty() {
+        let mut rows: Vec<&serde_json::Value> = cases.iter().collect();
+        rows.sort_by_key(|event| std::cmp::Reverse(ms(event)));
+        let total: u64 = cases.iter().map(ms).sum();
+        let _ = write!(
+            out,
+            "\n## Slowest conformance cases\n\n{} cases, {:.0} s in all (summed over the test threads)\n\n| Case | Seconds | Passed |\n| --- | ---: | --- |\n",
+            cases.len(),
+            secs(total)
+        );
+        for event in rows.into_iter().take(15) {
+            let _ = writeln!(
+                out,
+                "| {} | {:.1} | {} |",
+                event["case"].as_str().unwrap_or("?"),
+                secs(ms(event)),
+                event["ok"]
+            );
+        }
+    }
+    // Projects and their stages.
+    let mut by_project: std::collections::BTreeMap<
+        String,
+        std::collections::BTreeMap<String, u64>,
+    > = std::collections::BTreeMap::new();
+    let mut longest: Option<(String, u64)> = None;
+    for event in verifier {
+        let project = event["project"].as_str().unwrap_or("?").to_owned();
+        match event["event"].as_str() {
+            Some("stage") => {
+                *by_project
+                    .entry(project)
+                    .or_default()
+                    .entry(event["stage"].as_str().unwrap_or("?").to_owned())
+                    .or_insert(0) += ms(event);
+            }
+            Some("verify_end") => {
+                if longest.as_ref().is_none_or(|(_, wall)| ms(event) > *wall) {
+                    longest = Some((project, ms(event)));
+                }
+            }
+            _ => {}
+        }
+    }
+    if !by_project.is_empty() {
+        const COLUMNS: [&str; 7] = [
+            "probe",
+            "elaboration",
+            "replay",
+            "audit",
+            "extraction",
+            "certificates",
+            "attestation",
+        ];
+        out.push_str("\n## Stages of each project (seconds, all its verifications)\n\n| Project |");
+        for column in COLUMNS {
+            let _ = write!(out, " {column} |");
+        }
+        out.push_str(" other |\n| --- |");
+        for _ in 0..=COLUMNS.len() {
+            out.push_str(" ---: |");
+        }
+        out.push('\n');
+        let mut rows: Vec<_> = by_project.iter().collect();
+        rows.sort_by_key(|(_, stages)| std::cmp::Reverse(stages.values().sum::<u64>()));
+        for (project, stages) in rows.into_iter().take(12) {
+            let _ = write!(out, "| {project} |");
+            let mut named = 0;
+            for column in COLUMNS {
+                let value = stages.get(column).copied().unwrap_or(0);
+                named += value;
+                let _ = write!(out, " {:.1} |", secs(value));
+            }
+            let other = stages.values().sum::<u64>().saturating_sub(named);
+            let _ = writeln!(out, " {:.1} |", secs(other));
+        }
+    }
+    let Some((project, wall)) = longest else {
+        return out;
+    };
+    let mine: Vec<&serde_json::Value> = verifier
+        .iter()
+        .filter(|event| event["project"].as_str() == Some(project.as_str()))
+        .collect();
+    let _ = write!(
+        out,
+        "\n## The longest verification: {project} ({:.0} s)\n\n### Stages\n\n| Stage | Seconds | Lowest free memory (MiB) | Highest swap in use (MiB) | Verifier's own peak (MiB) |\n| --- | ---: | ---: | ---: | ---: |\n",
+        secs(wall)
+    );
+    let mut stages: std::collections::BTreeMap<String, (u64, Option<u64>, u64, u64)> =
+        std::collections::BTreeMap::new();
+    for event in mine.iter().filter(|event| event["event"] == "stage") {
+        let slot = stages
+            .entry(event["stage"].as_str().unwrap_or("?").to_owned())
+            .or_insert((0, None, 0, 0));
+        slot.0 += ms(event);
+        if let Some(available) = event["mem_available_kib"].as_u64() {
+            slot.1 = Some(slot.1.map_or(available, |low| low.min(available)));
+        }
+        slot.2 = slot.2.max(event["swap_used_kib"].as_u64().unwrap_or(0));
+        slot.3 = slot.3.max(event["peak_rss_kib"].as_u64().unwrap_or(0));
+    }
+    let mut rows: Vec<_> = stages.into_iter().collect();
+    rows.sort_by_key(|(_, slot)| std::cmp::Reverse(slot.0));
+    for (stage, (wall, low, swap, own)) in rows {
+        let _ = writeln!(
+            out,
+            "| {stage} | {:.1} | {} | {} | {} |",
+            secs(wall),
+            low.map_or_else(|| "n/a".to_owned(), |kib| (kib / 1024).to_string()),
+            swap / 1024,
+            own / 1024
+        );
+    }
+    let processes: Vec<&&serde_json::Value> = mine
+        .iter()
+        .filter(|event| event["event"] == "process")
+        .collect();
+    let table = |out: &mut String, title: &str, mut rows: Vec<&&serde_json::Value>, key: &str| {
+        let _ = write!(
+            out,
+            "\n### {title}\n\n| Stage | Tool | Module or audit member | Seconds | Peak RSS (MiB) | Peak swap (MiB) |\n| --- | --- | --- | ---: | ---: | ---: |\n"
+        );
+        rows.sort_by_key(|event| {
+            std::cmp::Reverse(if key == "wall_ms" {
+                ms(event)
+            } else {
+                event[key].as_u64().unwrap_or(0)
+            })
+        });
+        for event in rows.into_iter().take(15) {
+            let _ = writeln!(
+                out,
+                "| {} | {} | {} | {:.1} | {} | {} |",
+                event["stage"].as_str().unwrap_or("?"),
+                event["tool"].as_str().unwrap_or("?"),
+                event["module"].as_str().unwrap_or(""),
+                secs(ms(event)),
+                mib(event, "peak_rss_kib"),
+                mib(event, "peak_swap_kib")
+            );
+        }
+    };
+    table(&mut out, "Slowest processes", processes.clone(), "wall_ms");
+    table(
+        &mut out,
+        "Largest processes",
+        processes.clone(),
+        "peak_rss_kib",
+    );
+    let swapped: Vec<&&serde_json::Value> = processes
+        .iter()
+        .copied()
+        .filter(|event| event["peak_swap_kib"].as_u64().unwrap_or(0) > 0)
+        .collect();
+    if swapped.is_empty() {
+        out.push_str("\n### Processes that swapped\n\nnone\n");
+    } else {
+        table(&mut out, "Processes that swapped", swapped, "peak_swap_kib");
+    }
+    let mut frontiers: Vec<&&serde_json::Value> = mine
+        .iter()
+        .filter(|event| event["event"] == "frontier")
+        .collect();
+    frontiers.sort_by_key(|event| std::cmp::Reverse(ms(event)));
+    let _ = write!(
+        out,
+        "\n### Slowest frontiers of module elaboration ({} in all)\n\n| Frontier | Members | Seconds |\n| ---: | ---: | ---: |\n",
+        frontiers.len()
+    );
+    for event in frontiers.into_iter().take(10) {
+        let _ = writeln!(
+            out,
+            "| {} | {} | {:.1} |",
+            event["frontier"],
+            event["members"],
+            secs(ms(event))
+        );
+    }
+    out
+}
+
 #[cfg(test)]
 mod summary_tests {
     use super::{parse_samples, recipe_spans, render_summary};
@@ -433,6 +632,48 @@ vv: the acceptance gate passed
         assert!(
             summary.contains("| `b` | 60 | 1.0 | 6835 | 0 | 976 |"),
             "{summary}"
+        );
+    }
+
+    #[test]
+    fn the_detail_names_the_longest_verification_its_stages_and_its_swapping_processes() {
+        let events: Vec<serde_json::Value> = [
+            r#"{"event":"stage","project":"big","stage":"elaboration","wall_ms":9000,"mem_available_kib":2097152,"swap_used_kib":524288,"peak_rss_kib":102400}"#,
+            r#"{"event":"process","project":"big","stage":"elaboration","tool":"lean","module":"Big.A","wall_ms":5000,"peak_rss_kib":8388608,"peak_swap_kib":1048576}"#,
+            r#"{"event":"process","project":"big","stage":"replay","tool":"leanchecker","module":"Big.B","wall_ms":100,"peak_rss_kib":1024,"peak_swap_kib":0}"#,
+            r#"{"event":"frontier","project":"big","stage":"elaboration","frontier":0,"members":2,"wall_ms":5000}"#,
+            r#"{"event":"verify_end","project":"big","wall_ms":10000}"#,
+            r#"{"event":"verify_end","project":"small","wall_ms":50}"#,
+        ]
+        .iter()
+        .map(|line| serde_json::from_str(line).expect("json"))
+        .collect();
+        let cases: Vec<serde_json::Value> =
+            [r#"{"event":"case","case":"VR-21","wall_ms":170000,"ok":true}"#]
+                .iter()
+                .map(|line| serde_json::from_str(line).expect("json"))
+                .collect();
+        let detail = super::render_detail(&events, &cases);
+        assert!(detail.contains("| VR-21 | 170.0 | true |"), "{detail}");
+        assert!(
+            detail.contains("## The longest verification: big (10 s)"),
+            "{detail}"
+        );
+        assert!(
+            detail.contains("| elaboration | 9.0 | 2048 | 512 | 100 |"),
+            "{detail}"
+        );
+        assert!(
+            detail.contains("| elaboration | lean | Big.A | 5.0 | 8192 | 1024 |"),
+            "{detail}"
+        );
+        assert!(
+            detail.contains("### Slowest frontiers of module elaboration (1 in all)"),
+            "{detail}"
+        );
+        assert!(
+            !detail.contains("none\n"),
+            "the swapped process is listed: {detail}"
         );
     }
 }

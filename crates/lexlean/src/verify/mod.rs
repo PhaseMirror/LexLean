@@ -2375,7 +2375,8 @@ pub fn run(
     })
 }
 
-/// The SHA-256 of the running executable, read once per process.
+/// The SHA-256 of the running executable, read once per process that succeeds
+/// in reading it.
 ///
 /// The attestation records which `lexlean` made it, and a process is one
 /// executable for as long as it runs, so reading and hashing a few hundred
@@ -2383,17 +2384,25 @@ pub fn run(
 /// build that was 4.7 seconds of every verification, and the conformance
 /// suite's process verifies hundreds of projects. The value is what a fresh
 /// read would give: the digest is of the file at the path the process was
-/// started from, and a failure to read it is remembered as a failure.
+/// started from.
 fn running_executable_sha256() -> Result<Sha256Digest, String> {
-    static DIGEST: std::sync::OnceLock<Result<Sha256Digest, String>> = std::sync::OnceLock::new();
-    DIGEST
-        .get_or_init(|| {
-            std::env::current_exe()
-                .and_then(std::fs::read)
-                .map(|bytes| Sha256Digest::of(&bytes))
-                .map_err(|io_error| io_error.to_string())
-        })
-        .clone()
+    // Only a digest is remembered. A read that failed (a descriptor limit, a
+    // file replaced for a moment) fails the verification that made it and is
+    // made again by the next, instead of failing every later verification of
+    // a long-lived process.
+    static DIGEST: std::sync::Mutex<Option<Sha256Digest>> = std::sync::Mutex::new(None);
+    let mut remembered = DIGEST
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(digest) = *remembered {
+        return Ok(digest);
+    }
+    let digest = std::env::current_exe()
+        .and_then(std::fs::read)
+        .map(|bytes| Sha256Digest::of(&bytes))
+        .map_err(|io_error| io_error.to_string())?;
+    *remembered = Some(digest);
+    Ok(digest)
 }
 
 /// Remove the staging directories that earlier runs left in `verified_root`:

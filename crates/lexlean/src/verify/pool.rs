@@ -34,8 +34,8 @@ fn internal(message: &str) -> LexLeanError {
 /// Run `job` on each of `items`, at most `width` at a time, and hand each
 /// result to `consume` in the order of `items`.
 ///
-/// `is_failure` says whether a result is one `consume` will refuse; it only
-/// lets the workers stop early, and `consume` remains the judge: it must
+/// `is_failure` says whether a result is one `consume` will refuse; at width
+/// above 1 it lets the workers stop early, and `consume` remains the judge: it must
 /// return an error for every result `is_failure` accepts, and the first error
 /// it returns in item order is the one returned here.
 ///
@@ -55,6 +55,25 @@ where
     C: FnMut(usize, R) -> Result<(), LexLeanError>,
 {
     if items.is_empty() {
+        return Ok(());
+    }
+    // Width 1 is the sequence the verifier ran before there was a width: item
+    // `i + 1` starts only after item `i` has been consumed, on the calling
+    // thread, so a failure only `consume` can see (a missing `.olean`, a
+    // staging error) stops the stage before another process is started.
+    if width == 1 {
+        for (index, &item) in items.iter().enumerate() {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| job(item)))
+                .map_err(|_| internal("verification process worker panicked"))?;
+            telemetry::completed(item, index + 1);
+            let failed = is_failure(&result);
+            consume(item, result)?;
+            if failed {
+                return Err(internal(
+                    "verification stage consumed a failed process without refusing it",
+                ));
+            }
+        }
         return Ok(());
     }
     let workers = width.clamp(1, items.len());
@@ -252,6 +271,143 @@ mod tests {
         );
         assert!(outcome.is_err());
         assert_eq!(started.load(Ordering::SeqCst), 3, "items 0, 1 and 2 only");
+    }
+
+    /// At width 1 the stage is strictly sequential: a job starts only after
+    /// the previous result has been consumed.
+    #[test]
+    fn width_one_alternates_job_and_consume() {
+        let items: Vec<usize> = (0..4).collect();
+        let log = Mutex::new(Vec::new());
+        let mut order = Vec::new();
+        run_ordered(
+            1,
+            &items,
+            &|item: usize| {
+                log.lock().expect("lock").push(format!("job {item}"));
+                item
+            },
+            &|_: &usize| false,
+            |item, _| {
+                log.lock().expect("lock").push(format!("consume {item}"));
+                order.push(item);
+                Ok(())
+            },
+        )
+        .expect("four jobs");
+        assert_eq!(
+            *log.lock().expect("lock"),
+            [
+                "job 0",
+                "consume 0",
+                "job 1",
+                "consume 1",
+                "job 2",
+                "consume 2",
+                "job 3",
+                "consume 3"
+            ]
+        );
+        assert_eq!(order, [0, 1, 2, 3]);
+        // A failure only `consume` can see ends the stage before the next job.
+        let started = AtomicUsize::new(0);
+        let outcome = run_ordered(
+            1,
+            &items,
+            &|item: usize| {
+                started.fetch_add(1, Ordering::SeqCst);
+                item
+            },
+            &|_: &usize| false,
+            |item, _| {
+                if item == 0 {
+                    Err(refusal("only consume sees this"))
+                } else {
+                    Ok(())
+                }
+            },
+        );
+        assert!(outcome.is_err());
+        assert_eq!(
+            started.load(Ordering::SeqCst),
+            1,
+            "no process after the refusal"
+        );
+    }
+
+    /// Of two failures known out of item order, the earlier position bounds the
+    /// items that may start: with failures at 1 and then at 3 (both already
+    /// running), none of the eight items after them is started, and the failure
+    /// reported is item 1's. (`stop_after` takes the minimum; that a later,
+    /// larger position cannot reopen the stage is also a consequence of items
+    /// being claimed in order, so this test fixes the behaviour and no mutant
+    /// of the store survives that this could tell apart.)
+    #[test]
+    fn a_later_failure_does_not_reopen_the_stage() {
+        let items: Vec<usize> = (0..12).collect();
+        let started = Mutex::new(Vec::new());
+        let (first_failed, wait_for_first) = mpsc::channel::<()>();
+        let wait_for_first = Mutex::new(wait_for_first);
+        let third_finished = std::sync::atomic::AtomicBool::new(false);
+        let outcome = run_ordered(
+            4,
+            &items,
+            &|item: usize| {
+                started.lock().expect("lock").push(item);
+                match item {
+                    // Item 1 fails first, item 3 after it; items 0 and 2 stay
+                    // busy until both have, so no worker is free to claim more
+                    // before the failures are known.
+                    1 => {
+                        // Not before item 3 is running: it fails after this.
+                        let give_up = std::time::Instant::now() + Duration::from_secs(10);
+                        while started.lock().expect("lock").len() < 4
+                            && std::time::Instant::now() < give_up
+                        {
+                            std::thread::sleep(Duration::from_millis(5));
+                        }
+                        first_failed.send(()).expect("announce");
+                    }
+                    3 => {
+                        wait_for_first
+                            .lock()
+                            .expect("lock")
+                            .recv_timeout(Duration::from_secs(10))
+                            .expect("item 1 failed first");
+                        std::thread::sleep(Duration::from_millis(50));
+                        third_finished.store(true, Ordering::SeqCst);
+                    }
+                    0 | 2 => {
+                        let give_up = std::time::Instant::now() + Duration::from_secs(10);
+                        while !third_finished.load(Ordering::SeqCst)
+                            && std::time::Instant::now() < give_up
+                        {
+                            std::thread::sleep(Duration::from_millis(5));
+                        }
+                        std::thread::sleep(Duration::from_millis(50));
+                    }
+                    _ => {}
+                }
+                item
+            },
+            &|item: &usize| *item == 1 || *item == 3,
+            |item, value| {
+                if value == 1 || value == 3 {
+                    Err(refusal(&format!("item {item} failed")))
+                } else {
+                    Ok(())
+                }
+            },
+        );
+        let error = outcome.expect_err("two items fail");
+        assert!(error.to_string().contains("item 1 failed"), "{error}");
+        let mut seen = started.lock().expect("lock").clone();
+        seen.sort_unstable();
+        assert_eq!(
+            seen,
+            [0, 1, 2, 3],
+            "nothing after the failure at item 1 started"
+        );
     }
 
     #[test]

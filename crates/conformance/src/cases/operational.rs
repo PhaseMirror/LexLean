@@ -97,6 +97,27 @@ fn width_is_operational() {
         }
     }
 
+    // A value that is not Unicode is malformed, not absent: reading it as
+    // unset would verify at the default width in a job that asked for another.
+    #[cfg(unix)]
+    let not_unicode = {
+        use std::os::unix::ffi::OsStringExt;
+        std::ffi::OsString::from_vec(vec![b'2', 0xff])
+    };
+    #[cfg(windows)]
+    let not_unicode = {
+        use std::os::windows::ffi::OsStringExt;
+        std::ffi::OsString::from_wide(&[0x0032, 0xD800])
+    };
+    #[cfg(any(unix, windows))]
+    assert_eq!(
+        Operational::parse_width_os(Some(&not_unicode))
+            .expect_err("a non-Unicode width")
+            .code
+            .as_str(),
+        "LLV7017"
+    );
+
     // A malformed width is refused by the command line before anything is
     // built or published, as a registered code, on every host.
     let root = support::repo_root();
@@ -157,6 +178,54 @@ fn width_is_operational() {
     assert!(crate::evidence::telemetry_in(wide.root.as_std_path())
         .expect("scans")
         .is_empty());
+}
+
+/// Slack, in milliseconds, for comparing the start of one process with the end
+/// of another: both are stamped to the millisecond from the clock after the
+/// fact (the start is the end minus the wall time).
+const SLACK_MS: u64 = 5;
+
+/// How long two processes must overlap to count as running together.
+const MIN_OVERLAP_MS: u64 = 50;
+
+/// One child process of a verification, from its telemetry.
+struct Span {
+    stage: String,
+    module: String,
+    start: u64,
+    end: u64,
+}
+
+impl Span {
+    /// Do the two intervals share more than `by` milliseconds?
+    fn overlaps(&self, other: &Self, by: u64) -> bool {
+        self.start.max(other.start) + by < self.end.min(other.end)
+    }
+}
+
+fn telemetry_events(directory: &std::path::Path) -> Vec<serde_json::Value> {
+    std::fs::read_to_string(directory.join(lexlean::verify::telemetry::VERIFY_FILE))
+        .expect("telemetry was written")
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("a telemetry line is JSON"))
+        .collect()
+}
+
+/// The child processes a verification reported, with their intervals.
+fn process_spans(directory: &std::path::Path) -> Vec<Span> {
+    telemetry_events(directory)
+        .iter()
+        .filter(|event| event["event"] == "process")
+        .map(|event| {
+            let start = event["started_unix_ms"].as_u64().expect("a start");
+            Span {
+                stage: event["stage"].as_str().unwrap_or_default().to_owned(),
+                module: event["module"].as_str().unwrap_or_default().to_owned(),
+                start,
+                end: start + event["wall_ms"].as_u64().expect("a wall time"),
+            }
+        })
+        .collect()
 }
 
 /// The imports of a project's modules, as `module -> imports`, from source.
@@ -286,60 +355,153 @@ fn width_invariance() {
     // `Divisibility`, `Doubling` and `Order`, which `Main` imports, so its
     // frontiers are one, three, and one modules wide.
     let narrow = P::copy_example("peano-arithmetic");
-    let wide = P::copy_example("peano-arithmetic");
     assert_eq!(frontiers(&imports_of(&narrow)), [1, 3, 1]);
 
-    let at_one = verify_at(&narrow, Operational::new(1, None).expect("width 1")).expect("width 1");
-    let telemetry = tempfile::tempdir().expect("tempdir");
-    let at_three = verify_at(
-        &wide,
-        Operational::new(3, Some(telemetry.path().to_path_buf())).expect("width 3"),
+    let narrow_telemetry = tempfile::tempdir().expect("tempdir");
+    let at_one = verify_at(
+        &narrow,
+        Operational::new(1, Some(narrow_telemetry.path().to_path_buf())).expect("width 1"),
     )
-    .expect("width 3");
-
-    assert_eq!(at_one.attestation_id, at_three.attestation_id);
-    let (one, three) = (tree(&at_one.root), tree(&at_three.root));
-    assert_trees_equal(&one, &three, "peano-arithmetic at widths 1 and 3");
+    .expect("width 1");
+    let one = tree(&at_one.root);
     let attestation = |files: &std::collections::BTreeMap<String, Vec<u8>>| -> serde_json::Value {
         serde_json::from_slice(&files["attestation.json"]).expect("attestation parses")
     };
-    let (a1, a3) = (attestation(&one), attestation(&three));
-    assert_eq!(
-        a1["declarations"], a3["declarations"],
-        "observed axiom sets and policy results"
-    );
-    assert_eq!(
-        a1["processes"], a3["processes"],
-        "process records, in order"
-    );
-    assert_eq!(
-        a1["compiler_input"], a3["compiler_input"],
-        "compiler input (absent for language 1.0)"
-    );
-    assert_eq!(a1["attestation_id"], a3["attestation_id"]);
+    let a1 = attestation(&one);
 
-    // The wide run really ran side by side: the frontier of three was one
-    // frontier of three members at width 3.
-    let events: Vec<serde_json::Value> = std::fs::read_to_string(
-        telemetry
-            .path()
-            .join(lexlean::verify::telemetry::VERIFY_FILE),
-    )
-    .expect("telemetry was written")
-    .lines()
-    .map(|line| serde_json::from_str(line).expect("a telemetry line is JSON"))
-    .collect();
-    assert_eq!(events[0]["process_width"], 3);
-    let members: Vec<u64> = events
-        .iter()
-        .filter(|event| event["event"] == "frontier")
-        .filter_map(|event| event["members"].as_u64())
-        .collect();
-    assert_eq!(
-        members,
-        [1, 3, 1],
-        "the frontiers of the project at width 3"
+    // Width 1 is sequential: no two child processes of the verifier overlap.
+    let sequential = process_spans(narrow_telemetry.path());
+    assert!(
+        sequential.len() >= 15,
+        "the width-1 run reports its processes: {}",
+        sequential.len()
     );
+    for (index, left) in sequential.iter().enumerate() {
+        for right in &sequential[index + 1..] {
+            assert!(
+                !left.overlaps(right, SLACK_MS),
+                "width 1 ran {} and {} together",
+                left.module,
+                right.module
+            );
+        }
+    }
+
+    // The wide run. A host can stall for a moment, so a run in which no two
+    // members of the three-wide frontier happened to overlap is tried again,
+    // twice at most: a width that is applied overlaps three half-second
+    // processes started within microseconds of each other, and one that is
+    // not never does. Every attempt must be byte-identical to width 1.
+    let mut overlapped = false;
+    let mut wide = P::copy_example("peano-arithmetic");
+    let mut at_three = None;
+    for attempt in 0..3 {
+        let telemetry = tempfile::tempdir().expect("tempdir");
+        wide = P::copy_example("peano-arithmetic");
+        let verified = verify_at(
+            &wide,
+            Operational::new(3, Some(telemetry.path().to_path_buf())).expect("width 3"),
+        )
+        .expect("width 3");
+        assert_eq!(verified.attestation_id, at_one.attestation_id);
+        let three = tree(&verified.root);
+        assert_trees_equal(&one, &three, "peano-arithmetic at widths 1 and 3");
+        let a3 = attestation(&three);
+        assert_eq!(
+            a1["declarations"], a3["declarations"],
+            "observed axiom sets and policy results"
+        );
+        assert_eq!(
+            a1["processes"], a3["processes"],
+            "process records, in order"
+        );
+        assert_eq!(a1["attestation_id"], a3["attestation_id"]);
+
+        let events = telemetry_events(telemetry.path());
+        assert_eq!(events[0]["process_width"], 3);
+        let members: Vec<u64> = events
+            .iter()
+            .filter(|event| event["event"] == "frontier")
+            .filter_map(|event| event["members"].as_u64())
+            .collect();
+        assert_eq!(
+            members,
+            [1, 3, 1],
+            "the frontiers of the project at width 3"
+        );
+
+        // The barriers hold at width 3 (SPEC.md §22.11): the frontier before
+        // starts none of the next, and elaboration, replay and audit do not
+        // overlap each other.
+        let spans = process_spans(telemetry.path());
+        let in_stage = |stage: &str| -> Vec<&Span> {
+            spans.iter().filter(|span| span.stage == stage).collect()
+        };
+        let named = |names: &[&str]| -> Vec<&Span> {
+            spans
+                .iter()
+                .filter(|span| {
+                    span.stage == "elaboration"
+                        && names
+                            .iter()
+                            .any(|name| span.module == format!("PeanoArithmetic.{name}"))
+                })
+                .collect()
+        };
+        let (first, middle, last) = (
+            named(&["Addition"]),
+            named(&["Divisibility", "Doubling", "Order"]),
+            named(&["Main"]),
+        );
+        assert_eq!((first.len(), middle.len(), last.len()), (1, 3, 1));
+        for (earlier, later) in [(&first, &middle), (&middle, &last)] {
+            for a in earlier.iter() {
+                for b in later.iter() {
+                    assert!(
+                        a.end <= b.start + SLACK_MS,
+                        "{} was still running when {} started",
+                        a.module,
+                        b.module
+                    );
+                }
+            }
+        }
+        let stages = ["elaboration", "replay", "audit"];
+        for (index, earlier) in stages.iter().enumerate() {
+            for later in &stages[index + 1..] {
+                for a in in_stage(earlier) {
+                    for b in in_stage(later) {
+                        assert!(
+                            a.end <= b.start + SLACK_MS,
+                            "a {earlier} process ({}) overlaps a {later} process ({})",
+                            a.module,
+                            b.module
+                        );
+                    }
+                }
+            }
+        }
+
+        // The members of the three-wide frontier run side by side.
+        overlapped = middle.iter().enumerate().any(|(index, left)| {
+            middle[index + 1..]
+                .iter()
+                .any(|right| left.overlaps(right, MIN_OVERLAP_MS))
+        });
+        at_three = Some(verified);
+        if overlapped {
+            break;
+        }
+        eprintln!(
+            "VR-21: attempt {} saw no overlap in the wide frontier",
+            attempt + 1
+        );
+    }
+    assert!(
+        overlapped,
+        "three attempts at width 3 never overlapped two members of a three-wide frontier: the width is not applied"
+    );
+    let at_three = at_three.expect("an attempt ran");
 
     // A prior verification is never taken in place of the work: a published
     // directory that no longer equals what this run staged is refused, at the
@@ -357,6 +519,63 @@ fn width_invariance() {
         error.to_string().contains("LLB6003")
             && error.to_string().contains("refusing to overwrite"),
         "{error}"
+    );
+
+    compiler_input_is_width_invariant();
+}
+
+/// The committed `production` example (two modules, six production roots) at
+/// width 1 and at width 2, side by side: the canonical compiler input, the
+/// preservation record, every certificate, the whole published tree, and the
+/// attestation are the same, and the compiler input is the committed one.
+/// Extraction and the certificates run after the pooled stages, so this is
+/// what shows that no pooled stage reaches them. It costs two production
+/// verifications, run together, and is the only case that does.
+fn compiler_input_is_width_invariant() {
+    let verify = |width: usize| {
+        let project = P::copy_example("production");
+        let verified = verify_at(&project, Operational::new(width, None).expect("width"))
+            .unwrap_or_else(|error| panic!("production at width {width}: {error}"));
+        (project, verified)
+    };
+    let (narrow, wide) = std::thread::scope(|scope| {
+        let narrow = scope.spawn(|| verify(1));
+        let wide = scope.spawn(|| verify(2));
+        (
+            narrow.join().expect("width 1 finished"),
+            wide.join().expect("width 2 finished"),
+        )
+    });
+    let (_keep_narrow, at_one) = narrow;
+    let (_keep_wide, at_two) = wide;
+    assert_eq!(at_one.attestation_id, at_two.attestation_id);
+    let (one, two) = (tree(&at_one.root), tree(&at_two.root));
+    assert_trees_equal(&one, &two, "production at widths 1 and 2");
+    let attestation = |files: &std::collections::BTreeMap<String, Vec<u8>>| -> serde_json::Value {
+        serde_json::from_slice(&files["attestation.json"]).expect("attestation parses")
+    };
+    let (a1, a2) = (attestation(&one), attestation(&two));
+    for key in [
+        "compiler_input",
+        "preservation",
+        "declarations",
+        "processes",
+    ] {
+        assert!(
+            !a1[key].is_null(),
+            "a production attestation records `{key}`"
+        );
+        assert_eq!(a1[key], a2[key], "`{key}` is the same at widths 1 and 2");
+    }
+    let committed = std::fs::read(
+        support::repo_root()
+            .join("examples/production/expected/verify/production/compiler-input.json")
+            .as_std_path(),
+    )
+    .expect("the committed compiler input");
+    assert!(
+        two["production/compiler-input.json"] == committed,
+        "the compiler input at width 2 is the committed one"
     );
 }
 

@@ -31,6 +31,42 @@ mod semantic_ir;
 mod typed_diagnostics;
 mod verification;
 
+/// The wall time of one case, written to the CI evidence directory when the
+/// environment names one (SPEC.md §22.12) and nowhere else. It is written when
+/// the case ends, by panic as well, and a failure to write it is dropped.
+struct Timed {
+    id: String,
+    started: std::time::Instant,
+}
+
+impl Timed {
+    fn start(id: &str) -> Self {
+        Self {
+            id: id.to_owned(),
+            started: std::time::Instant::now(),
+        }
+    }
+}
+
+impl Drop for Timed {
+    fn drop(&mut self) {
+        if let Some(directory) = std::env::var_os(lexlean::verify::operational::TELEMETRY_VARIABLE)
+            .filter(|value| !value.is_empty())
+        {
+            lexlean::verify::telemetry::append(
+                std::path::Path::new(&directory),
+                "cases-telemetry.jsonl",
+                &serde_json::json!({
+                    "event": "case",
+                    "case": self.id,
+                    "wall_ms": u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                    "ok": !std::thread::panicking(),
+                }),
+            );
+        }
+    }
+}
+
 /// Run the case for one conformance ID.
 ///
 /// # Panics
@@ -38,6 +74,7 @@ mod verification;
 /// Panics when the case's assertion fails, and for an ID with no wired
 /// case — an unimplemented registered capability must not pass silently.
 pub fn run(id: &str) {
+    let _timed = Timed::start(id);
     let prefix = id.split('-').next().unwrap_or_default();
     match prefix {
         "RP" => repository::run(id),

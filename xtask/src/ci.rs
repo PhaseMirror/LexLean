@@ -188,7 +188,9 @@ pub fn ci_summary(root: &Path, arguments: &[String]) -> Result<(), Fail> {
     );
     let verifier = json_lines(&directory, lexlean::verify::telemetry::VERIFY_FILE);
     let examples = json_lines(&directory, "examples-telemetry.jsonl");
-    let summary = evidence::render_summary(&spans, &samples, &verifier, &examples);
+    let cases = json_lines(&directory, "cases-telemetry.jsonl");
+    let mut summary = evidence::render_summary(&spans, &samples, &verifier, &examples);
+    summary.push_str(&evidence::render_detail(&verifier, &cases));
     std::fs::write(directory.join("summary.md"), &summary)?;
     if let Some(step) = std::env::var_os("GITHUB_STEP_SUMMARY") {
         if let Ok(mut file) = std::fs::OpenOptions::new()
@@ -200,11 +202,12 @@ pub fn ci_summary(root: &Path, arguments: &[String]) -> Result<(), Fail> {
         }
     }
     println!(
-        "ci-summary: {} recipes, {} host samples, {} verifier events, {} examples",
+        "ci-summary: {} recipes, {} host samples, {} verifier events, {} examples, {} conformance cases",
         spans.len(),
         samples.len(),
         verifier.len(),
-        examples.len()
+        examples.len(),
+        cases.len()
     );
     Ok(())
 }

@@ -1025,16 +1025,32 @@ pub(crate) fn run(id: &str) {
             ] {
                 assert!(!ci.contains(forbidden), "ci.yml has no `{forbidden}`");
             }
-            // A condition appears only on evidence steps, never on the gate.
+            // A condition appears only on the two evidence steps, in exactly
+            // one form, as a step's own key: not on the job (a skipped job is a
+            // skipped gate), not on the gate step, and never one that is
+            // narrower than "unless the run was cancelled" (a gate that is
+            // skipped on pull requests is the weaker PR-only gate).
+            let mut conditions = 0;
             for (index, line) in ci.lines().enumerate() {
                 if line.trim_start().starts_with("if:") {
-                    assert!(
-                        line.contains("!cancelled()"),
-                        "ci.yml:{}: a condition other than !cancelled() on a step: {line}",
+                    conditions += 1;
+                    assert_eq!(
+                        line, "        if: ${{ !cancelled() }}",
+                        "ci.yml:{}: the only condition allowed is a step's `if: ${{{{ !cancelled() }}}}`",
                         index + 1
                     );
                 }
             }
+            assert_eq!(
+                conditions, 2,
+                "the summary step and the evidence upload carry it"
+            );
+            let gate_step = &ci[ci
+                .find("      - name: Run the normative acceptance gate")
+                .expect("the gate step")..];
+            let gate_step =
+                &gate_step[..gate_step[1..].find("\n      - ").expect("a step follows") + 1];
+            assert!(!gate_step.contains("if:") && gate_step.contains("just --timestamp"));
             assert!(
                 ci.contains("name: acceptance-gate-evidence") && ci.contains("path: ci-evidence")
             );

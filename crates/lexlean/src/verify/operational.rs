@@ -101,6 +101,24 @@ impl Operational {
         }
     }
 
+    /// [`Self::parse_width`] over what the environment holds. A value that is
+    /// not Unicode is a malformed value, not an absent one: reading it as
+    /// unset would silently verify at the default width in a job that asked
+    /// for another.
+    ///
+    /// # Errors
+    ///
+    /// `LLV7017` for a malformed, out-of-range, or non-Unicode value.
+    pub fn parse_width_os(value: Option<&std::ffi::OsStr>) -> Result<usize, Diagnostic> {
+        match value {
+            None => Ok(DEFAULT_WIDTH),
+            Some(raw) => match raw.to_str() {
+                Some(text) => Self::parse_width(Some(text)),
+                None => Err(invalid(&raw.to_string_lossy())),
+            },
+        }
+    }
+
     /// The settings the environment selects, unless a scoped replacement is
     /// in force on this thread.
     ///
@@ -111,8 +129,7 @@ impl Operational {
         if let Some(scoped) = SCOPED.with(|cell| cell.borrow().clone()) {
             return Ok(scoped);
         }
-        let width_text = std::env::var(WIDTH_VARIABLE).ok();
-        let width = Self::parse_width(width_text.as_deref())?;
+        let width = Self::parse_width_os(std::env::var_os(WIDTH_VARIABLE).as_deref())?;
         let telemetry = std::env::var_os(TELEMETRY_VARIABLE)
             .filter(|value| !value.is_empty())
             .map(PathBuf::from);
@@ -177,6 +194,51 @@ mod tests {
             let error = Operational::parse_width(Some(bad)).expect_err(bad);
             assert_eq!(error.code.as_str(), "LLV7017", "{bad}");
         }
+    }
+
+    #[test]
+    fn a_value_that_is_not_unicode_is_malformed_not_absent() {
+        #[cfg(unix)]
+        let raw = {
+            use std::os::unix::ffi::OsStringExt;
+            std::ffi::OsString::from_vec(vec![b'2', 0xff])
+        };
+        #[cfg(windows)]
+        let raw = {
+            use std::os::windows::ffi::OsStringExt;
+            std::ffi::OsString::from_wide(&[0x0032, 0xD800])
+        };
+        #[cfg(any(unix, windows))]
+        {
+            assert!(raw.to_str().is_none());
+            let error = Operational::parse_width_os(Some(&raw)).expect_err("not Unicode");
+            assert_eq!(error.code.as_str(), "LLV7017");
+        }
+        assert_eq!(Operational::parse_width_os(None), Ok(DEFAULT_WIDTH));
+        assert_eq!(
+            Operational::parse_width_os(Some(std::ffi::OsStr::new("3"))),
+            Ok(3)
+        );
+    }
+
+    /// The environment itself, not only the parser: a non-Unicode value of the
+    /// variable is refused by [`Operational::from_environment`]. The variable
+    /// is read by nothing else in this test binary, so setting it here races
+    /// with no other test.
+    #[cfg(unix)]
+    #[test]
+    fn the_environment_is_read_as_bytes() {
+        use std::os::unix::ffi::OsStringExt;
+        std::env::set_var(
+            super::WIDTH_VARIABLE,
+            std::ffi::OsString::from_vec(vec![b'3', 0xfe]),
+        );
+        let refused = Operational::from_environment();
+        std::env::set_var(super::WIDTH_VARIABLE, "3");
+        let accepted = Operational::from_environment();
+        std::env::remove_var(super::WIDTH_VARIABLE);
+        assert_eq!(refused.expect_err("not Unicode").code.as_str(), "LLV7017");
+        assert_eq!(accepted.expect("3").width(), 3);
     }
 
     #[test]
