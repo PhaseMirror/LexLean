@@ -452,7 +452,7 @@ conformance_rp_10`. The test recomputes the 1.1 ID from the exclusion list in
 §21.2, not from the compiler.
 
 ```text
-thread 'conformance_rp_10' panicked at crates/conformance/src/cases/repository.rs:626:13:
+thread 'conformance_rp_10' panicked at crates/conformance/src/cases/repository.rs:630:13:
 assertion `left == right` failed: RP-10: the 1.1 ID
 ```
 
@@ -1092,9 +1092,9 @@ the constant, a fraction of 0 (nothing is heavy) and a huge one (everything
 is):
 
 ```text
-thread 'verify::resource_tests::a_heartbeat_verdict_is_a_limit_only_for_a_heavy_module' (25315) panicked at crates/lexlean/src/verify/mod.rs:2582:73:
+thread 'verify::resource_tests::a_heartbeat_verdict_is_a_limit_only_for_a_heavy_module' (25315) panicked at crates/lexlean/src/verify/mod.rs:2604:73:
 a limit
-thread 'verify::resource_tests::a_heartbeat_verdict_is_a_limit_only_for_a_heavy_module' (25377) panicked at crates/lexlean/src/verify/mod.rs:2579:9:
+thread 'verify::resource_tests::a_heartbeat_verdict_is_a_limit_only_for_a_heavy_module' (25377) panicked at crates/lexlean/src/verify/mod.rs:2601:9:
 assertion failed: resource_death("M.R0", 1, HEARTBEATS, 5_000, &limits()).is_none()
 ```
 
@@ -1742,7 +1742,7 @@ Command: `cargo test -p lexlean --lib timeout_tests`. Expected: the
 grandchild is still running.
 
 ```text
-thread 'verify::child::timeout_tests::a_timeout_ends_what_the_child_started' (13145) panicked at crates/lexlean/src/verify/child.rs:781:9:
+thread 'verify::child::timeout_tests::a_timeout_ends_what_the_child_started' (13145) panicked at crates/lexlean/src/verify/child.rs:804:9:
 a timeout left running: ["13149: sleep 1000.13144 "]
 ```
 
@@ -2118,7 +2118,7 @@ running). Command: `cargo test -p lexlean --lib -- a_zombie_in_the_group`.
 Expected: the stop waits two seconds and reports the zombie.
 
 ```text
-thread 'verify::child::timeout_tests::a_zombie_in_the_group_counts_as_ended' (30432) panicked at crates/lexlean/src/verify/child.rs:857:9:
+thread 'verify::child::timeout_tests::a_zombie_in_the_group_counts_as_ended' (30432) panicked at crates/lexlean/src/verify/child.rs:880:9:
 assertion `left == right` failed: a zombie is not running
   left: Err("processes of group 30433 still existed 2000 ms after SIGKILL")
  right: Ok(())
@@ -2129,7 +2129,7 @@ Planted: `taskkill_outcome` takes any exit status for success. Command: `cargo t
 reported.
 
 ```text
-thread 'verify::child::timeout_tests::a_failing_taskkill_is_reported' (30484) panicked at crates/lexlean/src/verify/child.rs:803:68:
+thread 'verify::child::timeout_tests::a_failing_taskkill_is_reported' (30484) panicked at crates/lexlean/src/verify/child.rs:826:68:
 exit 128: ()
 ```
 
@@ -3545,7 +3545,7 @@ Removed: the function was deleted; clippy is clean.
 Planted: the last hex digit of the empty-input SHA-256 vector in `crates/model/src/release.rs` changed from `5` to `6`. Command: `cargo test -p repo-model --all-features`. Expected: the unit test fails on the digest.
 
 ```text
-thread 'release::tests::the_local_sha256_agrees_with_the_test_vectors' panicked at crates/model/src/release.rs:558:9:
+thread 'release::tests::the_local_sha256_agrees_with_the_test_vectors' panicked at crates/model/src/release.rs:561:9:
 assertion `left == right` failed
   left: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
  right: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b856"
@@ -5130,7 +5130,7 @@ was removed.
   conformance -- conformance_vr_21`:
 
   ```text
-  thread 'conformance_vr_21' panicked at crates/conformance/src/cases/operational.rs:238:5:
+  thread 'conformance_vr_21' panicked at crates/conformance/src/cases/operational.rs:243:5:
   assertion `left == right` failed: and are consumed in item order
     left: [3, 2, 1, 0]
    right: [0, 1, 2, 3]
