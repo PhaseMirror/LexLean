@@ -436,10 +436,8 @@ pub fn render_detail(verifier: &[serde_json::Value], cases: &[serde_json::Value]
                     .entry(event["stage"].as_str().unwrap_or("?").to_owned())
                     .or_insert(0) += ms(event);
             }
-            Some("verify_end") => {
-                if longest.as_ref().is_none_or(|(_, wall)| ms(event) > *wall) {
-                    longest = Some((project, ms(event)));
-                }
+            Some("verify_end") if longest.as_ref().is_none_or(|(_, wall)| ms(event) > *wall) => {
+                longest = Some((project, ms(event)));
             }
             _ => {}
         }
