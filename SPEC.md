@@ -5385,11 +5385,20 @@ of `certificateReductionsPreserve`, each decided by the kernel. In the library,
 and only there: the statements quantified over every request, certificate,
 grammar, domain, and fuel: soundness of the checker against `Gnaf.expand`, the
 attainment of a bound, the completeness of a frontier, normality, and the
-preservation of every improving schema application. The module cannot state
-those, because the closed proof language has no quantification over programs
-and no conditional metatheory; the library is checked against the module's
-definitions, which it cites, not copies (`GC-09` elaborates ascriptions of
-its preservation theorems at the module's relations).
+preservation of every improving schema application. They are not proved in
+the closed language, and that is a choice of this work, not a limit of the
+language: the closed proof language has universal quantification, implication,
+case analysis, and induction, and the closed `Gnaf` module proves
+`Gnaf.expandComplete` over every grammar and selector (§17.15). What the
+library's statements need is the metatheory of the evaluator, which no closed
+module carries: that evaluation does not depend on the entry function
+(`eval_tail`), that a dispatch factors into the plan it runs
+(`dispatch_cheaper`), and that a run's outcome does not change with more fuel.
+Moving them into a closed module is achievable in principle, by stating that
+metatheory over `TargetSemantics` there, and is not attempted or claimed here.
+The library is checked against the module's definitions, which it cites, not
+copies (`GC-09` elaborates ascriptions of its preservation theorems at the
+module's relations).
 
 **Routes not defined.** A certificate has no `enumeration` route (the
 verdict of an answer, §17.15, already enumerates), no `pareto_member` route

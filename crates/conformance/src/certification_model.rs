@@ -371,7 +371,6 @@ fn types() -> Vec<Json> {
             vec![
                 ("verifierMismatch", Vec::new()),
                 ("requestRejected", vec![g("Rejection")]),
-                ("noGrammar", Vec::new()),
                 ("universeMismatch", Vec::new()),
                 ("objectiveMismatch", Vec::new()),
                 ("claimMismatch", Vec::new()),
@@ -1158,6 +1157,72 @@ fn preservation(unused: &Unused) -> Vec<Json> {
                             ),
                         ),
                     ),
+                ),
+            ),
+        ),
+        // The two relations between any two systems of the request's
+        // universe, by their positions in the expansion: not only a schema's
+        // rewriting, so that the relations themselves, and not `improves`
+        // alone, are decided by the kernel.
+        axioms(
+            &RUN_AXIOMS,
+            definition(
+                "pairRelation",
+                vec![
+                    p("request", g("Request")),
+                    p("first", nat_t()),
+                    p("second", nat_t()),
+                    p("cheaper", bool_t()),
+                ],
+                bool_t(),
+                m(
+                    project(var("request"), "carrier"),
+                    vec![
+                        ga(
+                            "Carrier.grammar",
+                            binders!["grammar"],
+                            let_in(
+                                "selectors",
+                                selectors_t(),
+                                gf("expand", vec![var("grammar")]),
+                                on_option(
+                                    f("selectorAt", vec![var("selectors"), var("first")]),
+                                    no(),
+                                    "left",
+                                    on_option(
+                                        f("selectorAt", vec![var("selectors"), var("second")]),
+                                        no(),
+                                        "right",
+                                        ite(
+                                            var("cheaper"),
+                                            f(
+                                                "strictlyCheaper",
+                                                vec![
+                                                    var("request"),
+                                                    var("grammar"),
+                                                    var("left"),
+                                                    var("right"),
+                                                ],
+                                            ),
+                                            f(
+                                                "sameObservations",
+                                                vec![
+                                                    var("request"),
+                                                    var("grammar"),
+                                                    var("left"),
+                                                    var("right"),
+                                                ],
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        ga("Carrier.internalPlans", Vec::new(), no()),
+                        ga("Carrier.optimizerOutput", Vec::new(), no()),
+                        ga("Carrier.discovered", binders![unused.next()], no()),
+                        ga("Carrier.cached", Vec::new(), no()),
+                    ],
                 ),
             ),
         ),
@@ -2589,22 +2654,34 @@ fn checker(unused: &Unused) -> Vec<Json> {
             ga(
                 "Carrier.internalPlans",
                 Vec::new(),
-                refused("noGrammar", Vec::new()),
+                refused(
+                    "requestRejected",
+                    vec![gc("Rejection.internalPlanUniverse", Vec::new())],
+                ),
             ),
             ga(
                 "Carrier.optimizerOutput",
                 Vec::new(),
-                refused("noGrammar", Vec::new()),
+                refused(
+                    "requestRejected",
+                    vec![gc("Rejection.optimizerDefinedUniverse", Vec::new())],
+                ),
             ),
             ga(
                 "Carrier.discovered",
                 binders![unused.next()],
-                refused("noGrammar", Vec::new()),
+                refused(
+                    "requestRejected",
+                    vec![gc("Rejection.discoveredUniverse", Vec::new())],
+                ),
             ),
             ga(
                 "Carrier.cached",
                 Vec::new(),
-                refused("noGrammar", Vec::new()),
+                refused(
+                    "requestRejected",
+                    vec![gc("Rejection.cachedUniverse", Vec::new())],
+                ),
             ),
         ],
     );

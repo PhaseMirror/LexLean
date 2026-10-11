@@ -158,7 +158,6 @@ pub enum Fact {
 pub enum Refusal {
     VerifierMismatch,
     RequestRejected { rejection: Rejection },
-    NoGrammar,
     UniverseMismatch,
     ObjectiveMismatch,
     ClaimMismatch,
@@ -1129,6 +1128,17 @@ fn refused(refusal: Refusal) -> Verdict {
     Verdict::Refused { refusal }
 }
 
+/// The rejection `Gnaf.validate` gives a carrier that is not a grammar.
+const fn non_grammar_rejection(carrier: &Carrier) -> Option<Rejection> {
+    match carrier {
+        Carrier::Grammar { .. } => None,
+        Carrier::InternalPlans => Some(Rejection::InternalPlanUniverse),
+        Carrier::OptimizerOutput => Some(Rejection::OptimizerDefinedUniverse),
+        Carrier::Discovered { .. } => Some(Rejection::DiscoveredUniverse),
+        Carrier::Cached => Some(Rejection::CachedUniverse),
+    }
+}
+
 fn check_inner(request: &Request, certificate: &Certificate) -> Result<Verdict, LexLeanError> {
     if certificate.verifier != VERIFIER {
         return Ok(refused(Refusal::VerifierMismatch));
@@ -1136,8 +1146,10 @@ fn check_inner(request: &Request, certificate: &Certificate) -> Result<Verdict, 
     if let Some(rejection) = validate(request) {
         return Ok(refused(Refusal::RequestRejected { rejection }));
     }
-    if !matches!(request.carrier, Carrier::Grammar { .. }) {
-        return Ok(refused(Refusal::NoGrammar));
+    // `validate` refused every carrier but a grammar above; the model's total
+    // match over carriers names the same rejections, and no request reaches it.
+    if let Some(rejection) = non_grammar_rejection(&request.carrier) {
+        return Ok(refused(Refusal::RequestRejected { rejection }));
     }
     if certificate.universe != request.universe {
         return Ok(refused(Refusal::UniverseMismatch));
@@ -1382,7 +1394,6 @@ fn refusal_term(refusal: &Refusal) -> Json {
             "Refusal.requestRejected",
             vec![super::rejection_term(rejection)],
         ),
-        Refusal::NoGrammar => simple("noGrammar"),
         Refusal::UniverseMismatch => simple("universeMismatch"),
         Refusal::ObjectiveMismatch => simple("objectiveMismatch"),
         Refusal::ClaimMismatch => simple("claimMismatch"),

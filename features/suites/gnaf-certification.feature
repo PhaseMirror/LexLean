@@ -34,7 +34,7 @@ Feature: gnaf-certification
   Scenario: The transformation schemas collapse, specialize-small, and specialize-large apply only when the plans neither call the entry nor apply a closure and the domain makes the dispatch run the rewritten system's plan, and rewrite to a member of the universe of no greater size or preparation; a reduction certificate whose every other system is excluded or reduced certifies the optimum of the measured systems, an incomplete or ineligible reduction is refused; the module defines the observations a system keeps and the strict cost decrease of its rewriting over the request's domain, the kernel decides both for every reduction premise of the committed certificates, and the library proves both for every improving schema application.
     Given requests whose dispatches a domain specializes and a request whose domain does not, and reduction certificates for them and their mutations
     When each certificate is checked, the schemas' eligibility is read for every system, and the module's preservation relation is read for every reduction premise
-    Then the reductions certify the measured optimum, only eligible systems reduce, and every committed reduction premise is a preserving application as the kernel decides
+    Then the reductions certify the measured optimum, only eligible systems reduce, and the kernel decides, for every committed certificate with a reduction, whether each premise is a preserving application: true for the eligible ones and false for the ineligible ones
     And an incomplete or ineligible reduction is refused with the position it leaves open
 
   @GC-06 @build

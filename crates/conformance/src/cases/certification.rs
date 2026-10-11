@@ -808,6 +808,45 @@ fn gc_03() {
             }
         )
     );
+    // An exclusion names an argument of the domain, on which the system
+    // disagrees: one past the last is none, an argument the system exhausts
+    // the fuel on proves nothing, and a bound over a prefix the system
+    // disagrees on is no evidence of its cost.
+    for (name, position, established) in [
+        (
+            "lb-excluded-at-length",
+            0,
+            Established::CorrectOnly {
+                system: 3,
+                steps: 167,
+                size: 46,
+            },
+        ),
+        (
+            "lb-excluded-unresolved",
+            1,
+            Established::CorrectOnly {
+                system: 0,
+                steps: 880,
+                size: 26,
+            },
+        ),
+        (
+            "lb-pays-inadmissible-prefix",
+            1,
+            Established::CorrectOnly {
+                system: 0,
+                steps: 180,
+                size: 15,
+            },
+        ),
+    ] {
+        assert_eq!(
+            verdict(name),
+            incomplete(Obligation::MemberUnproven { position }, established),
+            "{name}"
+        );
+    }
     // Every mutation of a certified lower bound is uncertified: a premise
     // dropped or weakened, the bound moved either way, an attainer dropped
     // or added.
@@ -1027,6 +1066,19 @@ fn gc_04() {
             "members {members:?}: an unresolved system is open"
         );
     }
+    for name in [
+        "frontier-unresolved-member",
+        "frontier-unresolved-nonmember",
+    ] {
+        assert_eq!(
+            verdict(name),
+            incomplete(
+                Obligation::UnresolvedMember { position: 1 },
+                Established::NotCertified
+            ),
+            "{name}: the kernel decides it, too"
+        );
+    }
     // Every mutation of the certified frontier is uncertified: a premise
     // dropped or weakened, a member removed or added.
     for position in 0..base.premises.len() {
@@ -1216,6 +1268,80 @@ fn gc_05() {
         }
     }
     assert!(pairs >= 80, "many pairs of systems: {pairs}");
+    // The relations are decided by the kernel on pairs that are no schema's
+    // rewriting, one of each class, derived by the host from the trials and
+    // independently of `improves`: a pair whose observations are not kept, a
+    // pair kept at no saving, and a pair kept at a saving.
+    let committed_pairs = generated::pairs();
+    let classes: BTreeSet<(bool, bool)> = committed_pairs
+        .iter()
+        .map(|pair| (pair.keeps, pair.cheaper))
+        .collect();
+    assert_eq!(
+        classes,
+        BTreeSet::from([(false, false), (true, false), (true, true)]),
+        "every class of pair is stated"
+    );
+    let module_theorems = declarations(generated::PATH);
+    for pair in &committed_pairs {
+        for cheaper in [false, true] {
+            let name = generated::pair_theorem(pair, cheaper);
+            let theorem = module_theorems
+                .iter()
+                .find(|declaration| declaration["name"] == name)
+                .unwrap_or_else(|| panic!("{name} is stated"));
+            assert_eq!(
+                theorem["statement"]["right"],
+                crate::lx::boolean(if cheaper { pair.cheaper } else { pair.keeps }),
+                "{name}"
+            );
+        }
+    }
+    // The definitions are the conjunction they say they are: `preserves`
+    // reads `improves` and both relations, so it is not `improves` alone, and
+    // a reduction premise is read through `preserves`.
+    let model = declarations("compiler/src/Certification.lex.tex");
+    let references_of = |name: &str| {
+        let declaration = model
+            .iter()
+            .find(|declaration| declaration["name"] == name)
+            .unwrap_or_else(|| panic!("{name} is defined"));
+        let mut out = BTreeSet::new();
+        references(declaration, &mut out);
+        out
+    };
+    for (name, used) in [
+        (
+            "preserves",
+            vec!["improves", "sameObservations", "strictlyCheaper", "rewrite"],
+        ),
+        ("reductionsPreserve", vec!["preserves"]),
+        ("sameObservations", vec!["sameObservationsAt"]),
+        ("strictlyCheaper", vec!["strictlyCheaperAt"]),
+        (
+            "sameObservationsAt",
+            vec!["keepsObservation", "argumentStatus"],
+        ),
+        (
+            "strictlyCheaperAt",
+            vec!["cheaperObservation", "argumentStatus"],
+        ),
+    ] {
+        let seen = references_of(name);
+        for reference in used {
+            assert!(
+                seen.iter().any(|seen| seen.ends_with(reference)),
+                "{name} reads {reference}: {seen:?}"
+            );
+        }
+    }
+    // A request that is no grammar's has no preserving reduction.
+    let rejected = fixture("request-rejected-cached");
+    assert!(!certification::reductions_preserve(
+        &request(&rejected.request),
+        &rejected.certificate
+    )
+    .expect("evaluates"));
     let model_names: BTreeSet<String> = declarations("compiler/src/Certification.lex.tex")
         .iter()
         .filter_map(|declaration| declaration["name"].as_str().map(str::to_owned))
@@ -1729,6 +1855,14 @@ fn gc_07() {
             Established::NotCertified
         )
     );
+    assert_eq!(
+        verdict("bridge-unresolved"),
+        incomplete(
+            Obligation::UnresolvedMember { position: 1 },
+            Established::NotCertified
+        ),
+        "the same verdict as a committed fixture the kernel decides"
+    );
     let optimum_unresolved = Request {
         claim: ClaimClass::GlobalOptimal,
         ..request("bound-over-unresolved")
@@ -1883,12 +2017,40 @@ fn gc_08() {
             },
         ),
         (
+            "request-rejected-cached",
+            Refusal::RequestRejected {
+                rejection: Rejection::CachedUniverse,
+            },
+        ),
+        (
             "lb-premise-omitted",
             Refusal::MissingPremise { position: 5 },
         ),
         ("lb-extra-premise", Refusal::ExtraPremise { count: 6 }),
     ] {
         assert_eq!(verdict(name), refused(expected), "{name}");
+    }
+    // No request whose carrier is not a grammar reaches a certificate's
+    // premises: each is rejected as the request is, which is why the model
+    // has no refusal of its own for the carrier.
+    let cached = fixture("request-rejected-cached").certificate;
+    for (name, rejection) in [
+        (
+            "reject-internal-plan-universe",
+            Rejection::InternalPlanUniverse,
+        ),
+        (
+            "reject-optimizer-defined-universe",
+            Rejection::OptimizerDefinedUniverse,
+        ),
+        ("reject-cached-universe", Rejection::CachedUniverse),
+        ("reject-discovered-universe", Rejection::DiscoveredUniverse),
+    ] {
+        assert_eq!(
+            check(name, &cached),
+            refused(Refusal::RequestRejected { rejection }),
+            "{name}"
+        );
     }
     // The same problem on an enlarged machine is another universe: nothing
     // certified for one is certified for the other (GNAF-VEC-08).

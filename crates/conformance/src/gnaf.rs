@@ -591,6 +591,36 @@ fn requests() -> Vec<(&'static str, Request)> {
                 ..scalar()
             },
         ),
+        // The same systems posed as a frontier and as an optimum: a system
+        // the fuel leaves unresolved is neither a member nor dominated, and
+        // no bridge bounds it.
+        (
+            "frontier-over-unresolved",
+            Request {
+                carrier: grammar(
+                    vec![plan(last_by_slice()), plan(last_by_recursion(2))],
+                    vec![3],
+                ),
+                reference: sliced_reference(),
+                domain: exhausting_domain(),
+                objective: Objective::Vector,
+                claim: ClaimClass::FrontierComplete,
+                ..scalar()
+            },
+        ),
+        (
+            "optimum-over-unresolved",
+            Request {
+                carrier: grammar(
+                    vec![plan(last_by_slice()), plan(last_by_recursion(2))],
+                    vec![3],
+                ),
+                reference: sliced_reference(),
+                domain: exhausting_domain(),
+                claim: ClaimClass::GlobalOptimal,
+                ..scalar()
+            },
+        ),
         (
             "unknown-cost-incomplete",
             Request {

@@ -807,6 +807,130 @@ fn certificates(
         ),
     );
 
+    // An `excluded` premise names an argument of the domain: one past its
+    // last is no evidence of exclusion, and neither is one on which the
+    // system exhausts the fuel; a `pays_at_least` over an inadmissible
+    // prefix is no evidence of a cost.
+    let mut premises = bounded(argmin, steps, &members, false);
+    premises[outside as usize] = Premise::Excluded {
+        position: argmin.domain.len() as u64,
+    };
+    add(
+        "lb-excluded-at-length",
+        ARGMIN,
+        certificate(
+            argmin,
+            Route::LowerBound {
+                bound: steps,
+                attainers: members.clone(),
+            },
+            premises,
+        ),
+    );
+    let mut premises = bounded(unresolved, best_cost, &[best], true);
+    let exhausted = systems(unresolved)
+        .iter()
+        .position(|system| system.status == Status::Unresolved)
+        .expect("an unresolved system");
+    premises[exhausted] = Premise::Excluded {
+        position: systems(unresolved)[exhausted]
+            .trials
+            .iter()
+            .position(|trial| *trial == Trial::Unknown)
+            .expect("an argument it exhausts the fuel on") as u64,
+    };
+    add(
+        "lb-excluded-unresolved",
+        UNRESOLVED,
+        certificate(
+            unresolved,
+            Route::LowerBound {
+                bound: best_cost,
+                attainers: vec![best],
+            },
+            premises,
+        ),
+    );
+    let plan_excluded = request("inadmissible-plan-excluded");
+    let (plan_members, plan_steps) = answer_members(plan_excluded);
+    let mut premises = bounded(plan_excluded, plan_steps, &plan_members, false);
+    let inadmissible = position_where(plan_excluded, |system| {
+        system.status == Status::Inadmissible && first_disagreement(system).is_some()
+    });
+    premises[inadmissible as usize] = Premise::PaysAtLeast {
+        positions: vec![
+            first_disagreement(&systems(plan_excluded)[inadmissible as usize])
+                .expect("a disagreement"),
+        ],
+    };
+    add(
+        "lb-pays-inadmissible-prefix",
+        "inadmissible-plan-excluded",
+        certificate(
+            plan_excluded,
+            Route::LowerBound {
+                bound: plan_steps,
+                attainers: plan_members.clone(),
+            },
+            premises,
+        ),
+    );
+    // The unresolved systems posed as a frontier and as a bridge claim: a
+    // system the fuel leaves unresolved is neither a member nor dominated,
+    // and a bridge has no evidence for it.
+    let frontier_unresolved = request("frontier-over-unresolved");
+    for (name, members) in [
+        ("frontier-unresolved-member", vec![0, 1]),
+        ("frontier-unresolved-nonmember", vec![0]),
+    ] {
+        add(
+            name,
+            "frontier-over-unresolved",
+            certificate(
+                frontier_unresolved,
+                Route::FrontierCover { members },
+                only_measured_all(frontier_unresolved),
+            ),
+        );
+    }
+    let optimum_unresolved = request("optimum-over-unresolved");
+    let sizes: Vec<u64> = systems(optimum_unresolved)
+        .iter()
+        .map(|system| system.size)
+        .collect();
+    add(
+        "bridge-unresolved",
+        "optimum-over-unresolved",
+        certificate(
+            optimum_unresolved,
+            Route::Representation {
+                normal: sizes
+                    .iter()
+                    .position(|size| sizes.iter().all(|other| size <= other))
+                    .expect("a smallest system") as u64,
+                bridge: Some(Bridge {
+                    slope: 0,
+                    offset: 0,
+                }),
+            },
+            only_measured_all(optimum_unresolved),
+        ),
+    );
+    // A request whose carrier is not a grammar is rejected before any
+    // premise is read, and no reduction of it is a preserving one.
+    let cached = request("reject-cached-universe");
+    add(
+        "request-rejected-cached",
+        "reject-cached-universe",
+        certificate(
+            cached,
+            Route::Reduction,
+            vec![Premise::Reduced {
+                schema: Schema::Collapse,
+            }],
+        ),
+    );
+
     // --- bindings -----------------------------------------------------------------
     let base = certificate(
         argmin,
@@ -1289,6 +1413,109 @@ pub fn fixture_declarations(fixture: &CertificateFixture) -> Vec<Json> {
     out
 }
 
+/// The requests whose pairs of systems `GnafCertificates` states the two
+/// observation relations for.
+pub const PAIR_REQUESTS: [&str; 4] = [
+    "inadmissible-plan-excluded",
+    "internal-best-on-short-lists",
+    "argmin-over-systems",
+    "threshold-edge",
+];
+
+/// One pair of systems of a request and the relations the host reads between
+/// them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pair {
+    /// The request.
+    pub request: &'static str,
+    /// The first system's position in the expansion.
+    pub first: u64,
+    /// The second system's position.
+    pub second: u64,
+    /// The second keeps the first's observations.
+    pub keeps: bool,
+    /// The second is strictly cheaper wherever the first is admitted.
+    pub cheaper: bool,
+}
+
+/// The first pair of each class (`keeps`, `cheaper`) among the ordered pairs of
+/// systems of each request, read by the host without any schema: a pair where
+/// the observations are not kept, one where they are kept at no saving, and
+/// one where they are kept at a saving.
+///
+/// # Panics
+///
+/// Panics only if a committed request does not evaluate.
+#[must_use]
+pub fn pairs() -> Vec<Pair> {
+    static PAIRS: std::sync::OnceLock<Vec<Pair>> = std::sync::OnceLock::new();
+    PAIRS.get_or_init(generate_pairs).clone()
+}
+
+fn generate_pairs() -> Vec<Pair> {
+    let requests = requests();
+    let mut out = Vec::new();
+    for name in PAIR_REQUESTS {
+        let request = &requests[name];
+        let selectors = gnaf::expand(&request.carrier);
+        let mut seen: Vec<(bool, bool)> = Vec::new();
+        for (first, left) in selectors.iter().enumerate() {
+            for (second, right) in selectors.iter().enumerate() {
+                let (keeps, cheaper) = certification::observations(request, *left, *right)
+                    .expect("a committed request evaluates");
+                if !seen.contains(&(keeps, cheaper)) {
+                    seen.push((keeps, cheaper));
+                    out.push(Pair {
+                        request: name,
+                        first: first as u64,
+                        second: second as u64,
+                        keeps,
+                        cheaper,
+                    });
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The name of the theorem stating one relation between a pair.
+#[must_use]
+pub fn pair_theorem(pair: &Pair, cheaper: bool) -> String {
+    format!(
+        "{}Pair{}x{}{}",
+        crate::calculus::identifier(pair.request),
+        pair.first,
+        pair.second,
+        if cheaper { "Cheaper" } else { "Keeps" }
+    )
+}
+
+fn pair_declarations() -> Vec<Json> {
+    pairs()
+        .iter()
+        .flat_map(|pair| {
+            let request_call = json!({"kind": "call",
+                "function": term::member(crate::gnaf::FIXTURES_MODULE,
+                    &format!("{}Request", crate::calculus::identifier(pair.request))),
+                "arguments": []});
+            [false, true].map(|cheaper| {
+                json!({"kind": "theorem", "name": pair_theorem(pair, cheaper), "parameters": [],
+                       "axioms": crate::gnaf_model::RUN_AXIOMS,
+                       "statement": {"kind": "eq",
+                           "left": {"kind": "call",
+                                    "function": term::member(certification::MODEL, "pairRelation"),
+                                    "arguments": [request_call.clone(),
+                                                  term::nat(pair.first),
+                                                  term::nat(pair.second),
+                                                  crate::lx::boolean(cheaper)]},
+                           "right": crate::lx::boolean(if cheaper { pair.cheaper } else { pair.keeps })},
+                       "proof": {"kind": "reflexivity"}})
+            })
+        })
+        .collect()
+}
+
 /// The `GnafCertificates` module.
 ///
 /// # Panics
@@ -1296,7 +1523,8 @@ pub fn fixture_declarations(fixture: &CertificateFixture) -> Vec<Json> {
 /// Panics only if `serde_json` cannot serialize a JSON value.
 #[must_use]
 pub fn module(fixtures: &[CertificateFixture]) -> String {
-    let declarations: Vec<Json> = fixtures.iter().flat_map(fixture_declarations).collect();
+    let mut declarations: Vec<Json> = fixtures.iter().flat_map(fixture_declarations).collect();
+    declarations.extend(pair_declarations());
     crate::lx::module_tex(
         MODULE,
         &[
@@ -1379,7 +1607,7 @@ fn definitions() -> serde_json::Map<String, Json> {
         (
             "refusal",
             json!({"oneOf": [
-                simple(&["verifier_mismatch", "no_grammar", "universe_mismatch",
+                simple(&["verifier_mismatch", "universe_mismatch",
                          "objective_mismatch", "claim_mismatch", "scope_mismatch",
                          "route_incompatible"]),
                 closed(json!({"kind": {"const": "request_rejected"},
