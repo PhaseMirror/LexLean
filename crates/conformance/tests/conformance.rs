@@ -1421,6 +1421,56 @@ fn conformance_gn_08() {
 }
 
 #[test]
+fn conformance_gc_01() {
+    repo_conformance::cases::run("GC-01");
+}
+
+#[test]
+fn conformance_gc_02() {
+    repo_conformance::cases::run("GC-02");
+}
+
+#[test]
+fn conformance_gc_03() {
+    repo_conformance::cases::run("GC-03");
+}
+
+#[test]
+fn conformance_gc_04() {
+    repo_conformance::cases::run("GC-04");
+}
+
+#[test]
+fn conformance_gc_05() {
+    repo_conformance::cases::run("GC-05");
+}
+
+#[test]
+fn conformance_gc_06() {
+    repo_conformance::cases::run("GC-06");
+}
+
+#[test]
+fn conformance_gc_07() {
+    repo_conformance::cases::run("GC-07");
+}
+
+#[test]
+fn conformance_gc_08() {
+    repo_conformance::cases::run("GC-08");
+}
+
+#[test]
+fn conformance_gc_09() {
+    repo_conformance::cases::run("GC-09");
+}
+
+#[test]
+fn conformance_gc_10() {
+    repo_conformance::cases::run("GC-10");
+}
+
+#[test]
 fn conformance_sp_01() {
     repo_conformance::cases::run("SP-01");
 }

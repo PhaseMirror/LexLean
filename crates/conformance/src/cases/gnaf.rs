@@ -302,6 +302,8 @@ fn planted_compiler(planted: &[Fixture], edit: impl FnOnce(&mut Vec<Json>)) -> V
     edit(data["declarations"].as_array_mut().expect("declarations"));
     let project = P::compiler();
     project.write("src/GnafFixtures.lex.tex", &with_module_data(&text, &data));
+    // Nothing the certificate modules check is under test here.
+    project.skip_certification();
     let _guard = support::env_shared();
     let error = project.verify_fails_with("LLV7002");
     error
