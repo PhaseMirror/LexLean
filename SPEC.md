@@ -6979,6 +6979,7 @@ Tests MUST establish that LexLean rejects, at minimum:
 - a path symlink;
 - a stale lock;
 - a toolchain mismatch;
+- a malformed verification process width;
 - a configured limit overrun;
 - a PDF executable hash mismatch;
 - a language-1.2 construct under language 1.1;

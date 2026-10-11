@@ -25,7 +25,7 @@ pub mod child;
 pub mod leanchecker;
 pub(crate) mod lifeline;
 pub mod operational;
-pub(crate) mod pool;
+pub mod pool;
 pub mod source_audit;
 pub mod telemetry;
 pub mod toolchain;

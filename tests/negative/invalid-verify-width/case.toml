@@ -1,0 +1,8 @@
+spec = "lexlean/test-case/1"
+command = "verify"
+args = []
+expected_exit = 3
+expect_artifacts = false
+
+[environment]
+LEXLEAN_VERIFY_WIDTH = "0"

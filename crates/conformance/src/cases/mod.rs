@@ -19,6 +19,7 @@ mod lean_backend;
 mod lexical_closure;
 mod lexicon;
 mod models;
+mod operational;
 mod preservation;
 mod production;
 mod proofs;

@@ -7,6 +7,14 @@
 # out so a claim that has drifted from its evidence reads differently from
 # broken code.
 #
+# Where the gate runs, and how wide its proof processes run, are operational
+# choices that change no result (SPEC.md §9.4, §22.11): the runner label is
+# the dispatch input `runner`, else the repository variable `LEXLEAN_VV_RUNNER`,
+# else `ubuntu-24.04`; the verifier width is the input `width`, else
+# `LEXLEAN_VV_WIDTH`, else 1. A width above 1 is accepted only together with
+# `LEXLEAN_VV_MIN_MEMORY_MB`, the memory of the runner it was measured on
+# (`cargo xtask check-vv-profile`, which refuses before anything is built).
+#
 # Every version this file needs is read from the file that pins it —
 # `rust-toolchain.toml` through `rustup toolchain install`, `lean-toolchain`
 # through `elan toolchain install` — so the workflow cannot drift from the
@@ -20,6 +28,15 @@ on:
   push: { branches: [main] }
   pull_request:
   workflow_dispatch:
+    inputs:
+      runner:
+        description: Runner label for the normative job (default `LEXLEAN_VV_RUNNER`, else ubuntu-24.04)
+        required: false
+        type: string
+      width:
+        description: Verifier process width (default `LEXLEAN_VV_WIDTH`, else 1)
+        required: false
+        type: string
 
 # Read-only: nothing in this workflow writes to the repository or publishes a
 # package. The acceptance log is retained as CI evidence; `release.yml` asks
@@ -41,12 +58,18 @@ env:
 jobs:
   vv:
     name: just vv
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.runner || vars.LEXLEAN_VV_RUNNER || 'ubuntu-24.04' }}
     # Native Atlas elaboration, per-module kernel replay, and per-module axiom
     # audit are intentionally the long pole. GitHub-hosted jobs permit six
     # hours; a shorter local-style timeout would turn complete proof coverage
     # into a CI failure mode.
     timeout-minutes: 360
+    env:
+      # Operational only (SPEC.md §22.11, §22.12): no artifact records the
+      # width, and the telemetry directory is CI evidence, uploaded below.
+      LEXLEAN_VERIFY_WIDTH: ${{ inputs.width || vars.LEXLEAN_VV_WIDTH || '1' }}
+      LEXLEAN_VV_MIN_MEMORY_MB: ${{ vars.LEXLEAN_VV_MIN_MEMORY_MB }}
+      LEXLEAN_CI_TELEMETRY: ${{ github.workspace }}/ci-evidence
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install the pinned Rust toolchain
@@ -54,6 +77,12 @@ jobs:
       - uses: taiki-e/install-action@b6b84cf49ebfe0176417bdce007c624f0db37f20 # v2.86.2
         with:
           tool: just,cargo-deny
+      # The width and the runner are checked against each other before the
+      # long work: a width the runner's declared envelope does not cover
+      # would otherwise be found by the runner losing its heartbeat hours in.
+      # The xtask built here is the one `model` runs, so nothing is built twice.
+      - name: The verifier width fits the runner
+        run: cargo xtask check-vv-profile
       - name: Install elan and the pinned Lean toolchain
         run: |
           set -euo pipefail
@@ -82,10 +111,30 @@ jobs:
               sleep 60
             done
           }
+          # One row every five seconds: time, free memory, swap in use, and the
+          # largest resident set, so that the memory of each recipe is read
+          # from the run itself (`cargo xtask ci-summary`).
+          sample_resources() {
+            set +e
+            while true; do
+              avail=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+              swap=$(awk '/^SwapTotal:/ {t=$2} /^SwapFree:/ {f=$2} END {print t-f}' /proc/meminfo)
+              top=$( (ps -eo rss= --sort=-rss || true) | awk 'NR==1 {print $1}')
+              printf '%s\t%s\t%s\t%s\n' "$(date +%s.%N | cut -c1-14)" "$avail" "$swap" "${top:-0}"
+              sleep 5
+            done
+          }
           monitor_resources > >(tee ci-evidence/resources.txt) &
           monitor_pid=$!
-          trap 'kill "$monitor_pid" 2>/dev/null || true; wait "$monitor_pid" 2>/dev/null || true' EXIT
-          just vv 2>&1 | tee ci-evidence/vv.txt
+          sample_resources > ci-evidence/resources.tsv &
+          sample_pid=$!
+          trap 'kill "$monitor_pid" "$sample_pid" 2>/dev/null || true; wait "$monitor_pid" "$sample_pid" 2>/dev/null || true' EXIT
+          just --timestamp --timestamp-format '%s%.3f' vv 2>&1 | tee ci-evidence/vv.txt
+      # What the run cost, by recipe, stage, and module (SPEC.md §9.4). Evidence
+      # only: it is read by people and by later measurements, never by a recipe.
+      - name: Summarize the run's timing and memory
+        if: ${{ !cancelled() }}
+        run: cargo xtask ci-summary --evidence ci-evidence
       # The example gate discovers Atlas rather than receiving an allow-list.
       # These assertions make its complete proof run visible as first-class CI
       # evidence without running the expensive verifier a second time.
