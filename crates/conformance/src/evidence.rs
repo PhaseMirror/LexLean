@@ -357,15 +357,26 @@ pub fn render_summary(
     }
     if !examples.is_empty() {
         out.push_str(
-            "\n## Examples\n\n| Example | Seconds | Verifier width |\n| --- | ---: | ---: |\n",
+            "\n## Examples\n\n| Example | Seconds | Verifier width | fmt | lock | check | build | verify |\n| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n",
         );
         for event in examples {
+            let step = |label: &str| {
+                event["steps"][format!("{label}_ms")].as_u64().map_or_else(
+                    || "n/a".to_owned(),
+                    |ms| format!("{:.1}", ms as f64 / 1000.0),
+                )
+            };
             let _ = writeln!(
                 out,
-                "| {} | {:.1} | {} |",
+                "| {} | {:.1} | {} | {} | {} | {} | {} | {} |",
                 event["example"].as_str().unwrap_or("?"),
                 ms(event) as f64 / 1000.0,
-                event["process_width"].as_u64().unwrap_or(0)
+                event["process_width"].as_u64().unwrap_or(0),
+                step("fmt"),
+                step("lock"),
+                step("check"),
+                step("build"),
+                step("verify")
             );
         }
     }

@@ -160,33 +160,51 @@ fn verify_examples(root: &Path, write: bool) -> Result<(), Fail> {
             copy_example(&root.join(&required), &destination)?;
         }
         let engine = engine_for(&staged)?;
+        // The time of each step is kept for the CI evidence: what the
+        // verifier's own clock does not cover (reading, linking, and rendering
+        // the project, which `check`, `build`, and `verify` each do) is the
+        // difference between a step and the verification it contains.
+        let mut steps = serde_json::Map::new();
+        let mut clock = std::time::Instant::now();
+        let mut lap = |label: &str| {
+            steps.insert(
+                format!("{label}_ms"),
+                serde_json::json!(u64::try_from(clock.elapsed().as_millis()).unwrap_or(u64::MAX)),
+            );
+            clock = std::time::Instant::now();
+        };
         engine
             .format(lexlean::FormatRequest {
                 selection: lexlean::Selection::Entrypoints,
                 check_only: true,
             })
             .map_err(|error| format!("{name}: fmt --check: {error}"))?;
+        lap("fmt");
         engine
             .lock(lexlean::LockRequest {
                 check_only: true,
                 allow_network: false,
             })
             .map_err(|error| format!("{name}: lock --check: {error}"))?;
+        lap("lock");
         engine
             .check(lexlean::CheckRequest {
                 selection: lexlean::Selection::Entrypoints,
             })
             .map_err(|error| format!("{name}: check: {error}"))?;
+        lap("check");
         engine
             .build(lexlean::BuildRequest {
                 selection: lexlean::Selection::Entrypoints,
             })
             .map_err(|error| format!("{name}: build: {error}"))?;
+        lap("build");
         let verified = engine
             .verify(lexlean::VerifyRequest {
                 selection: lexlean::Selection::Entrypoints,
             })
             .map_err(|error| format!("{name}: verify: {error}"))?;
+        lap("verify");
         // The wall-clock of each example is printed so that a run that
         // approaches the CI job limit shows where its time went.
         println!(
@@ -225,6 +243,7 @@ fn verify_examples(root: &Path, write: bool) -> Result<(), Fail> {
                     "wall_ms": u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
                     "process_width": lexlean::verify::operational::Operational::from_environment()
                         .map_or(0, |operational| operational.width()),
+                    "steps": steps,
                 }),
             );
         }

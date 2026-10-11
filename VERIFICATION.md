@@ -5202,8 +5202,7 @@ order, whatever order the processes finish in. The stages and their independence
 are the verifier's own, unchanged:
 
 - elaboration proceeds by topological frontier; a module starts only after
-  everything it imports has produced its `.olean`; the frontier is the barrier
-  (width 1 is the previous behaviour);
+  everything it imports has produced its `.olean`; the frontier is the barrier;
 - replay starts after every elaboration, audit after every replay, so replay and
   audit do not overlap each other or elaboration; within each, the processes read
   staged `.olean` files and write none (replay) or write only their own record
@@ -5211,20 +5210,39 @@ are the verifier's own, unchanged:
 - results, records, staged files, the merge of observed axioms, the policy rows
   and the attestation body are produced in the canonical order, so none of them
   can depend on completion order; the failure reported is the first in that
-  order, and no later item is started once a failure is known.
+  order, and no item later than a known failure is started (items are claimed in
+  order, so a later failure position can never reopen a stage; the
+  `stop_after` minimum is therefore not distinguishable from a plain store by
+  any test, and `a_later_failure_does_not_reopen_the_stage` fixes the behaviour);
+- width 1 is the previous behaviour literally: the stage runs on the calling
+  thread and a process starts only after the result of the one before has been
+  consumed, so a failure only the consumer sees (a missing `.olean`) stops the
+  stage before another process starts (`width_one_alternates_job_and_consume`).
 
 `conformance_vr_21` verifies the committed `peano-arithmetic` project (`Addition`
 is imported by `Divisibility`, `Doubling`, and `Order`, which `Main` imports:
 frontiers of one, three, and one modules) at width 1 and at width 3 and requires
-the two published directories to be byte-identical, the attestation IDs, the
-observed axiom sets and policy rows, the process records in order, and the
-(absent) compiler input equal; that the width-3 run's telemetry shows a frontier
-of three; that jobs which finish in reverse order are consumed in item order; and
-that a tampered published directory is refused at width 3 (the reuse rule). The
-compiler input of a project with a production root is carried by the `examples`
-recipe, which compares every example's normalized records with the committed
-`expected/verify` at the default width; a production verification costs two
-minutes whatever its size, so the case does not repeat one.
+the two published directories to be byte-identical, with equal attestation IDs,
+observed axiom sets and policy rows, and process records in order. It reads the
+telemetry of both runs for what the bytes cannot show: at width 1 no two child
+processes overlap; at width 3 the three members of the middle frontier overlap by
+more than 50 ms (a width that is applied does this with half-second processes
+started microseconds apart; up to three attempts are made, each also compared
+byte for byte with width 1, so that a host stalled for a moment is not a failure
+and a width that is not applied, which never overlaps, is), the `Addition`
+frontier ends before the three start and they end before `Main` starts, and the
+elaboration, replay, and audit stages do not overlap one another (all within 5 ms
+of clock rounding). It then verifies the committed `production` example (two
+modules, six production roots) at width 1 and at width 2, the two runs together,
+and requires the whole published tree, the attestation, the canonical compiler
+input, the preservation record, the observed axioms and policy rows, and the
+process records to be equal, and the compiler input to be the committed
+`expected/verify` one; that jobs which finish in reverse order are consumed in
+item order; and that a tampered published directory is refused at width 3 (the
+reuse rule). The production pair costs two production verifications (about
+2 minutes each, run side by side); it is what shows that no pooled stage reaches
+extraction or the certificates. Alone, `conformance_vr_21` takes 176 s on the
+reference container.
 
 ### Telemetry
 
@@ -5236,8 +5254,13 @@ audit process: stage, module or audit member, wall time, exit code, and, from
 `/proc`, the peak resident set and swap of the process and what it started),
 `completion` (the order in which the processes of a stage finished: the one place
 completion order exists), and `verify_end`. `cargo xtask verify-examples` adds
-`examples-telemetry.jsonl` (wall time per example) and prints, for each example,
-the digest of its published verified directory.
+`examples-telemetry.jsonl` (wall time per example, and of its `fmt`, `lock`,
+`check`, `build`, and `verify` steps: the verifier's own clock starts after the
+project has been read, linked, and rendered, which each of `check`, `build`, and
+`verify` does again, so that time is the step less the verification it contains)
+and prints, for each example, the digest of its published verified directory; the
+conformance runner adds `cases-telemetry.jsonl` (wall time per `conformance_<id>`
+case, passed or not).
 
 Stages: `certificate-generation`, `toolchain-preflight`, `workspace-preflight`,
 `staging`, `probe`, `elaboration`, `replay`, `audit`, `policy`, `extraction`,
@@ -5263,7 +5286,13 @@ and, after the gate, runs `cargo xtask ci-summary`, which writes
 `ci-evidence/summary.md` (also appended to the job summary): the wall time of
 each `vv` recipe with the lowest free memory, highest swap, and largest process
 while it ran; the time of each verification stage; the fifteen slowest verifier
-processes with their peak resident set and swap; the time of each example.
+processes with their peak resident set and swap; the time of each example and its
+steps; the fifteen slowest conformance cases; the stages of each project; and for
+the longest single verification (which on the runner is `uor-atlas`) its stages
+with the lowest free memory, highest swap and the verifier's own peak, its slowest
+and largest processes by module, the processes that swapped, and its slowest
+frontiers. The per-module rows of every verification are in
+`verify-telemetry.jsonl` itself.
 `ci-evidence/` is uploaded with the gate log.
 
 ### Waste found and removed
@@ -5403,6 +5432,16 @@ was removed.
 - **reuse.** The comparison with a published directory made to succeed whatever
   it finds: `conformance_vr_21` fails at `a tampered published directory is not
   reused`.
+- **a width that is not applied.** `let width = operational.width().min(1);` in
+  `verify::run` (the verifier ignores `LEXLEAN_VERIFY_WIDTH`; before the
+  overlap assertions this passed every case, since two runs at width 1 are equal):
+  `conformance_vr_21`:
+
+  ```text
+  thread 'conformance_vr_21' panicked at crates/conformance/src/cases/operational.rs:479:5:
+  three attempts at width 3 never overlapped two members of a three-wide frontier: the width is not applied
+  ```
+
 ### telemetry-scan can fail
 
 - **telemetry in an artifact.** `("wall_ms", 1)` added to every process record
@@ -5411,6 +5450,17 @@ was removed.
   the same scan runs over every example in `cargo xtask verify-examples`.
 ### The CI job and the width variable can fail
 
+- **a skipped pull-request gate.** The summary step given `if: ${{ !cancelled() &&
+  github.event_name != 'pull_request' }}` (which a test accepting any condition
+  containing `!cancelled()` let through): `ci.yml:116: the only condition allowed is a
+  step's `if: ${{ !cancelled() }}``; a job-level `if: ${{ !cancelled() }}`:
+  `ci.yml:49: the only condition allowed is ...`; the gate step given
+  `if: ${{ !cancelled() }}`: `the summary step and the evidence upload carry it`
+  (left: 3) (all `conformance_rp_14`).
+- **a width that is not Unicode.** `from_environment` reading the variable with
+  `std::env::var(..).ok()` (a non-Unicode value then selects the default width, silently):
+  `verify::operational::tests::the_environment_is_read_as_bytes` fails with
+  `not Unicode: Operational { width: 1, telemetry: None }`.
 - **the CI job.** `paths-ignore: ['**.md']` under `pull_request:`:
   `ci.yml has no `paths-ignore:``; the runner replaced by `${{ vars.BIG_RUNNER ||
   'ubuntu-24.04' }}`: `the normative job runs on the standard runner`; the gate step
