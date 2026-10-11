@@ -50,3 +50,12 @@ missing_safety_doc = "deny"
 opt-level = 3
 lto = "thin"
 codegen-units = 1
+
+# Hashing is the one place unoptimized code costs seconds rather than
+# milliseconds: every verification reads the running executable (a debug
+# executable is a few hundred megabytes) and every olean, and `sha2` compiled
+# at the dev profile's opt-level 0 hashes about 60 MB/s, which was 4.7 seconds
+# of each verification in the test suite and the example gate. Optimizing this
+# one dependency in the dev profile changes no value it computes.
+[profile.dev.package.sha2]
+opt-level = 3

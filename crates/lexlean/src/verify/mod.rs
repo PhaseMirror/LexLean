@@ -2174,6 +2174,7 @@ pub fn run(
         }
     }
 
+    stages.enter("scratch-cleanup");
     // Remove the compilation scratch tree; the fixed §22.8 artifact set
     // keeps exactly `oleans/*.olean` (the module-system `.olean.private`,
     // `.olean.server`, and `.ir` intermediates are not part of the set and
@@ -2199,6 +2200,7 @@ pub fn run(
         }
     }
 
+    stages.enter("olean-hash");
     // Copy oleans into the verified set and hash them.
     let mut olean_rows: Vec<Json> = Vec::new();
     for module in &build.modules {
@@ -2217,17 +2219,16 @@ pub fn run(
         ]));
     }
 
+    stages.enter("executable-hash");
     // Stage 15: the attestation (§22.9). No timestamp is hashed. The
     // running executable must be readable to be recorded; nothing is
     // fabricated in its place.
-    let lexlean_executable_sha256 = std::env::current_exe()
-        .and_then(std::fs::read)
-        .map(|bytes| Sha256Digest::of(&bytes))
-        .map_err(|io_error| {
-            fail(internal(format!(
-                "reading the running executable: {io_error}"
-            )))
-        })?;
+    let lexlean_executable_sha256 = running_executable_sha256().map_err(|io_error| {
+        fail(internal(format!(
+            "reading the running executable: {io_error}"
+        )))
+    })?;
+    stages.enter("attestation-body");
     let tool_json = |tool: &toolchain::Tool| {
         Json::object(vec![
             ("version_output", Json::Str(tool.version_output.clone())),
@@ -2335,6 +2336,7 @@ pub fn run(
     };
     write_staged(staging.path(), "attestation.json", &full.to_file_bytes())?;
 
+    stages.enter("publication");
     // Stage 16: atomic publication (§21.8).
     let target = verified_root.join(this_attestation_id.to_hex());
     if target.as_std_path().exists() {
@@ -2371,6 +2373,27 @@ pub fn run(
         attestation_id: this_attestation_id,
         root: target,
     })
+}
+
+/// The SHA-256 of the running executable, read once per process.
+///
+/// The attestation records which `lexlean` made it, and a process is one
+/// executable for as long as it runs, so reading and hashing a few hundred
+/// megabytes for every verification said the same thing again. In a debug
+/// build that was 4.7 seconds of every verification, and the conformance
+/// suite's process verifies hundreds of projects. The value is what a fresh
+/// read would give: the digest is of the file at the path the process was
+/// started from, and a failure to read it is remembered as a failure.
+fn running_executable_sha256() -> Result<Sha256Digest, String> {
+    static DIGEST: std::sync::OnceLock<Result<Sha256Digest, String>> = std::sync::OnceLock::new();
+    DIGEST
+        .get_or_init(|| {
+            std::env::current_exe()
+                .and_then(std::fs::read)
+                .map(|bytes| Sha256Digest::of(&bytes))
+                .map_err(|io_error| io_error.to_string())
+        })
+        .clone()
 }
 
 /// Remove the staging directories that earlier runs left in `verified_root`:
