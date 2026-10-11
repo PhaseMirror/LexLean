@@ -910,6 +910,12 @@ impl Engine {
     }
 
     fn verify_inner(&self, request: &VerifyRequest) -> Result<VerifiedProject, LexLeanError> {
+        // The operational settings (§22.11, §22.12) are resolved before any
+        // work, so that a malformed width is refused without a build having
+        // been published, and they are handed to the verifier whole: nothing
+        // downstream reads the environment for them again.
+        let operational = crate::verify::operational::Operational::from_environment()
+            .map_err(LexLeanError::from_diagnostic)?;
         let (mut checked, lock) = self.checked(&request.selection)?;
         let mut rendered = render_build(&self.project, &checked)?;
         // Rendering is the last consumer of parser atoms,
@@ -933,7 +939,13 @@ impl Engine {
         // stage, and the verified-set publication (§21.8).
         let guard = acquire_lock(&self.project)?;
         publish_build_locked(&self.project, &rendered, &guard)?;
-        let outcome = crate::verify::run(&self.project, &lock, &checked, &mut rendered)?;
+        let outcome = crate::verify::run(
+            &self.project,
+            &lock,
+            &checked,
+            &mut rendered,
+            &operational,
+        )?;
         drop(guard);
         Ok(VerifiedProject {
             source_id: checked.source_id,

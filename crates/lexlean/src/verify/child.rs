@@ -15,6 +15,7 @@ use crate::code;
 use crate::config::Limits;
 use crate::diagnostic::Diagnostic;
 use crate::verify::lifeline;
+use crate::verify::telemetry;
 
 /// The §22.7 normalizer: ordered longest-prefix replacements.
 #[derive(Debug, Clone, Default)]
@@ -563,6 +564,13 @@ pub fn run(
     let started = Instant::now();
     let timeout = Duration::from_millis(limits.child_timeout_ms);
     let deadline = started.checked_add(timeout);
+    // Measurement is observation only (§22.12): without a telemetry
+    // context in force none of it is done, and with one it is written to the
+    // sink and read by nobody here.
+    let context = telemetry::current();
+    let mut watch = context
+        .as_ref()
+        .map(|_| telemetry::GroupWatch::new(child.id()));
     let status = {
         // Registered for as long as the child may be running.
         let _tracked = tracked;
@@ -570,6 +578,9 @@ pub fn run(
             match child.try_wait() {
                 Ok(Some(status)) => break status,
                 Ok(None) => {
+                    if let Some(watch) = watch.as_mut() {
+                        watch.poll();
+                    }
                     let now = Instant::now();
                     if deadline.is_none_or(|deadline| now >= deadline) {
                         let ended = stop(&mut child);
@@ -602,6 +613,16 @@ pub fn run(
             }
         }
     };
+    if let Some(context) = &context {
+        context.process(&telemetry::ProcessReport {
+            tool: spec.tool,
+            module: spec.module.as_deref(),
+            exit_code: status.code().unwrap_or(-1),
+            started,
+            peak_rss_kib: watch.as_ref().and_then(telemetry::GroupWatch::peak_rss_kib),
+            peak_swap_kib: watch.as_ref().and_then(telemetry::GroupWatch::peak_swap_kib),
+        });
+    }
     let stdout_bytes = stdout_reader.join().unwrap_or_default();
     let stderr_bytes = stderr_reader.join().unwrap_or_default();
     let stdout_len = u64::try_from(stdout_bytes.len()).unwrap_or(u64::MAX);
