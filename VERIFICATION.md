@@ -4686,15 +4686,17 @@ overlay turns every `nat_add` call of each certificate B's crate into
 ## GNAF certification (Issue #23)
 
 `conformance_gc_01` reads every certificate fixture under
-`compiler/certificates/` (66) as published, requires canonical bytes, the
+`compiler/certificates/` (73) as published, requires canonical bytes, the
 framed SHA-256 identity of the certificate, the schemas, and the host's
 verdict, and refuses malformed certificates with `LLB6007` and certificates
 beyond 65,536 premises, 1,024 positions in a list, or numbers of 2^32 with
 `LLS8002`. `conformance_gc_02` requires the committed `Certification`,
 `GnafCertificates`, and model sources to equal their generators, runs the
 compiler project's `verify` (the kernel reduces `Certification.check` on each
-of the 66 certificates to the verdict the host gives it, and, for each
-certificate with a `reduced` premise, decides `certificateReductionsPreserve`),
+of the 73 certificates to the verdict the host gives it, for each
+certificate with a `reduced` premise decides `certificateReductionsPreserve`,
+and decides both observation relations on pairs of systems that are no schema's
+rewriting, one pair of each class per request),
 and compiles a module stating five false claims (a certified optimum for a
 certificate missing a competitor's premise, an unattained bound, a locally
 normal system, a premise-free bound over unresolved systems, and the
@@ -4815,7 +4817,54 @@ a `reduces` fact carries and no verdict reads. `cost < bound` after
 `cost == bound` was excluded, which `<=` leaves unchanged. Two further
 mutants (`||` read as `&&` in a closure's head) do not compile.
 
+A second review (`r23b`) found three more mutants of `premise_fact` that every
+non-Lean case let through (an `excluded` position one past the domain, an
+`excluded` argument on which the system exhausts the fuel, and a
+`pays_at_least` over an inadmissible prefix, each read as an exclusion where
+the model says the premise proves nothing; the first two are unsound), and
+that nothing pinned the observation relations themselves. Each is refused:
+
+| Planted | Refused by | Fixture or pair that fails |
+| --- | --- | --- |
+| `excluded` with a position outside the domain read as `Inadmissible` | `gc_03`, `gc_01` | `lb-excluded-at-length` |
+| `excluded` on an argument that exhausts the fuel read as `Inadmissible` | `gc_03`, `gc_01` | `lb-excluded-unresolved` |
+| `pays_at_least` over an inadmissible prefix read as `Inadmissible` | `gc_03`, `gc_01` | `lb-pays-inadmissible-prefix` |
+| `certificateReductionsPreserve` true for a request that is no grammar's | `gc_05`, `gc_01` | `request-rejected-cached` |
+
+The unresolved frontier and bridge cases are now committed fixtures
+(`frontier-unresolved-member`, `frontier-unresolved-nonmember`,
+`bridge-unresolved`, over the requests `frontier-over-unresolved` and
+`optimum-over-unresolved`), so the kernel decides them. The refusal
+`NoGrammar` is gone: `validate` rejects every carrier but a grammar before a
+certificate is read, so the model's total match over carriers names those
+rejections (`request-rejected-cached`, and `gc_08` for the other three). The
+final sweep, 60 mutants of the lines from `eligible` to `check` and the 31
+plants above, was run on this tree: 53 refused, 2 do not compile, and the
+same 5 equivalent mutants survive (the justifications above stand), plus the
+4 equivalent plants.
+
 ### GNAF certification can fail (model and library)
+
+The observation relations of the closed module are pinned by kernel-decided
+instances on pairs of systems that are no schema's rewriting (`<request>Pair<i>x<j>Keeps`
+and `...Cheaper`, one pair of each class `(keeps, cheaper)` of
+`(false, false)`, `(true, false)`, and `(true, true)` per request, read by the
+host from the trials, independently of `improves`). Before they existed, a
+`keepsObservation` and `cheaperObservation` neutered to tautologies passed
+every gate, because each `<id>Preserves` instance is decided by `improves`,
+which implies both relations. Each plant below regenerates the module with
+`cargo xtask check-calculus --write`, runs the named case, and is restored.
+
+| Planted in `certification_model.rs` | Command | Result |
+| --- | --- | --- |
+| `keepsObservation` and `cheaperObservation` return true wherever the system is admitted (`no(), no()` as `yes(), yes()` in `status_pair`) | `conformance_gc_02` | the compiler project does not verify: the pair instances are false |
+| `cheaperObservation` with `ble` for `blt` | `conformance_gc_02` | the compiler project does not verify |
+| `preserves` that no longer reads `sameObservations` (the first relation read twice) | `conformance_gc_05` | `preserves reads sameObservations: {"Option.none", "Option.some", "improves", "rewrite", "strictlyCheaper"}` |
+
+`preserves` defined as `improves` alone is extensionally the same function,
+because `improves_preserves` proves `improves` implies the two relations, so
+no evaluation can tell them apart; `gc_05` reads the references of `preserves`,
+`reductionsPreserve`, and the relations instead, as it does for `isNormal`.
 
 Planted in `crates/conformance/src/certification_model.rs`: the strict
 lower-bound test `blt(bound, cost)` as `ble(bound, cost)`; `cargo xtask
@@ -4838,7 +4887,7 @@ sorry` at the head of `normality_never_certifies`; then the statement
 repo-conformance --test conformance -- conformance_gc_09`.
 
 ```text
-thread 'conformance_gc_09' panicked at crates/conformance/src/cases/certification.rs:2066:37:
+thread 'conformance_gc_09' panicked at crates/conformance/src/cases/certification.rs:2228:14:
 Soundness: the library's token audit: the forbidden token `sorry`
 thread 'conformance_gc_09' panicked at crates/conformance/src/certification_library.rs:209:9:
 the module `LexLeanCertification.Soundness` was rejected by Lean:

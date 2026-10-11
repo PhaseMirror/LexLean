@@ -38,7 +38,7 @@ versions, and the entries below say what each tag does and does not claim.
   over the request's domain at strictly lower cost, defined in the module by
   `sameObservations` and `strictlyCheaper` and decided by the kernel for each
   committed reduction); its declarations'
-  axioms are pinned in `compiler/proofs/library.toml`. Sixty-six certificate
+  axioms are pinned in `compiler/proofs/library.toml`. Seventy-three certificate
   fixtures under `compiler/certificates/` are reduced to the host's verdict by
   the kernel; the host transcription refuses a certificate beyond 65,536
   premises, 1,024 positions in a list, or numbers of 2^32 with `LLS8002`. The
