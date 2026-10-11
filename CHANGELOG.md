@@ -15,6 +15,34 @@ versions, and the entries below say what each tag does and does not claim.
 
 ## Unreleased
 
+- GNAF certification (SPEC.md §17.18, `GC-01`..`GC-10`, new `LLB6007`): the
+  module `Certification` of `compiler/` checks a certificate against a GNAF
+  request. A global optimum or argmin is certified by a universal lower bound
+  with its attainers, a complete Pareto frontier by a frontier cover, and
+  each over a premise for every system of the independent universe; a
+  premise is an exclusion, a lower bound from a prefix of the domain, a
+  measurement, or a reduction by one of the closed schemas `collapse`,
+  `specialize_small`, and `specialize_large`, so a universe with systems that
+  exhaust the request's fuel can be certified where enumeration has no answer.
+  GNAF-normality is a status of its own: no theorem makes it optimality, the
+  normality route never certifies, and a certified optimum is GNAF-normal while
+  the converse is false. A representation metric supports an execution claim
+  only through a stated bridge. The verdict is `refused`, `certified`, or
+  `incomplete` with the first open obligation and the strongest status
+  established (`correct_only`, `locally_normalized`, `representation_minimal`,
+  or `not_certified`). The hand-written library
+  `compiler/proofs/LexLeanCertification/` proves the checker sound over
+  `Gnaf.expand` at the request's fuel and every larger one, and proves for
+  every improving schema application the module's own closed relation
+  `Certification.preserves` (the rewriting keeps the system's observations
+  over the request's domain at strictly lower cost, defined in the module by
+  `sameObservations` and `strictlyCheaper` and decided by the kernel for each
+  committed reduction); its declarations'
+  axioms are pinned in `compiler/proofs/library.toml`. Seventy-three certificate
+  fixtures under `compiler/certificates/` are reduced to the host's verdict by
+  the kernel; the host transcription refuses a certificate beyond 65,536
+  premises, 1,024 positions in a list, or numbers of 2^32 with `LLS8002`. The
+  register has 325 conformance IDs.
 - The acceptance gate fits its job again (SPEC.md §9.2, VERIFICATION.md,
   "Runtime of `just vv`"): the run of this branch was cancelled at the
   360-minute limit. `bdd` is `cargo test -p repo-conformance --test bdd`, the

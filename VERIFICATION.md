@@ -12,7 +12,7 @@ How this repository's claims are checked, which recipe enforces which rule, and 
 | `model` | `cargo xtask validate-model` | R1 (model is the single source; every model file parsed with unknown-field rejection), R2 (honesty levels and vocabulary, via the meta-gate), R3 (register/scenario/test bijection, Gherkin subset), R4 (`audit-deferral`), R5 (`audit-errors`), R6 (`audit-shipped`, including the shipped crate's normative links, and every vendored authority's SHA-256 recomputed from its copy), R8 (`audit-generated`, `audit-language-closure`), RP-09 (`audit-no-unsafe`), PD-07 (`audit-production`), §27.5 (CONFORMANCE.md and ERRORS.md equal regeneration) |
 | `spec-links` | `cargo xtask validate-spec-links` | RP-07, §27.6: the §31 table and `model/ids.toml` are bijective and byte-consistent |
 | `lint` | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | no tolerated warnings |
-| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 315 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
+| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 325 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
 | `features` | `cargo check --workspace --all-features --all-targets` | every target compiles |
 | `bdd` | `cargo test -p repo-conformance --test bdd` | R3, §27.7, §27.8: register ↔ scenario ↔ test bijection, the meta-gate, and its own falsifiability test; the conformance tests it names are run once, by `test` |
 | `examples` | `cargo xtask verify-examples` | §28.6, EX-01: every example directory and the `compiler` project (§17.14, §17.15) format, lock, check, build, and verify with real Lean 4.32.1; when an example commits `expected/verify/`, its normalized verification records must equal it (§29.5) |
@@ -23,7 +23,7 @@ How this repository's claims are checked, which recipe enforces which rule, and 
 Outside `vv`:
 
 - `just fixtures` (`cargo xtask check-fixtures`) runs every §28.2 fixture under `tests/fixtures/` and `tests/negative/` through the CLI entry point and compares exit code, canonical command result, diagnostics, artifact list, and platform-independent hashes with `expected/`. `just fixtures-write` is the only rewrite path.
-- `just calculus` (`cargo xtask check-calculus`) compares every committed target fixture under `compiler/fixtures/`, every GNAF request under `compiler/gnaf/`, the GNAF dependency manifest `compiler/gnaf.manifest.json` and schemas `schemas/gnaf-request.schema.json` and `schemas/gnaf-fixture.schema.json`, the generated `TargetFixtures` and `GnafFixtures` modules, the calculus modules `TargetSyntax`, `TargetSemantics`, `TargetOracle`, and `Main`, the `Gnaf` model, the project configuration, and every fixture's Rust package under `compiler/rust/rust-core/` and `compiler/rust/rust-std/` and every negative package manifest under `compiler/rust/negative/` with what the hand-written fixture sets, the calculus's definition in `crates/conformance/src/calculus_source.rs`, the model's definition in `crates/conformance/src/gnaf_model.rs`, and the renderer produce (§17.14, §17.15), and the calculus modules shipped for certificates under `language/preservation-1.2/modules/` with the compiler project's golden modules (§17.17); `just test` enforces the same comparison through `conformance_tc_03` and `conformance_gn_01`. `just calculus-write` is the only rewrite path.
+- `just calculus` (`cargo xtask check-calculus`) compares every committed target fixture under `compiler/fixtures/`, every GNAF request under `compiler/gnaf/`, the GNAF dependency manifest `compiler/gnaf.manifest.json` and schemas `schemas/gnaf-request.schema.json` and `schemas/gnaf-fixture.schema.json`, every GNAF certificate fixture under `compiler/certificates/` and the schemas `schemas/gnaf-certificate.schema.json` and `schemas/gnaf-certificate-fixture.schema.json`, the generated `TargetFixtures`, `GnafFixtures`, and `GnafCertificates` modules, the calculus modules `TargetSyntax`, `TargetSemantics`, `TargetOracle`, and `Main`, the `Gnaf` and `Certification` models, the project configuration, and every fixture's Rust package under `compiler/rust/rust-core/` and `compiler/rust/rust-std/` and every negative package manifest under `compiler/rust/negative/` with what the hand-written fixture sets, the calculus's definition in `crates/conformance/src/calculus_source.rs`, the models' definitions in `crates/conformance/src/gnaf_model.rs` and `crates/conformance/src/certification_model.rs`, and the renderer produce (§17.14, §17.15), and the calculus modules shipped for certificates under `language/preservation-1.2/modules/` with the compiler project's golden modules (§17.17); `just test` enforces the same comparison through `conformance_tc_03` and `conformance_gn_01`. `just calculus-write` is the only rewrite path.
 - `just verify-write` (`cargo xtask verify-examples --write`) is the only path that rewrites `examples/*/expected/verify/`.
 - `just release` runs `vv` and then `cargo xtask release-check` (RP-12): every §30.3 artifact by content, the §30.4 completion criteria, and the crate-packaging round trip (`cargo package`, extract, offline build, `--version` equal to the in-repository binary). It is refused until 1.0.0.
 
@@ -277,7 +277,7 @@ repo-conformance --test conformance -- conformance_pd_04 conformance_pd_05`.
 ```text
 thread 'conformance_pd_05' panicked at crates/conformance/src/cases/production.rs:662:17:
 production-unbounded-type: expected "construct `type.list` requires heap allocation, which target `rust-core` does not provide", got LLT4005: phase production: production root `LanguageTwelve.Main.first` is not eligible for target `rust-core`: effect mismatch: construct `type.list` realizes effect `allocation`, which the root does not admit (in `LanguageTwelve.Main.first`, reached by LanguageTwelve.Main.first; 1 violation(s) in total)
-thread 'conformance_pd_04' panicked at crates/conformance/src/support.rs:419:14:
+thread 'conformance_pd_04' panicked at crates/conformance/src/support.rs:432:14:
 check fails
 ```
 
@@ -290,7 +290,7 @@ conformance_pd_05`. The first fixture whose only violation is an unadmitted
 effect now checks.
 
 ```text
-thread 'conformance_pd_05' panicked at crates/conformance/src/support.rs:419:14:
+thread 'conformance_pd_05' panicked at crates/conformance/src/support.rs:432:14:
 check fails
 ```
 
@@ -418,7 +418,7 @@ Expected: the committed language-1.2 example no longer checks, and the
 negative fixture of a `let` under language 1.1 is accepted.
 
 ```text
-thread 'conformance_sm_23' panicked at crates/conformance/src/support.rs:452:14:
+thread 'conformance_sm_23' panicked at crates/conformance/src/support.rs:465:14:
 check succeeds: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLT4001"), message: "phase link: `let` is a language-1.2 construct; language 1.1 rejects it", ... }] }
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 227 filtered out
 gate failed: tests/negative/language-1.2-construct-under-1.1: step 1 `check ` exited 0, case.toml expects 1
@@ -477,7 +477,7 @@ structural eliminator. Command: `cargo test -p repo-conformance --test
 conformance -- conformance_df_13`.
 
 ```text
-thread 'conformance_df_13' panicked at crates/conformance/src/support.rs:419:14:
+thread 'conformance_df_13' panicked at crates/conformance/src/support.rs:432:14:
 check fails
 ```
 
@@ -491,7 +491,7 @@ well-formed `Wrap` with a constructor field `Tree (Wrap)` is no longer
 rejected at all; only the positivity rule refused it.
 
 ```text
-thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:419:14:
+thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:432:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 230 filtered out
 ```
@@ -580,7 +580,7 @@ Command: `cargo test -p repo-conformance --test conformance --
 conformance_df_17`. Expected: the forged-evidence mutation links.
 
 ```text
-thread 'conformance_df_17' panicked at crates/conformance/src/support.rs:419:14:
+thread 'conformance_df_17' panicked at crates/conformance/src/support.rs:432:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 238 filtered out
 ```
@@ -597,7 +597,7 @@ so a member could call its group on its own argument. Command: `cargo test
 `isOdd (number)` mutation links.
 
 ```text
-thread 'conformance_df_16' panicked at crates/conformance/src/support.rs:419:14:
+thread 'conformance_df_16' panicked at crates/conformance/src/support.rs:432:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 238 filtered out
 ```
@@ -675,7 +675,7 @@ product field. Expected: the renamed type parameter is admitted, and Lean,
 not linking, is the first to refuse the capture.
 
 ```text
-thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:419:14:
+thread 'conformance_df_12' panicked at crates/conformance/src/support.rs:432:14:
 check fails
 
 checked 1 module (source 0eec48d541180c1a6dbf34539884c1063f8a6637964a1f7667a5b6c0f73a4d15, semantic 1fe3fc4d4fa60d781de6ea42be16516d7b6b860a2918f6ed351b40ad6e1e0d2c)
@@ -713,7 +713,7 @@ test -p repo-conformance --test conformance -- conformance_sm_29`.
 Expected: the `02` mutation links.
 
 ```text
-thread 'conformance_sm_29' panicked at crates/conformance/src/support.rs:419:14:
+thread 'conformance_sm_29' panicked at crates/conformance/src/support.rs:432:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
 ```
@@ -1638,7 +1638,7 @@ Planted: the declaration check removed (`check_declaration_name`). Command:
 Expected: a declaration named `Int` is accepted.
 
 ```text
-thread 'conformance_df_12' (9037) panicked at crates/conformance/src/support.rs:462:14:
+thread 'conformance_df_12' (9037) panicked at crates/conformance/src/support.rs:475:14:
 check fails
 ```
 
@@ -1856,7 +1856,7 @@ Planted: the check of the generated members removed. Command: `conformance_df_12
 Expected: a constructor `rec` is accepted.
 
 ```text
-thread 'conformance_df_12' (358) panicked at crates/conformance/src/support.rs:462:14:
+thread 'conformance_df_12' (358) panicked at crates/conformance/src/support.rs:475:14:
 check fails
 ```
 
@@ -2137,7 +2137,7 @@ repo-conformance --test conformance -- conformance_df_12`. Expected: the
 staging directory of an interrupted run is still there after the verification.
 
 ```text
-thread 'conformance_df_12' (29640) panicked at crates/conformance/src/support.rs:2019:5:
+thread 'conformance_df_12' (29640) panicked at crates/conformance/src/support.rs:2032:5:
 /tmp/lexlean-example-case-0Rm1sS/.lexlean/verified/.staging-interrupted-0: the staging directory of an interrupted run is removed by the next verify
 ```
 
@@ -3017,7 +3017,7 @@ conformance -- conformance_gn_04`. Expected: a request that declares
 observation free is answered instead of refused.
 
 ```text
-thread 'conformance_gn_04' panicked at crates/conformance/src/cases/gnaf.rs:1060:9:
+thread 'conformance_gn_04' panicked at crates/conformance/src/cases/gnaf.rs:1062:9:
 assertion `left == right` failed: reject-free-observation
 ```
 
@@ -3032,7 +3032,7 @@ uniform shift the review found. Command: `cargo test -p repo-conformance
 system, which cannot run the slicing plan, is charged its preprocessing.
 
 ```text
-thread 'conformance_gn_04' panicked at crates/conformance/src/cases/gnaf.rs:1111:9:
+thread 'conformance_gn_04' panicked at crates/conformance/src/cases/gnaf.rs:1113:9:
 assertion `left == right` failed: Fixed { plan: 0 }
 ```
 
@@ -3046,7 +3046,7 @@ prepared boundary whether or not an artifact it prepared is bound
 repo-conformance --test conformance -- conformance_gn_04`.
 
 ```text
-thread 'conformance_gn_04' panicked at crates/conformance/src/cases/gnaf.rs:1060:9:
+thread 'conformance_gn_04' panicked at crates/conformance/src/cases/gnaf.rs:1062:9:
 assertion `left == right` failed: reject-unbound-prepared-state
 ```
 
@@ -3059,7 +3059,7 @@ Planted: the host's `validate` skipped the operand-size rule
 `cargo test -p repo-conformance --test conformance -- conformance_gn_04`.
 
 ```text
-thread 'conformance_gn_04' panicked at crates/conformance/src/cases/gnaf.rs:1060:9:
+thread 'conformance_gn_04' panicked at crates/conformance/src/cases/gnaf.rs:1062:9:
 assertion `left == right` failed: reject-unit-cost-operands
 ```
 
@@ -3076,7 +3076,7 @@ machine's capacity is answered; (2) a request charging 2^40 per invocation
 loads, so its cost could leave the host's integers.
 
 ```text
-thread 'conformance_gn_04' panicked at crates/conformance/src/cases/gnaf.rs:1060:9:
+thread 'conformance_gn_04' panicked at crates/conformance/src/cases/gnaf.rs:1062:9:
 assertion `left == right` failed: reject-beyond-capacity
 ```
 
@@ -3125,7 +3125,7 @@ Planted: the host's `check_claim` accepted `restricted_universe_optimal`
 conformance_gn_05`.
 
 ```text
-thread 'conformance_gn_05' panicked at crates/conformance/src/cases/gnaf.rs:1197:9:
+thread 'conformance_gn_05' panicked at crates/conformance/src/cases/gnaf.rs:1199:9:
 assertion `left == right` failed: reject-restricted-universe-alias
 ```
 
@@ -3138,7 +3138,7 @@ Planted: a panic of the evaluation thread was reported as the platform's
 planted panic surfaces as a platform failure.
 
 ```text
-thread 'gnaf::tests::a_panicking_evaluation_is_an_internal_failure' (28684) panicked at crates/lexlean/src/gnaf.rs:1769:9:
+thread 'gnaf::tests::a_panicking_evaluation_is_an_internal_failure' (28684) panicked at crates/lexlean/src/gnaf.rs:1778:9:
 assertion `left == right` failed
   left: ["LLV7010"]
  right: ["LLI9001"]
@@ -3156,7 +3156,7 @@ statement's own numbers. Command: `cargo test -p repo-conformance --test
 conformance -- conformance_gn_07`.
 
 ```text
-thread 'conformance_gn_07' panicked at crates/conformance/src/cases/gnaf.rs:1540:5:
+thread 'conformance_gn_07' panicked at crates/conformance/src/cases/gnaf.rs:1542:5:
 assertion `left == right` failed
   left: [(0, [1, 3]), (1, [2, 2]), (2, [3, 1]), (3, [3, 4])]
  right: [(0, [1, 3]), (1, [2, 2]), (2, [3, 1]), (3, [3, 3])]
@@ -3174,7 +3174,7 @@ the strongest claims, and `cargo xtask check-calculus --write` regenerated
 class the model refuses.
 
 ```text
-thread 'conformance_gn_08' panicked at crates/conformance/src/cases/gnaf.rs:1829:5:
+thread 'conformance_gn_08' panicked at crates/conformance/src/cases/gnaf.rs:1831:5:
 assertion `left == right` failed
   left: [("global_optimal", "scalar"), ("argmin_complete", "scalar"), ("restricted_universe_optimal", "scalar"), ("pareto_optimal", "vector"), ("frontier_complete", "vector")]
  right: [("global_optimal", "scalar"), ("argmin_complete", "scalar"), ("pareto_optimal", "vector"), ("frontier_complete", "vector")]
@@ -3261,7 +3261,7 @@ seeded graphs and the 24-node chain, whose last node is such a successor,
 disagree with the independent model.
 
 ```text
-thread 'conformance_sm_30' panicked at crates/conformance/src/support.rs:2018:10:
+thread 'conformance_sm_30' panicked at crates/conformance/src/support.rs:2031:10:
 the module verifies with real Lean: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLV7002"), message: "Lean rejected `Collections.Main` (error): Tactic `decide` proved that the proposition\n  LexLeanCollections.graphTopological
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
 ```
@@ -3279,7 +3279,7 @@ canonical order disagreed with Lean's `Key Int` instance. Command: `cargo test
 insertion of the source order, fail under verification.
 
 ```text
-thread 'conformance_sm_28' panicked at crates/conformance/src/support.rs:2018:10:
+thread 'conformance_sm_28' panicked at crates/conformance/src/support.rs:2031:10:
 the module verifies with real Lean: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLV7002"), message: "Lean rejected `Collections.Main` (error): Tactic `decide` proved that the proposition\n  [-2, -10, -100, 0, 3, 9, 100] =\n    LexLeanCollections.listFold (fun built element => LexLeanCollections.setInsert built element) []\n      [3, -2, 0, -10, 100, -100, 9]\nis false"
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
 ```
@@ -3296,7 +3296,7 @@ conformance -- conformance_sm_28`. Expected: the seeded union theorems,
 whose right-hand sides come from `BTreeSet`, fail under verification.
 
 ```text
-thread 'conformance_sm_28' panicked at crates/conformance/src/support.rs:2018:10:
+thread 'conformance_sm_28' panicked at crates/conformance/src/support.rs:2031:10:
 the module verifies with real Lean: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLV7002"), message: "Lean rejected `Collections.Main` (error): Tactic `decide` proved that the proposition\n  LexLeanCollections.setUnion [1, 2, 3] [0, 5] = [0, 1, 2, 3, 5]\nis false"
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 242 filtered out
 ```
@@ -3704,7 +3704,7 @@ evidence; `model-forged-evidence` links (`check-fixtures` and
 `conformance_ex_07` both fail on it).
 
 ```text
-thread 'conformance_md_06' (23724) panicked at crates/conformance/src/support.rs:570:5:
+thread 'conformance_md_06' (23724) panicked at crates/conformance/src/support.rs:583:5:
 expected LLT4009, found ["LLT4001"] (LLT4001: phase link: duplicate generated name `DigitEvidence.digit_net_exact`)
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 282 filtered out
 ```
@@ -3738,7 +3738,7 @@ conformance -- conformance_md_07`. Expected: `classify` calling `DigitNet`
 links.
 
 ```text
-thread 'conformance_md_07' (16949) panicked at crates/conformance/src/support.rs:419:14:
+thread 'conformance_md_07' (16949) panicked at crates/conformance/src/support.rs:432:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 282 filtered out
 ```
@@ -3772,7 +3772,7 @@ test -p repo-conformance --test conformance -- conformance_md_02`.
 Expected: a shape the bytes cannot hold is no longer a schema violation.
 
 ```text
-thread 'conformance_md_02' (13418) panicked at crates/conformance/src/support.rs:570:5:
+thread 'conformance_md_02' (13418) panicked at crates/conformance/src/support.rs:583:5:
 expected LLR3008, found ["LLT4006"] (LLT4006: phase link: neural realization `DigitNet` layer 1 weights `hiddenWeights` is a int_tensor of shape [12, 8]; the slot needs an integer tensor of shape [12, 7])
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 282 filtered out
 ```
@@ -3788,7 +3788,7 @@ Planted: a sequence junction was no longer checked against its stage
 unconditional junction before a stage with a precondition links.
 
 ```text
-thread 'conformance_md_08' (14466) panicked at crates/conformance/src/support.rs:419:14:
+thread 'conformance_md_08' (14466) panicked at crates/conformance/src/support.rs:432:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 282 filtered out
 ```
@@ -3805,7 +3805,7 @@ Expected: a Boolean label of a natural-number output is no longer an
 interface mismatch.
 
 ```text
-thread 'conformance_md_04' (15034) panicked at crates/conformance/src/support.rs:570:5:
+thread 'conformance_md_04' (15034) panicked at crates/conformance/src/support.rs:583:5:
 expected LLT4006, found ["LLT4001"] (LLT4001: phase link: realization declaration `DigitNet` elaborates to `DigitNet`, which is ill-formed: list head has type Bool, expected Nat)
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 282 filtered out
 ```
@@ -3848,13 +3848,13 @@ values, and the portable runtime's integer quotient flooring (`Int.ediv`
 for `Int.tdiv`). Expected: Lean refuses the seeded expectations.
 
 ```text
-thread 'conformance_md_09' (15625) panicked at crates/conformance/src/support.rs:2018:10:
+thread 'conformance_md_09' (15625) panicked at crates/conformance/src/support.rs:2031:10:
 the module verifies with real Lean: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLV7002"), message: "Lean rejected `Models.Main` (error): Tactic `decide` proved that the proposition\n  Tie Sample.s0 = 1\nis false", ...
-thread 'conformance_md_09' (18279) panicked at crates/conformance/src/support.rs:2018:10:
+thread 'conformance_md_09' (18279) panicked at crates/conformance/src/support.rs:2031:10:
 the module verifies with real Lean: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLV7002"), message: "Lean rejected `Models.Main` (error): Tactic `decide` proved that the proposition\n  Logits Sample.s0 = [50075, 63645, 87054, -4700, 27212]\nis false", ...
-thread 'conformance_md_09' (18907) panicked at crates/conformance/src/support.rs:2018:10:
+thread 'conformance_md_09' (18907) panicked at crates/conformance/src/support.rs:2031:10:
 the module verifies with real Lean: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLV7002"), message: "Lean rejected `Models.Main` (error): Tactic `decide` proved that the proposition\n  Logits Sample.s0 = [50075, 63645, 87054, -4700, 27212]\nis false", ...
-thread 'conformance_md_09' (19553) panicked at crates/conformance/src/support.rs:2018:10:
+thread 'conformance_md_09' (19553) panicked at crates/conformance/src/support.rs:2031:10:
 the module verifies with real Lean: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLV7002"), message: "Lean rejected `Models.Main` (error): Tactic `decide` proved that the proposition\n  Quantized Sample.s0 = [0, -14, -37, -33, -40, 10, -32, 46]\nis false", ...
 ```
 
@@ -3972,7 +3972,7 @@ holds only two more copies.
 tests/negative/model-artifact-decode-budget: expected "max_ir_nodes exceeded: configured 3000, observed 3876 IR nodes once artifact `vocab2` decodes to 1292, before decoding", got LLS8002: max_ir_nodes exceeded in phase link: configured 3000, observed 3909 linked IR nodes through module `Main`
 (b) thread 'conformance_md_02' (27434) panicked at crates/conformance/src/cases/models.rs:900:5:
 the wide artifact is refused within 1 GiB: ExitStatus(unix_wait_status(6))
-(c) thread 'conformance_md_02' (29254) panicked at crates/conformance/src/support.rs:419:14:
+(c) thread 'conformance_md_02' (29254) panicked at crates/conformance/src/support.rs:432:14:
 check fails
 ```
 
@@ -4065,7 +4065,7 @@ union... != declaration.axioms()` in `verify/mod.rs`). Command: `cargo test
 evidence stating an axiom none of its declarations observes verifies.
 
 ```text
-thread 'conformance_md_06' (21466) panicked at crates/conformance/src/support.rs:489:14:
+thread 'conformance_md_06' (21466) panicked at crates/conformance/src/support.rs:502:14:
 verify fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 282 filtered out
 ```
@@ -4139,7 +4139,7 @@ Removed: the count was restored; `conformance_rs_05` passes.
 Planted: `check_boundary` no longer refused a guarded member (`env.reasoning.guarded(&key).filter(|_| false)` in `model.rs`). Command: `cargo test -p repo-conformance --test conformance -- conformance_rs_09`. Expected: executable code reaching a rule's conclusion or an unverified answer links.
 
 ```text
-thread 'conformance_rs_09' (8223) panicked at crates/conformance/src/support.rs:452:14:
+thread 'conformance_rs_09' (8223) panicked at crates/conformance/src/support.rs:465:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 303 filtered out; finished in 0.26s
 ```
@@ -4257,7 +4257,7 @@ Removed: the balanced combination was restored; `conformance_rs_10` passes (the 
 Planted: the charge of a reasoner (`charge(artifacts, ..., bound)?` in `check_reasoner`) was removed, so a reasoner's elaboration is built before any limit is consulted. Command: `cargo test -p repo-conformance --test conformance -- conformance_rs_10`. Expected: `tests/negative/reasoning-elaboration-over-limit`, whose limit its elaboration would exceed, links.
 
 ```text
-thread 'conformance_rs_10' (31910) panicked at crates/conformance/src/support.rs:462:14:
+thread 'conformance_rs_10' (31910) panicked at crates/conformance/src/support.rs:475:14:
 check fails
 ```
 
@@ -4268,11 +4268,11 @@ Removed: the charge was restored; `conformance_rs_10` and EX-07 pass.
 Planted, one at a time, in `reasoning.rs`: the binding term of a reasoner's bound multiplied by 0, its weight multiplier lowered from 40 to 1, and a rule's weight multiplier lowered from 12 to 1. Command: `cargo test -p repo-conformance --test conformance -- conformance_rs_10`. Expected: an elaboration larger than what it was charged is an internal error, which the wide-state, wide-binding, and many-rule projects of the case provoke.
 
 ```text
-thread 'conformance_rs_10' (11690) panicked at crates/conformance/src/support.rs:452:14:
+thread 'conformance_rs_10' (11690) panicked at crates/conformance/src/support.rs:465:14:
 check succeeds: ... "phase link: internal: reasoner `E` elaborated to 5414 nodes, beyond the 5340 it was charged" ...
-thread 'conformance_rs_10' (7117) panicked at crates/conformance/src/support.rs:452:14:
+thread 'conformance_rs_10' (7117) panicked at crates/conformance/src/support.rs:465:14:
 check succeeds: ... "phase link: internal: reasoner `E` elaborated to 12395 nodes, beyond the 10859 it was charged" ...
-thread 'conformance_rs_10' (12573) panicked at crates/conformance/src/support.rs:452:14:
+thread 'conformance_rs_10' (12573) panicked at crates/conformance/src/support.rs:465:14:
 check succeeds: ... "phase link: internal: inference rule `R0` elaborated to 1302 nodes, beyond the 683 it was charged" ...
 ```
 
@@ -4303,7 +4303,7 @@ Removed: every check was restored; the fixtures pass.
 Planted: `check_boundary` refused a guarded member only when it was the callee of a `call` (`env.reasoning.guarded(&key).filter(|_| matches!(node, SemanticTerm::Call { .. }))` in `model.rs`), so a function value naming `N.conclusion` or `E.extract` was not refused. Command: `cargo test -p repo-conformance --test conformance -- conformance_rs_09`. Expected: `tests/negative/reasoning-rule-bypass-ref` (a `list_fold` whose step is `function_ref Pick.conclusion`), `-alias` (a name bound to one), `-iterate`, and `reasoning-extract-bypass-ref` and `-alias` link. The other positions the fixtures cover (a lambda body, a branch, a rule guard, a reasoner's observation or generator, another reasoner's answer) reach the guarded member through a `call`, so the plant leaves them refused.
 
 ```text
-thread 'conformance_rs_09' (24786) panicked at crates/conformance/src/support.rs:462:14:
+thread 'conformance_rs_09' (24786) panicked at crates/conformance/src/support.rs:475:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 303 filtered out; finished in 0.35s
 ```
@@ -4315,12 +4315,12 @@ Removed: the filter was removed; `conformance_rs_09` passes.
 Planted, one at a time in `reasoning.rs` and `semantic.rs`: duplicate claim kinds accepted (`prior >= rank` for `prior > rank` in `sorted_claims`); a rule used at other type arguments than its reasoner's logic (the comparison of `rule_at.logic.type_arguments` replaced by `false`); the verifier's subject type, and then its candidate type, no longer compared with the reasoner's observation and answer; the initial invariant no longer required of an answer claimed correct under the invariant (`if initial.is_none()` for `if false`); and a declaration named below `LexLeanReasoning` no longer refused (`if env.language_1_2 && BACKEND_BARE_NAMES` for `if false && ...`). Commands: `conformance_rs_07` (claims), `conformance_rs_02` (type arguments), `conformance_rs_03` (verifier types), `conformance_rs_09` (the initial invariant), `conformance_rs_01` (names). Expected: each is caught by the fixture that names it; for the type arguments and the verifier types, a later pass would still refuse the project, with another code (`LLT4001`, "ill-formed elaboration"), and the fixtures pin `LLT4010` and the message.
 
 ```text
-conformance_rs_07: thread 'conformance_rs_07' (25125) panicked at crates/conformance/src/support.rs:462:14: check fails
+conformance_rs_07: thread 'conformance_rs_07' (25125) panicked at crates/conformance/src/support.rs:475:14: check fails
 conformance_rs_02: expected LLT4010, found ["LLT4001"] (LLT4001: phase link: reasoner declaration `Spend` elaborates to `Spend.fire`, which is ill-formed: function `Tick.apply` argument has type Prod (T) (Nat), expected Prod (Bool) (Nat))
 conformance_rs_03 (subject): expected LLT4010, found ["LLT4001"] (LLT4001: phase link: reasoner declaration `Clinic` elaborates to `Clinic.accept`, which is ill-formed: function `probedCheck` argument has type Nat, expected Bool)
 conformance_rs_03 (candidate): expected LLT4010, found ["LLT4001"] (LLT4001: phase link: reasoner declaration `Clinic` elaborates to `Clinic.accept`, which is ill-formed: function `boundedCheck` argument has type Bool, expected Nat)
-conformance_rs_09: thread 'conformance_rs_09' (28049) panicked at crates/conformance/src/support.rs:462:14: check fails
-conformance_rs_01: thread 'conformance_rs_01' (27729) panicked at crates/conformance/src/support.rs:462:14: check fails
+conformance_rs_09: thread 'conformance_rs_09' (28049) panicked at crates/conformance/src/support.rs:475:14: check fails
+conformance_rs_01: thread 'conformance_rs_01' (27729) panicked at crates/conformance/src/support.rs:475:14: check fails
 ```
 
 Removed: every check was restored; the cases pass.
@@ -4369,7 +4369,7 @@ Removed: the argument was restored; the example verifies. `tests/negative/reason
 Planted: the type arguments of a reasoner's rule uses (copied into every declaration that mentions the rule) no longer counted in its charge (`.saturating_add(0u64.saturating_mul(rule_type_arguments))`). Command: `cargo test -p repo-conformance --test conformance -- conformance_rs_10`. Expected: a reasoner of 40 rules, each used at a type of 100 nested products, elaborates beyond what it was charged, an internal error for an admitted input. Before the charge covered it, the same input failed so, with 41688 nodes against 28100.
 
 ```text
-thread 'conformance_rs_10' (2608) panicked at crates/conformance/src/support.rs:452:14:
+thread 'conformance_rs_10' (2608) panicked at crates/conformance/src/support.rs:465:14:
 check succeeds: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLT4001"), message: "phase link: internal: reasoner `Wide` elaborated to 41704 nodes, beyond the 28340 it was charged", ...
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 303 filtered out; finished in 32.85s
 ```
@@ -4395,7 +4395,7 @@ Removed: the inequality was restored; the example verifies.
 Planted: `E.extract` was left unguarded for an answer correct under an invariant too (the guard condition `answer_correct.is_none() || answer_premise.is_some()` reduced to `answer_correct.is_none()`). Command: `cargo test -p repo-conformance --test conformance -- conformance_rs_09`. Expected: `tests/negative/reasoning-extract-bypass-invariant`, which calls `Grade.extract` from a definition and so reads an answer outside the invariant, is refused with `LLT4012`; with the plant it links.
 
 ```text
-thread 'conformance_rs_09' (21748) panicked at crates/conformance/src/support.rs:462:14:
+thread 'conformance_rs_09' (21748) panicked at crates/conformance/src/support.rs:475:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 303 filtered out; finished in 1.24s
 ```
@@ -4407,10 +4407,10 @@ Removed: the guard was restored; `conformance_rs_09` passes.
 Planted, one at a time in `reasoning.rs`: only `E.extract` guarded where an answer is proved correct under an invariant (the acceptance `E.accept`, which is then the extraction, left reachable: `if erased_conditionally {` for `if false {`), and then the search step `E.searchStep` and the forward `E.conclude` left reachable (the member pushed in their place replaced by one nothing names). Command: `cargo test -p repo-conformance --test conformance -- conformance_rs_09`. Expected: `tests/negative/reasoning-accept-bypass-invariant`, `-accept-bypass-ref`, `-accept-bypass-alias`, `-accept-bypass-observation`, `-search-accept-bypass-invariant` (the first plant), and `reasoning-conclude-bypass-invariant`, `-conclude-bypass-observation`, `-search-step-bypass-invariant` (the second), each an executable definition reading an answer from a state or search its caller supplies, link, and so do the `forgedRead` definitions over the example's `Grade`, `PlanFit`, and `PlanFitR`. Each unplanted fixture is refused with `LLT4012`; `Cap`, `PlanFitU`, and `Plan` (whose check runs) stay reachable, which the case also requires.
 
 ```text
-BG (accept left reachable): thread 'conformance_rs_09' (5900) panicked at crates/conformance/src/support.rs:462:14:
+BG (accept left reachable): thread 'conformance_rs_09' (5900) panicked at crates/conformance/src/support.rs:475:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 303 filtered out; finished in 1.27s
-BS (searchStep and conclude left reachable): thread 'conformance_rs_09' (6203) panicked at crates/conformance/src/support.rs:462:14:
+BS (searchStep and conclude left reachable): thread 'conformance_rs_09' (6203) panicked at crates/conformance/src/support.rs:475:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 303 filtered out; finished in 1.52s
 ```
@@ -4422,7 +4422,7 @@ Removed: the members were guarded again; `conformance_rs_09` passes. Before this
 Planted: the initial obligation of an `observation_invariant` claim (`Rl x (observe x)`) was no longer required to match the theorem the claim names. Command: `cargo test -p repo-conformance --test conformance -- conformance_rs_07`. Expected: `tests/negative/reasoning-observation-initial-inexact` is refused with `LLT4010`; with the plant it links. The preservation obligation, the predicate's signature, and the claim order have their own negatives in the same case (`reasoning-observation-preserved-inexact`, `-invariant-signature`, `-unsorted`), and `reasoning-false-observation-answer-correct` states the conditional answer falsely and is refused by pinned Lean (`LLV7002`).
 
 ```text
-thread 'conformance_rs_07' (22650) panicked at crates/conformance/src/support.rs:462:14:
+thread 'conformance_rs_07' (22650) panicked at crates/conformance/src/support.rs:475:14:
 check fails
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 303 filtered out; finished in 1.82s
 ```
@@ -4434,7 +4434,7 @@ Removed: the requirement was restored; `conformance_rs_07` passes.
 Planted: the type arguments of a reasoner's own uses of its logic and its verifier no longer counted in its charge (the two `.chain(...)` terms removed from the type-argument sum). Command: `cargo test -p repo-conformance --test conformance -- conformance_rs_10`. Expected: a reasoner whose verifier is a copy of the example's with a parameter nothing mentions, used at a type of 1200 leaves while every rule is used at a small one, elaborates beyond its charge. With the plant that is the internal error below; without it the input links.
 
 ```text
-thread '<unnamed>' (31526) panicked at crates/conformance/src/support.rs:452:14:
+thread '<unnamed>' (31526) panicked at crates/conformance/src/support.rs:465:14:
 check succeeds: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLT4001"), message: "phase link: internal: reasoner `Wide` elaborated to 13105 nodes, beyond the 3416 it was charged", ...
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 303 filtered out; finished in 35.87s
 ```
@@ -4682,6 +4682,258 @@ certificates' natural additions into subtractions) and `preservation-drift`
 and `LLV7014` with nothing published, and `certificate-b-rejected` (the
 overlay turns every `nat_add` call of each certificate B's crate into
 `nat_sub`, leaving certificate A intact) with `LLV7015`.
+
+## GNAF certification (Issue #23)
+
+`conformance_gc_01` reads every certificate fixture under
+`compiler/certificates/` (73) as published, requires canonical bytes, the
+framed SHA-256 identity of the certificate, the schemas, and the host's
+verdict, and refuses malformed certificates with `LLB6007` and certificates
+beyond 65,536 premises, 1,024 positions in a list, or numbers of 2^32 with
+`LLS8002`. `conformance_gc_02` requires the committed `Certification`,
+`GnafCertificates`, and model sources to equal their generators, runs the
+compiler project's `verify` (the kernel reduces `Certification.check` on each
+of the 73 certificates to the verdict the host gives it, for each
+certificate with a `reduced` premise decides `certificateReductionsPreserve`,
+and decides both observation relations on pairs of systems that are no schema's
+rewriting, one pair of each class per request),
+and compiles a module stating five false claims (a certified optimum for a
+certificate missing a competitor's premise, an unattained bound, a locally
+normal system, a premise-free bound over unresolved systems, and the
+preservation of an ineligible reduction), each of which Lean rejects as "Not a
+definitional equality". `conformance_gc_03`..`conformance_gc_08` assert the
+verdict, obligation, and established status of every fixture, sweep mutations
+of the certified lower bounds (every premise dropped or weakened, the bound
+moved, an attainer dropped or added), sweep every affine bridge below the
+committed one (including a system bounded exactly on the bridge's line), pose
+the unresolved requests as frontiers and as bridge claims, compare the
+certificate with enumeration where enumeration answers, compare the host's
+`observations` with the trials of every pair of systems of four requests,
+check `preserves` against `improves` for every schema application of six
+requests, and require that `normalityVerdict` is the only reader of
+`isNormal`. `conformance_gc_09` compiles the 13 modules of
+`compiler/proofs/LexLeanCertification/` over the compiler project's generated
+modules and the shipped preservation library, audits their text for forbidden
+tokens, compares the exact axioms of the 107 registered declarations
+(`compiler/proofs/library.toml`) with Lean's `#print axioms`, instantiates the
+soundness theorems at every certified fixture, elaborates the preservation
+theorems at ascriptions stated in the module's own relations (so the library
+cannot be proving a second copy), replays the library and the instances
+through `leanchecker` (the same kernel, §22.4, not an independent checker), and
+requires Lean to reject the library when the checker's strict test is weakened
+and when a false lemma (the schema's strict saving reversed) is planted in a
+staged copy of `Schemas`. `conformance_gc_10` requires the generated files to
+be deterministic and every identity to be recomputed from content. Each
+theorem is a kernel-checked proof about the evaluator and the checker as
+generated; the host transcription and the fixtures are `build` evidence
+validated against that kernel.
+
+### GNAF certification can fail (host transcription)
+
+Each defect below was planted one at a time in
+`crates/lexlean/src/gnaf/certification.rs`, with `cargo test -p
+repo-conformance --test conformance -- <tests> conformance_gc_01`, and
+restored. Every one was refused by the named case, with the panic line of
+`verdict` (`certification.rs:102`) or of the sweep in `conformance_gc_01`
+(`certification.rs:255`) and the fixture it names:
+
+| Planted | Refused by | Fixture that fails |
+| --- | --- | --- |
+| the premise-count check skipped for an extra premise | `gc_03`, `gc_08` | `lb-extra-premise` |
+| the premise-count check skipped for a missing premise | `gc_03`, `gc_08` | `lb-premise-omitted` |
+| a strict lower bound read as `bound <= cost` | `gc_03`, `gc_01` | `lb-tie-bounded` |
+| a non-strict bound read as `bound < cost` | `gc_03`, `gc_01` | `lb-undercut`, `lb-no-attainer` |
+| an omitted tie not reported | `gc_03` | `lb-tie-dropped` |
+| the eligibility test (no plan calls the entry) dropped | `gc_05` | a plan calling the entry blocks every schema |
+| the universe identity not compared | `gc_08` | `reused-enlarged` |
+| an absent bridge read as slope 1, offset 0 | `gc_07` | `bridge-missing` |
+| a bridge violation read as `cost <= limit` | `gc_07` | `bridge-attained` |
+| a bound at the line read as unproved (`cost <= limit`) | `gc_07` | the tight-line sweep |
+| preparation dropped from a bound | `gc_03`, `gc_01` | `lb-preparation-charged` |
+| a premise `excluded` read as proving exclusion of an admitted system | `gc_03`, `gc_01` | `lb-excluded-admitted` |
+| an unresolved measurement read as inadmissible | `gc_03`, `gc_01` | `lb-unresolved-measured` |
+| an attainer allowed to be bounded | `gc_03`, `gc_01` | `lb-attainer-bounded` |
+| attainers not required to be in order | `gc_03`, `gc_01` | `lb-attainers-unordered` |
+| a normality certificate returning the optimum | `gc_06` | `normal-not-global` |
+| a system always GNAF-normal | `gc_06` | `normality-improvable` |
+| a frontier non-member not required to be dominated | `gc_04` | `frontier-tie-dropped` |
+| a dominated member accepted | `gc_04` | `frontier-dominated-member` |
+| a frontier bound not required to be dominated | `gc_04` | `frontier-premise-weakened` |
+| a reduction accepting a bound as complete | `gc_05` | `reduction-incomplete` |
+| the small specialization allowed at the threshold | `gc_05` | `reduction-small-at-threshold` |
+| the large specialization refused at the threshold | `gc_05` | `reduction-threshold-edge` |
+
+The first run of these plants left thirteen unrefused. Nine are now refused
+by a fixture or a sweep added for them (a bound at a tie, preparation in a
+bound, a premise excluding an admitted system, an unresolved system offered as
+measured, a bounded attainer, attainers out of order, both thresholds' edges,
+and a bridge bound exactly at its line). Four cannot be refused: each removes
+a conjunct that another conjunct makes redundant, so the mutant computes the
+same function. Dropping `ascending` from `pays_at_least` leaves `pickFrom`'s
+own length check, which already refuses a position listed twice or out of
+order (the fixture `lb-positions-repeated` states that refusal); dropping
+`small == large` from the collapse eligibility leaves `rewrite`, which is
+`none` for a dispatch of two plans (`reduction-collapse-distinct`); and
+dropping either the size or the preparation comparison from `improves` changes
+nothing, because the rewriting of a dispatch to one plan's fixed system reaches
+a subset of the dispatch's code. They are kept as the statements of UOR-GNAF
+§6.3 and are equivalent mutants, not evidence.
+
+A one-line mutation sweep of the transcription then found seventeen more
+survivors (adversarial review `r23a`: every `open(Obligation::..)` replaced by
+`None` and every `<`, `<=`, `==`, `&&`, `||` flipped in the lines of
+`certification.rs` from `eligible` to `check`, 60 mutants, each run against
+`conformance_gc_01` and `gc_03`..`gc_08`, `gc_10`). Each real one is now
+refused by a named case, and the sweep was run again on the final tree:
+
+| Mutant | Refused by | Fixture or sweep that fails |
+| --- | --- | --- |
+| lower-bound attainer index `< premises` as `<=` | `gc_03` | `lb-attainer-at-count` |
+| frontier member index `< premises` as `<=` | `gc_04` | `frontier-member-at-count` |
+| frontier members "in order and in range" as "or" | `gc_04` | `frontier-members-unordered`, `frontier-member-at-count` |
+| a frontier member with an unproven fact accepted | `gc_04` | `frontier-member-unproven` |
+| a frontier non-member with an unproven fact accepted | `gc_04` | `frontier-nonmember-unproven` |
+| a frontier member or non-member the fuel leaves unresolved ignored | `gc_04` | the unresolved request posed as a frontier |
+| a reduction over an unresolved system ignored | `gc_05` | `reduction-over-unresolved` |
+| a bridge accepting a reduced or unproven system | `gc_07` | `bridge-reduced`, `bridge-unproven` |
+| a bridge accepting an unresolved system | `gc_07` | the unresolved request posed as a bridge claim |
+| an out-of-domain position in `pays_at_least` accepted (host and kernel would disagree) | `gc_03` | `lb-position-out-of-domain` |
+| a Pareto claim routed as a scalar reduction or lower bound | `gc_04`, `gc_03` | `reduction-pareto`, `route-lower-bound-pareto` |
+| a measured system above an argmin's bound, or a measured tie under an optimum, read as an omission | `gc_03` | `lb-argmin-measured`, `lb-optimum-tie-measured` |
+| `after < steps` as `<=` in the observations of a rewriting | `gc_05` | `observations` against the trials of every pair of systems |
+
+Five mutants of the final sweep are not refused, and each is equivalent: the
+mutant computes the function the original does on every input that reaches it.
+`small == large && domain-of-lists` in the collapse eligibility as `||`:
+`rewrite` is `none` for a dispatch of two plans, so the conjunct is never the
+deciding one. `size(target) <= size(selector)` in `improves` as `<`: a
+dispatch carries its dispatching function and both plans, so it is strictly
+larger than the fixed system of one plan (and dropping the size or the
+preparation comparison altogether changes nothing, because the rewriting
+reaches a subset of the dispatch's code). `keeps && cheaper` in `preserves` as
+`||`: it is evaluated only after `improves` holds, and `improves_preserves`
+proves both sides then. The position of the rewriting in the expansion, which
+a `reduces` fact carries and no verdict reads. `cost < bound` after
+`cost == bound` was excluded, which `<=` leaves unchanged. Two further
+mutants (`||` read as `&&` in a closure's head) do not compile.
+
+A second review (`r23b`) found three more mutants of `premise_fact` that every
+non-Lean case let through (an `excluded` position one past the domain, an
+`excluded` argument on which the system exhausts the fuel, and a
+`pays_at_least` over an inadmissible prefix, each read as an exclusion where
+the model says the premise proves nothing; the first two are unsound), and
+that nothing pinned the observation relations themselves. Each is refused:
+
+| Planted | Refused by | Fixture or pair that fails |
+| --- | --- | --- |
+| `excluded` with a position outside the domain read as `Inadmissible` | `gc_03`, `gc_01` | `lb-excluded-at-length` |
+| `excluded` on an argument that exhausts the fuel read as `Inadmissible` | `gc_03`, `gc_01` | `lb-excluded-unresolved` |
+| `pays_at_least` over an inadmissible prefix read as `Inadmissible` | `gc_03`, `gc_01` | `lb-pays-inadmissible-prefix` |
+| `certificateReductionsPreserve` true for a request that is no grammar's | `gc_05`, `gc_01` | `request-rejected-cached` |
+
+The unresolved frontier and bridge cases are now committed fixtures
+(`frontier-unresolved-member`, `frontier-unresolved-nonmember`,
+`bridge-unresolved`, over the requests `frontier-over-unresolved` and
+`optimum-over-unresolved`), so the kernel decides them. The refusal
+`NoGrammar` is gone: `validate` rejects every carrier but a grammar before a
+certificate is read, so the model's total match over carriers names those
+rejections (`request-rejected-cached`, and `gc_08` for the other three). The
+final sweep, 60 mutants of the lines from `eligible` to `check` and the 31
+plants above, was run on this tree: 53 refused, 2 do not compile, and the
+same 5 equivalent mutants survive (the justifications above stand), plus the
+4 equivalent plants.
+
+### GNAF certification can fail (model and library)
+
+The observation relations of the closed module are pinned by kernel-decided
+instances on pairs of systems that are no schema's rewriting (`<request>Pair<i>x<j>Keeps`
+and `...Cheaper`, one pair of each class `(keeps, cheaper)` of
+`(false, false)`, `(true, false)`, and `(true, true)` per request, read by the
+host from the trials, independently of `improves`). Before they existed, a
+`keepsObservation` and `cheaperObservation` neutered to tautologies passed
+every gate, because each `<id>Preserves` instance is decided by `improves`,
+which implies both relations. Each plant below regenerates the module with
+`cargo xtask check-calculus --write`, runs the named case, and is restored.
+
+| Planted in `certification_model.rs` | Command | Result |
+| --- | --- | --- |
+| `keepsObservation` and `cheaperObservation` return true wherever the system is admitted (`no(), no()` as `yes(), yes()` in `status_pair`) | `conformance_gc_02` | the compiler project does not verify: the pair instances are false |
+| `cheaperObservation` with `ble` for `blt` | `conformance_gc_02` | the compiler project does not verify |
+| `preserves` that no longer reads `sameObservations` (the first relation read twice) | `conformance_gc_05` | `preserves reads sameObservations: {"Option.none", "Option.some", "improves", "rewrite", "strictlyCheaper"}` |
+
+`preserves` defined as `improves` alone is extensionally the same function,
+because `improves_preserves` proves `improves` implies the two relations, so
+no evaluation can tell them apart; `gc_05` reads the references of `preserves`,
+`reductionsPreserve`, and the relations instead, as it does for `isNormal`.
+
+Planted in `crates/conformance/src/certification_model.rs`: the strict
+lower-bound test `blt(bound, cost)` as `ble(bound, cost)`; `cargo xtask
+check-calculus --write` regenerated `compiler/src/Certification.lex.tex`.
+Command: `cargo test -p repo-conformance --test conformance --
+conformance_gc_02`. Expected: the kernel disagrees with the host on a
+committed verdict.
+
+```text
+thread 'conformance_gc_02' panicked at crates/conformance/src/support.rs:1850:17:
+the compiler project verifies under pinned Lean 4.32.1: LexLeanError {
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 324 filtered out; finished in 196.38s
+```
+
+Removed: the generator was restored and the module regenerated.
+
+Planted in `compiler/proofs/LexLeanCertification/Soundness.lean`: `exact
+sorry` at the head of `normality_never_certifies`; then the statement
+`check req cert ≠ .certified x` as `= .certified x`. Command: `cargo test -p
+repo-conformance --test conformance -- conformance_gc_09`.
+
+```text
+thread 'conformance_gc_09' panicked at crates/conformance/src/cases/certification.rs:2228:14:
+Soundness: the library's token audit: the forbidden token `sorry`
+thread 'conformance_gc_09' panicked at crates/conformance/src/certification_library.rs:209:9:
+the module `LexLeanCertification.Soundness` was rejected by Lean:
+```
+
+Removed: both edits were reverted. A third defect is planted by the case
+itself: a copy of the generated `Certification` whose strict test is weakened
+(`Nat.ble` for `Nat.blt`) is valid Lean, and the library's proofs of the
+lower-bound route are rejected over it; and a false lemma, `schema_cheaper`
+concluding `c < c'` where it concludes `c' < c`, is planted in a staged copy
+of `Schemas` beside the library's compiled modules, and Lean refuses it. The
+GC-02 module of false claims gained a fifth, the preservation of an ineligible
+reduction (`Certification.certificateReductionsPreserve` is `false` for it).
+
+### Runtime added by GNAF certification
+
+Measured in the reference container (4 vCPUs) on the final tree, alone unless
+stated. `conformance_gc_01` 16 s, `conformance_gc_02` 414 s, `conformance_gc_09`
+80 s (the library, its instances, `leanchecker`, the weakened checker, and the
+false lemma; the generated environment is compiled once per machine and shared),
+and every other `GC` case under 3 s. Most of `gc_02` is not added work: it
+awaits the one shared verification of the `compiler` project that every case
+shares, and the adversarial review's accounting of the marginal cost, against
+the same suite at the base, is that shared verification (+37 s),
+`gc_02`'s own 19 s of planted verdicts, `gc_09`, and `gc_01`, with
+`conformance_gn_02` within the noise of the box: about two to four minutes of
+`cargo test`, and about 40 s more for
+the `compiler` project in `verify-examples`. The record of the change that stops a planted copy reaching the certificate
+modules (a measurement, not a saving to quote: repeated alone, `conformance_gn_02`
+takes 424 s to 451 s with and without it, which is the noise of the box):
+
+| Case | Without | With | Change |
+| --- | --- | --- | --- |
+| `conformance_gn_02` (planted `GnafFixtures` in a copy of the project) | fails: the certificates name requests the planted module does not state | 430 s | needed for correctness, no saving claimed |
+| `conformance_tc_03` (planted `TargetFixtures`) | 616 s | 624 s | none: the copy fails before the certificate modules are reached |
+| `conformance_rs_12` (planted `ReasoningFixtures`) | 441 s | 442 s | none, same reason |
+
+so the change is kept for `gn_02` only, where the copy would not verify without it. Replacing the project-copy plants by
+`library::compile` against the built modules, as `gc_02` does for its planted
+verdicts, would save about 140 s of CPU per copy, but the copies are asserted
+to fail with `LLV7002` and to name the planted theorem, which a raw Lean
+compile does not produce; it is not done here. The full
+`cargo test --workspace --all-features --no-fail-fast` took 4272 s on the final
+tree, with the 325 conformance tests in 3847 s, and `cargo xtask
+verify-examples` took 371 s for the `compiler` project and 1333 s for the nine
+language-1.2 examples and the `compiler` project in all, without `uor-atlas`.
 
 ## Runtime of `just vv` (Issue #25, merged with #31)
 

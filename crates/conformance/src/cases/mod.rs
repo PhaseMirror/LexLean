@@ -6,6 +6,7 @@
 
 mod artifacts;
 mod calculus;
+mod certification;
 mod cli_api;
 mod collections_model;
 mod configuration_lock;
@@ -59,6 +60,7 @@ pub fn run(id: &str) {
         "TC" => calculus::run(id),
         "RB" => rust_backend::run(id),
         "GN" => gnaf::run(id),
+        "GC" => certification::run(id),
         "SP" => preservation::run(id),
         "MD" => models::run(id),
         "RS" => reasoning::run(id),

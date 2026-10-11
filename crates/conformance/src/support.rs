@@ -407,6 +407,19 @@ impl P {
         std::fs::read_to_string(self.root.join(relative).as_std_path()).expect("read")
     }
 
+    /// Make the compiler project's entrypoint skip the certification
+    /// modules. A copy that plants `GnafFixtures` states fewer requests than
+    /// the certificate theorems name, and nothing they check is under test in
+    /// it. (A plant of a module they do not import fails before they are
+    /// reached, so only that copy needs this.)
+    pub fn skip_certification(&self) {
+        let main = self
+            .read("src/Main.lex.tex")
+            .replace("\\importmodule{Certification}\n", "")
+            .replace("\\importmodule{GnafCertificates}\n", "");
+        self.write("src/Main.lex.tex", &main);
+    }
+
     /// Overwrite a project file.
     pub fn write(&self, relative: &str, content: &str) {
         let path = self.root.join(relative);

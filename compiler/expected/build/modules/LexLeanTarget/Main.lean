@@ -1,7 +1,9 @@
 module
 public import Init
 public import LexLeanTarget.BudgetOracle
+public import LexLeanTarget.Certification
 public import LexLeanTarget.Gnaf
+public import LexLeanTarget.GnafCertificates
 public import LexLeanTarget.GnafFixtures
 public import LexLeanTarget.GradeOracle
 public import LexLeanTarget.PlannerOracle
