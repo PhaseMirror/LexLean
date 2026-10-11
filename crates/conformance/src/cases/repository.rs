@@ -292,10 +292,10 @@ pub(crate) fn run(id: &str) {
             let vv = recipes.get("vv").expect("§9.2: the Justfile defines vv");
             assert_eq!(
                 vv.0,
-                "fmt-check model spec-links lint test features bdd examples golden repro deny",
-                "§9.2: `just vv` runs the eleven gates in the normative order"
+                "fmt-check model spec-links lint test features bdd inventory examples golden repro deny",
+                "§9.2: `just vv` runs the twelve gates in the normative order"
             );
-            let specified: [(&str, &str); 11] = [
+            let specified: [(&str, &str); 12] = [
                 ("fmt-check", "cargo fmt --all -- --check"),
                 ("model", "cargo xtask validate-model"),
                 ("spec-links", "cargo xtask validate-spec-links"),
@@ -303,12 +303,16 @@ pub(crate) fn run(id: &str) {
                     "lint",
                     "cargo clippy --workspace --all-targets --all-features -- -D warnings",
                 ),
-                ("test", "cargo test --workspace --all-features"),
+                (
+                    "test",
+                    "cargo test --workspace --exclude repo-conformance --all-features",
+                ),
                 (
                     "features",
                     "cargo check --workspace --all-features --all-targets",
                 ),
-                ("bdd", "cargo test -p repo-conformance --test bdd"),
+                ("bdd", "cargo test -p repo-conformance --all-features"),
+                ("inventory", "cargo xtask check-test-inventory"),
                 ("examples", "cargo xtask verify-examples"),
                 ("golden", "cargo xtask check-golden"),
                 ("repro", "cargo xtask check-reproducibility"),

@@ -10,6 +10,7 @@ use std::process::ExitCode;
 use camino::Utf8PathBuf;
 
 mod audit;
+mod ci;
 mod codegen;
 mod release_manifest;
 mod spec_links;
@@ -28,12 +29,25 @@ fn main() -> ExitCode {
     let result = match task.as_str() {
         "validate-model" => codegen::check_model(&root, write),
         "validate-spec-links" => spec_links::validate(&root),
-        "verify-examples" => verify_examples(&root, write),
+        "verify-examples" => verify_examples(
+            &root,
+            write,
+            std::env::args()
+                .skip(2)
+                .collect::<Vec<_>>()
+                .windows(2)
+                .find(|pair| pair[0] == "--only")
+                .map(|pair| pair[1].clone()),
+        ),
         "check-golden" => check_golden(&root, write),
         "check-reproducibility" => check_reproducibility(&root),
         "check-fixtures" => check_fixtures(&root, write),
         "check-calculus" => check_calculus(&root, write),
         "check-package" => check_package(&root),
+        "check-test-inventory" => ci::check_test_inventory(&root),
+        "check-vv-profile" => ci::check_vv_profile(),
+        "measure-width" => ci::measure_width(&root, &std::env::args().skip(2).collect::<Vec<_>>()),
+        "ci-summary" => ci::ci_summary(&root, &std::env::args().skip(2).collect::<Vec<_>>()),
         "release-artifacts" => release_artifacts(&root),
         "release-check" => release_check(&root),
         "validate" => codegen::check_model(&root, false).and_then(|()| spec_links::validate(&root)),
@@ -52,6 +66,10 @@ fn main() -> ExitCode {
                                          GNAF fixtures, the Rust packages, and configuration equal\n\
                                          their generator\n\
                  check-package           §30.3, RP-12: package lexlean crate, verify offline build & identity\n\
+                 check-test-inventory    RP-13: the `test` and `bdd` recipes partition the workspace tests\n\
+                 check-vv-profile        RP-14: the CI job's verifier width fits its runner\n\
+                 measure-width           §9.4: verify one example at ascending widths, judge, write evidence\n\
+                 ci-summary              §9.4: summarize ci-evidence/ (recipe, stage, module times; memory)\n\
                  release-artifacts       §30.3: derive the release/ artifact set from the repository\n\
                  release-check           RP-12: refuse release until §30.3/§30.4 are fully satisfied\n\
                  validate                validate-model then validate-spec-links\n\
@@ -128,8 +146,17 @@ fn engine_for(dir: &Path) -> Result<lexlean::Engine, Fail> {
 /// `expected/verify/`, the normalized verification records (audit output,
 /// probe and audit modules, process records with the platform-bound fields
 /// normalized) must equal it, and `--write` regenerates them.
-fn verify_examples(root: &Path, write: bool) -> Result<(), Fail> {
-    for dir in example_dirs(root)? {
+fn verify_examples(root: &Path, write: bool, only: Option<String>) -> Result<(), Fail> {
+    let mut dirs = example_dirs(root)?;
+    if let Some(only) = &only {
+        // The selection is for measuring one example (`measure-width`); a
+        // name that matches nothing is an error, never an empty pass.
+        dirs.retain(|dir| dir.file_name().is_some_and(|name| name.to_string_lossy() == *only));
+        if dirs.is_empty() {
+            return Err(format!("verify-examples: `--only {only}` names no example").into());
+        }
+    }
+    for dir in dirs {
         let started = std::time::Instant::now();
         let name = dir
             .file_name()
@@ -191,6 +218,37 @@ fn verify_examples(root: &Path, write: bool) -> Result<(), Fail> {
             "verify-examples: {name} verified (attestation {})",
             verified.attestation_id.to_hex()
         );
+        // §22.12: a measurement is never part of a verified artifact. The
+        // whole published directory is read for the closed vocabulary of
+        // measurement keys, and its digest is printed so that two runs (of
+        // two widths, or two runners) can be compared byte for byte.
+        let leaked = repo_conformance::evidence::telemetry_in(verified.root.as_std_path())?;
+        if !leaked.is_empty() {
+            return Err(format!(
+                "VR-22: {name}: performance telemetry is in a verified artifact (§22.12): {}",
+                leaked.join("; ")
+            )
+            .into());
+        }
+        println!(
+            "verify-examples: {name} verified-digest {}",
+            ci::tree_digest(verified.root.as_std_path())?
+        );
+        if let Some(directory) = std::env::var_os(lexlean::verify::operational::TELEMETRY_VARIABLE)
+            .filter(|value| !value.is_empty())
+        {
+            lexlean::verify::telemetry::append(
+                Path::new(&directory),
+                "examples-telemetry.jsonl",
+                &serde_json::json!({
+                    "event": "example",
+                    "example": name,
+                    "wall_ms": u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                    "process_width": lexlean::verify::operational::Operational::from_environment()
+                        .map_or(0, |operational| operational.width()),
+                }),
+            );
+        }
 
         let records = normalized_verify_records(verified.root.as_std_path())?;
         let expected_root = dir.join("expected").join("verify");

@@ -610,10 +610,11 @@ The normative acceptance recipe is `just vv`. It MUST run, in this order:
 5. `test`;
 6. `features`;
 7. `bdd`;
-8. `examples`;
-9. `golden`;
-10. `repro`;
-11. `deny`.
+8. `inventory`;
+9. `examples`;
+10. `golden`;
+11. `repro`;
+12. `deny`.
 
 The recipes have these meanings:
 
@@ -625,6 +626,7 @@ lint        cargo clippy --workspace --all-targets --all-features -- -D warnings
 test        cargo test --workspace --exclude repo-conformance --all-features
 features    cargo check --workspace --all-features --all-targets
 bdd         cargo test -p repo-conformance --all-features
+inventory   cargo xtask check-test-inventory
 examples    cargo xtask verify-examples
 golden      cargo xtask check-golden
 repro       cargo xtask check-reproducibility
@@ -632,7 +634,7 @@ deny        cargo deny --all-features check
 vv          all recipes above, in order
 ```
 
-`test` runs every test target of every workspace crate except `repo-conformance`, and `bdd` is the sole owner of the complete `repo-conformance` suite: its library tests and doctests, its `conformance` target (one test per registered ID, §27.8), and its `bdd` meta-gate target. The two phases partition the workspace test set: a test inventory (RP-13) lists the tests of `cargo test --workspace --all-features`, of `test`, and of `bdd`, and requires the last two to be disjoint and their union to equal the first, so that no test is lost and none runs twice in `vv`. The honesty workflow (§9.4) runs the meta-gate target alone, as a separate signal that is not part of `vv`. `just model-write` regenerates `CONFORMANCE.md` and `ERRORS.md`. Golden files are rewritten only by the explicit `just golden-write` recipe. No acceptance recipe rewrites source or expected output.
+`test` runs every test target of every workspace crate except `repo-conformance`, and `bdd` is the sole owner of the complete `repo-conformance` suite: its library tests and doctests, its `conformance` target (one test per registered ID, §27.8), and its `bdd` meta-gate target. The two phases partition the workspace test set: `inventory` lists the tests of `cargo test --workspace --all-features`, of `test`, and of `bdd` (RP-13), and requires the last two to be disjoint, their union to equal the first, and every test target of `repo-conformance` to be in `bdd`'s list, so that no test is lost and none runs twice in `vv`. The honesty workflow (§9.4) runs the meta-gate target alone, as a separate signal that is not part of `vv`. `just model-write` regenerates `CONFORMANCE.md` and `ERRORS.md`. Golden files are rewritten only by the explicit `just golden-write` recipe. No acceptance recipe rewrites source or expected output.
 
 ### 9.3 Development container
 

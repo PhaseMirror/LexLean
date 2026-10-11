@@ -12,9 +12,11 @@ pub mod calculus;
 pub mod calculus_source;
 pub mod cases;
 pub mod differential;
+pub mod evidence;
 pub mod fixtures;
 pub mod gnaf;
 pub mod gnaf_model;
+pub mod inventory;
 mod lx;
 pub mod machine;
 pub mod meta;
@@ -27,6 +29,7 @@ pub mod rust_packages;
 pub mod rust_source;
 pub mod schema;
 pub mod stress;
+pub mod width;
 
 pub mod support;
 

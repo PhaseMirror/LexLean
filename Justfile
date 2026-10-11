@@ -4,7 +4,7 @@
 default: vv
 
 # The whole gate, in the normative order.
-vv: fmt-check model spec-links lint test features bdd examples golden repro deny
+vv: fmt-check model spec-links lint test features bdd inventory examples golden repro deny
     @echo "vv: the acceptance gate passed"
 
 fmt:
@@ -26,8 +26,11 @@ spec-links:
 lint:
     cargo clippy --workspace --all-targets --all-features -- -D warnings
 
+# Every test of the workspace but the conformance suite. `repo-conformance` is
+# excluded, not skipped: `bdd` below is its sole owner, so that the suite that
+# takes most of the gate runs once (SPEC.md §9.2, RP-13).
 test:
-    cargo test --workspace --all-features
+    cargo test --workspace --exclude repo-conformance --all-features
 
 # A feature only its author has built is a feature that does not work: every
 # optional feature compiles, with its tests.
@@ -35,16 +38,22 @@ features:
     cargo check --workspace --all-features --all-targets
 
 # R3: every capability begins as a Gherkin scenario, and every scenario has a
-# test named `conformance_<id>` (§27.8). The meta-gate is the `bdd` test target
-# alone: the conformance tests themselves are already run, once, by `test`
-# (`cargo test --workspace` runs every target of `repo-conformance`), and running
-# them a second time here doubled the longest stage of `vv` without checking
-# anything the first run did not.
+# test named `conformance_<id>` (§27.8). This is the whole `repo-conformance`
+# suite: its library tests, the `bdd` meta-gate target, and the `conformance`
+# target with one test per registered ID. `test` leaves all of it to this
+# recipe, and `inventory` proves that between them nothing was lost or run
+# twice. The meta-gate target alone, which needs no Lean, is what the
+# honesty workflow runs (`cargo test -p repo-conformance --test bdd`).
 bdd:
-    cargo test -p repo-conformance --test bdd
+    cargo test -p repo-conformance --all-features
+
+# RP-13: `test` and `bdd` partition `cargo test --workspace --all-features`,
+# test by test (listed with `-- --list`, not inferred from flags).
+inventory:
+    cargo xtask check-test-inventory
 
 # §17.14, §17.15: the target and GNAF fixtures and their Lean modules equal
-# their generator. `just test` enforces the same comparison through
+# their generator. `just bdd` enforces the same comparison through
 # `conformance_tc_03` and `conformance_gn_01`; this recipe is the direct report.
 calculus:
     cargo xtask check-calculus
@@ -75,7 +84,7 @@ golden-write:
     cargo xtask check-golden --write
 
 # §28.2: every fixture under tests/fixtures and tests/negative runs through the
-# CLI and equals its committed expected/ files. `just test` also runs the suite
+# CLI and equals its committed expected/ files. `just bdd` also runs the suite
 # through conformance_ex_07; this recipe is the direct, per-fixture report.
 fixtures:
     cargo xtask check-fixtures

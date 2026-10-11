@@ -35,8 +35,8 @@ Feature: repository
   Scenario: The just vv recipe runs every normative acceptance gate in the specified order.
     Given the committed Justfile
     When the vv recipe line is read
-    Then it reads `vv: fmt-check model spec-links lint test features bdd examples golden repro deny`
-    And the Justfile also defines the model-write and golden-write recipes plus each of the eleven gates
+    Then it reads `vv: fmt-check model spec-links lint test features bdd inventory examples golden repro deny`
+    And the Justfile also defines the model-write and golden-write recipes plus each of the twelve gates
 
   @RP-06 @build
   Scenario: CONFORMANCE.md and ERRORS.md are exact generated views of model files.
