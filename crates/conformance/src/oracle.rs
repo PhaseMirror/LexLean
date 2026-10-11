@@ -297,6 +297,7 @@ pub enum Verdict {
 #[derive(Debug)]
 pub struct Oracle {
     pin: Pin,
+    source: PathBuf,
     exporter: PathBuf,
     prod: PathBuf,
     scratch: PathBuf,
@@ -437,6 +438,44 @@ fn fetch(pin: &Pin, dir: &Path) -> Result<(), Unavailable> {
     Ok(())
 }
 
+/// Refuse a checkout that is not the pinned oracle: the files the pin names
+/// must hash to its digest and, in a git checkout, `HEAD` must be its commit.
+///
+/// # Errors
+///
+/// [`Unavailable::NotAcquired`] for a missing or unreadable checkout and
+/// [`Unavailable::PinMismatch`] for one that is another oracle.
+pub fn verify_checkout(pin: &Pin, source: &Path) -> Result<(), Unavailable> {
+    if !source.is_dir() {
+        return Err(Unavailable::NotAcquired(format!(
+            "{} is not a directory",
+            source.display()
+        )));
+    }
+    let (digest, files) = tree_digest(source, pin).map_err(Unavailable::NotAcquired)?;
+    if digest != pin.tree_sha256 || files != pin.tree_files {
+        return Err(Unavailable::PinMismatch(format!(
+            "{files} files hash to {digest}; the pin names {} files hashing to {}",
+            pin.tree_files, pin.tree_sha256
+        )));
+    }
+    if source.join(".git").exists() {
+        let mut command = Command::new("git");
+        command.args(["rev-parse", "HEAD"]).current_dir(source);
+        let head = run(command, Duration::from_secs(60))
+            .ok()
+            .filter(|ran| ran.status == Some(0))
+            .map(|ran| ran.stdout.trim().to_owned());
+        if head.as_deref() != Some(pin.commit.as_str()) {
+            return Err(Unavailable::PinMismatch(format!(
+                "HEAD is {head:?}; the pin names {}",
+                pin.commit
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Acquire the pinned oracle and build it, once per process.
 ///
 /// The checkout is `$LEXLEAN_ORACLE_DIR` when set and a fetch of the pinned
@@ -463,8 +502,22 @@ impl Oracle {
     ///
     /// As [`acquire`].
     pub fn acquire_from(pin: &Pin) -> Result<Self, Unavailable> {
-        let cache = cache_root();
-        std::fs::create_dir_all(&cache)
+        Self::acquire_in(
+            pin,
+            &cache_root(),
+            std::env::var_os("LEXLEAN_ORACLE_DIR").map(PathBuf::from),
+        )
+    }
+
+    /// Acquire and build the oracle `pin` names, caching in `cache`, from
+    /// the checkout `source` or, when there is none, from a fetch of the
+    /// pinned commit.
+    ///
+    /// # Errors
+    ///
+    /// As [`acquire`].
+    pub fn acquire_in(pin: &Pin, cache: &Path, source: Option<PathBuf>) -> Result<Self, Unavailable> {
+        std::fs::create_dir_all(cache)
             .map_err(|error| Unavailable::NotAcquired(format!("{}: {error}", cache.display())))?;
         // One process builds; the others wait for the finished build.
         let lock = std::fs::OpenOptions::new()
@@ -475,8 +528,8 @@ impl Oracle {
             .map_err(|error| Unavailable::NotAcquired(error.to_string()))?;
         lock.lock()
             .map_err(|error| Unavailable::NotAcquired(error.to_string()))?;
-        let source = match std::env::var_os("LEXLEAN_ORACLE_DIR") {
-            Some(dir) => PathBuf::from(dir),
+        let source = match source {
+            Some(dir) => dir,
             None => {
                 let dir = cache.join("source");
                 if !dir.join(".git").is_dir() {
@@ -486,33 +539,7 @@ impl Oracle {
                 dir
             }
         };
-        if !source.is_dir() {
-            return Err(Unavailable::NotAcquired(format!(
-                "{} is not a directory",
-                source.display()
-            )));
-        }
-        let (digest, files) = tree_digest(&source, pin).map_err(Unavailable::NotAcquired)?;
-        if digest != pin.tree_sha256 || files != pin.tree_files {
-            return Err(Unavailable::PinMismatch(format!(
-                "{} files hash to {digest}; the pin names {} files hashing to {}",
-                files, pin.tree_files, pin.tree_sha256
-            )));
-        }
-        if source.join(".git").exists() {
-            let mut command = Command::new("git");
-            command.args(["rev-parse", "HEAD"]).current_dir(&source);
-            let head = run(command, Duration::from_secs(60))
-                .ok()
-                .filter(|ran| ran.status == Some(0))
-                .map(|ran| ran.stdout.trim().to_owned());
-            if head.as_deref() != Some(pin.commit.as_str()) {
-                return Err(Unavailable::PinMismatch(format!(
-                    "HEAD is {head:?}; the pin names {}",
-                    pin.commit
-                )));
-            }
-        }
+        verify_checkout(pin, &source)?;
         let build = cache.join(format!("build-{}", &pin.tree_sha256[..16]));
         let exporter = build
             .join("lean/.lake/build/bin")
@@ -533,11 +560,32 @@ impl Oracle {
             .map_err(|error| Unavailable::NotAcquired(error.to_string()))?;
         Ok(Self {
             pin: pin.clone(),
+            source,
             exporter,
             prod,
             scratch,
             bin: crate::preservation::toolchain_bin(),
         })
+    }
+
+    /// An oracle made of the given tools, for the tests that give the
+    /// harness an oracle that fails: no acquisition, no pin check.
+    #[must_use]
+    pub fn with_tools(pin: &Pin, exporter: PathBuf, prod: PathBuf, scratch: PathBuf) -> Self {
+        Self {
+            pin: pin.clone(),
+            source: PathBuf::new(),
+            exporter,
+            prod,
+            scratch,
+            bin: crate::preservation::toolchain_bin(),
+        }
+    }
+
+    /// The verified checkout this oracle was built from.
+    #[must_use]
+    pub fn source(&self) -> &Path {
+        &self.source
     }
 
     fn build(pin: &Pin, build: &Path) -> Result<(), Unavailable> {

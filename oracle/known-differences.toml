@@ -1,0 +1,159 @@
+# oracle/known-differences.toml --- the known deliberate differences between
+# LexLean and the differential oracle (SPEC.md §17.19).
+#
+# Every way LexLean and `lean4-prod` differ on a root of the corpus is a
+# difference with a kind and a name; one that no row below names is a
+# disagreement and fails the differential. A row is exact: it lists the roots
+# it is known on, and a listed root on which the difference no longer arises
+# fails the run, so the table can neither hide a new difference nor outlive
+# an old one. A change to a row raises `version`.
+
+spec = "lexlean/oracle-differences/1"
+version = 1
+
+[[difference]]
+id = "KD-01"
+kind = "acceptance"
+key = "oracle-refuses:escaping-local-function"
+reason = "The oracle lowers a local function only when it is saturated, non-escaping, and acyclic (its subset contract). The Lean LexLean generates for these roots holds a local function that escapes: a lambda or function reference handed to another definition, the dictionary closures of LexLean's ordered-collection templates (key orders, folds, iteration, graph search), the structural-recursion helpers Lean compiles recursive and nested data to, and the transition functions of model and reasoner elaborations. LexLean realizes these through its own calculus (§17.14); the oracle's domain does not contain them."
+roots = [
+  "Coverage.Colls.folds",
+  "Coverage.Colls.graphs",
+  "Coverage.Colls.iterations",
+  "Coverage.Colls.keyTypes",
+  "Coverage.Colls.mapFolding",
+  "Coverage.Colls.mapOps",
+  "Coverage.Colls.setOps",
+  "Coverage.Colls.stringGraph",
+  "Coverage.Main.higher",
+  "Coverage.Main.treeTotal",
+  "Coverage.RecRoots.rewrite",
+  "Coverage.RecRoots.roseTotal",
+  "Coverage.RecRoots.syntaxTotal",
+  "Models.Main.admitCosts",
+  "Models.Main.classify",
+  "Models.Main.classifyChecked",
+  "Models.Main.respond",
+  "OracleProbe.ProbeGraphReachable.reachableRoot",
+  "OracleProbe.ProbeGraphSuccessors.successorsRoot",
+  "OracleProbe.ProbeGraphTopological.topologicalRoot",
+  "OracleProbe.ProbeIterate.iterateRoot",
+  "OracleProbe.ProbeIterateUntil.iterateUntilRoot",
+  "OracleProbe.ProbeListFold.listFoldRoot",
+  "OracleProbe.ProbeMapContains.mapContainsRoot",
+  "OracleProbe.ProbeMapFold.mapFoldRoot",
+  "OracleProbe.ProbeMapInsert.mapInsertRoot",
+  "OracleProbe.ProbeMapKeys.mapKeysRoot",
+  "OracleProbe.ProbeMapLookup.mapLookupRoot",
+  "OracleProbe.ProbeMapRemove.mapRemoveRoot",
+  "OracleProbe.ProbeMapValues.mapValuesRoot",
+  "OracleProbe.ProbeSetContains.setContainsRoot",
+  "OracleProbe.ProbeSetDifference.setDifferenceRoot",
+  "OracleProbe.ProbeSetFold.setFoldRoot",
+  "OracleProbe.ProbeSetInsert.setInsertRoot",
+  "OracleProbe.ProbeSetIntersection.setIntersectionRoot",
+  "OracleProbe.ProbeSetRemove.setRemoveRoot",
+  "OracleProbe.ProbeSetUnion.setUnionRoot",
+  "Production.Main.quadruple",
+  "Reasoning.Main.doseLevel",
+  "Reasoning.Main.planLeft",
+  "Reasoning.Main.screenDose",
+  "Reasoning.Main.spendLeft",
+]
+
+[[difference]]
+id = "KD-02"
+kind = "acceptance"
+key = "oracle-refuses:opaque-lowering"
+reason = "The oracle has no monomorphization (its documented limit): a definition that remains parameterized by a type after Lean's compiler, such as a generic definition instantiated at a use site, the collection templates' accessors, or a reasoner's generic state, lowers to a type expression it has no rendering for. LexLean monomorphizes at lowering (§17.17)."
+roots = [
+  "Coverage.Boundary.groveRoot",
+  "Coverage.Main.records",
+  "OracleProbe.ProbeFunctionRef.referenceRoot",
+  "OracleProbe.ProbeGeneric.genericRoot",
+  "OracleProbe.ProbeMapEntries.mapEntriesRoot",
+  "OracleProbe.ProbeMapSize.mapSizeRoot",
+  "OracleProbe.ProbeSetElements.setElementsRoot",
+  "OracleProbe.ProbeSetSize.setSizeRoot",
+  "Production.Main.headOr",
+  "Reasoning.Main.gatewayLevel",
+  "Reasoning.Main.gradeLevel",
+  "Reasoning.Main.triageLevel",
+  "Reasoning.Main.triageSteps",
+]
+
+[[difference]]
+id = "KD-03"
+kind = "acceptance"
+key = "oracle-refuses:unresolved-external-call"
+reason = "The oracle's operators are the Nat operations of its subset contract and its tagged definitions; a call of any other constant (the mathematical-integer operations such as Int.neg, or a definition that calls a refused one) has nothing to call. LexLean realizes the mathematical integer in 64 bits with explicit overflow (§17.13)."
+roots = [
+  "Coverage.Main.intOps",
+  "Coverage.Main.mapped",
+  "Coverage.Main.parity",
+  "OracleProbe.ProbeInt.intRoot",
+]
+
+[[difference]]
+id = "KD-04"
+kind = "acceptance"
+key = "oracle-refuses:codegen-PolymorphicType"
+reason = "The oracle refuses a parameterized structure type (its documented limit). The Lean LexLean generates for fixed-width arithmetic at the 16- and 32-bit signed widths and for checked conversions carries LexLeanRuntime.Fixed, a type-class dictionary structure parameterized by the scalar type."
+roots = [
+  "Coverage.Prims.conversions",
+  "Coverage.Prims.fixedMiddle",
+  "OracleProbe.ProbeConvert.convertRoot",
+]
+
+[[difference]]
+id = "KD-05"
+kind = "acceptance"
+key = "oracle-refuses:codegen-UnboundedInt"
+reason = "The oracle refuses a mathematical Lean Int that reaches a fixed-width target (its documented policy). LexLean parses and formats decimals through the mathematical integer and realizes it in 64 bits with explicit overflow (§17.13)."
+roots = [
+  "Coverage.Prims.decimals",
+  "Coverage.Prims.formats",
+]
+
+[[difference]]
+id = "KD-06"
+kind = "acceptance"
+key = "oracle-refuses:codegen-UnresolvedCall"
+reason = "The oracle's operator whitelist has no Nat.succ constructor application. LexLean realizes the successor with explicit overflow (constructor.nat_succ, §17.13)."
+roots = [
+  "Coverage.Main.builders",
+  "OracleProbe.ProbeSucc.successorRoot",
+]
+
+[[difference]]
+id = "KD-07"
+kind = "acceptance"
+key = "oracle-accepts:literal-width"
+reason = "LexLean refuses a natural literal beyond the target's 64 bits (LLT4005); the oracle exports the literal 18446744073709551616 as a Rust u64 literal, which rustc rejects (the evidence records the oracle's crate failing to compile). LexLean is the stricter and the oracle fails later, at rustc."
+roots = [
+  "LanguageTwelve.Main.huge",
+]
+
+[[difference]]
+id = "KD-08"
+kind = "behavior"
+key = "oracle-crate-does-not-run"
+reason = "The oracle renders a pair projection as a field access .fst or .snd on a Rust tuple, which rustc rejects (the evidence records the compile error). A defect of the oracle's code generator, found on LexLean's Lean; LexLean renders the same projections correctly, which RB-06 and SP-11 run."
+roots = [
+  "Coverage.Main.pairs",
+  "Models.Main.flowStep",
+  "Models.Main.ledgerFull",
+  "Models.Main.ledgerPost",
+  "OracleProbe.ProbeFirst.firstRoot",
+  "OracleProbe.ProbeSecond.secondRoot",
+]
+
+[[difference]]
+id = "KD-09"
+kind = "contract"
+key = "borrowed-parameter"
+reason = "The oracle takes a list parameter as a borrowed slice, &[T] (its documented memory profile); LexLean takes List<T>, a shared persistent list, by value. The elements are the same and the differential passes the same ones; how a collection crosses the boundary is a deliberate difference of ABI."
+roots = [
+  "Coverage.Prims.sequences",
+  "Production.Main.sumAll",
+]

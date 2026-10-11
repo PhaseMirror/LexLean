@@ -131,6 +131,9 @@ enum IrTy {
     List(Box<IrTy>),
     Tuple(Box<IrTy>, Box<IrTy>),
     Named(String),
+    /// Lean's `Unit`, which the oracle renders as the empty structure
+    /// `PUnit`.
+    PUnit,
 }
 
 fn ir_type(sx: &Sx) -> Result<IrTy, String> {
@@ -168,6 +171,9 @@ fn ir_type(sx: &Sx) -> Result<IrTy, String> {
                 Box::new(ir_type(ok)?),
                 Box::new(ir_type(error)?),
             )),
+            [Sx::Atom(head), Sx::Text(name)] if head == "named" && name == "PUnit" => {
+                Ok(IrTy::PUnit)
+            }
             [Sx::Atom(head), Sx::Text(name)] if head == "named" => Ok(IrTy::Named(name.clone())),
             other => Err(format!("the IR type {other:?} is not one the harness knows")),
         },
@@ -339,7 +345,7 @@ fn lexlean_shape(program: &Program, ty: &Ty, open: &mut Vec<u64>) -> Shape {
 
 fn ir_shape(ir: &Ir, ty: &IrTy, open: &mut Vec<String>) -> Shape {
     match ty {
-        IrTy::Unit => Shape::Unit,
+        IrTy::Unit | IrTy::PUnit => Shape::Unit,
         IrTy::Bool => Shape::Bool,
         IrTy::Nat => Shape::Nat,
         IrTy::Int => Shape::Int,
@@ -683,6 +689,7 @@ fn oracle_contract(
 fn rust_type(ir: &Ir, ty: &IrTy) -> String {
     match ty {
         IrTy::Unit => "()".into(),
+        IrTy::PUnit => "o::PUnit".into(),
         IrTy::Bool => "bool".into(),
         IrTy::Nat => "u64".into(),
         IrTy::Int => "i128".into(),
@@ -718,6 +725,7 @@ fn fixed_value(value: &Value) -> Option<&str> {
 fn literal(ir: &Ir, ty: &IrTy, value: &Value) -> Result<String, String> {
     Ok(match (ty, value) {
         (IrTy::Unit, Value::Unit) => "()".into(),
+        (IrTy::PUnit, Value::Unit) => "o::PUnit {}".into(),
         (IrTy::Bool, Value::Bool { value }) => value.to_string(),
         (IrTy::Nat, Value::Nat { value }) => format!("{value}u64"),
         (IrTy::Fixed(name), value) => {
@@ -785,7 +793,7 @@ fn literal(ir: &Ir, ty: &IrTy, value: &Value) -> Result<String, String> {
             for ((field_name, field_ty), field) in declared.fields.iter().zip(fields) {
                 inits.push(format!("{field_name}: {}", literal(ir, field_ty, field)?));
             }
-            let body = if inits.is_empty() {
+            let body = if inits.is_empty() && constructors.len() > 1 {
                 String::new()
             } else {
                 format!(" {{ {} }}", inits.join(", "))
@@ -816,6 +824,7 @@ fn show(ir: &Ir, ty: &IrTy, expr: &str, depth: usize) -> Result<String, String> 
     let next = depth + 1;
     Ok(match ty {
         IrTy::Unit => format!("{{ let () = {expr}; \"{{\\\"kind\\\":\\\"unit\\\"}}\".to_owned() }}"),
+        IrTy::PUnit => format!("{{ let _ = {expr}; \"{{\\\"kind\\\":\\\"unit\\\"}}\".to_owned() }}"),
         IrTy::Bool => {
             format!("format!(\"{{{{\\\"kind\\\":\\\"bool\\\",\\\"value\\\":{{}}}}}}\", {expr})")
         }
@@ -871,7 +880,7 @@ fn show(ir: &Ir, ty: &IrTy, expr: &str, depth: usize) -> Result<String, String> 
                 } else {
                     format!("o::{type_name}::{}", last_segment(&constructor.name))
                 };
-                let pattern = if patterns.is_empty() {
+                let pattern = if patterns.is_empty() && constructors.len() > 1 {
                     path
                 } else {
                     format!("{path} {{ {} }}", patterns.join(", "))
@@ -1086,6 +1095,7 @@ pub struct Executed {
 }
 
 /// The whole run: every root with both sides, and what the oracle's code did.
+#[derive(Debug)]
 pub struct Run {
     /// Every root of the corpus.
     pub roots: Vec<RootRun>,
@@ -1119,7 +1129,7 @@ fn effects_of(report: &lexlean::production::RootReport) -> BTreeSet<String> {
 }
 
 /// LexLean's statement of every eligible root of `project`.
-fn eligible_roots(
+pub fn eligible_roots(
     project: &P,
 ) -> Vec<(String, String, Accepted)> {
     use lexlean::production::lower::{linked_modules, lower_root, roots};
@@ -1323,17 +1333,19 @@ fn package_name(package: &BTreeMap<String, Vec<u8>>) -> String {
         .to_owned()
 }
 
-/// A candidate crate for one root: the files that stand in for the oracle's
-/// crate, exposing the oracle's interface.
-#[derive(Debug, Clone)]
-pub struct Candidate {
-    /// The root it replaces the oracle's crate for.
-    pub root: String,
-    /// The files of the crate.
-    pub package: BTreeMap<String, Vec<u8>>,
+/// The part of cargo's output that says why the build of `member` failed:
+/// the diagnostics that point into it.
+fn build_errors(stderr: &str, member: &str) -> String {
+    let needle = format!("{member}/");
+    stderr
+        .split("\n\n")
+        .filter(|block| block.contains(&needle))
+        .take(8)
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
-/// Build the oracle's crate (or a candidate's) of each root in `targets` with
+/// Build the oracle's crate of each root in `roots` with
 /// its harness in one workspace, run every harness, and return what each
 /// printed.
 ///
@@ -1347,7 +1359,6 @@ pub struct Candidate {
 #[must_use]
 pub fn execute(
     roots: &[&RootRun],
-    candidates: &BTreeMap<String, Candidate>,
     with_lexlean: bool,
 ) -> BTreeMap<String, Result<Executed, String>> {
     use crate::rust_build::{cargo_in, workspace, Built};
@@ -1361,16 +1372,25 @@ pub fn execute(
     let mut lexlean_built: Vec<Built> = Vec::new();
     let mut lexlean_cases: BTreeMap<String, usize> = BTreeMap::new();
     let mut failed: BTreeMap<String, Result<Executed, String>> = BTreeMap::new();
+    let mut compile_only: BTreeMap<String, String> = BTreeMap::new();
     for (position, run) in roots.iter().enumerate() {
+        // A root LexLean rejects and the oracle takes has no inputs to run;
+        // whether the oracle's crate for it compiles is still evidence.
+        if let (LexLeanSide::Rejected { .. }, OracleSide::Generated { package, .. }) =
+            (&run.lexlean, &run.oracle)
+        {
+            let name = package_name(package);
+            write_member(dir.path(), &format!("o/{name}"), package);
+            members.push(format!("\"o/{name}\""));
+            compile_only.insert(run.root.clone(), name);
+            continue;
+        }
         let (LexLeanSide::Eligible(accepted), OracleSide::Generated { ir, package, signature, .. }) =
             (&run.lexlean, &run.oracle)
         else {
             continue;
         };
         let parsed = read_ir(ir).expect("the IR parsed when the verdict was asked");
-        let package = candidates
-            .get(&run.root)
-            .map_or(package, |candidate| &candidate.package);
         let name = package_name(package);
         write_member(dir.path(), &format!("o/{name}"), package);
         let harness_name = format!("oh{position}");
@@ -1477,6 +1497,17 @@ pub fn execute(
         })
         .collect();
     let mut out = failed;
+    for (root, name) in &compile_only {
+        let result = if broken.contains(name) {
+            Err(format!(
+                "the oracle's crate `{name}` does not compile:\n{}",
+                build_errors(&stderr, &format!("o/{name}"))
+            ))
+        } else {
+            Ok(Executed::default())
+        };
+        out.insert(root.clone(), result);
+    }
     for run in roots {
         let Some(harness_name) = harness_of.get(&run.root) else {
             continue;
@@ -1484,35 +1515,30 @@ pub fn execute(
         let OracleSide::Generated { package, .. } = &run.oracle else {
             continue;
         };
-        let name = package_name(
-            candidates
-                .get(&run.root)
-                .map_or(package, |candidate| &candidate.package),
-        );
+        let name = package_name(package);
         if broken.contains(&name) {
-            let reason: String = stderr
-                .lines()
-                .skip_while(|line| !line.contains(&format!("`{name}`")) && !line.starts_with("error"))
-                .take(12)
-                .collect::<Vec<_>>()
-                .join("\n");
             out.insert(
                 run.root.clone(),
-                Err(format!("the oracle's crate `{name}` does not compile: {reason}")),
+                Err(format!(
+                    "the oracle's crate `{name}` does not compile:\n{}",
+                    build_errors(&stderr, &format!("o/{name}"))
+                )),
             );
             continue;
         }
         if let Some(own) = lexlean_of.get(&run.root) {
             assert!(
                 !broken.contains(own) && !broken.contains(&format!("run_{own}")),
-                "LexLean's package of {} does not build:\n{stderr}",
-                run.root
+                "LexLean's package of {} does not build:\n{}",
+                run.root,
+                build_errors(&stderr, &format!("p/{own}"))
             );
         }
         assert!(
             !broken.contains(harness_name),
-            "the oracle harness of {} does not build:\n{stderr}",
-            run.root
+            "the oracle harness of {} does not build:\n{}",
+            run.root,
+            build_errors(&stderr, &format!("h/{harness_name}"))
         );
         let exe = |name: &str| {
             dir.path()
@@ -1645,12 +1671,22 @@ pub fn differences(run: &RootRun, executed: Option<&Result<Executed, String>>) -
             serde_json::json!({"verdict": "eligible", "targets": accepted.targets}),
             serde_json::json!({"verdict": "refused", "stage": format!("{stage:?}"), "kind": kind, "message": message}),
         ),
-        (LexLeanSide::Rejected { code, message }, OracleSide::Generated { package, .. }) => push(
-            DiffKind::Acceptance,
-            format!("oracle-accepts:{}", rejection_class(message)),
-            serde_json::json!({"verdict": "rejected", "code": code, "message": message}),
-            serde_json::json!({"verdict": "generated", "lib_rs_sha256": sha256_hex(&package["src/lib.rs"])}),
-        ),
+        (LexLeanSide::Rejected { code, message }, OracleSide::Generated { package, .. }) => {
+            let rustc = match executed {
+                Some(Ok(_)) => serde_json::json!({"compiles": true}),
+                Some(Err(reason)) => serde_json::json!({
+                    "compiles": false,
+                    "reason": reason.chars().take(400).collect::<String>(),
+                }),
+                None => Json::Null,
+            };
+            push(
+                DiffKind::Acceptance,
+                format!("oracle-accepts:{}", rejection_class(message)),
+                serde_json::json!({"verdict": "rejected", "code": code, "message": message}),
+                serde_json::json!({"verdict": "generated", "lib_rs_sha256": sha256_hex(&package["src/lib.rs"]), "rustc": rustc}),
+            );
+        }
         (LexLeanSide::Rejected { .. }, OracleSide::Refused { .. }) => {}
         (
             LexLeanSide::Eligible(accepted),
@@ -1918,8 +1954,11 @@ pub fn judge(diffs: &[Diff], table: &KnownDifferences) -> Judgement {
 pub struct NonOverlap {
     /// The registry construct.
     pub key: String,
-    /// `not-runtime` for a construct no runtime value realizes, or
-    /// `oracle-refuses` for one the oracle refuses on its probe.
+    /// `not-runtime` for a construct no runtime value realizes,
+    /// `oracle-refuses` for one the oracle refuses on its probe,
+    /// `oracle-breaks` for one the oracle takes but whose crate rustc
+    /// rejects, and `instantiated` for a construct that no root's closure
+    /// holds because it is instantiated before it is realized.
     pub kind: String,
     /// The registry's disposition of the construct, for `not-runtime`.
     #[serde(default)]
@@ -1928,7 +1967,8 @@ pub struct NonOverlap {
     /// `oracle-refuses`.
     #[serde(default)]
     pub probe: Option<String>,
-    /// The kind of refusal the oracle gives the probe, for `oracle-refuses`.
+    /// The kind of refusal the oracle gives the probe (`does-not-compile`
+    /// for `oracle-breaks`).
     #[serde(default)]
     pub refusal: Option<String>,
     /// `construct` when the probe realizes this construct alone (besides the
@@ -1994,7 +2034,7 @@ impl NonOverlapTable {
                         return Err(format!("`{}` states no disposition", row.key));
                     }
                 }
-                "oracle-refuses" => {
+                "oracle-refuses" | "oracle-breaks" | "instantiated" => {
                     if row.probe.is_none() || row.refusal.is_none() || row.scope.is_none() {
                         return Err(format!(
                             "`{}` names no probe, refusal, or scope",
@@ -2049,16 +2089,24 @@ pub fn registry() -> BTreeMap<String, String> {
 #[must_use]
 pub fn coverage(
     registry: &BTreeMap<String, String>,
-    roots: &[RootRun],
+    run: &Run,
     table: &NonOverlapTable,
 ) -> Coverage {
+    let roots = &run.roots;
     let mut out = Coverage::default();
     let by_root: BTreeMap<&str, &RootRun> = roots.iter().map(|run| (run.root.as_str(), run)).collect();
-    for run in roots {
-        if let (LexLeanSide::Eligible(accepted), OracleSide::Generated { .. }) =
-            (&run.lexlean, &run.oracle)
-        {
-            out.overlapping.extend(accepted.constructs.iter().cloned());
+    let mut realized: BTreeSet<String> = BTreeSet::new();
+    for root in roots {
+        if let LexLeanSide::Eligible(accepted) = &root.lexlean {
+            realized.extend(accepted.constructs.iter().cloned());
+            // A construct overlaps when a root that realizes it was taken by
+            // the oracle, built, and compared: an oracle crate that does not
+            // compile exercises nothing.
+            if matches!(root.oracle, OracleSide::Generated { .. })
+                && matches!(run.executed.get(&root.root), Some(Ok(_)))
+            {
+                out.overlapping.extend(accepted.constructs.iter().cloned());
+            }
         }
     }
     for row in &table.construct {
@@ -2068,62 +2116,66 @@ pub fn coverage(
                 .push(format!("`{}` is listed but is not a construct of the registry", row.key));
             continue;
         };
-        match row.kind.as_str() {
-            "not-runtime" => {
-                if Some(disposition) != row.disposition.as_ref() || disposition == "runtime" {
-                    out.problems.push(format!(
-                        "`{}` is listed as {:?}, and the registry's disposition is `{disposition}`",
-                        row.key, row.disposition
-                    ));
-                }
+        if row.kind == "not-runtime" {
+            if Some(disposition) != row.disposition.as_ref() || disposition == "runtime" {
+                out.problems.push(format!(
+                    "`{}` is listed as {:?}, and the registry's disposition is `{disposition}`",
+                    row.key, row.disposition
+                ));
             }
-            _ => {
-                if disposition != "runtime" {
-                    out.problems.push(format!(
-                        "`{}` is listed as refused by the oracle but its disposition is `{disposition}`",
-                        row.key
-                    ));
-                    continue;
-                }
-                if out.overlapping.contains(&row.key) {
-                    out.problems.push(format!(
-                        "`{}` is listed as outside the overlap but a root the oracle accepted realizes it",
-                        row.key
-                    ));
-                }
-                let probe = row.probe.as_deref().unwrap_or_default();
-                match by_root.get(probe) {
-                    None => out
-                        .problems
-                        .push(format!("`{}`: the probe `{probe}` is not a root of the corpus", row.key)),
-                    Some(run) => match (&run.lexlean, &run.oracle) {
-                        (LexLeanSide::Eligible(accepted), OracleSide::Refused { kind, .. }) => {
-                            if !accepted.constructs.contains(&row.key) {
-                                out.problems.push(format!(
-                                    "`{}`: the probe `{probe}` does not realize it",
-                                    row.key
-                                ));
-                            }
-                            if Some(kind) != row.refusal.as_ref() {
-                                out.problems.push(format!(
-                                    "`{}`: the oracle refuses `{probe}` as `{kind}`, not as `{:?}`",
-                                    row.key, row.refusal
-                                ));
-                            }
-                        }
-                        _ => out.problems.push(format!(
-                            "`{}`: the oracle no longer refuses the probe `{probe}`",
-                            row.key
-                        )),
-                    },
-                }
+            continue;
+        }
+        if disposition != "runtime" {
+            out.problems.push(format!(
+                "`{}` is listed as outside the overlap by the oracle but its disposition is `{disposition}`",
+                row.key
+            ));
+            continue;
+        }
+        if out.overlapping.contains(&row.key) {
+            out.problems.push(format!(
+                "`{}` is listed as outside the overlap but a root the oracle accepted and compared realizes it",
+                row.key
+            ));
+        }
+        let probe = row.probe.as_deref().unwrap_or_default();
+        let Some(run_of_probe) = by_root.get(probe) else {
+            out.problems
+                .push(format!("`{}`: the probe `{probe}` is not a root of the corpus", row.key));
+            continue;
+        };
+        let LexLeanSide::Eligible(accepted) = &run_of_probe.lexlean else {
+            out.problems
+                .push(format!("`{}`: LexLean no longer takes the probe `{probe}`", row.key));
+            continue;
+        };
+        if row.kind == "instantiated" {
+            if realized.contains(&row.key) {
+                out.problems.push(format!(
+                    "`{}` is listed as instantiated before realization but a root's closure holds it",
+                    row.key
+                ));
             }
+        } else if !accepted.constructs.contains(&row.key) {
+            out.problems
+                .push(format!("`{}`: the probe `{probe}` does not realize it", row.key));
+        }
+        let observed = match (&run_of_probe.oracle, run.executed.get(probe)) {
+            (OracleSide::Refused { kind, .. }, _) => kind.clone(),
+            (OracleSide::Generated { .. }, Some(Err(_))) => "does-not-compile".to_owned(),
+            (OracleSide::Generated { .. }, _) => "accepted".to_owned(),
+        };
+        if Some(&observed) != row.refusal.as_ref() {
+            out.problems.push(format!(
+                "`{}`: the oracle's answer on `{probe}` is `{observed}`, not `{:?}`",
+                row.key, row.refusal
+            ));
         }
     }
     for (key, disposition) in registry {
         if !out.listed.contains(key) && !out.overlapping.contains(key) {
             out.problems.push(format!(
-                "`{key}` ({disposition}) is exercised by no root the oracle accepts and is in no row of the table of known non-overlap"
+                "`{key}` ({disposition}) is exercised by no root the oracle accepts and compares and is in no row of the table of known non-overlap"
             ));
         }
     }
@@ -2255,7 +2307,7 @@ pub fn corpus_run() -> &'static Result<Run, Unavailable> {
         let roots = survey(oracle)?;
         let surveyed = start.elapsed().as_secs_f64();
         let refs: Vec<&RootRun> = roots.iter().collect();
-        let executed = execute(&refs, &BTreeMap::new(), true);
+        let executed = execute(&refs, true);
         let mut timings = BTreeMap::new();
         timings.insert("acquire".to_owned(), acquired);
         timings.insert("survey".to_owned(), surveyed - acquired);
@@ -2267,6 +2319,30 @@ pub fn corpus_run() -> &'static Result<Run, Unavailable> {
             timings,
         })
     })
+}
+
+/// What a gate does with the oracle's run.
+#[derive(Debug)]
+pub enum Gate<'a> {
+    /// The oracle ran: the case validates against it.
+    Run(&'a Run),
+    /// The oracle did not run on a host that does not require it: the case
+    /// says it did not validate.
+    NotValidated(String),
+    /// The oracle did not run on the normative host: the case fails.
+    Fail(String),
+}
+
+/// Decide what the oracle's run means to a gate on a host.
+#[must_use]
+pub fn decide(normative: bool, run: &Result<Run, Unavailable>) -> Gate<'_> {
+    match run {
+        Ok(run) => Gate::Run(run),
+        Err(reason) if normative => Gate::Fail(format!(
+            "the oracle is unavailable ({reason}); that is not a validation, and on the normative host it fails the gate (§17.19)"
+        )),
+        Err(reason) => Gate::NotValidated(reason.to_string()),
+    }
 }
 
 /// The run, when this host can have one.
@@ -2285,15 +2361,223 @@ pub fn gate(id: &str) -> Option<&'static Run> {
         eprintln!("{id}: NOT VALIDATED: this host has no pinned Lean toolchain, so the oracle did not run (§8.3)");
         return None;
     }
-    match corpus_run() {
-        Ok(run) => Some(run),
-        Err(reason) => {
-            assert!(
-                !support::normative_host(),
-                "{id}: the oracle is unavailable ({reason}); that is not a validation, and on the normative host it fails the gate (§17.19)"
-            );
+    match decide(support::normative_host(), corpus_run()) {
+        Gate::Run(run) => Some(run),
+        Gate::Fail(reason) => panic!("{id}: {reason}"),
+        Gate::NotValidated(reason) => {
             eprintln!("{id}: NOT VALIDATED: {reason}");
             None
         }
     }
+}
+
+
+// ---- planted discrepancies and other renderings ---------------------------------
+
+/// `run` with the source of the oracle's crate replaced by `edit` of it, and
+/// the contract read again from the edited source.
+///
+/// # Errors
+///
+/// A reason when the root has no oracle crate, when the edit does not apply
+/// (a plant that changes nothing plants nothing), or when the edited source
+/// has no signature for the root.
+pub fn planted(run: &RootRun, edit: &dyn Fn(&str) -> Option<String>) -> Result<RootRun, String> {
+    let OracleSide::Generated { ir, package, .. } = &run.oracle else {
+        return Err(format!("{} has no oracle crate", run.root));
+    };
+    let source = String::from_utf8_lossy(&package["src/lib.rs"]).into_owned();
+    let edited = edit(&source).ok_or_else(|| format!("the edit does not apply to {}", run.root))?;
+    if edited == source {
+        return Err(format!("the edit changes nothing in {}", run.root));
+    }
+    let parsed = read_ir(ir)?;
+    let (contract, signature) = oracle_contract(&parsed, run.function(), &edited)?;
+    let mut package = package.clone();
+    package.insert("src/lib.rs".to_owned(), edited.into_bytes());
+    Ok(RootRun {
+        oracle: OracleSide::Generated {
+            ir: ir.clone(),
+            package,
+            contract,
+            signature,
+        },
+        ..run.clone()
+    })
+}
+
+/// The differences of each of `runs`, built and run together: a run whose
+/// oracle crate no longer states the contract of its IR or of LexLean is not
+/// run, since its harness would not be calling what the root's contract says.
+#[must_use]
+pub fn evaluate(runs: &[RootRun]) -> Vec<Vec<Diff>> {
+    let runnable: Vec<&RootRun> = runs
+        .iter()
+        .filter(|run| match (&run.lexlean, &run.oracle) {
+            (LexLeanSide::Eligible(accepted), OracleSide::Generated { contract, .. }) => {
+                contract.drift.is_empty()
+                    && contract.parameters == accepted.contract.parameters
+                    && contract.result == accepted.contract.result
+            }
+            _ => false,
+        })
+        .collect();
+    let executed = execute(&runnable, false);
+    runs.iter()
+        .map(|run| differences(run, executed.get(&run.root)))
+        .collect()
+}
+
+/// What LexLean's rendering of a root, or another rendering of it, did on the
+/// root's inputs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Rendered {
+    /// The printed outcome of each input.
+    pub outcomes: Vec<Json>,
+    /// The work the runtime counted over all of them.
+    pub work: u64,
+}
+
+/// Build `files` as a crate exporting `root(..)` with the interface of
+/// LexLean's package of `accepted`, run it on the root's inputs, and return
+/// what it printed.
+///
+/// # Errors
+///
+/// The build error when the crate does not provide the interface: a changed
+/// width or result type is refused here, by rustc, before any outcome.
+///
+/// # Panics
+///
+/// Panics when the harness cannot be written, which is a defect of this
+/// module.
+pub fn render_candidate(
+    accepted: &Accepted,
+    profile: &str,
+    files: &BTreeMap<String, Vec<u8>>,
+) -> Result<Rendered, String> {
+    use crate::rust_build::{cargo_in, workspace, Built};
+    let program = &accepted.program;
+    let passing = vec![Passing::Own; program.functions[0].types.len()];
+    let arguments: Vec<Vec<Value>> = accepted.cases.iter().map(|case| case.values.clone()).collect();
+    let calls = [crate::rust_harness::Calls {
+        entry: 0,
+        function: "root",
+        passing: &passing,
+        arguments: &arguments,
+    }];
+    let harness = crate::rust_harness::render_calls(
+        program,
+        Profile::named(profile).expect("a profile"),
+        "candidate",
+        &calls,
+    )
+    .expect("the harness is written");
+    let dir = tempfile::Builder::new()
+        .prefix("lexlean-oracle-candidate-")
+        .tempdir()
+        .map_err(|error| error.to_string())?;
+    workspace(
+        dir.path(),
+        &[Built {
+            name: "candidate".to_owned(),
+            files: files.clone(),
+            harness,
+        }],
+    );
+    let build = cargo_in(dir.path(), &["build", "--offline", "--workspace"]);
+    if !build.status.success() {
+        return Err(build_errors(&String::from_utf8_lossy(&build.stderr), "p/candidate"));
+    }
+    let ran = std::process::Command::new(
+        dir.path()
+            .join("target/debug")
+            .join(format!("run_candidate{}", std::env::consts::EXE_SUFFIX)),
+    )
+    .output()
+    .map_err(|error| error.to_string())?;
+    if !ran.status.success() {
+        return Err(format!(
+            "the candidate ended the run with {:?}",
+            ran.status.code()
+        ));
+    }
+    let stdout = String::from_utf8_lossy(&ran.stdout).into_owned();
+    let mut outcomes = Vec::new();
+    let mut work = 0;
+    for line in stdout.lines() {
+        match line.strip_prefix("work ") {
+            Some(count) => work = count.parse().map_err(|e: std::num::ParseIntError| e.to_string())?,
+            None => outcomes.push(serde_json::from_str(line).map_err(|e| e.to_string())?),
+        }
+    }
+    Ok(Rendered { outcomes, work })
+}
+
+/// LexLean's own package of a root: its `Cargo.toml`, `src/lib.rs`, and
+/// provenance, for the profile named.
+///
+/// # Panics
+///
+/// Panics when the renderer refuses a root it rendered before.
+#[must_use]
+pub fn lexlean_package(accepted: &Accepted, profile: &str) -> BTreeMap<String, Vec<u8>> {
+    let manifest = Manifest {
+        spec: MANIFEST_SPEC.to_owned(),
+        name: "candidate".to_owned(),
+        version: "1.0.0".to_owned(),
+        profile: profile.to_owned(),
+        program: accepted.program.clone(),
+        exports: vec![Export {
+            function: 0,
+            name: "root".to_owned(),
+            parameters: vec![Passing::Own; accepted.program.functions[0].types.len()],
+            errors: if accepted.contract.failure {
+                Errors::Overflow
+            } else {
+                Errors::None
+            },
+        }],
+        sources: Vec::new(),
+    };
+    package(&manifest)
+        .unwrap_or_else(|reason| panic!("LexLean renders the root: {reason}"))
+        .files
+}
+
+/// Whether a rendering of a root is accepted: it prints, on every input, the
+/// outcome the interpreter gives, and does no more work than the baseline.
+///
+/// # Errors
+///
+/// The first way it is not: it does not build against the interface, an
+/// outcome differs, or it counts more work than `baseline`.
+pub fn accept_rendering(
+    accepted: &Accepted,
+    rendering: &Rendered,
+    baseline: &Rendered,
+) -> Result<(), String> {
+    if rendering.outcomes.len() != accepted.cases.len() {
+        return Err(format!(
+            "{} outcomes for {} inputs",
+            rendering.outcomes.len(),
+            accepted.cases.len()
+        ));
+    }
+    for (case, got) in accepted.cases.iter().zip(&rendering.outcomes) {
+        let expected = lexlean::calculus::rust::observable(&case.outcome).expect("observable");
+        if *got != expected {
+            return Err(format!(
+                "on {:?} the rendering prints {got} where the interpreter has {expected}",
+                case.arguments
+            ));
+        }
+    }
+    if rendering.work > baseline.work {
+        return Err(format!(
+            "the rendering counts {} units of work, more than the {} of LexLean's own",
+            rendering.work, baseline.work
+        ));
+    }
+    Ok(())
 }

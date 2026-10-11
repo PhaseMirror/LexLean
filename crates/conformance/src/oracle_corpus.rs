@@ -189,7 +189,7 @@ pub fn probes() -> Vec<Probe> {
         BOTH,
     ));
     out.push(one(
-        &["type.int", "term.integer", "primitive.negate"],
+        &["type.int", "primitive.negate"],
         "ProbeInt",
         "intRoot",
         vec![param("a", scalar_t("int"))],
@@ -216,6 +216,26 @@ pub fn probes() -> Vec<Probe> {
             BOTH,
         ));
     }
+    for (module, name, key, selector) in [
+        ("ProbeFirst", "firstRoot", "term.first", "first"),
+        ("ProbeSecond", "secondRoot", "term.second", "second"),
+    ] {
+        let keys: &'static [&'static str] = if selector == "first" {
+            &["term.first"]
+        } else {
+            &["term.second"]
+        };
+        let _ = key;
+        out.push(one(
+            keys,
+            module,
+            name,
+            vec![param("p", product_t(nat_t(), nat_t()))],
+            nat_t(),
+            json!({"kind": selector, "value": var("p")}),
+            BOTH,
+        ));
+    }
     out.push(one(
         &["primitive.checked_convert"],
         "ProbeConvert",
@@ -226,7 +246,7 @@ pub fn probes() -> Vec<Probe> {
         BOTH,
     ));
     out.push(one(
-        &["term.lambda", "term.apply", "type.function"],
+        &["term.lambda", "term.apply"],
         "ProbeLambda",
         "lambdaRoot",
         vec![param("x", nat_t())],
@@ -243,7 +263,7 @@ pub fn probes() -> Vec<Probe> {
         BOTH,
     ));
     out.push(Probe {
-        keys: &["term.function_ref"],
+        keys: &["term.function_ref", "type.function"],
         module: "ProbeFunctionRef",
         root: "referenceRoot",
         declarations: vec![
