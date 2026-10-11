@@ -1092,9 +1092,9 @@ the constant, a fraction of 0 (nothing is heavy) and a huge one (everything
 is):
 
 ```text
-thread 'verify::resource_tests::a_heartbeat_verdict_is_a_limit_only_for_a_heavy_module' (25315) panicked at crates/lexlean/src/verify/mod.rs:2604:73:
+thread 'verify::resource_tests::a_heartbeat_verdict_is_a_limit_only_for_a_heavy_module' (25315) panicked at crates/lexlean/src/verify/mod.rs:2591:73:
 a limit
-thread 'verify::resource_tests::a_heartbeat_verdict_is_a_limit_only_for_a_heavy_module' (25377) panicked at crates/lexlean/src/verify/mod.rs:2601:9:
+thread 'verify::resource_tests::a_heartbeat_verdict_is_a_limit_only_for_a_heavy_module' (25377) panicked at crates/lexlean/src/verify/mod.rs:2588:9:
 assertion failed: resource_death("M.R0", 1, HEARTBEATS, 5_000, &limits()).is_none()
 ```
 
@@ -5411,7 +5411,7 @@ was removed.
   conformance -- conformance_vr_21`:
 
   ```text
-  thread 'conformance_vr_21' panicked at crates/conformance/src/cases/operational.rs:243:5:
+  thread 'conformance_vr_21' panicked at crates/conformance/src/cases/operational.rs:312:5:
   assertion `left == right` failed: and are consumed in item order
     left: [3, 2, 1, 0]
    right: [0, 1, 2, 3]
@@ -5438,7 +5438,7 @@ was removed.
   `conformance_vr_21`:
 
   ```text
-  thread 'conformance_vr_21' panicked at crates/conformance/src/cases/operational.rs:479:5:
+  thread 'conformance_vr_21' panicked at crates/conformance/src/cases/operational.rs:500:5:
   three attempts at width 3 never overlapped two members of a three-wide frontier: the width is not applied
   ```
 
