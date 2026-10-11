@@ -139,3 +139,31 @@ Feature: verification
     Then every native source module has exactly one generated Lean module
     And public imports stay within Init and the generated graph and the only backend-support import is Lean
     And no independently authored Atlas Lean source remains
+
+  @VR-20 @build
+  Scenario: The verifier process width is an operational resource profile selected only by the environment, defaulting to 1 and refusing any malformed value with LLV7017, and it enters no lock, identity, or verified artifact.
+    Given the width profile parser and the committed nat-add-zero example project
+    When LEXLEAN_VERIFY_WIDTH is unset, empty, 1, 64, 0, 65, +2, 2.0, or two
+    Then the first four select the default or the stated width and the rest fail with LLV7017
+    And neither lexlean.toml, the lock, nor any identity records the width
+
+  @VR-21 @build
+  Scenario: A multi-module project whose imports form nontrivial frontiers verifies at width 1 and at a larger width to byte-identical verified directories and the same attestation identity, observed axiom sets, and policy rows, and no completion order orders a record or changes which failure is reported.
+    Given the committed peano-arithmetic example whose imports form frontiers of one, three and one modules
+    When it is verified at width 1 and at width 3
+    Then the two verified directories are byte-identical and the attestation IDs are equal
+    And jobs that finish in reverse order are consumed in item order and the first failure in item order is the one reported
+
+  @VR-22 @build
+  Scenario: Performance telemetry is written only to the CI evidence directory the environment names, a verification with telemetry on publishes byte-identical artifacts to one without, and telemetry planted in a verified artifact fails the gate.
+    Given the committed nat-add-zero example project and a telemetry directory
+    When it is verified with and without telemetry
+    Then the verified directories are byte-identical and the telemetry directory holds stage, frontier and process lines of the closed vocabulary
+    And a verified directory in which a telemetry key is planted is refused
+
+  @VR-23 @build
+  Scenario: The width measurement accepts a candidate width only when its verified evidence equals width 1's and its peak memory stays inside the envelope, and reports the wall-time reduction against the 25 percent criterion without asserting it.
+    Given measurements of widths 1, 2, and 3 of one example
+    When the measurement verdict is taken
+    Then a width whose evidence differs, or whose peak memory leaves the envelope, is never selected
+    And the reduction against width 1 is reported with the 25 percent criterion marked met or not met

@@ -622,9 +622,9 @@ fmt-check   cargo fmt --all -- --check
 model       cargo xtask validate-model
 spec-links  cargo xtask validate-spec-links
 lint        cargo clippy --workspace --all-targets --all-features -- -D warnings
-test        cargo test --workspace --all-features
+test        cargo test --workspace --exclude repo-conformance --all-features
 features    cargo check --workspace --all-features --all-targets
-bdd         cargo test -p repo-conformance --test bdd
+bdd         cargo test -p repo-conformance --all-features
 examples    cargo xtask verify-examples
 golden      cargo xtask check-golden
 repro       cargo xtask check-reproducibility
@@ -632,7 +632,7 @@ deny        cargo deny --all-features check
 vv          all recipes above, in order
 ```
 
-`test` runs every test target of every workspace crate, the conformance tests of `repo-conformance` among them, and `bdd` runs that crate's meta-gate target alone, so that no conformance test runs twice in `vv`. `just model-write` regenerates `CONFORMANCE.md` and `ERRORS.md`. Golden files are rewritten only by the explicit `just golden-write` recipe. No acceptance recipe rewrites source or expected output.
+`test` runs every test target of every workspace crate except `repo-conformance`, and `bdd` is the sole owner of the complete `repo-conformance` suite: its library tests and doctests, its `conformance` target (one test per registered ID, §27.8), and its `bdd` meta-gate target. The two phases partition the workspace test set: a test inventory (RP-13) lists the tests of `cargo test --workspace --all-features`, of `test`, and of `bdd`, and requires the last two to be disjoint and their union to equal the first, so that no test is lost and none runs twice in `vv`. The honesty workflow (§9.4) runs the meta-gate target alone, as a separate signal that is not part of `vv`. `just model-write` regenerates `CONFORMANCE.md` and `ERRORS.md`. Golden files are rewritten only by the explicit `just golden-write` recipe. No acceptance recipe rewrites source or expected output.
 
 ### 9.3 Development container
 
@@ -650,6 +650,10 @@ Its post-create command MUST install the pinned Lean toolchain explicitly and MU
 ### 9.4 Continuous integration
 
 `ci.yml` MUST run `just vv` from a clean checkout on Linux x86-64. It MUST install the exact Rust toolchain, Lean 4.32.1 through `elan`, `just`, and `cargo-deny`.
+
+The job's runner and verifier width are operational, not part of the gate's meaning. `ci.yml` takes the runner label from the manual-dispatch input `runner`, else the repository variable `LEXLEAN_VV_RUNNER`, else `ubuntu-24.04`; it takes the verification process width (§22.11) from the input `width`, else the repository variable `LEXLEAN_VV_WIDTH`, else `1`, and exports it as `LEXLEAN_VERIFY_WIDTH`. A width above 1 is accepted only when the repository variable `LEXLEAN_VV_MIN_MEMORY_MB` declares the memory, in MiB, of the runner profile the width was measured on, and the runner's total memory is at least that; `cargo xtask check-vv-profile` refuses the job otherwise, before any build. The job has no path filter, no cache of a build directory, object, verification tree, attestation, or proof result, and no condition that skips a recipe of `just vv`; it starts from a clean checkout with the exact pinned toolchains whatever the runner. It uploads `ci-evidence/`: the gate log, the host's memory and swap samples, the verifier's performance telemetry (§22.12), and a summary of the wall time of each recipe, each verification stage, and the slowest modules and audit members, with the peak resident set and swap of the proof processes. None of it is an input of any recipe.
+
+`.github/workflows/width-measurement.yml` is a manual-dispatch workflow outside the acceptance gate. It runs `cargo xtask measure-width` for one example (by default `uor-atlas`) at ascending widths on the runner it is dispatched on, and uploads the evidence: for each width the wall time, the peak resident set and swap of the verifier's process tree, the lowest free memory seen, the attestation ID, and the digest of the verified directory; whether every width's evidence equals width 1's; the highest width whose evidence is identical and whose memory stayed inside the envelope; and the wall-time reduction of that width against width 1 with the 25 percent criterion applied to it. A candidate width is started only if no earlier width failed or left the envelope, and a running candidate is stopped when free memory falls below the floor the tool states. A measurement is evidence of execution speed on one runner, never a claim about a semantic property.
 
 `honesty.yml` MUST run the model/honesty gate separately so claim drift is distinguishable from code failure.
 
@@ -6202,6 +6206,25 @@ the source path, nor the host. The attestation records the byte length and
 SHA-256, and the normalized verification records include the input, the
 driver, and its process record.
 
+### 22.11 Verification resource profile
+
+How many `lean`, `leanchecker`, and audit processes `verify` runs at once is an operational resource profile, never an input of verification. Its one parameter is the verification process width `W`, an integer from 1 to 64. It is selected only by the environment variable `LEXLEAN_VERIFY_WIDTH`, a decimal integer without sign or space; an unset or empty variable selects the default `W = 1`, the conservative profile, and any other value fails as `LLV7017` before any stage runs. The width is not a field of `lexlean.toml`, the lock, a request, or the command line, it is not recorded by any artifact, and it enters no source, semantic, build, or attestation ID: a project verifies to the same artifacts at every width.
+
+The profile changes how processes are scheduled and nothing else:
+
+1. Module elaboration (§22.3) proceeds in topological frontiers of the import graph. A module is elaborated only after every module it imports has been elaborated and its `.olean` produced by a successful process, so the import barriers hold at every width; the members of one frontier may run together, at most `W` at a time, and the next frontier starts when every member of the previous one has finished.
+2. Replay (§22.4) starts when every elaboration has finished and audit (§22.5) when every replay has finished: no replay overlaps an audit member, and neither overlaps an elaboration. The replays of different modules read the staged `.olean` files and write none, and the audit members each import one generated module and write none, so within each of those two stages the processes are independent and at most `W` run together.
+3. Results are consumed in the canonical order and never in completion order: the members of a frontier in module-declaration order, replays in sorted full module name, audit members in the order of the audit family. The process records, the staged files, the merge of the observed axiom sets, the policy rows, and the attestation body are functions of that order. When several processes fail, the diagnostic reported is the one of the first failing process in that order, which is the diagnostic width 1 reports; no process is started after a failure is known, and every process started is finished before `verify` returns.
+4. The verifier does not measure the host. A width the host's memory cannot hold is a failure of that host's run, never a verification result; a width above 1 is selected only for a host whose memory envelope has been measured (§9.4).
+
+For every project, the directory published at width `W` equals, byte for byte, the directory published at width 1 on the same host and toolchain; in particular the attestation ID, the observed axiom sets, the policy rows, the canonical compiler input, and every normalized verification record (§29.5) are identical.
+
+### 22.12 Performance telemetry
+
+Wall time, resident-set and swap measurements, scheduling and completion order, and the host's memory and processor count depend on the host. `lexlean verify` records them only when the environment variable `LEXLEAN_CI_TELEMETRY` names a directory, as JSON lines appended to `verify-telemetry.jsonl` in it: one line for the start of a verification, one for each stage, each frontier of module elaboration, and each process (with the peak resident set and swap of the process and what it started, where the host exposes them), and one for the end. `cargo xtask verify-examples` appends one line per example to `examples-telemetry.jsonl` of the same directory. The directory is CI evidence, `ci-evidence/` in CI (§9.4).
+
+Telemetry is write-only: no stage reads it, no ID or verified artifact contains any of it, and a failure to write it changes no result. Every key it uses is in a closed vocabulary (`wall_ms`, `started_unix_ms`, `peak_rss_kib`, `peak_swap_kib`, `mem_total_kib`, `mem_available_kib`, `swap_total_kib`, `swap_used_kib`, `host_cpus`, `process_width`, `completion_seq`), and a JSON key of that vocabulary anywhere in a verified directory fails the gate: `cargo xtask verify-examples` checks every example's verified directory for one.
+
 ---
 
 ## 23. Command-line interface
@@ -6222,7 +6245,7 @@ Global options:
 --help
 ```
 
-No environment variable changes semantic configuration.
+No environment variable changes semantic configuration. Two operational variables exist and change no output: `LEXLEAN_VERIFY_WIDTH` selects the verification process width (§22.11) and `LEXLEAN_CI_TELEMETRY` names the directory that receives performance telemetry (§22.12).
 
 ### 23.2 Project discovery
 
@@ -6699,6 +6722,7 @@ The initial registry MUST include at least these exact codes and meanings:
 | `LLV7014` | Preservation environment drift (§17.17). |
 | `LLV7015` | Certificate B rejected (§17.17). |
 | `LLV7016` | Certificate E rejected (§17.17). |
+| `LLV7017` | Invalid verification resource profile (§22.11). |
 | `LLS8001` | Path escape, symlink, special file, or filesystem identity conflict. |
 | `LLS8002` | Explicit resource limit exceeded: a project limit or an evaluator's declared capacity (§17.15). |
 | `LLS8003` | Network operation attempted outside permitted lock acquisition. |
@@ -6896,6 +6920,8 @@ expect_artifacts = true
 ```
 
 A fixture may contain multiple invocations only when its conformance statement explicitly concerns sequence behavior, such as stale-lock detection. Such a fixture uses sorted `[[invocation]]` rows.
+
+A fixture whose subject is an operational environment variable (§23.1) states it in an optional `[environment]` table of string values, which holds while its invocations run.
 
 Expected process-dependent hashes are stored separately from platform-independent golden hashes.
 
@@ -7393,6 +7419,8 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `RP-10` | `repository` | The embedded compiler-semantics ID equals a clean recomputation from normative language and schema inputs. | §21.2 |
 | `RP-11` | `repository` | Every public README capability claim is tied to a registered model ID and honesty level. | §27 |
 | `RP-12` | `repository` | A release is refused unless the complete release criterion and all required artifacts are satisfied. | §30 |
+| `RP-13` | `repository` | The ordinary workspace test phase excludes repo-conformance, the bdd phase alone runs its complete suite, and a test inventory proves that the two phases together equal the whole workspace test set with no test lost and none run twice. | §9.2 |
+| `RP-14` | `repository` | The normative CI job takes its runner and verifier width from variables with the defaults ubuntu-24.04 and width 1, accepts a width above 1 only on a runner at or above its declared memory envelope, and keeps no cache, path filter, or skipped recipe. | §9.4 |
 | `CF-01` | `configuration-lock` | Project configuration accepts exactly the project/1 schema and rejects unknown or missing fields. | §10.1 |
 | `CF-02` | `configuration-lock` | Every operational limit is explicit, positive, parsed with checked arithmetic, and has no hidden default. | §10.2 |
 | `CF-03` | `configuration-lock` | Configured paths resolve within the project under the specified UTF-8 and nonsymlink rules. | §10.1, §25.1 |
@@ -7583,6 +7611,10 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `VR-17` | `verification` | Lean workspace configuration and manifest hashes must match the lock and all dependencies must be locally available. | §10.4, §22.2 |
 | `VR-18` | `verification` | Check and build results never claim verified or kernel-checked status. | §5.3 |
 | `VR-19` | `verification` | The native Atlas source graph is self-contained: every generated Atlas module publicly depends only on Init and the generated graph, its only backend-support import is Lean, and no independently authored Atlas implementation exists. | §10.4, §17.10, §22.2 |
+| `VR-20` | `verification` | The verifier process width is an operational resource profile selected only by the environment, defaulting to 1 and refusing any malformed value with LLV7017, and it enters no lock, identity, or verified artifact. | §22.11, §23.1 |
+| `VR-21` | `verification` | A multi-module project whose imports form nontrivial frontiers verifies at width 1 and at a larger width to byte-identical verified directories and the same attestation identity, observed axiom sets, and policy rows, and no completion order orders a record or changes which failure is reported. | §22.3, §22.4, §22.11 |
+| `VR-22` | `verification` | Performance telemetry is written only to the CI evidence directory the environment names, a verification with telemetry on publishes byte-identical artifacts to one without, and telemetry planted in a verified artifact fails the gate. | §22.12 |
+| `VR-23` | `verification` | The width measurement accepts a candidate width only when its verified evidence equals width 1's and its peak memory stays inside the envelope, and reports the wall-time reduction against the 25 percent criterion without asserting it. | §9.4, §22.11 |
 | `CL-01` | `cli-api` | Global options and upward project discovery obey the exact CLI contract. | §23.1, §23.2 |
 | `CL-02` | `cli-api` | Init creates the complete canonical skeleton only in an absent or empty destination and never overwrites. | §23.4 |
 | `CL-03` | `cli-api` | Lock check, local update, and explicit network acquisition obey their exact mutually exclusive behavior. | §23.4 |
@@ -7697,7 +7729,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `RS-13` | `reasoning` | GNAF requests over forward-chaining plans of the clinical rule base charge rule search as execution in calculus steps and are answered over their declared plans, each plan computes on every patient of the request's domain the level the oracle's Triage derives from the same findings as the kernel decides, and a request whose search is charged nothing or whose universe is the candidates a search discovered is refused. | §17.15 |
 | `RS-14` | `reasoning` | The committed reasoning example verifies a multi-step clinical forward derivation with its invariant and termination, a generic terminating countdown, a deduplicating breadth-first planner, a depth-first search and a generate-and-verify reasoner over model-generated candidates, and an answer proved correct with its check erased, with every generated theorem kernel-checked, and planting a rule-threshold mutation in it is refused by verification. | §17.12, §28.6 |
 
-**Total required capability IDs:** 315.
+**Total required capability IDs:** 321.
 
 No row may be downgraded to `some-true` or `open`. Upstream Lean facts are ledger/authority rows, not substitutions for these build behaviors.
 

@@ -86,3 +86,18 @@ Feature: repository
     Then release is refused and one refusal reason names source-tag
     And the criteria include source-tag, checksums, host-binaries, crate-package, semantics-id, conformance-doc, errors-doc, spec, licenses, sbom, and ci-evidence
     And the Justfile release recipe depends on vv and runs `cargo xtask release-check`
+
+  @RP-13 @build
+  Scenario: The ordinary workspace test phase excludes repo-conformance, the bdd phase alone runs its complete suite, and a test inventory proves that the two phases together equal the whole workspace test set with no test lost and none run twice.
+    Given the Justfile test and bdd recipes and the test list of cargo test --workspace --all-features
+    When the test lists of the test recipe and of the bdd recipe are taken
+    Then the two lists are disjoint and their union equals the workspace list
+    And no test of repo-conformance is in the test recipe's list and every conformance_<id> test is in the bdd recipe's list exactly once
+    And a test recipe that includes repo-conformance, or a bdd recipe that runs fewer targets, fails the inventory
+
+  @RP-14 @build
+  Scenario: The normative CI job takes its runner and verifier width from variables with the defaults ubuntu-24.04 and width 1, accepts a width above 1 only on a runner at or above its declared memory envelope, and keeps no cache, path filter, or skipped recipe.
+    Given .github/workflows/ci.yml and the xtask check-vv-profile decision
+    When the runner and width expressions, the profile decision, and the job steps are read
+    Then the defaults are ubuntu-24.04 and width 1, and a width above 1 without a declared envelope or on a smaller runner is refused
+    And the vv job has no path filter, no cache action, no condition on a recipe, and uploads ci-evidence

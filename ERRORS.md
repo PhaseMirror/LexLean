@@ -417,3 +417,9 @@ Class: `language`. Exit code: 1.
 The composition of a production root's certificates A and B for one of its targets does not compile silently under the pinned Lean, its leanchecker replay fails, or its end-to-end theorem depends on axioms other than exactly Classical.choice, Quot.sound, and propext.
 
 Class: `language`. Exit code: 1.
+
+## `LLV7017` --- Invalid verification resource profile
+
+The operational verification process width the environment selects is not a decimal integer from 1 to 64.
+
+Class: `environment`. Exit code: 3.

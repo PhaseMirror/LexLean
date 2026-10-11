@@ -482,3 +482,10 @@ class = "language"
 exit = 1
 title = "Certificate E rejected"
 statement = "The composition of a production root's certificates A and B for one of its targets does not compile silently under the pinned Lean, its leanchecker replay fails, or its end-to-end theorem depends on axioms other than exactly Classical.choice, Quot.sound, and propext."
+
+[[error]]
+code = "LLV7017"
+class = "environment"
+exit = 3
+title = "Invalid verification resource profile"
+statement = "The operational verification process width the environment selects is not a decimal integer from 1 to 64."
