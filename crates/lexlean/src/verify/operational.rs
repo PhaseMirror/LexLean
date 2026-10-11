@@ -221,24 +221,40 @@ mod tests {
         );
     }
 
+    /// A value that is not Unicode, on the hosts that can hold one.
+    fn not_unicode() -> std::ffi::OsString {
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStringExt;
+            std::ffi::OsString::from_vec(vec![b'3', 0xfe])
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::ffi::OsStringExt;
+            std::ffi::OsString::from_wide(&[0x0033, 0xD800])
+        }
+        #[cfg(not(any(unix, windows)))]
+        {
+            std::ffi::OsString::from("3")
+        }
+    }
+
     /// The environment itself, not only the parser: a non-Unicode value of the
     /// variable is refused by [`Operational::from_environment`]. The variable
     /// is read by nothing else in this test binary, so setting it here races
     /// with no other test.
-    #[cfg(unix)]
     #[test]
     fn the_environment_is_read_as_bytes() {
-        use std::os::unix::ffi::OsStringExt;
-        std::env::set_var(
-            super::WIDTH_VARIABLE,
-            std::ffi::OsString::from_vec(vec![b'3', 0xfe]),
-        );
+        let raw = not_unicode();
+        std::env::set_var(super::WIDTH_VARIABLE, &raw);
         let refused = Operational::from_environment();
         std::env::set_var(super::WIDTH_VARIABLE, "3");
         let accepted = Operational::from_environment();
         std::env::remove_var(super::WIDTH_VARIABLE);
-        assert_eq!(refused.expect_err("not Unicode").code.as_str(), "LLV7017");
         assert_eq!(accepted.expect("3").width(), 3);
+        if raw.to_str().is_none() {
+            assert_eq!(refused.expect_err("not Unicode").code.as_str(), "LLV7017");
+        }
     }
 
     #[test]

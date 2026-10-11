@@ -482,10 +482,18 @@ pub fn render_detail(verifier: &[serde_json::Value], cases: &[serde_json::Value]
         .iter()
         .filter(|event| event["project"].as_str() == Some(project.as_str()))
         .collect();
+    let runs = mine
+        .iter()
+        .filter(|event| event["event"] == "verify_end")
+        .count();
     let _ = write!(
         out,
-        "\n## The longest verification: {project} ({:.0} s)\n\n### Stages\n\n| Stage | Seconds | Lowest free memory (MiB) | Highest swap in use (MiB) | Verifier's own peak (MiB) |\n| --- | ---: | ---: | ---: | ---: |\n",
-        secs(wall)
+        "\n## The longest verification: {project} ({:.0} s; {})\n\n### Stages\n\n| Stage | Seconds | Lowest free memory (MiB) | Highest swap in use (MiB) | Verifier's own peak (MiB) |\n| --- | ---: | ---: | ---: | ---: |\n",
+        secs(wall),
+        match runs {
+            1 => "its only verification".to_owned(),
+            count => format!("rows are summed over its {count} verifications"),
+        }
     );
     let mut stages: std::collections::BTreeMap<String, (u64, Option<u64>, u64, u64)> =
         std::collections::BTreeMap::new();
@@ -665,7 +673,7 @@ vv: the acceptance gate passed
         let detail = super::render_detail(&events, &cases);
         assert!(detail.contains("| VR-21 | 170.0 | true |"), "{detail}");
         assert!(
-            detail.contains("## The longest verification: big (10 s)"),
+            detail.contains("## The longest verification: big (10 s; its only verification)"),
             "{detail}"
         );
         assert!(

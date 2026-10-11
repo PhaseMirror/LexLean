@@ -5169,7 +5169,7 @@ the lists of `test` and `bdd` are disjoint, that their union is the reference's
 list, that no target of `repo-conformance` is in `test`'s list and every one is
 in `bdd`'s (the binaries are those `cargo metadata` names for the package), and
 that `bdd` lists `conformance_<id>` tests at all. On the tree of this change
-(local run): 510 tests, 165 in `test` and 345 in `bdd`, disjoint, none lost.
+(local run): 525 tests, 169 in `test` and 356 in `bdd`, disjoint, none lost.
 
 It is a recipe of `vv`, and not a test, so that it is one gate with one line in
 the log that runs once, in the normative order after both phases, and is not
@@ -5333,50 +5333,58 @@ container (4 vCPU, 15 GB), which is not the runner.
 
 Local, on the reference container (4 vCPU, 15 GB, shared with other jobs, so the
 long figures move by several percent between runs), recipes run in the order of
-`vv` on the tree of this change:
+`vv` on the tree of this change merged with #69:
 
 | Recipe | Took |
 | --- | --- |
-| `fmt-check` | 2 s |
-| `model` | 16 s (warm build) |
+| `model` | 33 s (warm build) |
 | `spec-links` | under 1 s |
-| `test` | 381 s |
-| `features` | under 1 s (warm build) |
-| `bdd` | 3463 s (320 conformance tests, the library tests, the meta-gate) |
-| `inventory` | 8 s: 510 tests, 165 in `test`, 345 in `bdd` |
-| `examples` without `uor-atlas` | 1146 s: the eight small ones 1 to 9 s each, `peano-arithmetic` 7 s, `semantic-1.1` 13 s, `production` 135 s, `models` 182 s, `reasoning` 239 s, `production-coverage` 265 s, `compiler` 269 s |
-| `golden` | 62 s |
-| `repro` | 141 s |
-| `deny` | 5 s |
+| `test` | 387 s |
+| `features` | 25 s (warm build) |
+| `bdd` | 3541 s (330 conformance tests, the library tests, the meta-gate) |
+| `inventory` | 7 s: 525 tests, 169 in `test`, 356 in `bdd` |
+| `examples` without `uor-atlas` | 1218 s: the eight small ones 2 to 8 s each, `peano-arithmetic` 7 s, `semantic-1.1` 13 s, `production` 132 s, `models` 178 s, `reasoning` 234 s, `production-coverage` 281 s, `compiler` 342 s (12 s of it each in `check` and in `build`, which read, link and render the project) |
+| `golden` | 61 s |
+| `repro` | 162 s |
+| `deny` | 1 s |
+
+(`conformance_vr_21` now takes 176 s by itself: the peano pair at widths 1 and 3,
+and the production pair at widths 1 and 2 run together. The longest cases of the
+suite, from `cases-telemetry.jsonl`: `EX-07` 1383 s, `DF-12` 1083 s, `SP-02` 1027 s,
+`GN-02` 943 s, `GC-02` 891 s; 333 cases, 13815 s summed over the four test
+threads.)
 
 `uor-atlas` was not run: its sources, lock, goldens, and width are those of
 `3f9ce42`, and it takes four hours here. Every other example's normalized
 records equalled its committed `expected/verify`, and the scan for telemetry in
 the verified directory passed for each.
 
-With `LEXLEAN_CI_TELEMETRY` set, the `bdd` run recorded its own verifications: 127
-in the one test process (61 reached an attestation; the others are the
-negative cases), 4709 s of verifier wall time summed over the four test
-threads, of which the `certificates` stage is 2968 s (22 verifications of
-`production`-rooted projects, about 100 s of the shipped preservation environment
-each), `elaboration` 1186 s, `replay` 221 s, `audit` 118 s, `extraction` 78 s, and
-`executable-hash` 0.24 s in all, where 61 attestations at 4.6 s each would have
-been about 280 s. Paired runs in one session, same machine: a five-module project,
-11.5 s before and 7.4 s after; the smallest production-rooted project (one root),
-124.8 s before and 114.2 s after (114.0 s with telemetry on: the sampling costs
-nothing measurable). The first complete telemetry of the recipes and of `uor-atlas`
-is the first CI run's.
+With `LEXLEAN_CI_TELEMETRY` set, the `bdd` and `examples` runs recorded their own
+verifications: 142 in all (76 reached an attestation; the others are the negative
+cases), 5716 s of verifier wall time summed over the test threads, of which the
+`certificates` stage is 3550 s (the shipped preservation environment, about
+100 s per verification of a project with a production root), `elaboration` 1464 s,
+`replay` 350 s, `audit` 112 s, `extraction` 89 s, and `executable-hash` 0.43 s in
+all, where 76 attestations at 4.6 s each would have been about 350 s. Paired runs
+in one session, same machine: a five-module project, 11.5 s before and 7.4 s
+after; the smallest production-rooted project (one root), 124.8 s before and
+114.2 s after (114.0 s with telemetry on: the sampling costs nothing
+measurable). The first complete telemetry of the recipes and of `uor-atlas` is the
+first CI run's.
 
 All of them are local: this change was written on the reference container, not
 on the runner, and no runner measurement is claimed. The first complete run of
 `ci.yml` produces the runner's numbers in its `ci-evidence/` (`summary.md`,
-`vv.txt`, `resources.tsv`, `verify-telemetry.jsonl`, `examples-telemetry.jsonl`);
-the before figure for comparison is the 3 h 25 min of the last green run on
-`3f9ce42` recorded above, of which `uor-atlas` is 182.5 minutes and is untouched by
-this change (same sources, same width). The projection is therefore the `vv` of
-`3f9ce42` less the hashing, less the build and link time of the debug builds, and
-less the inventory's ten seconds; the runner's run decides, and a timing is never
-evidence of a semantic claim.
+`vv.txt`, `resources.tsv`, `verify-telemetry.jsonl`, `examples-telemetry.jsonl`,
+`cases-telemetry.jsonl`); the before figures for comparison are those of the last
+green runs on main (3 h 25 min on `3f9ce42`, of which `uor-atlas` is 182.5 minutes
+and is untouched by this change: same sources, same width; the later runs on
+main were reported at 4 h 18 min and 5 h 02 min, and the first run of this branch
+says where the time goes). The
+projection is the `vv` of `9d32a95` less the hashing, less the build and link
+time of the debug builds, plus the inventory's seven seconds and about three
+minutes of CPU for the production pair of `conformance_vr_21`; the runner's run
+decides, and a timing is never evidence of a semantic claim.
 
 ### inventory can fail
 
