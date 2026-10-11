@@ -404,7 +404,6 @@ fn planted_vector() -> Vec<String> {
     );
     *tail = tail["tail"].clone();
     project.write("src/Gnaf.lex.tex", &with_module_data(&text, &data));
-    project.skip_certification();
     let _guard = support::env_shared();
     let error = project.verify_fails_with("LLV7002");
     error

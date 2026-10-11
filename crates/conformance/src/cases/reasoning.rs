@@ -2739,7 +2739,6 @@ fn planted_verification() -> &'static Vec<String> {
             "src/ReasoningFixtures.lex.tex",
             &crate::calculus::reasoning_fixtures_module(&planted_transcriptions()),
         );
-        project.skip_certification();
         let _guard = support::env_shared();
         project
             .verify_fails_with("LLV7002")

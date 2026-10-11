@@ -449,7 +449,6 @@ fn planted_verification() -> &'static Vec<String> {
             "src/TargetFixtures.lex.tex",
             &fixtures::fixtures_module(&[wrong_sum, insert]),
         );
-        project.skip_certification();
         let _guard = support::env_shared();
         let error = project.verify_fails_with("LLV7002");
         error

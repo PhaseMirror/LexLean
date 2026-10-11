@@ -408,9 +408,10 @@ impl P {
     }
 
     /// Make the compiler project's entrypoint skip the certification
-    /// modules. A plant that replaces another module of the project and
-    /// expects Lean to refuse it has no use for them, and they cost a
-    /// compilation of the certificate theorems in every such copy.
+    /// modules. A copy that plants `GnafFixtures` states fewer requests than
+    /// the certificate theorems name, and nothing they check is under test in
+    /// it. (A plant of a module they do not import fails before they are
+    /// reached, so only that copy needs this.)
     pub fn skip_certification(&self) {
         let main = self
             .read("src/Main.lex.tex")
