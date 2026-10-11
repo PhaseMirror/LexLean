@@ -4862,19 +4862,21 @@ false lemma; the generated environment is compiled once per machine and shared),
 and every other `GC` case under 3 s. Most of `gc_02` is not added work: it
 awaits the one shared verification of the `compiler` project that every case
 shares, and the adversarial review's accounting of the marginal cost, against
-the same suite at the base, is that shared verification (+37 s), the planted
-copy of `conformance_gn_02` (+21 s from stating the unplanted fixtures, before
-it was changed as below), `gc_02`'s own 19 s of planted verdicts, `gc_09`, and
-`gc_01`: about three to four minutes of `cargo test`, and about 40 s more for
-the `compiler` project in `verify-examples`. The record of this round:
+the same suite at the base, is that shared verification (+37 s),
+`gc_02`'s own 19 s of planted verdicts, `gc_09`, and `gc_01`, with
+`conformance_gn_02` within the noise of the box: about two to four minutes of
+`cargo test`, and about 40 s more for
+the `compiler` project in `verify-examples`. The record of the change that stops a planted copy reaching the certificate
+modules (a measurement, not a saving to quote: repeated alone, `conformance_gn_02`
+takes 424 s to 451 s with and without it, which is the noise of the box):
 
-| Case | Before | After | Change |
+| Case | Without | With | Change |
 | --- | --- | --- | --- |
-| `conformance_gn_02` (planted `GnafFixtures` in a copy of the project) | 451 s (the copy stated the unplanted fixtures the certificates name) | 430 s (the copy's entrypoint does not reach the certificate modules) | -21 s |
-| `conformance_tc_03` (planted `TargetFixtures`) with and without the same change | 616 s | 624 s | none: the copy fails before the certificate modules are reached |
-| `conformance_rs_12` (planted `ReasoningFixtures`) with and without it | 441 s | 442 s | none, same reason |
+| `conformance_gn_02` (planted `GnafFixtures` in a copy of the project) | fails: the certificates name requests the planted module does not state | 430 s | needed for correctness, no saving claimed |
+| `conformance_tc_03` (planted `TargetFixtures`) | 616 s | 624 s | none: the copy fails before the certificate modules are reached |
+| `conformance_rs_12` (planted `ReasoningFixtures`) | 441 s | 442 s | none, same reason |
 
-so the change is kept for `gn_02` only. Replacing the project-copy plants by
+so the change is kept for `gn_02` only, where the copy would not verify without it. Replacing the project-copy plants by
 `library::compile` against the built modules, as `gc_02` does for its planted
 verdicts, would save about 140 s of CPU per copy, but the copies are asserted
 to fail with `LLV7002` and to name the planted theorem, which a raw Lean

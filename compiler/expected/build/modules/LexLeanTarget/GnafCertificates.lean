@@ -49,6 +49,11 @@ public theorem bridgeUnattainedVerdict : (LexLeanTarget.Certification.check (Lex
 public theorem bridgeUnprovenVerdict : (LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.bridgeStraightLineRequest) (bridgeUnprovenCertificate) = LexLeanTarget.Certification.Verdict.incomplete (LexLeanTarget.Certification.Obligation.bridgeUnproved (0)) (LexLeanTarget.Certification.Established.notCertified)) := by
   rfl
 
+@[expose] public def bridgeUnresolvedCertificate : LexLeanTarget.Certification.Certificate := ({ verifier := "lexlean/gnaf-certification/1", «universe» := "0d79064ce43b84c654fca711763fafc12ba21c24feed113d880b0056d904adef", objective := LexLeanTarget.Gnaf.Objective.scalar, claim := LexLeanTarget.Gnaf.ClaimClass.globalOptimal, scope := LexLeanTarget.Gnaf.Scope.grammarUniverse, route := LexLeanTarget.Certification.Route.representation (1) (Option.some (({ slope := 0, offset := 0 } : LexLeanTarget.Certification.Bridge))), premises := (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: ([] : List (LexLeanTarget.Certification.Premise)))))))) } : LexLeanTarget.Certification.Certificate)
+
+public theorem bridgeUnresolvedVerdict : (LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.optimumOverUnresolvedRequest) (bridgeUnresolvedCertificate) = LexLeanTarget.Certification.Verdict.incomplete (LexLeanTarget.Certification.Obligation.unresolvedMember (1)) (LexLeanTarget.Certification.Established.notCertified)) := by
+  rfl
+
 @[expose] public def bridgeViolatedCertificate : LexLeanTarget.Certification.Certificate := ({ verifier := "lexlean/gnaf-certification/1", «universe» := "9d2b35f751d938c64b53b3223ad4716f40d3be4bfbf7fb80401df20e22cc24ba", objective := LexLeanTarget.Gnaf.Objective.scalar, claim := LexLeanTarget.Gnaf.ClaimClass.globalOptimal, scope := LexLeanTarget.Gnaf.Scope.grammarUniverse, route := LexLeanTarget.Certification.Route.representation (1) (Option.some (({ slope := 3, offset := 70 } : LexLeanTarget.Certification.Bridge))), premises := (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: ([] : List (LexLeanTarget.Certification.Premise)))))) } : LexLeanTarget.Certification.Certificate)
 
 public theorem bridgeViolatedVerdict : (LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.bridgeStraightLineRequest) (bridgeViolatedCertificate) = LexLeanTarget.Certification.Verdict.incomplete (LexLeanTarget.Certification.Obligation.bridgeViolated (1)) (LexLeanTarget.Certification.Established.notCertified)) := by
@@ -109,6 +114,16 @@ public theorem frontierTieVerdict : (LexLeanTarget.Certification.check (LexLeanT
 public theorem frontierTieDroppedVerdict : (LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.frontierTieRequest) (frontierTieDroppedCertificate) = LexLeanTarget.Certification.Verdict.incomplete (LexLeanTarget.Certification.Obligation.frontierMemberOmitted (5)) (LexLeanTarget.Certification.Established.notCertified)) := by
   rfl
 
+@[expose] public def frontierUnresolvedMemberCertificate : LexLeanTarget.Certification.Certificate := ({ verifier := "lexlean/gnaf-certification/1", «universe» := "0d79064ce43b84c654fca711763fafc12ba21c24feed113d880b0056d904adef", objective := LexLeanTarget.Gnaf.Objective.vector, claim := LexLeanTarget.Gnaf.ClaimClass.frontierComplete, scope := LexLeanTarget.Gnaf.Scope.grammarUniverse, route := LexLeanTarget.Certification.Route.frontierCover ((0 :: (1 :: ([] : List (Nat))))), premises := (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: ([] : List (LexLeanTarget.Certification.Premise)))))))) } : LexLeanTarget.Certification.Certificate)
+
+public theorem frontierUnresolvedMemberVerdict : (LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.frontierOverUnresolvedRequest) (frontierUnresolvedMemberCertificate) = LexLeanTarget.Certification.Verdict.incomplete (LexLeanTarget.Certification.Obligation.unresolvedMember (1)) (LexLeanTarget.Certification.Established.notCertified)) := by
+  rfl
+
+@[expose] public def frontierUnresolvedNonmemberCertificate : LexLeanTarget.Certification.Certificate := ({ verifier := "lexlean/gnaf-certification/1", «universe» := "0d79064ce43b84c654fca711763fafc12ba21c24feed113d880b0056d904adef", objective := LexLeanTarget.Gnaf.Objective.vector, claim := LexLeanTarget.Gnaf.ClaimClass.frontierComplete, scope := LexLeanTarget.Gnaf.Scope.grammarUniverse, route := LexLeanTarget.Certification.Route.frontierCover ((0 :: ([] : List (Nat)))), premises := (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: ([] : List (LexLeanTarget.Certification.Premise)))))))) } : LexLeanTarget.Certification.Certificate)
+
+public theorem frontierUnresolvedNonmemberVerdict : (LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.frontierOverUnresolvedRequest) (frontierUnresolvedNonmemberCertificate) = LexLeanTarget.Certification.Verdict.incomplete (LexLeanTarget.Certification.Obligation.unresolvedMember (1)) (LexLeanTarget.Certification.Established.notCertified)) := by
+  rfl
+
 @[expose] public def frontierVec02Certificate : LexLeanTarget.Certification.Certificate := ({ verifier := "lexlean/gnaf-certification/1", «universe» := "9041f561ca9fb9dd076b7011ea5874b784a7570f7e8eb5c761451a75805dd27d", objective := LexLeanTarget.Gnaf.Objective.vector, claim := LexLeanTarget.Gnaf.ClaimClass.frontierComplete, scope := LexLeanTarget.Gnaf.Scope.grammarUniverse, route := LexLeanTarget.Certification.Route.frontierCover ((0 :: (1 :: (2 :: ([] : List (Nat)))))), premises := (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: ([] : List (Nat)))) :: ([] : List (LexLeanTarget.Certification.Premise)))))) } : LexLeanTarget.Certification.Certificate)
 
 public theorem frontierVec02Verdict : (LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.vec02ParetoEnvelopeRequest) (frontierVec02Certificate) = LexLeanTarget.Certification.Verdict.certified (LexLeanTarget.Certification.Certified.frontier ((0 :: (1 :: (2 :: ([] : List (Nat)))))))) := by
@@ -164,6 +179,16 @@ public theorem lbDivergingPlanVerdict : (LexLeanTarget.Certification.check (LexL
 public theorem lbExcludedAdmittedVerdict : (LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.argminOverSystemsRequest) (lbExcludedAdmittedCertificate) = LexLeanTarget.Certification.Verdict.incomplete (LexLeanTarget.Certification.Obligation.memberUnproven (0)) (LexLeanTarget.Certification.Established.correctOnly (3) (167) (46))) := by
   rfl
 
+@[expose] public def lbExcludedAtLengthCertificate : LexLeanTarget.Certification.Certificate := ({ verifier := "lexlean/gnaf-certification/1", «universe» := "1576808a8cc2c6fd778ee30459e81124188b3d15ae7b2d30078191c5445805c6", objective := LexLeanTarget.Gnaf.Objective.scalar, claim := LexLeanTarget.Gnaf.ClaimClass.globalOptimal, scope := LexLeanTarget.Gnaf.Scope.grammarUniverse, route := LexLeanTarget.Certification.Route.lowerBound (167) ((3 :: ([] : List (Nat)))), premises := (LexLeanTarget.Certification.Premise.excluded (4) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: ([] : List (LexLeanTarget.Certification.Premise)))))))) } : LexLeanTarget.Certification.Certificate)
+
+public theorem lbExcludedAtLengthVerdict : (LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.argminOverSystemsRequest) (lbExcludedAtLengthCertificate) = LexLeanTarget.Certification.Verdict.incomplete (LexLeanTarget.Certification.Obligation.memberUnproven (0)) (LexLeanTarget.Certification.Established.correctOnly (3) (167) (46))) := by
+  rfl
+
+@[expose] public def lbExcludedUnresolvedCertificate : LexLeanTarget.Certification.Certificate := ({ verifier := "lexlean/gnaf-certification/1", «universe» := "0d79064ce43b84c654fca711763fafc12ba21c24feed113d880b0056d904adef", objective := LexLeanTarget.Gnaf.Objective.scalar, claim := LexLeanTarget.Gnaf.ClaimClass.argminComplete, scope := LexLeanTarget.Gnaf.Scope.grammarUniverse, route := LexLeanTarget.Certification.Route.lowerBound (880) ((0 :: ([] : List (Nat)))), premises := (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.excluded (6) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: (4 :: (5 :: (6 :: ([] : List (Nat)))))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: (4 :: (5 :: (6 :: ([] : List (Nat)))))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: ([] : List (LexLeanTarget.Certification.Premise)))))))) } : LexLeanTarget.Certification.Certificate)
+
+public theorem lbExcludedUnresolvedVerdict : (LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.boundOverUnresolvedRequest) (lbExcludedUnresolvedCertificate) = LexLeanTarget.Certification.Verdict.incomplete (LexLeanTarget.Certification.Obligation.memberUnproven (1)) (LexLeanTarget.Certification.Established.correctOnly (0) (880) (26))) := by
+  rfl
+
 @[expose] public def lbExtraPremiseCertificate : LexLeanTarget.Certification.Certificate := ({ verifier := "lexlean/gnaf-certification/1", «universe» := "1576808a8cc2c6fd778ee30459e81124188b3d15ae7b2d30078191c5445805c6", objective := LexLeanTarget.Gnaf.Objective.scalar, claim := LexLeanTarget.Gnaf.ClaimClass.globalOptimal, scope := LexLeanTarget.Gnaf.Scope.grammarUniverse, route := LexLeanTarget.Certification.Route.lowerBound (167) ((3 :: ([] : List (Nat)))), premises := (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.measured :: ([] : List (LexLeanTarget.Certification.Premise))))))))) } : LexLeanTarget.Certification.Certificate)
 
 public theorem lbExtraPremiseVerdict : (LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.argminOverSystemsRequest) (lbExtraPremiseCertificate) = LexLeanTarget.Certification.Verdict.refused (LexLeanTarget.Certification.Refusal.extraPremise (6))) := by
@@ -187,6 +212,11 @@ public theorem lbOptimumTieMeasuredVerdict : (LexLeanTarget.Certification.check 
 @[expose] public def lbOverUnresolvedCertificate : LexLeanTarget.Certification.Certificate := ({ verifier := "lexlean/gnaf-certification/1", «universe» := "0d79064ce43b84c654fca711763fafc12ba21c24feed113d880b0056d904adef", objective := LexLeanTarget.Gnaf.Objective.scalar, claim := LexLeanTarget.Gnaf.ClaimClass.argminComplete, scope := LexLeanTarget.Gnaf.Scope.grammarUniverse, route := LexLeanTarget.Certification.Route.lowerBound (880) ((0 :: ([] : List (Nat)))), premises := (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: (4 :: (5 :: (6 :: ([] : List (Nat)))))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: (4 :: (5 :: (6 :: ([] : List (Nat)))))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: ([] : List (LexLeanTarget.Certification.Premise)))))))) } : LexLeanTarget.Certification.Certificate)
 
 public theorem lbOverUnresolvedVerdict : (LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.boundOverUnresolvedRequest) (lbOverUnresolvedCertificate) = LexLeanTarget.Certification.Verdict.certified (LexLeanTarget.Certification.Certified.argmin ((0 :: ([] : List (Nat)))) (880))) := by
+  rfl
+
+@[expose] public def lbPaysInadmissiblePrefixCertificate : LexLeanTarget.Certification.Certificate := ({ verifier := "lexlean/gnaf-certification/1", «universe» := "19a3c18f85a56e1e065a16d5943e88a2d7ba3227843515d5ef27f32a559ffe2b", objective := LexLeanTarget.Gnaf.Objective.scalar, claim := LexLeanTarget.Gnaf.ClaimClass.globalOptimal, scope := LexLeanTarget.Gnaf.Scope.grammarUniverse, route := LexLeanTarget.Certification.Route.lowerBound (180) ((0 :: ([] : List (Nat)))), premises := (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.paysAtLeast ((3 :: ([] : List (Nat)))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.excluded (3) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.excluded (3) :: ([] : List (LexLeanTarget.Certification.Premise)))))))) } : LexLeanTarget.Certification.Certificate)
+
+public theorem lbPaysInadmissiblePrefixVerdict : (LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.inadmissiblePlanExcludedRequest) (lbPaysInadmissiblePrefixCertificate) = LexLeanTarget.Certification.Verdict.incomplete (LexLeanTarget.Certification.Obligation.memberUnproven (1)) (LexLeanTarget.Certification.Established.correctOnly (0) (180) (15))) := by
   rfl
 
 @[expose] public def lbPositionOutOfDomainCertificate : LexLeanTarget.Certification.Certificate := ({ verifier := "lexlean/gnaf-certification/1", «universe» := "1576808a8cc2c6fd778ee30459e81124188b3d15ae7b2d30078191c5445805c6", objective := LexLeanTarget.Gnaf.Objective.scalar, claim := LexLeanTarget.Gnaf.ClaimClass.globalOptimal, scope := LexLeanTarget.Gnaf.Scope.grammarUniverse, route := LexLeanTarget.Certification.Route.lowerBound (167) ((3 :: ([] : List (Nat)))), premises := (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: (14 :: ([] : List (Nat)))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: ([] : List (LexLeanTarget.Certification.Premise)))))))) } : LexLeanTarget.Certification.Certificate)
@@ -340,6 +370,14 @@ public theorem reductionThresholdEdgePreserves : (LexLeanTarget.Certification.ce
 public theorem requestRejectedVerdict : (LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.rejectCalculusProgramScopeRequest) (requestRejectedCertificate) = LexLeanTarget.Certification.Verdict.refused (LexLeanTarget.Certification.Refusal.requestRejected (LexLeanTarget.Gnaf.Rejection.uncoveredScope))) := by
   rfl
 
+@[expose] public def requestRejectedCachedCertificate : LexLeanTarget.Certification.Certificate := ({ verifier := "lexlean/gnaf-certification/1", «universe» := "3f95684ff7e39af595acfe481d92955a0186cddad73514537f9f35cbe4c71827", objective := LexLeanTarget.Gnaf.Objective.scalar, claim := LexLeanTarget.Gnaf.ClaimClass.globalOptimal, scope := LexLeanTarget.Gnaf.Scope.grammarUniverse, route := LexLeanTarget.Certification.Route.reduction, premises := (LexLeanTarget.Certification.Premise.reduced (LexLeanTarget.Certification.Schema.collapse) :: ([] : List (LexLeanTarget.Certification.Premise))) } : LexLeanTarget.Certification.Certificate)
+
+public theorem requestRejectedCachedVerdict : (LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.rejectCachedUniverseRequest) (requestRejectedCachedCertificate) = LexLeanTarget.Certification.Verdict.refused (LexLeanTarget.Certification.Refusal.requestRejected (LexLeanTarget.Gnaf.Rejection.cachedUniverse))) := by
+  rfl
+
+public theorem requestRejectedCachedPreserves : (LexLeanTarget.Certification.certificateReductionsPreserve (LexLeanTarget.GnafFixtures.rejectCachedUniverseRequest) (requestRejectedCachedCertificate) = false) := by
+  rfl
+
 @[expose] public def reusedEnlargedCertificate : LexLeanTarget.Certification.Certificate := ({ verifier := "lexlean/gnaf-certification/1", «universe» := "1576808a8cc2c6fd778ee30459e81124188b3d15ae7b2d30078191c5445805c6", objective := LexLeanTarget.Gnaf.Objective.scalar, claim := LexLeanTarget.Gnaf.ClaimClass.globalOptimal, scope := LexLeanTarget.Gnaf.Scope.grammarUniverse, route := LexLeanTarget.Certification.Route.lowerBound (167) ((3 :: ([] : List (Nat)))), premises := (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: ([] : List (LexLeanTarget.Certification.Premise)))))))) } : LexLeanTarget.Certification.Certificate)
 
 public theorem reusedEnlargedVerdict : (LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.vec08EnlargedRequest) (reusedEnlargedCertificate) = LexLeanTarget.Certification.Verdict.refused (LexLeanTarget.Certification.Refusal.universeMismatch)) := by
@@ -363,6 +401,60 @@ public theorem scopeMismatchVerdict : (LexLeanTarget.Certification.check (LexLea
 @[expose] public def verifierMismatchCertificate : LexLeanTarget.Certification.Certificate := ({ verifier := "lexlean/gnaf-certification/0", «universe» := "1576808a8cc2c6fd778ee30459e81124188b3d15ae7b2d30078191c5445805c6", objective := LexLeanTarget.Gnaf.Objective.scalar, claim := LexLeanTarget.Gnaf.ClaimClass.globalOptimal, scope := LexLeanTarget.Gnaf.Scope.grammarUniverse, route := LexLeanTarget.Certification.Route.lowerBound (167) ((3 :: ([] : List (Nat)))), premises := (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: ([] : List (LexLeanTarget.Certification.Premise)))))))) } : LexLeanTarget.Certification.Certificate)
 
 public theorem verifierMismatchVerdict : (LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.argminOverSystemsRequest) (verifierMismatchCertificate) = LexLeanTarget.Certification.Verdict.refused (LexLeanTarget.Certification.Refusal.verifierMismatch)) := by
+  rfl
+
+public theorem inadmissiblePlanExcludedPair0x0Keeps : (LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.inadmissiblePlanExcludedRequest) (0) (0) (false) = true) := by
+  rfl
+
+public theorem inadmissiblePlanExcludedPair0x0Cheaper : (LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.inadmissiblePlanExcludedRequest) (0) (0) (true) = false) := by
+  rfl
+
+public theorem inadmissiblePlanExcludedPair0x1Keeps : (LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.inadmissiblePlanExcludedRequest) (0) (1) (false) = false) := by
+  rfl
+
+public theorem inadmissiblePlanExcludedPair0x1Cheaper : (LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.inadmissiblePlanExcludedRequest) (0) (1) (true) = false) := by
+  rfl
+
+public theorem inadmissiblePlanExcludedPair2x0Keeps : (LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.inadmissiblePlanExcludedRequest) (2) (0) (false) = true) := by
+  rfl
+
+public theorem inadmissiblePlanExcludedPair2x0Cheaper : (LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.inadmissiblePlanExcludedRequest) (2) (0) (true) = true) := by
+  rfl
+
+public theorem internalBestOnShortListsPair0x0Keeps : (LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.internalBestOnShortListsRequest) (0) (0) (false) = true) := by
+  rfl
+
+public theorem internalBestOnShortListsPair0x0Cheaper : (LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.internalBestOnShortListsRequest) (0) (0) (true) = false) := by
+  rfl
+
+public theorem internalBestOnShortListsPair1x0Keeps : (LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.internalBestOnShortListsRequest) (1) (0) (false) = true) := by
+  rfl
+
+public theorem internalBestOnShortListsPair1x0Cheaper : (LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.internalBestOnShortListsRequest) (1) (0) (true) = true) := by
+  rfl
+
+public theorem argminOverSystemsPair0x0Keeps : (LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.argminOverSystemsRequest) (0) (0) (false) = true) := by
+  rfl
+
+public theorem argminOverSystemsPair0x0Cheaper : (LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.argminOverSystemsRequest) (0) (0) (true) = false) := by
+  rfl
+
+public theorem argminOverSystemsPair2x0Keeps : (LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.argminOverSystemsRequest) (2) (0) (false) = true) := by
+  rfl
+
+public theorem argminOverSystemsPair2x0Cheaper : (LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.argminOverSystemsRequest) (2) (0) (true) = true) := by
+  rfl
+
+public theorem thresholdEdgePair0x0Keeps : (LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.thresholdEdgeRequest) (0) (0) (false) = true) := by
+  rfl
+
+public theorem thresholdEdgePair0x0Cheaper : (LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.thresholdEdgeRequest) (0) (0) (true) = false) := by
+  rfl
+
+public theorem thresholdEdgePair1x0Keeps : (LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.thresholdEdgeRequest) (1) (0) (false) = true) := by
+  rfl
+
+public theorem thresholdEdgePair1x0Cheaper : (LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.thresholdEdgeRequest) (1) (0) (true) = true) := by
   rfl
 
 end LexLeanTarget.GnafCertificates

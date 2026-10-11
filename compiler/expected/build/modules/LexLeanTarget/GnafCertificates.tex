@@ -70,6 +70,15 @@
 \noindent Kind: \texttt{theorem}.\par
 \noindent Statement: \texttt{(LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.bridgeStraightLineRequest) (bridgeUnprovenCertificate) = LexLeanTarget.Certification.Verdict.incomplete (LexLeanTarget.Certification.Obligation.bridgeUnproved (0)) (LexLeanTarget.Certification.Established.notCertified))}.\par
 \noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{bridgeUnresolvedCertificate}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{LexLeanTarget.Certification.Certificate}.\par
+\noindent Definition: \texttt{(\{ verifier := "lexlean/gnaf-certification/1", <U+00AB>universe<U+00BB> := "0d79064ce43b84c654fca711763fafc12ba21c24feed113d880b0056d904adef", objective := LexLeanTarget.Gnaf.Objective.scalar, claim := LexLeanTarget.Gnaf.ClaimClass.globalOptimal, scope := LexLeanTarget.Gnaf.Scope.grammarUniverse, route := LexLeanTarget.Certification.Route.representation (1) (Option.some ((\{ slope := 0, offset := 0 \} : LexLeanTarget.Certification.Bridge))), premises := (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: ([] : List (LexLeanTarget.Certification.Premise)))))))) \} : LexLeanTarget.Certification.Certificate)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{bridgeUnresolvedVerdict}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.optimumOverUnresolvedRequest) (bridgeUnresolvedCertificate) = LexLeanTarget.Certification.Verdict.incomplete (LexLeanTarget.Certification.Obligation.unresolvedMember (1)) (LexLeanTarget.Certification.Established.notCertified))}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
 \subsection*{\texttt{bridgeViolatedCertificate}}
 \noindent Kind: \texttt{definition}.\par
 \noindent Type: \texttt{LexLeanTarget.Certification.Certificate}.\par
@@ -178,6 +187,24 @@
 \noindent Kind: \texttt{theorem}.\par
 \noindent Statement: \texttt{(LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.frontierTieRequest) (frontierTieDroppedCertificate) = LexLeanTarget.Certification.Verdict.incomplete (LexLeanTarget.Certification.Obligation.frontierMemberOmitted (5)) (LexLeanTarget.Certification.Established.notCertified))}.\par
 \noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{frontierUnresolvedMemberCertificate}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{LexLeanTarget.Certification.Certificate}.\par
+\noindent Definition: \texttt{(\{ verifier := "lexlean/gnaf-certification/1", <U+00AB>universe<U+00BB> := "0d79064ce43b84c654fca711763fafc12ba21c24feed113d880b0056d904adef", objective := LexLeanTarget.Gnaf.Objective.vector, claim := LexLeanTarget.Gnaf.ClaimClass.frontierComplete, scope := LexLeanTarget.Gnaf.Scope.grammarUniverse, route := LexLeanTarget.Certification.Route.frontierCover ((0 :: (1 :: ([] : List (Nat))))), premises := (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: ([] : List (LexLeanTarget.Certification.Premise)))))))) \} : LexLeanTarget.Certification.Certificate)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{frontierUnresolvedMemberVerdict}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.frontierOverUnresolvedRequest) (frontierUnresolvedMemberCertificate) = LexLeanTarget.Certification.Verdict.incomplete (LexLeanTarget.Certification.Obligation.unresolvedMember (1)) (LexLeanTarget.Certification.Established.notCertified))}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{frontierUnresolvedNonmemberCertificate}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{LexLeanTarget.Certification.Certificate}.\par
+\noindent Definition: \texttt{(\{ verifier := "lexlean/gnaf-certification/1", <U+00AB>universe<U+00BB> := "0d79064ce43b84c654fca711763fafc12ba21c24feed113d880b0056d904adef", objective := LexLeanTarget.Gnaf.Objective.vector, claim := LexLeanTarget.Gnaf.ClaimClass.frontierComplete, scope := LexLeanTarget.Gnaf.Scope.grammarUniverse, route := LexLeanTarget.Certification.Route.frontierCover ((0 :: ([] : List (Nat)))), premises := (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.measured :: ([] : List (LexLeanTarget.Certification.Premise)))))))) \} : LexLeanTarget.Certification.Certificate)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{frontierUnresolvedNonmemberVerdict}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.frontierOverUnresolvedRequest) (frontierUnresolvedNonmemberCertificate) = LexLeanTarget.Certification.Verdict.incomplete (LexLeanTarget.Certification.Obligation.unresolvedMember (1)) (LexLeanTarget.Certification.Established.notCertified))}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
 \subsection*{\texttt{frontierVec02Certificate}}
 \noindent Kind: \texttt{definition}.\par
 \noindent Type: \texttt{LexLeanTarget.Certification.Certificate}.\par
@@ -277,6 +304,24 @@
 \noindent Kind: \texttt{theorem}.\par
 \noindent Statement: \texttt{(LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.argminOverSystemsRequest) (lbExcludedAdmittedCertificate) = LexLeanTarget.Certification.Verdict.incomplete (LexLeanTarget.Certification.Obligation.memberUnproven (0)) (LexLeanTarget.Certification.Established.correctOnly (3) (167) (46)))}.\par
 \noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{lbExcludedAtLengthCertificate}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{LexLeanTarget.Certification.Certificate}.\par
+\noindent Definition: \texttt{(\{ verifier := "lexlean/gnaf-certification/1", <U+00AB>universe<U+00BB> := "1576808a8cc2c6fd778ee30459e81124188b3d15ae7b2d30078191c5445805c6", objective := LexLeanTarget.Gnaf.Objective.scalar, claim := LexLeanTarget.Gnaf.ClaimClass.globalOptimal, scope := LexLeanTarget.Gnaf.Scope.grammarUniverse, route := LexLeanTarget.Certification.Route.lowerBound (167) ((3 :: ([] : List (Nat)))), premises := (LexLeanTarget.Certification.Premise.excluded (4) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: ([] : List (LexLeanTarget.Certification.Premise)))))))) \} : LexLeanTarget.Certification.Certificate)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{lbExcludedAtLengthVerdict}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.argminOverSystemsRequest) (lbExcludedAtLengthCertificate) = LexLeanTarget.Certification.Verdict.incomplete (LexLeanTarget.Certification.Obligation.memberUnproven (0)) (LexLeanTarget.Certification.Established.correctOnly (3) (167) (46)))}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{lbExcludedUnresolvedCertificate}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{LexLeanTarget.Certification.Certificate}.\par
+\noindent Definition: \texttt{(\{ verifier := "lexlean/gnaf-certification/1", <U+00AB>universe<U+00BB> := "0d79064ce43b84c654fca711763fafc12ba21c24feed113d880b0056d904adef", objective := LexLeanTarget.Gnaf.Objective.scalar, claim := LexLeanTarget.Gnaf.ClaimClass.argminComplete, scope := LexLeanTarget.Gnaf.Scope.grammarUniverse, route := LexLeanTarget.Certification.Route.lowerBound (880) ((0 :: ([] : List (Nat)))), premises := (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.excluded (6) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: (4 :: (5 :: (6 :: ([] : List (Nat)))))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: (4 :: (5 :: (6 :: ([] : List (Nat)))))))))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: ([] : List (LexLeanTarget.Certification.Premise)))))))) \} : LexLeanTarget.Certification.Certificate)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{lbExcludedUnresolvedVerdict}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.boundOverUnresolvedRequest) (lbExcludedUnresolvedCertificate) = LexLeanTarget.Certification.Verdict.incomplete (LexLeanTarget.Certification.Obligation.memberUnproven (1)) (LexLeanTarget.Certification.Established.correctOnly (0) (880) (26)))}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
 \subsection*{\texttt{lbExtraPremiseCertificate}}
 \noindent Kind: \texttt{definition}.\par
 \noindent Type: \texttt{LexLeanTarget.Certification.Certificate}.\par
@@ -321,6 +366,15 @@
 \subsection*{\texttt{lbOverUnresolvedVerdict}}
 \noindent Kind: \texttt{theorem}.\par
 \noindent Statement: \texttt{(LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.boundOverUnresolvedRequest) (lbOverUnresolvedCertificate) = LexLeanTarget.Certification.Verdict.certified (LexLeanTarget.Certification.Certified.argmin ((0 :: ([] : List (Nat)))) (880)))}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{lbPaysInadmissiblePrefixCertificate}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{LexLeanTarget.Certification.Certificate}.\par
+\noindent Definition: \texttt{(\{ verifier := "lexlean/gnaf-certification/1", <U+00AB>universe<U+00BB> := "19a3c18f85a56e1e065a16d5943e88a2d7ba3227843515d5ef27f32a559ffe2b", objective := LexLeanTarget.Gnaf.Objective.scalar, claim := LexLeanTarget.Gnaf.ClaimClass.globalOptimal, scope := LexLeanTarget.Gnaf.Scope.grammarUniverse, route := LexLeanTarget.Certification.Route.lowerBound (180) ((0 :: ([] : List (Nat)))), premises := (LexLeanTarget.Certification.Premise.measured :: (LexLeanTarget.Certification.Premise.paysAtLeast ((3 :: ([] : List (Nat)))) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.excluded (3) :: (LexLeanTarget.Certification.Premise.paysAtLeast ((0 :: (1 :: (2 :: (3 :: ([] : List (Nat))))))) :: (LexLeanTarget.Certification.Premise.excluded (3) :: ([] : List (LexLeanTarget.Certification.Premise)))))))) \} : LexLeanTarget.Certification.Certificate)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{lbPaysInadmissiblePrefixVerdict}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.inadmissiblePlanExcludedRequest) (lbPaysInadmissiblePrefixCertificate) = LexLeanTarget.Certification.Verdict.incomplete (LexLeanTarget.Certification.Obligation.memberUnproven (1)) (LexLeanTarget.Certification.Established.correctOnly (0) (180) (15)))}.\par
 \noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
 \subsection*{\texttt{lbPositionOutOfDomainCertificate}}
 \noindent Kind: \texttt{definition}.\par
@@ -584,6 +638,19 @@
 \noindent Kind: \texttt{theorem}.\par
 \noindent Statement: \texttt{(LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.rejectCalculusProgramScopeRequest) (requestRejectedCertificate) = LexLeanTarget.Certification.Verdict.refused (LexLeanTarget.Certification.Refusal.requestRejected (LexLeanTarget.Gnaf.Rejection.uncoveredScope)))}.\par
 \noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{requestRejectedCachedCertificate}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Type: \texttt{LexLeanTarget.Certification.Certificate}.\par
+\noindent Definition: \texttt{(\{ verifier := "lexlean/gnaf-certification/1", <U+00AB>universe<U+00BB> := "3f95684ff7e39af595acfe481d92955a0186cddad73514537f9f35cbe4c71827", objective := LexLeanTarget.Gnaf.Objective.scalar, claim := LexLeanTarget.Gnaf.ClaimClass.globalOptimal, scope := LexLeanTarget.Gnaf.Scope.grammarUniverse, route := LexLeanTarget.Certification.Route.reduction, premises := (LexLeanTarget.Certification.Premise.reduced (LexLeanTarget.Certification.Schema.collapse) :: ([] : List (LexLeanTarget.Certification.Premise))) \} : LexLeanTarget.Certification.Certificate)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{requestRejectedCachedVerdict}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.rejectCachedUniverseRequest) (requestRejectedCachedCertificate) = LexLeanTarget.Certification.Verdict.refused (LexLeanTarget.Certification.Refusal.requestRejected (LexLeanTarget.Gnaf.Rejection.cachedUniverse)))}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{requestRejectedCachedPreserves}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.certificateReductionsPreserve (LexLeanTarget.GnafFixtures.rejectCachedUniverseRequest) (requestRejectedCachedCertificate) = false)}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
 \subsection*{\texttt{reusedEnlargedCertificate}}
 \noindent Kind: \texttt{definition}.\par
 \noindent Type: \texttt{LexLeanTarget.Certification.Certificate}.\par
@@ -628,5 +695,77 @@
 \subsection*{\texttt{verifierMismatchVerdict}}
 \noindent Kind: \texttt{theorem}.\par
 \noindent Statement: \texttt{(LexLeanTarget.Certification.check (LexLeanTarget.GnafFixtures.argminOverSystemsRequest) (verifierMismatchCertificate) = LexLeanTarget.Certification.Verdict.refused (LexLeanTarget.Certification.Refusal.verifierMismatch))}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{inadmissiblePlanExcludedPair0x0Keeps}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.inadmissiblePlanExcludedRequest) (0) (0) (false) = true)}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{inadmissiblePlanExcludedPair0x0Cheaper}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.inadmissiblePlanExcludedRequest) (0) (0) (true) = false)}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{inadmissiblePlanExcludedPair0x1Keeps}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.inadmissiblePlanExcludedRequest) (0) (1) (false) = false)}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{inadmissiblePlanExcludedPair0x1Cheaper}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.inadmissiblePlanExcludedRequest) (0) (1) (true) = false)}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{inadmissiblePlanExcludedPair2x0Keeps}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.inadmissiblePlanExcludedRequest) (2) (0) (false) = true)}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{inadmissiblePlanExcludedPair2x0Cheaper}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.inadmissiblePlanExcludedRequest) (2) (0) (true) = true)}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{internalBestOnShortListsPair0x0Keeps}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.internalBestOnShortListsRequest) (0) (0) (false) = true)}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{internalBestOnShortListsPair0x0Cheaper}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.internalBestOnShortListsRequest) (0) (0) (true) = false)}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{internalBestOnShortListsPair1x0Keeps}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.internalBestOnShortListsRequest) (1) (0) (false) = true)}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{internalBestOnShortListsPair1x0Cheaper}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.internalBestOnShortListsRequest) (1) (0) (true) = true)}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{argminOverSystemsPair0x0Keeps}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.argminOverSystemsRequest) (0) (0) (false) = true)}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{argminOverSystemsPair0x0Cheaper}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.argminOverSystemsRequest) (0) (0) (true) = false)}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{argminOverSystemsPair2x0Keeps}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.argminOverSystemsRequest) (2) (0) (false) = true)}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{argminOverSystemsPair2x0Cheaper}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.argminOverSystemsRequest) (2) (0) (true) = true)}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{thresholdEdgePair0x0Keeps}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.thresholdEdgeRequest) (0) (0) (false) = true)}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{thresholdEdgePair0x0Cheaper}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.thresholdEdgeRequest) (0) (0) (true) = false)}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{thresholdEdgePair1x0Keeps}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.thresholdEdgeRequest) (1) (0) (false) = true)}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{thresholdEdgePair1x0Cheaper}}
+\noindent Kind: \texttt{theorem}.\par
+\noindent Statement: \texttt{(LexLeanTarget.Certification.pairRelation (LexLeanTarget.GnafFixtures.thresholdEdgeRequest) (1) (0) (true) = true)}.\par
 \noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
 \end{document}
