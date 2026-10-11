@@ -85,7 +85,7 @@ pub const HOST_TARGETS: [&str; 5] = [
 /// The gates and audits that need a falsifiability record (§27.9): every
 /// `vv` recipe, every `validate-model` sub-audit, and the two gates outside
 /// `vv`.
-pub const GATES: [&str; 29] = [
+pub const GATES: [&str; 30] = [
     "fmt-check",
     "validate-model",
     "audit-deferral",
@@ -100,6 +100,7 @@ pub const GATES: [&str; 29] = [
     "audit-atlas-denotations",
     "audit-atlas-exercise",
     "audit-production",
+    "audit-oracle-isolation",
     "honesty-vocabulary",
     "meta-gate",
     "model-unknown-field",

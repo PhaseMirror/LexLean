@@ -141,7 +141,7 @@ fn ir_type(sx: &Sx) -> Result<IrTy, String> {
             "Nat" => IrTy::Nat,
             "Int" => IrTy::Int,
             "String" => IrTy::Text,
-            "ByteArray" => IrTy::Bytes,
+            "ByteArray" | "Bytes" => IrTy::Bytes,
             "Ordering" => IrTy::Ordering,
             "Int8" => IrTy::Fixed("i8".into()),
             "Int16" => IrTy::Fixed("i16".into()),
@@ -397,6 +397,10 @@ pub struct Contract {
     /// The parameters the side takes by reference rather than by value, by
     /// position.
     pub borrowed: Vec<usize>,
+    /// Where the Rust text of the oracle's signature disagrees with its own
+    /// intermediate representation: empty for LexLean, whose signature is
+    /// derived from its program.
+    pub drift: Vec<String>,
 }
 
 // ---- the two sides -----------------------------------------------------------
@@ -621,6 +625,37 @@ fn oracle_contract(
         ));
     }
     let failure = signature.1.ends_with("crate::ComputeError>");
+    // The text must say what the IR says: a signature the oracle's own IR
+    // does not describe is a finding about the oracle, whichever of the two
+    // is wrong.
+    let flat = |text: &str| text.replace("crate::", "o::").replace(' ', "");
+    let mut drift = Vec::new();
+    for (at, ((_, ty), text)) in parameters.iter().zip(&signature.0).enumerate() {
+        let expected = match ty {
+            IrTy::List(element) => format!("&[{}]", rust_type(ir, element)),
+            other => rust_type(ir, other),
+        };
+        if flat(&expected) != flat(text) {
+            drift.push(format!("parameter {at}: the IR states `{expected}`, the crate `{text}`"));
+        }
+    }
+    let result_text = if failure {
+        signature
+            .1
+            .strip_prefix("Result<")
+            .and_then(|rest| rest.strip_suffix(", crate::ComputeError>"))
+            .unwrap_or(&signature.1)
+            .to_owned()
+    } else {
+        signature.1.clone()
+    };
+    if flat(&rust_type(ir, result)) != flat(&result_text) {
+        drift.push(format!(
+            "result: the IR states `{}`, the crate `{}`",
+            rust_type(ir, result),
+            signature.1
+        ));
+    }
     let borrowed = signature
         .0
         .iter()
@@ -637,6 +672,7 @@ fn oracle_contract(
             result: ir_shape(ir, result, &mut Vec::new()),
             failure,
             borrowed,
+            drift,
         },
         signature,
     ))
@@ -1113,6 +1149,7 @@ fn eligible_roots(
                 failure: lexlean::calculus::rust::fallible_functions(&lowered.program)
                     .expect("a valid program")[0],
                 borrowed: Vec::new(),
+                drift: Vec::new(),
             };
             let root_cases: Vec<Case> = cases
                 .remove(&root.report.root)
@@ -1660,6 +1697,10 @@ pub fn differences(run: &RootRun, executed: Option<&Result<Executed, String>>) -
                     l,
                     o,
                 );
+            }
+            if !contract.drift.is_empty() {
+                let (l, o) = evidence(serde_json::json!({"drift": contract.drift}));
+                push(DiffKind::Contract, "signature-drift".into(), l, o);
             }
             if !contract.borrowed.is_empty() {
                 let (l, o) = evidence(serde_json::json!({"borrowed": contract.borrowed}));
