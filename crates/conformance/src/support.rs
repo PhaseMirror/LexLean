@@ -407,6 +407,18 @@ impl P {
         std::fs::read_to_string(self.root.join(relative).as_std_path()).expect("read")
     }
 
+    /// Make the compiler project's entrypoint skip the certification
+    /// modules. A plant that replaces another module of the project and
+    /// expects Lean to refuse it has no use for them, and they cost a
+    /// compilation of the certificate theorems in every such copy.
+    pub fn skip_certification(&self) {
+        let main = self
+            .read("src/Main.lex.tex")
+            .replace("\\importmodule{Certification}\n", "")
+            .replace("\\importmodule{GnafCertificates}\n", "");
+        self.write("src/Main.lex.tex", &main);
+    }
+
     /// Overwrite a project file.
     pub fn write(&self, relative: &str, content: &str) {
         let path = self.root.join(relative);

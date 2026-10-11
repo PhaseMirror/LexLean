@@ -532,6 +532,115 @@ fn improves(
         && static_charge(request, target)? <= static_charge(request, selector)?)
 }
 
+/// `Certification.argumentStatus`: a system's status on one argument alone.
+fn argument_status(
+    request: &Request,
+    selector: super::Selector,
+    argument: &Value,
+) -> Result<Status, LexLeanError> {
+    let system = realize(&request.carrier, selector).ok_or_else(|| {
+        malformed("a selector outside the request's grammar has no system to observe")
+    })?;
+    status_on(
+        &system,
+        &request.reference,
+        request.machine.fuel,
+        std::slice::from_ref(argument),
+    )
+}
+
+/// `Certification.keepsObservation` and `Certification.cheaperObservation`
+/// together: wherever the system is admitted on an argument, its rewriting is
+/// admitted on it as well, and at strictly fewer steps. Returns `(keeps,
+/// cheaper)` over the request's domain.
+fn observations(
+    request: &Request,
+    selector: super::Selector,
+    target: super::Selector,
+) -> Result<(bool, bool), LexLeanError> {
+    let (mut keeps, mut cheaper) = (true, true);
+    for argument in &request.domain {
+        if let Status::Admitted { steps, .. } = argument_status(request, selector, argument)? {
+            match argument_status(request, target, argument)? {
+                Status::Admitted { steps: after, .. } => cheaper &= after < steps,
+                Status::Inadmissible | Status::Unresolved => {
+                    keeps = false;
+                    cheaper = false;
+                }
+            }
+        }
+    }
+    Ok((keeps, cheaper))
+}
+
+/// `Certification.preserves`: the schema improves the system and its
+/// rewriting keeps the system's observations over the request's domain at
+/// strictly lower cost.
+///
+/// # Errors
+///
+/// `LLS8002` beyond the host's integers, `LLV7010` and `LLI9001` as `check`.
+pub fn preserves(
+    request: &Request,
+    selector: super::Selector,
+    schema: Schema,
+) -> Result<bool, LexLeanError> {
+    on_evaluation_stack(request, |request| {
+        preserves_inner(request, selector, schema)
+    })?
+}
+
+fn preserves_inner(
+    request: &Request,
+    selector: super::Selector,
+    schema: Schema,
+) -> Result<bool, LexLeanError> {
+    let Some(target) = rewrite(schema, selector) else {
+        return Ok(false);
+    };
+    if !improves(request, selector, schema)? {
+        return Ok(false);
+    }
+    let (keeps, cheaper) = observations(request, selector, target)?;
+    Ok(keeps && cheaper)
+}
+
+/// `Certification.certificateReductionsPreserve`: every `reduced` premise of
+/// the certificate states a preserving application of its schema.
+///
+/// # Errors
+///
+/// As [`preserves`].
+pub fn reductions_preserve(
+    request: &Request,
+    certificate: &Certificate,
+) -> Result<bool, LexLeanError> {
+    check_capacity(certificate)?;
+    on_evaluation_stack(request, |request| {
+        reductions_preserve_inner(request, certificate)
+    })?
+}
+
+fn reductions_preserve_inner(
+    request: &Request,
+    certificate: &Certificate,
+) -> Result<bool, LexLeanError> {
+    if !matches!(request.carrier, Carrier::Grammar { .. }) {
+        return Ok(false);
+    }
+    for (selector, premise) in expand(&request.carrier)
+        .into_iter()
+        .zip(&certificate.premises)
+    {
+        if let Premise::Reduced { schema } = premise {
+            if !preserves_inner(request, selector, *schema)? {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
+}
+
 /// `Certification.isNormal`.
 ///
 /// # Errors

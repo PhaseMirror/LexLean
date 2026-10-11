@@ -442,11 +442,12 @@ fn gc_02() {
 }
 
 /// The names of the verdict theorems planted below.
-const PLANTED: [&str; 4] = [
+const PLANTED: [&str; 5] = [
     "plantedOmitted",
     "plantedUnattained",
     "plantedNormal",
     "plantedWeakened",
+    "plantedPreserved",
 ];
 
 /// The planted theorems Lean rejects, from a module importing the certificate module and stating
@@ -466,7 +467,10 @@ fn planted_verdicts() -> Vec<String> {
         (Certification.Certified.optimum [4] 328) := rfl\n\n\
         theorem plantedWeakened : Certification.check GnafFixtures.boundOverUnresolvedRequest \
         GnafCertificates.lbUnresolvedUnboundedCertificate = Certification.Verdict.certified \
-        (Certification.Certified.argmin [0] 880) := rfl\n";
+        (Certification.Certified.argmin [0] 880) := rfl\n\n\
+        theorem plantedPreserved : Certification.certificateReductionsPreserve \
+        GnafFixtures.internalBestOnShortListsRequest \
+        GnafCertificates.reductionIneligibleCertificate = true := rfl\n";
     let root = tempfile::Builder::new()
         .prefix("lexlean-planted-verdicts-")
         .tempdir()
@@ -748,6 +752,62 @@ fn gc_03() {
             steps: 180
         })
     );
+    // Attainers are positions of the expansion: one past the last premise is
+    // none; a position beyond the domain is no evidence however large its
+    // bound; a measured system above an argmin's bound, and a measured tie
+    // under an optimum, are no omissions; a Pareto claim has no scalar route.
+    assert_eq!(
+        verdict("lb-attainer-at-count"),
+        incomplete(Obligation::AttainersMalformed, Established::NotCertified)
+    );
+    assert_eq!(
+        verdict("lb-position-out-of-domain"),
+        incomplete(
+            Obligation::MemberUnproven { position: 0 },
+            Established::CorrectOnly {
+                system: 3,
+                steps: 167,
+                size: 46
+            }
+        )
+    );
+    assert_eq!(
+        verdict("lb-argmin-measured"),
+        certified(Certified::Argmin {
+            members: vec![3],
+            steps: 167
+        })
+    );
+    assert_eq!(
+        verdict("lb-optimum-tie-measured"),
+        certified(Certified::Optimum {
+            members: vec![4],
+            steps: 167
+        })
+    );
+    assert_eq!(
+        verdict("route-lower-bound-pareto"),
+        refused(Refusal::RouteIncompatible)
+    );
+    // The same tie asked as an argmin leaves the measured tie an omission.
+    let tie_as_argmin = fixture("lb-optimum-tie-measured").certificate;
+    assert_eq!(
+        check(
+            "argmin-tie",
+            &Certificate {
+                claim: ClaimClass::ArgminComplete,
+                ..tie_as_argmin
+            }
+        ),
+        incomplete(
+            Obligation::AttainerOmitted { position: 5 },
+            Established::CorrectOnly {
+                system: 4,
+                steps: 167,
+                size: 46
+            }
+        )
+    );
     // Every mutation of a certified lower bound is uncertified: a premise
     // dropped or weakened, the bound moved either way, an attainer dropped
     // or added.
@@ -905,6 +965,68 @@ fn gc_04() {
             "system {position}: a member exactly when nothing dominates it"
         );
     }
+    // Members are positions of the expansion in increasing order, each
+    // measured; every other system is excluded, reduced, or dominated.
+    for name in ["frontier-member-at-count", "frontier-members-unordered"] {
+        assert_eq!(
+            verdict(name),
+            incomplete(Obligation::AttainersMalformed, Established::NotCertified),
+            "{name}"
+        );
+    }
+    assert_eq!(
+        verdict("frontier-member-unproven"),
+        incomplete(
+            Obligation::MemberUnproven { position: 0 },
+            Established::NotCertified
+        )
+    );
+    assert_eq!(
+        verdict("frontier-nonmember-unproven"),
+        incomplete(
+            Obligation::MemberUnproven { position: 3 },
+            Established::NotCertified
+        )
+    );
+    // A Pareto claim's reduction is a frontier.
+    assert_eq!(
+        verdict("reduction-pareto"),
+        certified(Certified::Frontier {
+            members: vec![0, 3]
+        })
+    );
+    // A system the fuel leaves unresolved is neither a member nor a
+    // dominated non-member: the same request posed as a frontier.
+    let over_unresolved = Request {
+        objective: Objective::Vector,
+        claim: ClaimClass::FrontierComplete,
+        ..request("bound-over-unresolved")
+    };
+    let base_unresolved = fixture("lb-over-unresolved").certificate;
+    let measured_all = vec![Premise::Measured; base_unresolved.premises.len()];
+    for (members, position) in [(vec![0], 1), (vec![0, 1], 1)] {
+        let verdict = certification::check(
+            &over_unresolved,
+            &Certificate {
+                objective: Objective::Vector,
+                claim: ClaimClass::FrontierComplete,
+                route: Route::FrontierCover {
+                    members: members.clone(),
+                },
+                premises: measured_all.clone(),
+                ..base_unresolved.clone()
+            },
+        )
+        .expect("within capacity");
+        assert_eq!(
+            verdict,
+            incomplete(
+                Obligation::UnresolvedMember { position },
+                Established::NotCertified
+            ),
+            "members {members:?}: an unresolved system is open"
+        );
+    }
     // Every mutation of the certified frontier is uncertified: a premise
     // dropped or weakened, a member removed or added.
     for position in 0..base.premises.len() {
@@ -932,10 +1054,14 @@ fn gc_04() {
                 ..base.clone()
             },
         );
-        assert!(
-            !is_certified(&verdict) || members.contains(&(position as u64)) && false,
-            "premise {position} weakened: {verdict:?}"
-        );
+        // A member must be measured; a non-member may still be dominated by
+        // the evidence it keeps, so only a member's weakening is refused.
+        if members.contains(&(position as u64)) {
+            assert!(
+                !is_certified(&verdict),
+                "premise {position} weakened: {verdict:?}"
+            );
+        }
     }
     for removed in 0..members.len() {
         let mut fewer = members.clone();
@@ -1039,6 +1165,129 @@ fn gc_05() {
     assert!(
         checked >= 16,
         "the instances cover many arguments: {checked}"
+    );
+    // The closed semantics of preservation (`Certification.preserves`,
+    // `sameObservations`, `strictlyCheaper`): the host transcription agrees
+    // with `improves` on every schema application of the committed requests,
+    // and the committed module states, for each certificate with a reduction,
+    // whether every one of its reductions preserves.
+    let model_names: BTreeSet<String> = declarations("compiler/src/Certification.lex.tex")
+        .iter()
+        .filter_map(|declaration| declaration["name"].as_str().map(str::to_owned))
+        .collect();
+    for name in [
+        "argumentStatus",
+        "keepsObservation",
+        "cheaperObservation",
+        "sameObservationsAt",
+        "strictlyCheaperAt",
+        "sameObservations",
+        "strictlyCheaper",
+        "preserves",
+        "reductionsPreserve",
+        "certificateReductionsPreserve",
+    ] {
+        assert!(model_names.contains(name), "the module defines {name}");
+    }
+    let mut applications = 0;
+    for name in [
+        "internal-best-on-short-lists",
+        "argmin-over-systems",
+        "argmin-complete",
+        "argmin-tie",
+        "bound-over-unresolved",
+        "threshold-edge",
+    ] {
+        let posed = request(name);
+        for selector in gnaf::expand(&posed.carrier) {
+            let improving = certification::improving_schema(&posed, selector).expect("evaluates");
+            for schema in [
+                Schema::Collapse,
+                Schema::SpecializeSmall,
+                Schema::SpecializeLarge,
+            ] {
+                let preserved =
+                    certification::preserves(&posed, selector, schema).expect("evaluates");
+                if improving == Some(schema) {
+                    assert!(
+                        preserved,
+                        "{name}: {selector:?} improved by {schema:?} preserves its observations"
+                    );
+                }
+                if preserved {
+                    applications += 1;
+                    assert!(
+                        !certification::is_normal(&posed, selector).expect("evaluates"),
+                        "{name}: {selector:?} is improved by {schema:?}, so it is not normal"
+                    );
+                }
+            }
+        }
+    }
+    assert!(
+        applications >= 8,
+        "many preserving applications: {applications}"
+    );
+    let module = declarations(generated::PATH);
+    let mut stated = 0;
+    for (_, _, fixture) in committed() {
+        let reduces = fixture
+            .certificate
+            .premises
+            .iter()
+            .any(|premise| matches!(premise, Premise::Reduced { .. }));
+        let theorem = module.iter().find(|declaration| {
+            declaration["name"]
+                == format!("{}Preserves", crate::calculus::identifier(&fixture.name))
+        });
+        assert_eq!(
+            theorem.is_some(),
+            reduces,
+            "{}: a preservation theorem exactly when a premise reduces",
+            fixture.name
+        );
+        if let Some(theorem) = theorem {
+            let host = certification::reductions_preserve(
+                &request(&fixture.request),
+                &fixture.certificate,
+            )
+            .expect("evaluates");
+            assert_eq!(
+                theorem["statement"]["right"],
+                crate::lx::boolean(host),
+                "{}: the theorem states the host's reading",
+                fixture.name
+            );
+            stated += 1;
+        }
+    }
+    assert!(
+        stated >= 6,
+        "reduction certificates state preservation: {stated}"
+    );
+    for (name, preserved) in [
+        ("reduction-short-lists", true),
+        ("reduction-mixed-domain", true),
+        ("reduction-threshold-edge", true),
+        ("reduction-ineligible", false),
+        ("reduction-collapse-distinct", false),
+        ("reduction-small-at-threshold", false),
+    ] {
+        let fixture = fixture(name);
+        assert_eq!(
+            certification::reductions_preserve(&request(&fixture.request), &fixture.certificate)
+                .expect("evaluates"),
+            preserved,
+            "{name}"
+        );
+    }
+    // A reduction over a system the fuel leaves unresolved is open at it.
+    assert_eq!(
+        verdict("reduction-over-unresolved"),
+        incomplete(
+            Obligation::UnresolvedMember { position: 1 },
+            Established::NotCertified
+        )
     );
     // A plan that calls the entry makes every schema ineligible: the
     // rewriting would change what the plan calls.
@@ -1418,6 +1667,69 @@ fn gc_07() {
     assert_eq!(
         verdict("bridge-out-of-range"),
         incomplete(Obligation::NormalOutOfRange, Established::NotCertified)
+    );
+    // A bridge needs evidence about every system: an unproven one, a
+    // reduced one, and one the fuel leaves unresolved leave it open.
+    assert_eq!(
+        verdict("bridge-unproven"),
+        incomplete(
+            Obligation::BridgeUnproved { position: 0 },
+            Established::NotCertified
+        )
+    );
+    assert_eq!(
+        verdict("bridge-reduced"),
+        incomplete(
+            Obligation::BridgeUnproved { position: 2 },
+            Established::NotCertified
+        )
+    );
+    let optimum_unresolved = Request {
+        claim: ClaimClass::GlobalOptimal,
+        ..request("bound-over-unresolved")
+    };
+    let sizes: Vec<u64> = gnaf::expand(&optimum_unresolved.carrier)
+        .into_iter()
+        .map(|selector| {
+            certification::trials(&optimum_unresolved, selector)
+                .expect("evaluates")
+                .2
+        })
+        .collect();
+    let smallest = sizes
+        .iter()
+        .position(|size| sizes.iter().all(|other| size <= other))
+        .expect("a smallest system") as u64;
+    let first_unresolved = gnaf::statuses(&optimum_unresolved)
+        .expect("evaluates")
+        .iter()
+        .position(|(_, _, status)| *status == Status::Unresolved)
+        .expect("an unresolved system") as u64;
+    let unresolved_base = fixture("lb-over-unresolved").certificate;
+    assert_eq!(
+        certification::check(
+            &optimum_unresolved,
+            &Certificate {
+                claim: ClaimClass::GlobalOptimal,
+                route: Route::Representation {
+                    normal: smallest,
+                    bridge: Some(Bridge {
+                        slope: 0,
+                        offset: 0
+                    }),
+                },
+                premises: vec![Premise::Measured; unresolved_base.premises.len()],
+                ..unresolved_base
+            },
+        )
+        .expect("within capacity"),
+        incomplete(
+            Obligation::UnresolvedMember {
+                position: first_unresolved
+            },
+            Established::NotCertified
+        ),
+        "a bridge over a system the fuel leaves unresolved is open at it"
     );
     // A bridge that is not valid is never certified, whatever its numbers:
     // every system at every slope and offset below the committed ones.
@@ -1822,6 +2134,24 @@ fn gc_09() {
             _ => {}
         }
     }
+    // The library's preservation theorems are stated in the module's own
+    // relations, and the ascriptions below fix their statements: a library
+    // that defined a second relation, or proved another statement, would not
+    // elaborate here.
+    instances.push_str(
+        "def preservesFromImproves : \u{2200} (req : Gnaf.Request) (g : Gnaf.Grammar) \
+         (s : Gnaf.Selector) (schema : Certification.Schema),\n    \
+         Certification.improves req g s schema = true \u{2192} \
+         Certification.preserves req g s schema = true := improves_preserves\n\n\
+         def preservesAtEveryFuel : \u{2200} (req : Gnaf.Request) (g : Gnaf.Grammar) \
+         (s q : Gnaf.Selector) (schema : Certification.Schema),\n    \
+         Certification.rewrite schema s = some q \u{2192} \
+         Certification.eligible req g s schema = true \u{2192} \u{2200} (F : Nat),\n    \
+         Certification.sameObservationsAt req g F s q req.domain = true \u{2227} \
+         Certification.strictlyCheaperAt req g F s q req.domain = true := schema_preserves_at\n\n",
+    );
+    names.push("preservesFromImproves".to_owned());
+    names.push("preservesAtEveryFuel".to_owned());
     instances.push_str("end LexLeanCertification.Instances\n");
     let output = library::compile(root.path(), "CertificationInstances", &instances, &search);
     assert!(
@@ -1880,6 +2210,54 @@ fn gc_09() {
         rejected.0.contains("Lower") || rejected.0.contains("Check"),
         "the library's proof of the lower-bound route fails on a weakened checker: {rejected:?}"
     );
+    // A false lemma planted in a staged copy of a library module is refused
+    // by Lean: the schema's strict saving reversed.
+    let false_lemma = planted_false_lemma();
+    assert!(
+        false_lemma.contains("error"),
+        "Lean refuses a library whose schema_cheaper says the saving is an increase: {false_lemma}"
+    );
+}
+
+/// Lean's output on a staged copy of `Schemas` whose `schema_cheaper`
+/// concludes that the rewriting costs more, compiled over the built library.
+fn planted_false_lemma() -> String {
+    let text = library::library_text("Schemas");
+    let plant = "\u{2203} c' z', statusAt req g q F = .admitted c' z' \u{2227} c' < c \u{2227} z' \u{2264} z";
+    assert_eq!(
+        text.matches(plant).count(),
+        1,
+        "the lemma's conclusion is planted once"
+    );
+    let planted = text.replace(plant, &plant.replace("c' < c", "c < c'"));
+    let root = tempfile::Builder::new()
+        .prefix("lexlean-false-lemma-")
+        .tempdir()
+        .expect("tempdir");
+    // Lean resolves a module by its first path component, so the staged
+    // `Schemas` needs the library's other compiled modules beside it.
+    let staged = root.path().join("build/LexLeanCertification");
+    std::fs::create_dir_all(&staged).expect("mkdir");
+    for entry in
+        std::fs::read_dir(library::library().join("LexLeanCertification")).expect("readdir")
+    {
+        let entry = entry.expect("entry");
+        std::fs::copy(entry.path(), staged.join(entry.file_name())).expect("copy");
+    }
+    let output = library::compile(
+        root.path(),
+        &library::module_name("Schemas"),
+        &planted,
+        &[
+            library::environment().clone(),
+            crate::preservation::shipped().build.clone(),
+        ],
+    );
+    assert!(
+        !output.status.success(),
+        "Lean accepts a library whose schema_cheaper says the saving is an increase"
+    );
+    crate::preservation::joined(&output)
 }
 
 /// The module of the library that Lean rejects when compiled over a copy of

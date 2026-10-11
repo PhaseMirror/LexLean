@@ -229,6 +229,31 @@ name = "LexLeanCertification.schema_cheaper"
 axioms = ["Classical.choice", "Quot.sound", "propext"]
 
 [[declaration]]
+module = "LexLeanCertification.Schemas"
+name = "LexLeanCertification.argumentStatus_admitted"
+axioms = ["Classical.choice", "Quot.sound", "propext"]
+
+[[declaration]]
+module = "LexLeanCertification.Schemas"
+name = "LexLeanCertification.argumentStatus_of_agrees"
+axioms = ["Classical.choice", "Quot.sound", "propext"]
+
+[[declaration]]
+module = "LexLeanCertification.Schemas"
+name = "LexLeanCertification.observations_of_trials"
+axioms = ["Classical.choice", "Quot.sound", "propext"]
+
+[[declaration]]
+module = "LexLeanCertification.Schemas"
+name = "LexLeanCertification.schema_preserves_at"
+axioms = ["Classical.choice", "Quot.sound", "propext"]
+
+[[declaration]]
+module = "LexLeanCertification.Schemas"
+name = "LexLeanCertification.improves_preserves"
+axioms = ["Classical.choice", "Quot.sound", "propext"]
+
+[[declaration]]
 module = "LexLeanCertification.Facts"
 name = "LexLeanCertification.natIn_iff"
 axioms = ["propext"]

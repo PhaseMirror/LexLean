@@ -278,6 +278,66 @@
 \noindent Type: \texttt{List ((Prod (Nat) (List (Nat))))}.\par
 \noindent Definition: \texttt{(match rows with | List.nil => ([] : List ((Prod (Nat) (List (Nat))))) | List.cons row rest => (if LexLeanTarget.Gnaf.natIn ((row).1) (members) then (row :: rowsOfMembers (rest) (members)) else rowsOfMembers (rest) (members)))}.\par
 \noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{argumentStatus}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(request : LexLeanTarget.Gnaf.Request) (grammar : LexLeanTarget.Gnaf.Grammar) (fuel : Nat) (selector : LexLeanTarget.Gnaf.Selector) (argument : LexLeanTarget.TargetSyntax.Value)}.\par
+\noindent Type: \texttt{LexLeanTarget.Gnaf.Status}.\par
+\noindent Definition: \texttt{LexLeanTarget.Gnaf.statusOn (LexLeanTarget.Gnaf.realize (grammar) (selector)) ((request).reference) (fuel) ((argument :: ([] : List (LexLeanTarget.TargetSyntax.Value))))}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{keepsObservation}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(before : LexLeanTarget.Gnaf.Status) (after : LexLeanTarget.Gnaf.Status)}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match before with | LexLeanTarget.Gnaf.Status.admitted \_ \_ => (match after with | LexLeanTarget.Gnaf.Status.admitted \_ \_ => true | LexLeanTarget.Gnaf.Status.inadmissible => false | LexLeanTarget.Gnaf.Status.unresolved => false) | LexLeanTarget.Gnaf.Status.inadmissible => true | LexLeanTarget.Gnaf.Status.unresolved => true)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{cheaperObservation}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(before : LexLeanTarget.Gnaf.Status) (after : LexLeanTarget.Gnaf.Status)}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match before with | LexLeanTarget.Gnaf.Status.admitted cost \_ => (match after with | LexLeanTarget.Gnaf.Status.admitted cheaper \_ => (Nat.blt (cheaper) (cost)) | LexLeanTarget.Gnaf.Status.inadmissible => false | LexLeanTarget.Gnaf.Status.unresolved => false) | LexLeanTarget.Gnaf.Status.inadmissible => true | LexLeanTarget.Gnaf.Status.unresolved => true)}.\par
+\noindent Axiom policy: \texttt{none}.\par
+\subsection*{\texttt{sameObservationsAt}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(request : LexLeanTarget.Gnaf.Request) (grammar : LexLeanTarget.Gnaf.Grammar) (fuel : Nat) (selector : LexLeanTarget.Gnaf.Selector) (target : LexLeanTarget.Gnaf.Selector) (arguments : List (LexLeanTarget.TargetSyntax.Value))}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match arguments with | List.nil => true | List.cons argument rest => (keepsObservation (argumentStatus (request) (grammar) (fuel) (selector) (argument)) (argumentStatus (request) (grammar) (fuel) (target) (argument)) \&\& sameObservationsAt (request) (grammar) (fuel) (selector) (target) (rest)))}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{strictlyCheaperAt}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(request : LexLeanTarget.Gnaf.Request) (grammar : LexLeanTarget.Gnaf.Grammar) (fuel : Nat) (selector : LexLeanTarget.Gnaf.Selector) (target : LexLeanTarget.Gnaf.Selector) (arguments : List (LexLeanTarget.TargetSyntax.Value))}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match arguments with | List.nil => true | List.cons argument rest => (cheaperObservation (argumentStatus (request) (grammar) (fuel) (selector) (argument)) (argumentStatus (request) (grammar) (fuel) (target) (argument)) \&\& strictlyCheaperAt (request) (grammar) (fuel) (selector) (target) (rest)))}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{sameObservations}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(request : LexLeanTarget.Gnaf.Request) (grammar : LexLeanTarget.Gnaf.Grammar) (selector : LexLeanTarget.Gnaf.Selector) (target : LexLeanTarget.Gnaf.Selector)}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{sameObservationsAt (request) (grammar) (((request).machine).fuel) (selector) (target) ((request).domain)}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{strictlyCheaper}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(request : LexLeanTarget.Gnaf.Request) (grammar : LexLeanTarget.Gnaf.Grammar) (selector : LexLeanTarget.Gnaf.Selector) (target : LexLeanTarget.Gnaf.Selector)}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{strictlyCheaperAt (request) (grammar) (((request).machine).fuel) (selector) (target) ((request).domain)}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{preserves}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(request : LexLeanTarget.Gnaf.Request) (grammar : LexLeanTarget.Gnaf.Grammar) (selector : LexLeanTarget.Gnaf.Selector) (schema : Schema)}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match rewrite (schema) (selector) with | Option.none => false | Option.some target => (improves (request) (grammar) (selector) (schema) \&\& (sameObservations (request) (grammar) (selector) (target) \&\& strictlyCheaper (request) (grammar) (selector) (target))))}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{reductionsPreserve}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(request : LexLeanTarget.Gnaf.Request) (grammar : LexLeanTarget.Gnaf.Grammar) (selectors : List (LexLeanTarget.Gnaf.Selector)) (premises : List (Premise))}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match selectors with | List.nil => true | List.cons selector rest => (match premises with | List.nil => true | List.cons premise later => ((match premise with | Premise.excluded \_ => true | Premise.paysAtLeast \_ => true | Premise.measured => true | Premise.reduced schema => preserves (request) (grammar) (selector) (schema)) \&\& reductionsPreserve (request) (grammar) (rest) (later))))}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
+\subsection*{\texttt{certificateReductionsPreserve}}
+\noindent Kind: \texttt{definition}.\par
+\noindent Parameters: \texttt{(request : LexLeanTarget.Gnaf.Request) (certificate : Certificate)}.\par
+\noindent Type: \texttt{Bool}.\par
+\noindent Definition: \texttt{(match (request).carrier with | LexLeanTarget.Gnaf.Carrier.grammar grammar => reductionsPreserve (request) (grammar) (LexLeanTarget.Gnaf.expand (grammar)) ((certificate).premises) | LexLeanTarget.Gnaf.Carrier.internalPlans => false | LexLeanTarget.Gnaf.Carrier.optimizerOutput => false | LexLeanTarget.Gnaf.Carrier.discovered \_ => false | LexLeanTarget.Gnaf.Carrier.cached => false)}.\par
+\noindent Axiom policy: \texttt{exact [Classical.choice, Quot.sound, propext]}.\par
 \subsection*{\texttt{lowerPosition}}
 \noindent Kind: \texttt{definition}.\par
 \noindent Parameters: \texttt{(strict : Bool) (bound : Nat) (attainer : Bool) (fact : Fact) (position : Nat)}.\par

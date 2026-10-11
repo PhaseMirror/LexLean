@@ -35,6 +35,7 @@ pub const PATH: &str = "compiler/src/GnafCertificates.lex.tex";
 
 /// One system of a request, as the host evaluates it.
 struct System {
+    index: u64,
     selector: Selector,
     status: Status,
     trials: Vec<Trial>,
@@ -46,10 +47,11 @@ fn systems(request: &Request) -> Vec<System> {
     gnaf::statuses(request)
         .expect("a committed request evaluates")
         .into_iter()
-        .map(|(_, selector, status)| {
+        .map(|(index, selector, status)| {
             let (trials, charge, size) =
                 certification::trials(request, selector).expect("a committed request evaluates");
             System {
+                index,
                 selector,
                 status,
                 trials,
@@ -219,6 +221,11 @@ fn only_measured(request: &Request, keep: &[u64]) -> Vec<Premise> {
             }
         })
         .collect()
+}
+
+/// Premises that measure every system.
+fn only_measured_all(request: &Request) -> Vec<Premise> {
+    systems(request).iter().map(|_| Premise::Measured).collect()
 }
 
 fn answer_members(request: &Request) -> (Vec<u64>, u64) {
@@ -619,6 +626,187 @@ fn certificates(
         ),
     );
 
+    // An attainer one past the last premise is no system of the universe.
+    let count = systems(argmin).len() as u64;
+    add(
+        "lb-attainer-at-count",
+        ARGMIN,
+        certificate(
+            argmin,
+            Route::LowerBound {
+                bound: steps,
+                attainers: members.iter().copied().chain([count]).collect(),
+            },
+            bounded(argmin, steps, &members, false),
+        ),
+    );
+    // A premise that excludes a system on an argument it agrees on, and a
+    // position beyond the domain, are no evidence, however large the bound
+    // they would give.
+    let outside = position_where(argmin, |system| {
+        matches!(system.status, Status::Admitted { .. })
+            && !members.contains(&0)
+            && system
+                .trials
+                .iter()
+                .all(|trial| matches!(trial, Trial::Agrees { .. }))
+    });
+    let mut premises = bounded(argmin, steps, &members, false);
+    let domain = argmin.domain.len() as u64;
+    premises[outside as usize] = Premise::PaysAtLeast {
+        positions: (0..domain).chain([domain + 10]).collect(),
+    };
+    add(
+        "lb-position-out-of-domain",
+        ARGMIN,
+        certificate(
+            argmin,
+            Route::LowerBound {
+                bound: steps,
+                attainers: members.clone(),
+            },
+            premises,
+        ),
+    );
+    // Measured systems above an argmin's bound need no premise but their
+    // measurement, and a measured tie under an optimum is no omission.
+    let (complete_best, complete_cost) = (complete_members.clone(), complete_steps);
+    add(
+        "lb-argmin-measured",
+        "argmin-complete",
+        certificate(
+            complete,
+            Route::LowerBound {
+                bound: complete_cost,
+                attainers: complete_best.clone(),
+            },
+            only_measured_all(complete),
+        ),
+    );
+    let optimum_tie = request("optimum-tie");
+    let (optimum_tied, optimum_tied_steps) = answer_members(optimum_tie);
+    add(
+        "lb-optimum-tie-measured",
+        "optimum-tie",
+        certificate(
+            optimum_tie,
+            Route::LowerBound {
+                bound: optimum_tied_steps,
+                attainers: optimum_tied[..1].to_vec(),
+            },
+            only_measured_all(optimum_tie),
+        ),
+    );
+    // A claim of the Pareto class is not served by a scalar route, and its
+    // reduction is a frontier.
+    let pareto = request(FRONTIER_PARETO);
+    let pareto_members = answer_members(pareto).0;
+    add(
+        "route-lower-bound-pareto",
+        FRONTIER_PARETO,
+        certificate(
+            pareto,
+            Route::LowerBound {
+                bound: 0,
+                attainers: pareto_members.clone(),
+            },
+            only_measured_all(pareto),
+        ),
+    );
+    add(
+        "reduction-pareto",
+        FRONTIER_PARETO,
+        certificate(pareto, Route::Reduction, only_measured_all(pareto)),
+    );
+    // A reduction over systems whose cost the fuel leaves unknown is open.
+    add(
+        "reduction-over-unresolved",
+        UNRESOLVED,
+        certificate(unresolved, Route::Reduction, only_measured_all(unresolved)),
+    );
+    // A frontier cover's members are positions of the expansion, in order,
+    // and each is measured; every other system is excluded, reduced, or
+    // dominated by evidence.
+    let vec02 = request(VEC02);
+    let (frontier_members, _) = answer_members(vec02);
+    let vec02_count = systems(vec02).len() as u64;
+    add(
+        "frontier-member-at-count",
+        VEC02,
+        certificate(
+            vec02,
+            Route::FrontierCover {
+                members: frontier_members
+                    .iter()
+                    .copied()
+                    .chain([vec02_count])
+                    .collect(),
+            },
+            covered(vec02, &frontier_members),
+        ),
+    );
+    add(
+        "frontier-members-unordered",
+        VEC02,
+        certificate(
+            vec02,
+            Route::FrontierCover {
+                members: frontier_members.iter().rev().copied().collect(),
+            },
+            covered(vec02, &frontier_members),
+        ),
+    );
+    let mut premises = covered(vec02, &frontier_members);
+    premises[frontier_members[0] as usize] = Premise::Excluded { position: 0 };
+    add(
+        "frontier-member-unproven",
+        VEC02,
+        certificate(
+            vec02,
+            Route::FrontierCover {
+                members: frontier_members.clone(),
+            },
+            premises,
+        ),
+    );
+    let non_member = position_where(vec02, |system| {
+        matches!(system.trials.first(), Some(Trial::Agrees { .. }))
+            && !frontier_members.contains(&system.index)
+    });
+    let mut premises = covered(vec02, &frontier_members);
+    premises[non_member as usize] = Premise::Excluded { position: 0 };
+    add(
+        "frontier-nonmember-unproven",
+        VEC02,
+        certificate(
+            vec02,
+            Route::FrontierCover {
+                members: frontier_members.clone(),
+            },
+            premises,
+        ),
+    );
+    // A bridge needs evidence for every system: a reduction states none.
+    let short = request(SHORT);
+    let smallest_short = position_where(short, |system| {
+        systems(short).iter().all(|other| system.size <= other.size)
+    });
+    add(
+        "bridge-reduced",
+        SHORT,
+        certificate(
+            short,
+            Route::Representation {
+                normal: smallest_short,
+                bridge: Some(Bridge {
+                    slope: 0,
+                    offset: 0,
+                }),
+            },
+            reduced(short),
+        ),
+    );
+
     // --- bindings -----------------------------------------------------------------
     let base = certificate(
         argmin,
@@ -922,6 +1110,11 @@ fn certificates(
 /// The requests the certificates are for: the GNAF fixtures and the ones
 /// written for certification.
 fn requests() -> BTreeMap<String, Request> {
+    static REQUESTS: std::sync::OnceLock<BTreeMap<String, Request>> = std::sync::OnceLock::new();
+    REQUESTS.get_or_init(generate_requests).clone()
+}
+
+fn generate_requests() -> BTreeMap<String, Request> {
     crate::gnaf::fixtures()
         .into_iter()
         .map(|fixture| (fixture.name, fixture.request))
@@ -957,7 +1150,13 @@ fn bridge_certificates(
         )
     };
     let larger = position_where(request, |system| system.size > all[smallest as usize].size);
+    let mut unproven = represent(smallest, Some(tight));
+    let agreeing = position_where(request, |system| {
+        system.index != smallest && matches!(system.trials.first(), Some(Trial::Agrees { .. }))
+    });
+    unproven.premises[agreeing as usize] = Premise::Excluded { position: 0 };
     vec![
+        ("bridge-unproven", NAME, unproven),
         ("bridge-attained", NAME, represent(smallest, Some(tight))),
         ("bridge-missing", NAME, represent(smallest, None)),
         // A bridge that claims more than the minimal system pays.
@@ -1046,7 +1245,7 @@ pub fn fixture_declarations(fixture: &CertificateFixture) -> Vec<Json> {
     let request_call = json!({"kind": "call",
         "function": term::member(crate::gnaf::FIXTURES_MODULE, &format!("{request_id}Request")),
         "arguments": []});
-    vec![
+    let mut out = vec![
         json!({"kind": "definition", "name": certificate_name, "parameters": [],
                "result": term::named(certification::MODEL, "Certificate"),
                "body": certification::certificate_term(&fixture.certificate)}),
@@ -1055,12 +1254,39 @@ pub fn fixture_declarations(fixture: &CertificateFixture) -> Vec<Json> {
                "statement": {"kind": "eq",
                    "left": {"kind": "call",
                             "function": term::member(certification::MODEL, "check"),
-                            "arguments": [request_call,
+                            "arguments": [request_call.clone(),
                                           {"kind": "call", "function": {"name": certificate_name},
                                            "arguments": []}]},
                    "right": certification::verdict_term(&fixture.expected)},
                "proof": {"kind": "reflexivity"}}),
-    ]
+    ];
+    // A certificate with a `reduced` premise also states, for the kernel,
+    // whether each of them is a preserving application of its schema: the
+    // equivalence over the request's domain and the strict cost decrease.
+    if fixture
+        .certificate
+        .premises
+        .iter()
+        .any(|premise| matches!(premise, certification::Premise::Reduced { .. }))
+    {
+        let request = &requests()[fixture.request.as_str()];
+        let preserved = certification::reductions_preserve(request, &fixture.certificate)
+            .unwrap_or_else(|error| panic!("{}: {error:?}", fixture.name));
+        out.push(
+            json!({"kind": "theorem", "name": format!("{id}Preserves"), "parameters": [],
+               "axioms": crate::gnaf_model::RUN_AXIOMS,
+               "statement": {"kind": "eq",
+                   "left": {"kind": "call",
+                            "function": term::member(certification::MODEL,
+                                                     "certificateReductionsPreserve"),
+                            "arguments": [request_call,
+                                          {"kind": "call", "function": {"name": certificate_name},
+                                           "arguments": []}]},
+                   "right": crate::lx::boolean(preserved)},
+               "proof": {"kind": "reflexivity"}}),
+        );
+    }
+    out
 }
 
 /// The `GnafCertificates` module.

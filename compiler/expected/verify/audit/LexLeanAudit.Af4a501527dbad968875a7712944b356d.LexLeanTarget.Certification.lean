@@ -15,10 +15,13 @@ import LexLeanTarget.Certification
 #print axioms LexLeanTarget.Certification.allLists
 #print axioms LexLeanTarget.Certification.allLong
 #print axioms LexLeanTarget.Certification.allShorter
+#print axioms LexLeanTarget.Certification.argumentStatus
 #print axioms LexLeanTarget.Certification.armIsolated
 #print axioms LexLeanTarget.Certification.armsIsolated
 #print axioms LexLeanTarget.Certification.ascending
 #print axioms LexLeanTarget.Certification.bridgePosition
+#print axioms LexLeanTarget.Certification.certificateReductionsPreserve
+#print axioms LexLeanTarget.Certification.cheaperObservation
 #print axioms LexLeanTarget.Certification.check
 #print axioms LexLeanTarget.Certification.claimShape
 #print axioms LexLeanTarget.Certification.eligible
@@ -36,6 +39,7 @@ import LexLeanTarget.Certification
 #print axioms LexLeanTarget.Certification.isLong
 #print axioms LexLeanTarget.Certification.isNormal
 #print axioms LexLeanTarget.Certification.isShorter
+#print axioms LexLeanTarget.Certification.keepsObservation
 #print axioms LexLeanTarget.Certification.lowerPosition
 #print axioms LexLeanTarget.Certification.lowerVerdict
 #print axioms LexLeanTarget.Certification.natAt
@@ -44,11 +48,15 @@ import LexLeanTarget.Certification
 #print axioms LexLeanTarget.Certification.plansIsolated
 #print axioms LexLeanTarget.Certification.positionOf
 #print axioms LexLeanTarget.Certification.premiseFact
+#print axioms LexLeanTarget.Certification.preserves
 #print axioms LexLeanTarget.Certification.reductionVerdict
+#print axioms LexLeanTarget.Certification.reductionsPreserve
 #print axioms LexLeanTarget.Certification.representationVerdict
 #print axioms LexLeanTarget.Certification.rewrite
 #print axioms LexLeanTarget.Certification.rowsOfMembers
 #print axioms LexLeanTarget.Certification.sameObjective
+#print axioms LexLeanTarget.Certification.sameObservations
+#print axioms LexLeanTarget.Certification.sameObservationsAt
 #print axioms LexLeanTarget.Certification.sameScope
 #print axioms LexLeanTarget.Certification.scanBridge
 #print axioms LexLeanTarget.Certification.scanFrontier
@@ -58,4 +66,6 @@ import LexLeanTarget.Certification
 #print axioms LexLeanTarget.Certification.sizesOf
 #print axioms LexLeanTarget.Certification.staticCharge
 #print axioms LexLeanTarget.Certification.staticSize
+#print axioms LexLeanTarget.Certification.strictlyCheaper
+#print axioms LexLeanTarget.Certification.strictlyCheaperAt
 #print axioms LexLeanTarget.Certification.valueAt

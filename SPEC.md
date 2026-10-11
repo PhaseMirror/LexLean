@@ -5247,7 +5247,7 @@ reduces it to a fact by evaluating exactly what the premise names:
 | `excluded p` | the system is never admitted | the system on the domain argument at position `p` |
 | `pays_at_least ps` | an admitted system's cost is at least the listed arguments' steps plus its preparation | the system on the arguments at the strictly increasing positions `ps` |
 | `measured` | the system's whole status | the system on the whole domain |
-| `reduced s` | an admitted system has a strictly cheaper admitted rewriting in the universe | nothing: the schema `s` (below) and two static comparisons |
+| `reduced s` | an admitted system has a strictly cheaper admitted rewriting in the universe | nothing: the schema `s` (below) and two static comparisons; the schema's preservation is the module's `preserves`, decided by the kernel for the committed instances and proved for all by the library |
 
 A premise that does not hold, or an `unresolved` measurement, yields no fact.
 Every fact is a statement about the system at the request's fuel and at
@@ -5307,10 +5307,29 @@ satisfy the schema; it *improves* the system when it is eligible and the
 rewritten system's size and preparation are no greater. A system is
 GNAF-normal when no schema improves it (UOR-GNAF §6.3, §6.4). A `reduced`
 premise holds exactly when its schema improves the system, which the checker
-decides by evaluating nothing; its truth, that the rewritten system is
-admitted whenever the system is, with the same observations, in strictly
-fewer steps, is the library's theorem `schema_cheaper`, proved for every
-grammar, plan set, domain, and fuel, not for the committed instances.
+decides by evaluating nothing. What it asserts is a closed definition of the
+module, not a comment on it. The *observation* of a system on one argument of
+the request's domain is its status on that argument alone
+(`Certification.argumentStatus`, `Gnaf.statusOn` on the one argument): admitted
+when the system returns the reference's value, at a cost. A rewriting *keeps
+the observations* (`sameObservations`) when it is admitted on every argument
+on which the system is, and is *strictly cheaper* (`strictlyCheaper`) when it
+is admitted there in fewer steps; both are defined at an explicit fuel
+(`sameObservationsAt`, `strictlyCheaperAt`) and at the request's
+(`sameObservations`, `strictlyCheaper`), and an argument on which the system
+is not admitted relates nothing, because no claim consumes it. `preserves` is
+`improves` together with both, and `certificateReductionsPreserve` states that
+every `reduced` premise of a certificate is a preserving application.
+Equivalence is therefore stated for admitted observations, not for every
+outcome: a system that is inadmissible or unresolved on an argument is not
+claimed to stay so. The kernel decides it for every committed instance
+(`GnafCertificates` states `<id>Preserves`, by reflexivity, for each
+certificate with a `reduced` premise, and the ineligible reductions state
+`false`); the library proves it for every instance, as `schema_preserves_at`
+(for every fuel) and `improves_preserves` (`improves` implies `preserves`),
+stated in the module's own relations and by `schema_cheaper`, with the
+entry-irrelevance of evaluation (`eval_tail`) and the factoring of a dispatch
+(`dispatch_cheaper`).
 
 **Verdict.** `Certification.check` returns one of three verdicts and no other:
 `refused`, for a certificate that does not bind its request (another
@@ -5339,15 +5358,51 @@ statements are about `U_sys` and not about the certificate's own list:
 - no `normality` certificate is certified (`normality_never_certifies`), and a
   certified optimum is GNAF-normal, the converse being false
   (`certified_optimum_is_normal`);
-- each schema preserves every observation in strictly fewer steps
-  (`schema_cheaper`), by the entry-irrelevance of evaluation
-  (`eval_tail`) and the factoring of a dispatch (`dispatch_cheaper`).
+- each improving schema application satisfies the module's `preserves`: its
+  rewriting keeps the system's observations over the request's domain, at every
+  fuel, and is strictly cheaper (`schema_preserves_at`, `improves_preserves`,
+  and, for the cost of whole systems, `schema_cheaper`), by the
+  entry-irrelevance of evaluation (`eval_tail`) and the factoring of a
+  dispatch (`dispatch_cheaper`).
 
 The library is repository evidence: it is not shipped, it does not enter the
 semantics ID, and its declarations' axioms are pinned in `compiler/proofs/
-library.toml`. It is verified by `GC-09` against the compiler's golden
+library.toml`. It is verified by `GC-09` against the compiler's generated
 modules and the shipped preservation library (§17.17). The model and its
 fixtures are verified by `verify` with the project.
+
+**What is closed semantics and what is library.** In the `Certification`
+module, as LexLean definitions Lean elaborates, replays, and axiom-audits:
+the transformation schemas, their rewriting, eligibility, static size and
+preparation, `improves` and `isNormal`; the premises, facts, routes,
+certificate, obligations, established statuses, and verdicts; the observations
+of a system and its rewriting, `sameObservations`, `strictlyCheaper`, and
+`preserves`; the lower bound, the attainment of a bound, the argmin and the
+frontier of the admitted systems (`Gnaf.argmin`, `Gnaf.frontier`, reused, not
+redefined); and the checker. In `GnafCertificates`, for each committed
+certificate: the certificate, its verdict, and, where it reduces, the verdict
+of `certificateReductionsPreserve`, each decided by the kernel. In the library,
+and only there: the statements quantified over every request, certificate,
+grammar, domain, and fuel: soundness of the checker against `Gnaf.expand`, the
+attainment of a bound, the completeness of a frontier, normality, and the
+preservation of every improving schema application. The module cannot state
+those, because the closed proof language has no quantification over programs
+and no conditional metatheory; the library is checked against the module's
+definitions, which it cites, not copies (`GC-09` elaborates ascriptions of
+its preservation theorems at the module's relations).
+
+**Routes not defined.** A certificate has no `enumeration` route (the
+verdict of an answer, §17.15, already enumerates), no `pareto_member` route
+(a Pareto-optimal claim is served by the same frontier cover and reduction as
+a complete frontier, and its certified members are the frontier's), and the
+verdict has no `infeasible` case (a universe with no admitted system leaves
+every bound unattained:
+`lb-infeasible-attainer`, `lb-no-attainer`). The certificate fixtures carry no
+per-certificate universal statements over the universe (the library's
+theorems are those); they carry the verdict and the preservation of each
+reduction. Nothing in the issue's acceptance criteria needs them: the claim
+statuses `correct_only`, `locally_normalized`, Pareto and frontier complete,
+globally optimal and argmin complete, and `not_certified` are all verdicts.
 
 **Host side.** `lexlean::gnaf::certification` transcribes the checker step
 for step: `load` reads a certificate, reporting `LLB6007` for a document that
@@ -7849,11 +7904,11 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `GC-02` | `gnaf-certification` | The certification checker is a kernel-checked LexLean definition, Lean's kernel reduces the verdict of every committed certificate and its request to what the host transcription computes, and a copy stating a certified verdict for a certificate that omits one competitor's premise, for a lower bound its attainer does not meet, or for a locally normal system is rejected by Lean. | §17.18 |
 | `GC-03` | `gnaf-certification` | A universal lower-bound certificate proves a nontrivial global optimum or argmin from a premise for every system of the universe: the attainers meet the bound, and every other system is excluded, reduced, or shown to pay at least the bound from a prefix of the domain, so a system whose cost is unknown at the request's fuel is bounded without being evaluated in full; ties are all attainers, and an undercut, unattained, non-strict, omitted, weakened, extra, diverging, or inadmissible-attainer certificate leaves an honest non-global status naming the first open obligation. | §17.18 |
 | `GC-04` | `gnaf-certification` | A frontier certificate proves a complete Pareto frontier: its members are admitted and none dominates another, and every other system is excluded, reduced, or strictly dominated by a member from the least evidence; a member omitted, a tie dropped, a dominated member, and a weakened premise are refused by naming the first obligation left open. | §17.18 |
-| `GC-05` | `gnaf-certification` | The transformation schemas collapse, specialize-small, and specialize-large apply only when the plans neither call the entry nor apply a closure and the domain makes the dispatch run the rewritten system's plan, and rewrite to a member of the universe of no greater size or preparation; a reduction certificate whose every other system is excluded or reduced certifies the optimum of the measured systems, an incomplete or ineligible reduction is refused, and the library proves each schema preserves every observation in strictly fewer steps. | §17.18 |
+| `GC-05` | `gnaf-certification` | The transformation schemas collapse, specialize-small, and specialize-large apply only when the plans neither call the entry nor apply a closure and the domain makes the dispatch run the rewritten system's plan, and rewrite to a member of the universe of no greater size or preparation; a reduction certificate whose every other system is excluded or reduced certifies the optimum of the measured systems, an incomplete or ineligible reduction is refused; the module defines the observations a system keeps and the strict cost decrease of its rewriting over the request's domain, the kernel decides both for every reduction premise of the committed certificates, and the library proves both for every improving schema application. | §17.18 |
 | `GC-06` | `gnaf-certification` | Local normality is never optimality: no theorem defines optimal as GNAF-normal, the normality route's verdict is never certified, a GNAF-normal system that is not the argmin is locally normalized only, claiming it as the attainer of the bound it cannot meet is refused, a system a schema improves is not normal, and a certified optimum is GNAF-normal while the converse is false. | §17.18 |
 | `GC-07` | `gnaf-certification` | A representation metric supports an execution-optimality claim only through a bridge: the system of least size is representation-minimal without one, an affine bridge from size to cost holding for every system certifies the least-size system as a global optimum when it attains the bound, and a missing, violated, unattained, non-minimal, or out-of-range bridge leaves a representation-minimal or correct-only status. | §17.18 |
 | `GC-08` | `gnaf-certification` | Every verdict is a closed, explicit claim status: refused for a certificate that does not bind its request's verifier, universe, objective, claim, and scope or does not cover its universe, a certified optimum, argmin, or frontier, or incomplete with the first open obligation and the strongest status it establishes, correct-only, locally normalized, or representation-minimal, never a fallback claim; a certificate for another universe, including the same problem on an enlarged machine, is refused. | §17.18 |
-| `GC-09` | `gnaf-certification` | The certification library is kernel-checked under the pinned Lean with exactly its registered axioms and none of the forbidden forms: it proves that a certified verdict bounds the cost of every well-formed system of the request's grammar universe at the request's fuel and every larger one and that a bound is attained, that a certified frontier is exactly the Pareto frontier of the admitted systems, that normality never certifies, that every certified optimum is GNAF-normal, and that each schema preserves every observation in strictly fewer steps, and its soundness theorem holds of every certified committed certificate. | §17.18 |
+| `GC-09` | `gnaf-certification` | The certification library is kernel-checked under the pinned Lean with exactly its registered axioms and none of the forbidden forms: it proves that a certified verdict bounds the cost of every well-formed system of the request's grammar universe at the request's fuel and every larger one and that a bound is attained, that a certified frontier is exactly the Pareto frontier of the admitted systems, that normality never certifies, that every certified optimum is GNAF-normal, and that every improving schema application satisfies the module's own `Certification.preserves`, its rewriting keeping the system's observations over the request's domain at strictly lower cost, and its soundness theorem holds of every certified committed certificate. | §17.18 |
 | `GC-10` | `gnaf-certification` | The certification model, certificate fixtures, certificate module, and schemas are generated, deterministic, and content-addressed: they equal their generators, the compiler project reaches them from its entrypoint, certificate identities are recomputed from content, and a planted change to a premise, a bound, or a route changes the verdict or the identity. | §17.18 |
 | `SP-01` | `preservation` | Every production root of the committed examples lowers to a valid realization program in first-binding order, byte-identical across two lowerings, with an origin for every function and document type and exactly the root's eligibility closure; the lowering and certificate sources match no construct by default; a planted closure disagreement fails with LLI9001 and a planted default arm is refused. | §17.17 |
 | `SP-02` | `preservation` | Every production root of examples/production, examples/production-coverage, examples/models, and examples/reasoning has a certificate whose root theorem, that the lowered program converges on the encoded arguments to the encoded source value or to overflow exactly where the width predicate fails, compiles under the pinned Lean, replays through leanchecker, and depends on exactly Classical.choice, Quot.sound, and propext; a certificate generated against a program with a planted branch, arithmetic, constructor, recursion, or literal mutation is rejected, and each such rejection lies in the declaration of the function mutated; and a root whose lowered program or certificates would exceed max_ir_nodes or max_file_bytes is refused with LLS8002 before the toolchain is touched: early, by a lower bound on each certificate from what the program states, the greatest of which is compared with the limit and none of which is above its certificate on the corpora, on families of programs that grow one dimension at a time, and on programs that grow several at once, so that a program whose certificates fit, a match on 420 constructors, a string of 450 000 characters, or both a wide match and a long string, is not refused by it, and by a floor on certificate B from the entries its field reads print, which the lowering refuses before the Rust crate is built; and in every case by generating each certificate under the limit, which stops it at the limit; the programs, crates, and certificates of all the roots of a project count together toward max_total_source_bytes, which a chain of roots calling one another passes before memory is exhausted; and a match on 180 constructors verifies through the whole pipeline. | §17.17 |

@@ -941,6 +941,307 @@ fn improvement() -> Vec<Json> {
     ]
 }
 
+/// The closed statement of what a schema preserves (§17.18). The observation
+/// of a system on one argument of the request's domain is its status on that
+/// argument alone: admitted when it returns the reference's value, at a cost.
+/// A rewriting *keeps* a system's observations when it returns the reference's
+/// value wherever the system does, and is *strictly cheaper* when it does so
+/// in fewer steps; an argument on which the system is not admitted relates
+/// nothing, because no claim consumes it. `preserves` is the conjunction,
+/// together with the schema's `improves` conditions, and the library proves
+/// `improves` implies it for every request, grammar, selector, and fuel.
+#[allow(clippy::too_many_lines)]
+fn preservation(unused: &Unused) -> Vec<Json> {
+    let status_pair = |name: &str, used: bool, admitted: Json| {
+        let (before, after) = if used {
+            ("cost".to_owned(), "cheaper".to_owned())
+        } else {
+            (unused.next(), unused.next())
+        };
+        definition(
+            name,
+            vec![p("before", g("Status")), p("after", g("Status"))],
+            bool_t(),
+            on_status(
+                var("before"),
+                (
+                    vec![before, unused.next()],
+                    on_status(
+                        var("after"),
+                        (vec![after, unused.next()], admitted),
+                        no(),
+                        no(),
+                    ),
+                ),
+                yes(),
+                yes(),
+            ),
+        )
+    };
+    let observed = |fuel: Json, selector: &str| {
+        f(
+            "argumentStatus",
+            vec![
+                var("request"),
+                var("grammar"),
+                fuel,
+                var(selector),
+                var("argument"),
+            ],
+        )
+    };
+    let over_domain = |name: &str, relation: &str| {
+        recursive(
+            "arguments",
+            definition(
+                name,
+                vec![
+                    p("request", g("Request")),
+                    p("grammar", g("Grammar")),
+                    p("fuel", nat_t()),
+                    p("selector", g("Selector")),
+                    p("target", g("Selector")),
+                    p("arguments", list_t(value_t())),
+                ],
+                bool_t(),
+                on_list(
+                    var("arguments"),
+                    yes(),
+                    "argument",
+                    "rest",
+                    and(
+                        f(
+                            relation,
+                            vec![
+                                observed(var("fuel"), "selector"),
+                                observed(var("fuel"), "target"),
+                            ],
+                        ),
+                        f(
+                            name,
+                            vec![
+                                var("request"),
+                                var("grammar"),
+                                var("fuel"),
+                                var("selector"),
+                                var("target"),
+                                var("rest"),
+                            ],
+                        ),
+                    ),
+                ),
+            ),
+        )
+    };
+    let at_request_fuel = |name: &str, over: &str| {
+        definition(
+            name,
+            vec![
+                p("request", g("Request")),
+                p("grammar", g("Grammar")),
+                p("selector", g("Selector")),
+                p("target", g("Selector")),
+            ],
+            bool_t(),
+            f(
+                over,
+                vec![
+                    var("request"),
+                    var("grammar"),
+                    project(project(var("request"), "machine"), "fuel"),
+                    var("selector"),
+                    var("target"),
+                    project(var("request"), "domain"),
+                ],
+            ),
+        )
+    };
+    let reduced_premise = |body: Json| {
+        m(
+            var("premise"),
+            vec![
+                a("Premise.excluded", binders![unused.next()], yes()),
+                a("Premise.paysAtLeast", binders![unused.next()], yes()),
+                a("Premise.measured", Vec::new(), yes()),
+                a("Premise.reduced", binders!["schema"], body),
+            ],
+        )
+    };
+    vec![
+        axioms(
+            &RUN_AXIOMS,
+            definition(
+                "argumentStatus",
+                vec![
+                    p("request", g("Request")),
+                    p("grammar", g("Grammar")),
+                    p("fuel", nat_t()),
+                    p("selector", g("Selector")),
+                    p("argument", value_t()),
+                ],
+                g("Status"),
+                gf(
+                    "statusOn",
+                    vec![
+                        gf("realize", vec![var("grammar"), var("selector")]),
+                        project(var("request"), "reference"),
+                        var("fuel"),
+                        list(value_t(), vec![var("argument")]),
+                    ],
+                ),
+            ),
+        ),
+        status_pair("keepsObservation", false, yes()),
+        status_pair("cheaperObservation", true, blt(var("cheaper"), var("cost"))),
+        axioms(
+            &RUN_AXIOMS,
+            over_domain("sameObservationsAt", "keepsObservation"),
+        ),
+        axioms(
+            &RUN_AXIOMS,
+            over_domain("strictlyCheaperAt", "cheaperObservation"),
+        ),
+        axioms(
+            &RUN_AXIOMS,
+            at_request_fuel("sameObservations", "sameObservationsAt"),
+        ),
+        axioms(
+            &RUN_AXIOMS,
+            at_request_fuel("strictlyCheaper", "strictlyCheaperAt"),
+        ),
+        // A schema application preserves when it improves and its rewriting
+        // keeps the system's observations over the request's domain at
+        // strictly lower cost.
+        axioms(
+            &RUN_AXIOMS,
+            definition(
+                "preserves",
+                vec![
+                    p("request", g("Request")),
+                    p("grammar", g("Grammar")),
+                    p("selector", g("Selector")),
+                    p("schema", t("Schema")),
+                ],
+                bool_t(),
+                on_option(
+                    f("rewrite", vec![var("schema"), var("selector")]),
+                    no(),
+                    "target",
+                    and(
+                        f(
+                            "improves",
+                            vec![
+                                var("request"),
+                                var("grammar"),
+                                var("selector"),
+                                var("schema"),
+                            ],
+                        ),
+                        and(
+                            f(
+                                "sameObservations",
+                                vec![
+                                    var("request"),
+                                    var("grammar"),
+                                    var("selector"),
+                                    var("target"),
+                                ],
+                            ),
+                            f(
+                                "strictlyCheaper",
+                                vec![
+                                    var("request"),
+                                    var("grammar"),
+                                    var("selector"),
+                                    var("target"),
+                                ],
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        // Every `reduced` premise of a certificate states a preserving
+        // application of its schema to its system.
+        axioms(
+            &RUN_AXIOMS,
+            recursive(
+                "selectors",
+                definition(
+                    "reductionsPreserve",
+                    vec![
+                        p("request", g("Request")),
+                        p("grammar", g("Grammar")),
+                        p("selectors", selectors_t()),
+                        p("premises", list_t(t("Premise"))),
+                    ],
+                    bool_t(),
+                    on_list(
+                        var("selectors"),
+                        yes(),
+                        "selector",
+                        "rest",
+                        on_list(
+                            var("premises"),
+                            yes(),
+                            "premise",
+                            "later",
+                            and(
+                                reduced_premise(f(
+                                    "preserves",
+                                    vec![
+                                        var("request"),
+                                        var("grammar"),
+                                        var("selector"),
+                                        var("schema"),
+                                    ],
+                                )),
+                                f(
+                                    "reductionsPreserve",
+                                    vec![var("request"), var("grammar"), var("rest"), var("later")],
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        axioms(
+            &RUN_AXIOMS,
+            definition(
+                "certificateReductionsPreserve",
+                vec![
+                    p("request", g("Request")),
+                    p("certificate", t("Certificate")),
+                ],
+                bool_t(),
+                m(
+                    project(var("request"), "carrier"),
+                    vec![
+                        ga(
+                            "Carrier.grammar",
+                            binders!["grammar"],
+                            f(
+                                "reductionsPreserve",
+                                vec![
+                                    var("request"),
+                                    var("grammar"),
+                                    gf("expand", vec![var("grammar")]),
+                                    project(var("certificate"), "premises"),
+                                ],
+                            ),
+                        ),
+                        ga("Carrier.internalPlans", Vec::new(), no()),
+                        ga("Carrier.optimizerOutput", Vec::new(), no()),
+                        ga("Carrier.discovered", binders![unused.next()], no()),
+                        ga("Carrier.cached", Vec::new(), no()),
+                    ],
+                ),
+            ),
+        ),
+    ]
+}
+
 /// What one premise establishes about one system. The only definitions of
 /// this module that evaluate a program.
 #[allow(clippy::too_many_lines)]
@@ -2348,6 +2649,7 @@ fn declarations() -> Vec<Json> {
     out.extend(statics());
     out.extend(improvement());
     out.extend(facts(&unused));
+    out.extend(preservation(&unused));
     out.extend(lower_bound(&unused));
     out.extend(frontier(&unused));
     out.extend(reduction(&unused));

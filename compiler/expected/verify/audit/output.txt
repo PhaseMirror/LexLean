@@ -120,10 +120,13 @@
 'LexLeanTarget.Certification.allLists' does not depend on any axioms
 'LexLeanTarget.Certification.allLong' does not depend on any axioms
 'LexLeanTarget.Certification.allShorter' does not depend on any axioms
+'LexLeanTarget.Certification.argumentStatus' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.Certification.armIsolated' does not depend on any axioms
 'LexLeanTarget.Certification.armsIsolated' does not depend on any axioms
 'LexLeanTarget.Certification.ascending' does not depend on any axioms
 'LexLeanTarget.Certification.bridgePosition' does not depend on any axioms
+'LexLeanTarget.Certification.certificateReductionsPreserve' depends on axioms: [propext, Classical.choice, Quot.sound]
+'LexLeanTarget.Certification.cheaperObservation' does not depend on any axioms
 'LexLeanTarget.Certification.check' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.Certification.claimShape' does not depend on any axioms
 'LexLeanTarget.Certification.eligible' does not depend on any axioms
@@ -141,6 +144,7 @@
 'LexLeanTarget.Certification.isLong' does not depend on any axioms
 'LexLeanTarget.Certification.isNormal' does not depend on any axioms
 'LexLeanTarget.Certification.isShorter' does not depend on any axioms
+'LexLeanTarget.Certification.keepsObservation' does not depend on any axioms
 'LexLeanTarget.Certification.lowerPosition' does not depend on any axioms
 'LexLeanTarget.Certification.lowerVerdict' does not depend on any axioms
 'LexLeanTarget.Certification.natAt' does not depend on any axioms
@@ -149,11 +153,15 @@
 'LexLeanTarget.Certification.plansIsolated' does not depend on any axioms
 'LexLeanTarget.Certification.positionOf' does not depend on any axioms
 'LexLeanTarget.Certification.premiseFact' depends on axioms: [propext, Classical.choice, Quot.sound]
+'LexLeanTarget.Certification.preserves' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.Certification.reductionVerdict' does not depend on any axioms
+'LexLeanTarget.Certification.reductionsPreserve' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.Certification.representationVerdict' does not depend on any axioms
 'LexLeanTarget.Certification.rewrite' does not depend on any axioms
 'LexLeanTarget.Certification.rowsOfMembers' does not depend on any axioms
 'LexLeanTarget.Certification.sameObjective' does not depend on any axioms
+'LexLeanTarget.Certification.sameObservations' depends on axioms: [propext, Classical.choice, Quot.sound]
+'LexLeanTarget.Certification.sameObservationsAt' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.Certification.sameScope' does not depend on any axioms
 'LexLeanTarget.Certification.scanBridge' does not depend on any axioms
 'LexLeanTarget.Certification.scanFrontier' does not depend on any axioms
@@ -163,6 +171,8 @@
 'LexLeanTarget.Certification.sizesOf' does not depend on any axioms
 'LexLeanTarget.Certification.staticCharge' does not depend on any axioms
 'LexLeanTarget.Certification.staticSize' does not depend on any axioms
+'LexLeanTarget.Certification.strictlyCheaper' depends on axioms: [propext, Classical.choice, Quot.sound]
+'LexLeanTarget.Certification.strictlyCheaperAt' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.Certification.valueAt' does not depend on any axioms
 'LexLeanTarget.Gnaf.Action' does not depend on any axioms
 'LexLeanTarget.Gnaf.ActionKind' does not depend on any axioms
@@ -324,8 +334,13 @@
 'LexLeanTarget.GnafCertificates.bridgeNotMinimalVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.bridgeOutOfRangeCertificate' does not depend on any axioms
 'LexLeanTarget.GnafCertificates.bridgeOutOfRangeVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
+'LexLeanTarget.GnafCertificates.bridgeReducedCertificate' does not depend on any axioms
+'LexLeanTarget.GnafCertificates.bridgeReducedPreserves' depends on axioms: [propext, Classical.choice, Quot.sound]
+'LexLeanTarget.GnafCertificates.bridgeReducedVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.bridgeUnattainedCertificate' does not depend on any axioms
 'LexLeanTarget.GnafCertificates.bridgeUnattainedVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
+'LexLeanTarget.GnafCertificates.bridgeUnprovenCertificate' does not depend on any axioms
+'LexLeanTarget.GnafCertificates.bridgeUnprovenVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.bridgeViolatedCertificate' does not depend on any axioms
 'LexLeanTarget.GnafCertificates.bridgeViolatedVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.claimMismatchCertificate' does not depend on any axioms
@@ -334,8 +349,22 @@
 'LexLeanTarget.GnafCertificates.frontierDominatedMemberVerdict' depends on axioms: [propext,
  Classical.choice,
  Quot.sound]
+'LexLeanTarget.GnafCertificates.frontierMemberAtCountCertificate' does not depend on any axioms
+'LexLeanTarget.GnafCertificates.frontierMemberAtCountVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.frontierMemberOmittedCertificate' does not depend on any axioms
 'LexLeanTarget.GnafCertificates.frontierMemberOmittedVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
+'LexLeanTarget.GnafCertificates.frontierMemberUnprovenCertificate' does not depend on any axioms
+'LexLeanTarget.GnafCertificates.frontierMemberUnprovenVerdict' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+'LexLeanTarget.GnafCertificates.frontierMembersUnorderedCertificate' does not depend on any axioms
+'LexLeanTarget.GnafCertificates.frontierMembersUnorderedVerdict' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+'LexLeanTarget.GnafCertificates.frontierNonmemberUnprovenCertificate' does not depend on any axioms
+'LexLeanTarget.GnafCertificates.frontierNonmemberUnprovenVerdict' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
 'LexLeanTarget.GnafCertificates.frontierParetoOptimalCertificate' does not depend on any axioms
 'LexLeanTarget.GnafCertificates.frontierParetoOptimalVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.frontierPremiseWeakenedCertificate' does not depend on any axioms
@@ -350,10 +379,14 @@
 'LexLeanTarget.GnafCertificates.frontierVec02Verdict' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.lbArgminCompleteCertificate' does not depend on any axioms
 'LexLeanTarget.GnafCertificates.lbArgminCompleteVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
+'LexLeanTarget.GnafCertificates.lbArgminMeasuredCertificate' does not depend on any axioms
+'LexLeanTarget.GnafCertificates.lbArgminMeasuredVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.lbArgminOverSystemsCertificate' does not depend on any axioms
 'LexLeanTarget.GnafCertificates.lbArgminOverSystemsVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.lbArgminTieCertificate' does not depend on any axioms
 'LexLeanTarget.GnafCertificates.lbArgminTieVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
+'LexLeanTarget.GnafCertificates.lbAttainerAtCountCertificate' does not depend on any axioms
+'LexLeanTarget.GnafCertificates.lbAttainerAtCountVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.lbAttainerBoundedCertificate' does not depend on any axioms
 'LexLeanTarget.GnafCertificates.lbAttainerBoundedVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.lbAttainerOutOfRangeCertificate' does not depend on any axioms
@@ -370,8 +403,12 @@
 'LexLeanTarget.GnafCertificates.lbInfeasibleAttainerVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.lbNoAttainerCertificate' does not depend on any axioms
 'LexLeanTarget.GnafCertificates.lbNoAttainerVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
+'LexLeanTarget.GnafCertificates.lbOptimumTieMeasuredCertificate' does not depend on any axioms
+'LexLeanTarget.GnafCertificates.lbOptimumTieMeasuredVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.lbOverUnresolvedCertificate' does not depend on any axioms
 'LexLeanTarget.GnafCertificates.lbOverUnresolvedVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
+'LexLeanTarget.GnafCertificates.lbPositionOutOfDomainCertificate' does not depend on any axioms
+'LexLeanTarget.GnafCertificates.lbPositionOutOfDomainVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.lbPositionsRepeatedCertificate' does not depend on any axioms
 'LexLeanTarget.GnafCertificates.lbPositionsRepeatedVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.lbPremiseOmittedCertificate' does not depend on any axioms
@@ -403,22 +440,43 @@
 'LexLeanTarget.GnafCertificates.objectiveMismatchCertificate' does not depend on any axioms
 'LexLeanTarget.GnafCertificates.objectiveMismatchVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.reductionCollapseDistinctCertificate' does not depend on any axioms
+'LexLeanTarget.GnafCertificates.reductionCollapseDistinctPreserves' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
 'LexLeanTarget.GnafCertificates.reductionCollapseDistinctVerdict' depends on axioms: [propext,
  Classical.choice,
  Quot.sound]
 'LexLeanTarget.GnafCertificates.reductionIncompleteCertificate' does not depend on any axioms
+'LexLeanTarget.GnafCertificates.reductionIncompletePreserves' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.reductionIncompleteVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.reductionIneligibleCertificate' does not depend on any axioms
+'LexLeanTarget.GnafCertificates.reductionIneligiblePreserves' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.reductionIneligibleVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.reductionMixedDomainCertificate' does not depend on any axioms
+'LexLeanTarget.GnafCertificates.reductionMixedDomainPreserves' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
 'LexLeanTarget.GnafCertificates.reductionMixedDomainVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
+'LexLeanTarget.GnafCertificates.reductionOverUnresolvedCertificate' does not depend on any axioms
+'LexLeanTarget.GnafCertificates.reductionOverUnresolvedVerdict' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+'LexLeanTarget.GnafCertificates.reductionParetoCertificate' does not depend on any axioms
+'LexLeanTarget.GnafCertificates.reductionParetoVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.reductionShortListsCertificate' does not depend on any axioms
+'LexLeanTarget.GnafCertificates.reductionShortListsPreserves' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.reductionShortListsVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.reductionSmallAtThresholdCertificate' does not depend on any axioms
+'LexLeanTarget.GnafCertificates.reductionSmallAtThresholdPreserves' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
 'LexLeanTarget.GnafCertificates.reductionSmallAtThresholdVerdict' depends on axioms: [propext,
  Classical.choice,
  Quot.sound]
 'LexLeanTarget.GnafCertificates.reductionThresholdEdgeCertificate' does not depend on any axioms
+'LexLeanTarget.GnafCertificates.reductionThresholdEdgePreserves' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
 'LexLeanTarget.GnafCertificates.reductionThresholdEdgeVerdict' depends on axioms: [propext,
  Classical.choice,
  Quot.sound]
@@ -428,6 +486,8 @@
 'LexLeanTarget.GnafCertificates.reusedEnlargedVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.routeIncompatibleCertificate' does not depend on any axioms
 'LexLeanTarget.GnafCertificates.routeIncompatibleVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
+'LexLeanTarget.GnafCertificates.routeLowerBoundParetoCertificate' does not depend on any axioms
+'LexLeanTarget.GnafCertificates.routeLowerBoundParetoVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.scopeMismatchCertificate' does not depend on any axioms
 'LexLeanTarget.GnafCertificates.scopeMismatchVerdict' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafCertificates.verifierMismatchCertificate' does not depend on any axioms
@@ -480,6 +540,10 @@
 'LexLeanTarget.GnafFixtures.internalBestOnShortListsRequest' does not depend on any axioms
 'LexLeanTarget.GnafFixtures.internalBestOnShortListsStatuses' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafFixtures.internalBestOnShortListsUniverse' does not depend on any axioms
+'LexLeanTarget.GnafFixtures.optimumTieAnswer' depends on axioms: [propext, Classical.choice, Quot.sound]
+'LexLeanTarget.GnafFixtures.optimumTieRequest' does not depend on any axioms
+'LexLeanTarget.GnafFixtures.optimumTieStatuses' depends on axioms: [propext, Classical.choice, Quot.sound]
+'LexLeanTarget.GnafFixtures.optimumTieUniverse' does not depend on any axioms
 'LexLeanTarget.GnafFixtures.preparationChargedAnswer' depends on axioms: [propext, Classical.choice, Quot.sound]
 'LexLeanTarget.GnafFixtures.preparationChargedRequest' does not depend on any axioms
 'LexLeanTarget.GnafFixtures.preparationChargedStatuses' depends on axioms: [propext, Classical.choice, Quot.sound]

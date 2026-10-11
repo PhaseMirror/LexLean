@@ -472,6 +472,15 @@ fn requests() -> Vec<(&'static str, Request)> {
                 ..scalar()
             },
         ),
+        // The same tie with the claim of an optimum: a tied system is no
+        // omission from the attainers.
+        (
+            "optimum-tie",
+            Request {
+                carrier: duplicated_plan(),
+                ..scalar()
+            },
+        ),
         ("frontier-incomparable", vector()),
         (
             "frontier-pareto-optimal",
@@ -1115,10 +1124,10 @@ pub fn manifest() -> Json {
              "statement": "lexlean::gnaf loads a request, checks it, and computes the answer the model gives it; its answers are evidence through the kernel's agreement on the committed requests."},
             {"name": "certificate", "role": "semantic",
              "source": "compiler/src/Certification.lex.tex",
-             "statement": "Certification.check decides a certificate against a request: a global or Pareto claim over the universe is certified only by a universal lower bound with its attainers, or by a frontier cover, each over a premise for every competitor; local normality, correctness, and representation-minimality are separate, weaker statuses (SPEC.md §17.18)."},
+             "statement": "Certification.check decides a certificate against a request: a global or Pareto claim over the universe is certified only by a universal lower bound with its attainers, or by a frontier cover, each over a premise for every competitor; local normality, correctness, and representation-minimality are separate, weaker statuses, and a reduction premise's observation preservation and strict saving are the module's own closed definition (Certification.preserves), decided by the kernel for the committed certificates (SPEC.md §17.18)."},
             {"name": "certificate-proof", "role": "verification-only",
              "source": "compiler/proofs/library.toml",
-             "statement": "The library under compiler/proofs/LexLeanCertification proves Certification.check sound for the evaluator at the request's fuel and every larger fuel, and proves that a certified optimum is locally normal and that normality never certifies, with the axioms registered per declaration."},
+             "statement": "The library under compiler/proofs/LexLeanCertification proves Certification.check sound for the evaluator at the request's fuel and every larger fuel, proves that every improving schema application satisfies Certification.preserves at every fuel, and proves that a certified optimum is locally normal and that normality never certifies, with the axioms registered per declaration."},
             {"name": "certificate-transcription", "role": "realization-only",
              "source": "crates/lexlean/src/gnaf/certification.rs",
              "statement": "lexlean::gnaf::certification loads a certificate, refuses what exceeds its capacity before reading a premise, and gives the verdict the model gives it; its verdicts are evidence through the kernel's agreement on the committed certificates."},

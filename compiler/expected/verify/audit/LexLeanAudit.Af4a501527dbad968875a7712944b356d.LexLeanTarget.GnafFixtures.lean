@@ -48,6 +48,10 @@ import LexLeanTarget.GnafFixtures
 #print axioms LexLeanTarget.GnafFixtures.internalBestOnShortListsRequest
 #print axioms LexLeanTarget.GnafFixtures.internalBestOnShortListsStatuses
 #print axioms LexLeanTarget.GnafFixtures.internalBestOnShortListsUniverse
+#print axioms LexLeanTarget.GnafFixtures.optimumTieAnswer
+#print axioms LexLeanTarget.GnafFixtures.optimumTieRequest
+#print axioms LexLeanTarget.GnafFixtures.optimumTieStatuses
+#print axioms LexLeanTarget.GnafFixtures.optimumTieUniverse
 #print axioms LexLeanTarget.GnafFixtures.preparationChargedAnswer
 #print axioms LexLeanTarget.GnafFixtures.preparationChargedRequest
 #print axioms LexLeanTarget.GnafFixtures.preparationChargedStatuses

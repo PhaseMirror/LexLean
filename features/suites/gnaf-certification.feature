@@ -12,9 +12,9 @@ Feature: gnaf-certification
   @GC-02 @build
   Scenario: The certification checker is a kernel-checked LexLean definition, Lean's kernel reduces the verdict of every committed certificate and its request to what the host transcription computes, and a copy stating a certified verdict for a certificate that omits one competitor's premise, for a lower bound its attainer does not meet, or for a locally normal system is rejected by Lean.
     Given the `compiler` project, its generated `Certification` and `GnafCertificates` modules, and a copy of the certificate module stating certified verdicts the checker does not give
-    When the project is verified under pinned Lean and the copy is verified
+    When the project is verified under pinned Lean and the copy is compiled against its built modules
     Then the kernel proves every committed verdict, every committed verdict equals the host's, and the modules equal their generators
-    And the copy fails with LLV7002 on each planted verdict
+    And Lean rejects the copy's theorem for each planted verdict as not definitionally equal to the checker's verdict
 
   @GC-03 @build
   Scenario: A universal lower-bound certificate proves a nontrivial global optimum or argmin from a premise for every system of the universe: the attainers meet the bound, and every other system is excluded, reduced, or shown to pay at least the bound from a prefix of the domain, so a system whose cost is unknown at the request's fuel is bounded without being evaluated in full; ties are all attainers, and an undercut, unattained, non-strict, omitted, weakened, extra, diverging, or inadmissible-attainer certificate leaves an honest non-global status naming the first open obligation.
@@ -31,10 +31,10 @@ Feature: gnaf-certification
     And each mutation leaves the obligation it breaks open
 
   @GC-05 @build
-  Scenario: The transformation schemas collapse, specialize-small, and specialize-large apply only when the plans neither call the entry nor apply a closure and the domain makes the dispatch run the rewritten system's plan, and rewrite to a member of the universe of no greater size or preparation; a reduction certificate whose every other system is excluded or reduced certifies the optimum of the measured systems, an incomplete or ineligible reduction is refused, and the library proves each schema preserves every observation in strictly fewer steps.
+  Scenario: The transformation schemas collapse, specialize-small, and specialize-large apply only when the plans neither call the entry nor apply a closure and the domain makes the dispatch run the rewritten system's plan, and rewrite to a member of the universe of no greater size or preparation; a reduction certificate whose every other system is excluded or reduced certifies the optimum of the measured systems, an incomplete or ineligible reduction is refused; the module defines the observations a system keeps and the strict cost decrease of its rewriting over the request's domain, the kernel decides both for every reduction premise of the committed certificates, and the library proves both for every improving schema application.
     Given requests whose dispatches a domain specializes and a request whose domain does not, and reduction certificates for them and their mutations
-    When each certificate is checked and the schemas' eligibility is read for every system
-    Then the reductions certify the measured optimum and only eligible systems reduce
+    When each certificate is checked, the schemas' eligibility is read for every system, and the module's preservation relation is read for every reduction premise
+    Then the reductions certify the measured optimum, only eligible systems reduce, and every committed reduction premise is a preserving application as the kernel decides
     And an incomplete or ineligible reduction is refused with the position it leaves open
 
   @GC-06 @build
@@ -59,11 +59,11 @@ Feature: gnaf-certification
     And every incomplete verdict names its first obligation and a status that claims no optimality
 
   @GC-09 @build
-  Scenario: The certification library is kernel-checked under the pinned Lean with exactly its registered axioms and none of the forbidden forms: it proves that a certified verdict bounds the cost of every well-formed system of the request's grammar universe at the request's fuel and every larger one and that a bound is attained, that a certified frontier is exactly the Pareto frontier of the admitted systems, that normality never certifies, that every certified optimum is GNAF-normal, and that each schema preserves every observation in strictly fewer steps, and its soundness theorem holds of every certified committed certificate.
+  Scenario: The certification library is kernel-checked under the pinned Lean with exactly its registered axioms and none of the forbidden forms: it proves that a certified verdict bounds the cost of every well-formed system of the request's grammar universe at the request's fuel and every larger one and that a bound is attained, that a certified frontier is exactly the Pareto frontier of the admitted systems, that normality never certifies, that every certified optimum is GNAF-normal, and that every improving schema application satisfies the module's own `Certification.preserves`, its rewriting keeping the system's observations over the request's domain at strictly lower cost, and its soundness theorem holds of every certified committed certificate.
     Given the library under `compiler/proofs/`, its registry, and the compiler project's generated modules
-    When the library is staged beside the generated modules, compiled, replayed, and audited, instantiated at every certified committed certificate, and planted with an unsound lemma
+    When the library is staged beside the generated modules, compiled, replayed, and audited, instantiated at every certified committed certificate and at the module's preservation relation, and planted with an unsound lemma
     Then every theorem is accepted with exactly its registered axioms and every instance is accepted
-    And a planted sorry, a planted false lemma, and a planted weakened premise check each fail
+    And a planted sorry is refused by the token audit, and a planted false lemma and a planted weakened checker are each refused by Lean
 
   @GC-10 @build
   Scenario: The certification model, certificate fixtures, certificate module, and schemas are generated, deterministic, and content-addressed: they equal their generators, the compiler project reaches them from its entrypoint, certificate identities are recomputed from content, and a planted change to a premise, a bound, or a route changes the verdict or the identity.

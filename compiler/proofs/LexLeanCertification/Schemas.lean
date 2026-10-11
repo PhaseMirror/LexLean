@@ -175,4 +175,83 @@ theorem schema_cheaper (req : Gnaf.Request) (g : Gnaf.Grammar) (s q : Gnaf.Selec
   | inadmissible => rw [hs] at h; simp at h
   | unresolved => rw [hs] at h; simp at h
 
+/-- A system's single-argument status that is admitted is the argument's trial agreeing at that cost. -/
+theorem argumentStatus_admitted {req : Gnaf.Request} {g : Gnaf.Grammar} {F : Nat} {s : Gnaf.Selector}
+    {a : Value} {c z : Nat} (h : Certification.argumentStatus req g F s a = .admitted c z) :
+    trialOf (Gnaf.realize g s) req.reference F a = .agrees c := by
+  unfold Certification.argumentStatus at h
+  rw [statusOn_cons] at h
+  cases ht : trialOf (Gnaf.realize g s) req.reference F a with
+  | agrees st =>
+    rw [ht] at h
+    simp only [statusOn_nil, Gnaf.Status.admitted.injEq] at h
+    obtain ⟨h1, _⟩ := h
+    simp only [Trial.agrees.injEq]; omega
+  | disagrees => rw [ht] at h; simp at h
+  | unknown => rw [ht] at h; simp at h
+
+theorem argumentStatus_of_agrees {req : Gnaf.Request} {g : Gnaf.Grammar} {F : Nat} {s : Gnaf.Selector}
+    {a : Value} {c : Nat} (h : trialOf (Gnaf.realize g s) req.reference F a = .agrees c) :
+    Certification.argumentStatus req g F s a = .admitted c 0 := by
+  unfold Certification.argumentStatus
+  rw [statusOn_cons, h]
+  simp [statusOn_nil]
+
+theorem observations_of_trials (req : Gnaf.Request) (g : Gnaf.Grammar) (F : Nat) (s q : Gnaf.Selector) :
+    ∀ D : List Value,
+      (∀ a ∈ D, ∀ st, trialOf (Gnaf.realize g s) req.reference F a = .agrees st →
+        ∃ st', st' < st ∧ trialOf (Gnaf.realize g q) req.reference F a = .agrees st') →
+      Certification.sameObservationsAt req g F s q D = true ∧
+        Certification.strictlyCheaperAt req g F s q D = true
+  | [], _ => by simp [Certification.sameObservationsAt, Certification.strictlyCheaperAt]
+  | a :: D, h => by
+    have ih := observations_of_trials req g F s q D (fun b hb => h b (List.mem_cons_of_mem _ hb))
+    have hhead : Certification.keepsObservation (Certification.argumentStatus req g F s a)
+          (Certification.argumentStatus req g F q a) = true ∧
+        Certification.cheaperObservation (Certification.argumentStatus req g F s a)
+          (Certification.argumentStatus req g F q a) = true := by
+      cases hs : Certification.argumentStatus req g F s a with
+      | admitted c z =>
+        obtain ⟨st', hlt, hq⟩ := h a List.mem_cons_self c (argumentStatus_admitted hs)
+        rw [argumentStatus_of_agrees hq]
+        simp [Certification.keepsObservation, Certification.cheaperObservation, Nat.blt_eq, hlt]
+      | inadmissible => simp [Certification.keepsObservation, Certification.cheaperObservation]
+      | unresolved => simp [Certification.keepsObservation, Certification.cheaperObservation]
+    constructor
+    · simp only [Certification.sameObservationsAt, Bool.and_eq_true]
+      exact ⟨hhead.1, ih.1⟩
+    · simp only [Certification.strictlyCheaperAt, Bool.and_eq_true]
+      exact ⟨hhead.2, ih.2⟩
+
+/-- Preservation for every fuel: an eligible schema application's rewriting keeps the system's
+observations over the request's domain and is strictly cheaper on each, as the module defines them. -/
+theorem schema_preserves_at (req : Gnaf.Request) (g : Gnaf.Grammar) (s q : Gnaf.Selector)
+    (schema : Certification.Schema)
+    (hrw : Certification.rewrite schema s = some q) (hel : Certification.eligible req g s schema = true)
+    (F : Nat) :
+    Certification.sameObservationsAt req g F s q req.domain = true ∧
+      Certification.strictlyCheaperAt req g F s q req.domain = true :=
+  observations_of_trials req g F s q req.domain (schema_trial req g s q schema hrw hel F)
+
+/-- The module's `improves` implies its `preserves`, for every request, grammar, system, and schema. -/
+theorem improves_preserves (req : Gnaf.Request) (g : Gnaf.Grammar) (s : Gnaf.Selector)
+    (schema : Certification.Schema)
+    (h : Certification.improves req g s schema = true) :
+    Certification.preserves req g s schema = true := by
+  unfold Certification.improves at h
+  cases hrw : Certification.rewrite schema s with
+  | none => rw [hrw] at h; simp at h
+  | some q =>
+    rw [hrw] at h
+    simp only [Bool.and_eq_true] at h
+    have hel := h.1
+    have hp := schema_preserves_at req g s q schema hrw hel req.machine.fuel
+    unfold Certification.preserves
+    rw [hrw]
+    simp only [Bool.and_eq_true]
+    refine ⟨?_, ?_, ?_⟩
+    · unfold Certification.improves; rw [hrw]; simp only [Bool.and_eq_true]; exact h
+    · exact hp.1
+    · exact hp.2
+
 end LexLeanCertification

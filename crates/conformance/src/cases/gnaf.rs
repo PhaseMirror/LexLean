@@ -297,19 +297,13 @@ fn called<'a>(term: &'a Json, function: &str) -> &'a [Json] {
 /// declarations then changed by `edit`: the messages Lean reports when it
 /// refuses it.
 fn planted_compiler(planted: &[Fixture], edit: impl FnOnce(&mut Vec<Json>)) -> Vec<String> {
-    // The certificate fixtures name every request of the module, so the
-    // planted module states the committed fixtures it does not plant.
-    let mut stated = planted.to_vec();
-    stated.extend(
-        fixtures::fixtures()
-            .into_iter()
-            .filter(|fixture| !planted.iter().any(|plant| plant.name == fixture.name)),
-    );
-    let text = fixtures::fixtures_module(&stated);
+    let text = fixtures::fixtures_module(planted);
     let mut data = module_data(&text);
     edit(data["declarations"].as_array_mut().expect("declarations"));
     let project = P::compiler();
     project.write("src/GnafFixtures.lex.tex", &with_module_data(&text, &data));
+    // Nothing the certificate modules check is under test here.
+    project.skip_certification();
     let _guard = support::env_shared();
     let error = project.verify_fails_with("LLV7002");
     error
@@ -410,6 +404,7 @@ fn planted_vector() -> Vec<String> {
     );
     *tail = tail["tail"].clone();
     project.write("src/Gnaf.lex.tex", &with_module_data(&text, &data));
+    project.skip_certification();
     let _guard = support::env_shared();
     let error = project.verify_fails_with("LLV7002");
     error
