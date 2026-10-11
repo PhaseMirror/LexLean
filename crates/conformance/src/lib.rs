@@ -29,7 +29,6 @@ pub mod rust_packages;
 pub mod rust_source;
 pub mod schema;
 pub mod stress;
-pub mod width;
 
 pub mod support;
 

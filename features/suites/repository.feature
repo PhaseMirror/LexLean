@@ -96,8 +96,8 @@ Feature: repository
     And a test recipe that includes repo-conformance, or a bdd recipe that runs fewer targets, fails the inventory
 
   @RP-14 @build
-  Scenario: The normative CI job takes its runner and verifier width from variables with the defaults ubuntu-24.04 and width 1, accepts a width above 1 only on a runner at or above its declared memory envelope, and keeps no cache, path filter, or skipped recipe.
-    Given .github/workflows/ci.yml and the xtask check-vv-profile decision
-    When the runner and width expressions, the profile decision, and the job steps are read
-    Then the defaults are ubuntu-24.04 and width 1, and a width above 1 without a declared envelope or on a smaller runner is refused
-    And the vv job has no path filter, no cache action, no condition on a recipe, and uploads ci-evidence
+  Scenario: The normative CI job runs just vv on the standard ubuntu-24.04 runner at the default verifier width 1 from a clean checkout, with no cache, path filter, or skipped recipe, and uploads its CI evidence.
+    Given .github/workflows/ci.yml
+    When the runner, the environment, and the job steps are read
+    Then the job runs on ubuntu-24.04 with the verifier width left at its default and the 360-minute limit
+    And the vv job has no path filter, no cache action, no condition on a recipe, runs just vv once, and uploads ci-evidence

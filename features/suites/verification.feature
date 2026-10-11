@@ -160,10 +160,3 @@ Feature: verification
     When it is verified with and without telemetry
     Then the verified directories are byte-identical and the telemetry directory holds stage, frontier and process lines of the closed vocabulary
     And a verified directory in which a telemetry key is planted is refused
-
-  @VR-23 @build
-  Scenario: The width measurement accepts a candidate width only when its verified evidence equals width 1's and its peak memory stays inside the envelope, and reports the wall-time reduction against the 25 percent criterion without asserting it.
-    Given measurements of widths 1, 2, and 3 of one example
-    When the measurement verdict is taken
-    Then a width whose evidence differs, or whose peak memory leaves the envelope, is never selected
-    And the reduction against width 1 is reported with the 25 percent criterion marked met or not met

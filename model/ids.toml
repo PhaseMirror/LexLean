@@ -90,7 +90,7 @@ statement = "The ordinary workspace test phase excludes repo-conformance, the bd
 id = "RP-14"
 level = "build"
 suite = "repository"
-statement = "The normative CI job takes its runner and verifier width from variables with the defaults ubuntu-24.04 and width 1, accepts a width above 1 only on a runner at or above its declared memory envelope, and keeps no cache, path filter, or skipped recipe."
+statement = "The normative CI job runs just vv on the standard ubuntu-24.04 runner at the default verifier width 1 from a clean checkout, with no cache, path filter, or skipped recipe, and uploads its CI evidence."
 
 [[id]]
 id = "CF-01"
@@ -1249,12 +1249,6 @@ id = "VR-22"
 level = "build"
 suite = "verification"
 statement = "Performance telemetry is written only to the CI evidence directory the environment names, a verification with telemetry on publishes byte-identical artifacts to one without, and telemetry planted in a verified artifact fails the gate."
-
-[[id]]
-id = "VR-23"
-level = "build"
-suite = "verification"
-statement = "The width measurement accepts a candidate width only when its verified evidence equals width 1's and its peak memory stays inside the envelope, and reports the wall-time reduction against the 25 percent criterion without asserting it."
 
 [[id]]
 id = "CL-01"

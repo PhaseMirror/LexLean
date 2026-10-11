@@ -411,7 +411,7 @@ pub(crate) fn run(id: &str) {
             let model = repo_model::Model::load(&root.join("model").into_std_path_buf())
                 .expect("the model loads");
             let table = spec_table();
-            assert_eq!(table.len(), 321, "§31 has 321 rows");
+            assert_eq!(table.len(), 320, "§31 has 320 rows");
             assert_eq!(model.ids.id.len(), table.len(), "register row count");
             for ((spec_id, spec_suite, spec_statement), row) in
                 table.iter().zip(model.ids.id.iter())
@@ -982,31 +982,34 @@ pub(crate) fn run(id: &str) {
                     .contains("cargo test --locked --workspace --all-features")
             );
         }
-        // §9.4: the normative job's runner and width are variables with the
-        // conservative defaults, a wider width needs a declared envelope, and
-        // the job keeps no cache, filter, or skipped recipe.
+        // §9.4: the normative job runs on the standard runner at the default
+        // width and keeps no cache, filter, or skipped recipe.
         "RP-14" => {
             let ci = root_file(".github/workflows/ci.yml");
             assert!(
-                ci.contains("runs-on: ${{ inputs.runner || vars.LEXLEAN_VV_RUNNER || 'ubuntu-24.04' }}"),
-                "the runner is an input or a variable, defaulting to ubuntu-24.04"
+                ci.contains("    runs-on: ubuntu-24.04\n    # Native Atlas"),
+                "the normative job runs on the standard runner"
             );
-            assert!(
-                ci.contains(
-                    "LEXLEAN_VERIFY_WIDTH: ${{ inputs.width || vars.LEXLEAN_VV_WIDTH || '1' }}"
-                ),
-                "the width is an input or a variable, defaulting to 1"
-            );
-            assert!(
-                ci.contains("LEXLEAN_VV_MIN_MEMORY_MB: ${{ vars.LEXLEAN_VV_MIN_MEMORY_MB }}"),
-                "the memory envelope is a variable"
-            );
+            for variable in ["LEXLEAN_VERIFY_WIDTH", "vars.", "inputs."] {
+                assert!(
+                    !ci.contains(variable),
+                    "the gate selects no runner and no width: `{variable}`"
+                );
+            }
             assert!(ci.contains("timeout-minutes: 360"));
-            let check = ci.find("cargo xtask check-vv-profile").expect("the profile check");
-            let gate = ci.find("just --timestamp").expect("the gate");
-            assert!(check < gate, "the width is checked before the gate runs");
-            assert_eq!(ci.matches(" vv 2>&1 | tee ci-evidence/vv.txt").count(), 1, "the gate runs once");
-            for forbidden in ["actions/cache", "paths:", "paths-ignore:", "restore-keys", "continue-on-error", "if: github.event.pull_request"] {
+            assert_eq!(
+                ci.matches(" vv 2>&1 | tee ci-evidence/vv.txt").count(),
+                1,
+                "the gate runs once"
+            );
+            for forbidden in [
+                "actions/cache",
+                "paths:",
+                "paths-ignore:",
+                "restore-keys",
+                "continue-on-error",
+                "if: github.event.pull_request",
+            ] {
                 assert!(!ci.contains(forbidden), "ci.yml has no `{forbidden}`");
             }
             // A condition appears only on evidence steps, never on the gate.
@@ -1019,8 +1022,12 @@ pub(crate) fn run(id: &str) {
                     );
                 }
             }
-            assert!(ci.contains("name: acceptance-gate-evidence") && ci.contains("path: ci-evidence"));
-            // The supported-host matrix keeps its five hosts' other four legs.
+            assert!(
+                ci.contains("name: acceptance-gate-evidence") && ci.contains("path: ci-evidence")
+            );
+            assert!(ci.contains("LEXLEAN_CI_TELEMETRY: ${{ github.workspace }}/ci-evidence"));
+            assert!(ci.contains("cargo xtask ci-summary --evidence ci-evidence"));
+            // The supported-host matrix keeps its four other legs.
             for host in [
                 "ubuntu-24.04-arm",
                 "macos-15-intel",
@@ -1032,17 +1039,6 @@ pub(crate) fn run(id: &str) {
             // The honesty and reproducibility workflows stay separate.
             assert!(root_file(".github/workflows/honesty.yml").contains("just model spec-links"));
             assert!(root_file(".github/workflows/reproducibility.yml").contains("run: just repro"));
-
-            // The decision `cargo xtask check-vv-profile` makes.
-            use crate::width::check_profile;
-            let gib = 1024 * 1024;
-            assert!(check_profile(None, None, Some(16 * gib)).is_ok(), "default width 1");
-            assert!(check_profile(Some("1"), None, None).is_ok());
-            assert!(check_profile(Some("2"), None, Some(64 * gib)).is_err(), "no envelope declared");
-            assert!(check_profile(Some("2"), Some("32000"), None).is_err(), "memory unreadable");
-            assert!(check_profile(Some("2"), Some("32000"), Some(16 * gib)).is_err(), "a smaller runner");
-            assert!(check_profile(Some("2"), Some("32000"), Some(32 * gib)).is_ok());
-            assert!(check_profile(Some("0"), None, None).is_err(), "a malformed width");
         }
         other => panic!("no repository case is wired for {other}"),
     }

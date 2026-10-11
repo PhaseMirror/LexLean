@@ -85,7 +85,7 @@ pub const HOST_TARGETS: [&str; 5] = [
 /// The gates and audits that need a falsifiability record (§27.9): every
 /// `vv` recipe, every `validate-model` sub-audit, and the two gates outside
 /// `vv`.
-pub const GATES: [&str; 34] = [
+pub const GATES: [&str; 32] = [
     "fmt-check",
     "validate-model",
     "audit-deferral",
@@ -116,10 +116,8 @@ pub const GATES: [&str; 34] = [
     "check-fixtures",
     "check-calculus",
     "inventory",
-    "check-vv-profile",
     "width-invariance",
     "telemetry-scan",
-    "measure-width",
 ];
 
 fn is_hex(text: &str, length: usize) -> bool {

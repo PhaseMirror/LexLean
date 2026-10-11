@@ -29,24 +29,13 @@ fn main() -> ExitCode {
     let result = match task.as_str() {
         "validate-model" => codegen::check_model(&root, write),
         "validate-spec-links" => spec_links::validate(&root),
-        "verify-examples" => verify_examples(
-            &root,
-            write,
-            std::env::args()
-                .skip(2)
-                .collect::<Vec<_>>()
-                .windows(2)
-                .find(|pair| pair[0] == "--only")
-                .map(|pair| pair[1].clone()),
-        ),
+        "verify-examples" => verify_examples(&root, write),
         "check-golden" => check_golden(&root, write),
         "check-reproducibility" => check_reproducibility(&root),
         "check-fixtures" => check_fixtures(&root, write),
         "check-calculus" => check_calculus(&root, write),
         "check-package" => check_package(&root),
         "check-test-inventory" => ci::check_test_inventory(&root),
-        "check-vv-profile" => ci::check_vv_profile(),
-        "measure-width" => ci::measure_width(&root, &std::env::args().skip(2).collect::<Vec<_>>()),
         "ci-summary" => ci::ci_summary(&root, &std::env::args().skip(2).collect::<Vec<_>>()),
         "release-artifacts" => release_artifacts(&root),
         "release-check" => release_check(&root),
@@ -67,8 +56,6 @@ fn main() -> ExitCode {
                                          their generator\n\
                  check-package           §30.3, RP-12: package lexlean crate, verify offline build & identity\n\
                  check-test-inventory    RP-13: the `test` and `bdd` recipes partition the workspace tests\n\
-                 check-vv-profile        RP-14: the CI job's verifier width fits its runner\n\
-                 measure-width           §9.4: verify one example at ascending widths, judge, write evidence\n\
                  ci-summary              §9.4: summarize ci-evidence/ (recipe, stage, module times; memory)\n\
                  release-artifacts       §30.3: derive the release/ artifact set from the repository\n\
                  release-check           RP-12: refuse release until §30.3/§30.4 are fully satisfied\n\
@@ -146,16 +133,8 @@ fn engine_for(dir: &Path) -> Result<lexlean::Engine, Fail> {
 /// `expected/verify/`, the normalized verification records (audit output,
 /// probe and audit modules, process records with the platform-bound fields
 /// normalized) must equal it, and `--write` regenerates them.
-fn verify_examples(root: &Path, write: bool, only: Option<String>) -> Result<(), Fail> {
-    let mut dirs = example_dirs(root)?;
-    if let Some(only) = &only {
-        // The selection is for measuring one example (`measure-width`); a
-        // name that matches nothing is an error, never an empty pass.
-        dirs.retain(|dir| dir.file_name().is_some_and(|name| name.to_string_lossy() == *only));
-        if dirs.is_empty() {
-            return Err(format!("verify-examples: `--only {only}` names no example").into());
-        }
-    }
+fn verify_examples(root: &Path, write: bool) -> Result<(), Fail> {
+    let dirs = example_dirs(root)?;
     for dir in dirs {
         let started = std::time::Instant::now();
         let name = dir

@@ -361,7 +361,7 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `RP-11` | `build` | Every public README capability claim is tied to a registered model ID and honesty level. |
 | `RP-12` | `build` | A release is refused unless the complete release criterion and all required artifacts are satisfied. |
 | `RP-13` | `build` | The ordinary workspace test phase excludes repo-conformance, the bdd phase alone runs its complete suite, and a test inventory proves that the two phases together equal the whole workspace test set with no test lost and none run twice. |
-| `RP-14` | `build` | The normative CI job takes its runner and verifier width from variables with the defaults ubuntu-24.04 and width 1, accepts a width above 1 only on a runner at or above its declared memory envelope, and keeps no cache, path filter, or skipped recipe. |
+| `RP-14` | `build` | The normative CI job runs just vv on the standard ubuntu-24.04 runner at the default verifier width 1 from a clean checkout, with no cache, path filter, or skipped recipe, and uploads its CI evidence. |
 
 ## rust-backend
 
@@ -453,7 +453,6 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `VR-20` | `build` | The verifier process width is an operational resource profile selected only by the environment, defaulting to 1 and refusing any malformed value with LLV7017, and it enters no lock, identity, or verified artifact. |
 | `VR-21` | `build` | A multi-module project whose imports form nontrivial frontiers verifies at width 1 and at a larger width to byte-identical verified directories and the same attestation identity, observed axiom sets, and policy rows, and no completion order orders a record or changes which failure is reported. |
 | `VR-22` | `build` | Performance telemetry is written only to the CI evidence directory the environment names, a verification with telemetry on publishes byte-identical artifacts to one without, and telemetry planted in a verified artifact fails the gate. |
-| `VR-23` | `build` | The width measurement accepts a candidate width only when its verified evidence equals width 1's and its peak memory stays inside the envelope, and reports the wall-time reduction against the 25 percent criterion without asserting it. |
 
 ## Cited authorities
 

@@ -1,5 +1,5 @@
-//! VR-20..VR-23 (SPEC.md §22.11, §22.12, §9.4): the verifier's operational
-//! width, its invariance, its telemetry, and the measurement of it.
+//! VR-20..VR-22 (SPEC.md §22.11, §22.12): the verifier's operational width,
+//! its invariance, and its telemetry.
 //!
 //! These cases are about how verification is run, so they check that running
 //! it differently changes nothing that is kept: the same project at two widths
@@ -18,14 +18,12 @@ use lexlean::verify::telemetry::{LABELS, VOCABULARY};
 use lexlean::{Selection, VerifyRequest};
 
 use crate::support::{self, P};
-use crate::width;
 
 pub(crate) fn run(id: &str) {
     match id {
         "VR-20" => width_is_operational(),
         "VR-21" => width_invariance(),
         "VR-22" => telemetry_is_noncanonical(),
-        "VR-23" => measurement_judges_widths(),
         other => panic!("no operational case for {other}"),
     }
 }
@@ -471,81 +469,4 @@ fn telemetry_is_noncanonical() {
     )
     .expect("an unwritable sink does not fail verification");
     assert_eq!(unwritable.attestation_id, without.attestation_id);
-}
-
-/// VR-23: the judgment of a width measurement.
-fn measurement_judges_widths() {
-    let run = |width: usize, wall_ms: u64, rss: u64, id: &str| width::Measurement {
-        width,
-        wall_ms,
-        peak_rss_kib: Some(rss),
-        peak_swap_kib: Some(0),
-        min_available_kib: Some(4_000_000),
-        attestation_id: Some(id.to_owned()),
-        verified_digest: Some(format!("tree-{id}")),
-        aborted: None,
-    };
-    let envelope = width::Envelope {
-        mem_total_kib: 32 * 1024 * 1024,
-        max_rss_percent: width::DEFAULT_MAX_RSS_PERCENT,
-        max_swap_kib: width::DEFAULT_MAX_SWAP_KIB,
-    };
-    // Accepted: identical evidence, inside the envelope; the fastest wins.
-    let good = [
-        run(1, 10_000, 14_000_000, "a"),
-        run(2, 6_000, 20_000_000, "a"),
-        run(3, 5_500, 26_000_000, "a"),
-    ];
-    let verdict = width::decide(&good, &envelope);
-    assert_eq!(verdict.selected, Some(3));
-    assert!(verdict.identical && verdict.meets_criterion);
-    assert_eq!(verdict.reduction_tenths, Some(450));
-    // Never selected: different evidence (the planted defect of a width that
-    // changes a record), memory outside the envelope, swap, a stopped run.
-    let mut differing = good.clone();
-    differing[1].attestation_id = Some("b".to_owned());
-    differing[2].attestation_id = Some("b".to_owned());
-    let verdict = width::decide(&differing, &envelope);
-    assert_eq!(verdict.selected, None);
-    assert!(!verdict.identical && !verdict.meets_criterion);
-    let mut digest = good.clone();
-    digest[1].verified_digest = Some("tree-other".to_owned());
-    assert_ne!(width::decide(&digest, &envelope).selected, Some(2));
-    let mut over = good.clone();
-    over[2].peak_rss_kib = Some(31 * 1024 * 1024);
-    assert_eq!(width::decide(&over, &envelope).selected, Some(2));
-    let mut swapping = good.clone();
-    swapping[1].peak_swap_kib = Some(width::DEFAULT_MAX_SWAP_KIB + 1);
-    swapping[2].peak_swap_kib = Some(width::DEFAULT_MAX_SWAP_KIB + 1);
-    assert_eq!(width::decide(&swapping, &envelope).selected, None);
-    let mut stopped = good.clone();
-    stopped[1].aborted = Some("free memory fell below the floor".to_owned());
-    assert!(!width::may_try_next(&stopped, &envelope));
-    // The criterion is applied, not assumed: 20 percent is not 25.
-    let slow = [run(1, 10_000, 14_000_000, "a"), run(2, 8_000, 20_000_000, "a")];
-    let verdict = width::decide(&slow, &envelope);
-    assert_eq!((verdict.selected, verdict.meets_criterion), (Some(2), false));
-    assert_eq!(width::REQUIRED_REDUCTION_PERCENT, 25);
-
-    // The tool and the workflow that run it exist, and the procedure and the
-    // variables the owner must provision are written where the owner reads.
-    let root = support::repo_root();
-    let xtask = std::fs::read_to_string(root.join("xtask/src/main.rs").as_std_path()).expect("xtask");
-    for task in ["measure-width", "check-vv-profile", "ci-summary", "check-test-inventory"] {
-        assert!(xtask.contains(&format!("\"{task}\" =>")), "xtask registers {task}");
-    }
-    let workflow = std::fs::read_to_string(
-        root.join(".github/workflows/width-measurement.yml").as_std_path(),
-    )
-    .expect("the measurement workflow exists");
-    assert!(workflow.contains("workflow_dispatch:"));
-    for trigger in ["push:", "pull_request:", "schedule:"] {
-        assert!(!workflow.contains(trigger), "the measurement is manual only: {trigger}");
-    }
-    assert!(workflow.contains("cargo xtask measure-width"));
-    assert!(workflow.contains("--combine"));
-    let verification = std::fs::read_to_string(root.join("VERIFICATION.md").as_std_path()).expect("VERIFICATION.md");
-    for needle in ["LEXLEAN_VV_RUNNER", "LEXLEAN_VV_WIDTH", "LEXLEAN_VV_MIN_MEMORY_MB", "measure-width"] {
-        assert!(verification.contains(needle), "VERIFICATION.md documents {needle}");
-    }
 }
