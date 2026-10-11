@@ -4905,8 +4905,8 @@ reduction (`Certification.certificateReductionsPreserve` is `false` for it).
 ### Runtime added by GNAF certification
 
 Measured in the reference container (4 vCPUs) on the final tree, alone unless
-stated. `conformance_gc_01` 14 s, `conformance_gc_02` 297 s, `conformance_gc_09`
-43 s (the library, its instances, `leanchecker`, the weakened checker, and the
+stated. `conformance_gc_01` 16 s, `conformance_gc_02` 414 s, `conformance_gc_09`
+80 s (the library, its instances, `leanchecker`, the weakened checker, and the
 false lemma; the generated environment is compiled once per machine and shared),
 and every other `GC` case under 3 s. Most of `gc_02` is not added work: it
 awaits the one shared verification of the `compiler` project that every case
@@ -4930,9 +4930,9 @@ so the change is kept for `gn_02` only, where the copy would not verify without 
 verdicts, would save about 140 s of CPU per copy, but the copies are asserted
 to fail with `LLV7002` and to name the planted theorem, which a raw Lean
 compile does not produce; it is not done here. The full
-`cargo test --workspace --all-features --no-fail-fast` took 3955 s on the final
-tree, with the 325 conformance tests in 3546 s, and `cargo xtask
-verify-examples` took 342 s for the `compiler` project and 1214 s for the nine
+`cargo test --workspace --all-features --no-fail-fast` took 4272 s on the final
+tree, with the 325 conformance tests in 3847 s, and `cargo xtask
+verify-examples` took 371 s for the `compiler` project and 1333 s for the nine
 language-1.2 examples and the `compiler` project in all, without `uor-atlas`.
 
 ## Runtime of `just vv` (Issue #25, merged with #31)
