@@ -32,6 +32,10 @@ fn verify_at(
     project: &P,
     operational: Operational,
 ) -> Result<lexlean::VerifiedProject, lexlean::LexLeanError> {
+    // Shared with every other verification of the suite and exclusive of the
+    // cases that replace `ELAN_HOME`: a verification that straddled one would
+    // run its toolchain from two homes.
+    let _environment = support::env_shared();
     operational.scoped(|| {
         project.engine().verify(VerifyRequest {
             selection: Selection::Entrypoints,
