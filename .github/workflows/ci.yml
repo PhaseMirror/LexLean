@@ -112,6 +112,9 @@ jobs:
           just --timestamp --timestamp-format '%s%.3f' vv 2>&1 | tee ci-evidence/vv.txt
       # What the run cost, by recipe, stage, and module (SPEC.md §9.4). Evidence
       # only: it is read by people and by later measurements, never by a recipe.
+      # It prints the summary to this log and appends it to the step summary, as
+      # well as keeping `summary.md`, because an uploaded artifact cannot be read
+      # from the log; it runs when the gate failed, for the same reason.
       - name: Summarize the run's timing and memory
         if: ${{ !cancelled() }}
         run: cargo xtask ci-summary --evidence ci-evidence
@@ -139,6 +142,13 @@ jobs:
   # non-normative host runs the case's platform-independent assertions and
   # reports which ones it skipped; on Linux x86-64 the same gate makes the
   # toolchain mandatory, so nothing passes vacuously where it matters.
+  #
+  # There is no separate build step: `cargo test` with the same `--locked
+  # --workspace --all-features` builds, in the same profile, the library and the
+  # binary of `lexlean` (its integration tests run the binary) before it runs a
+  # test, so a crate that does not build fails this job at the same step. A
+  # separate build step added only the non-test compilation of the repository's
+  # own `xtask` and `repo-conformance`, which no host in this job runs.
   host-matrix:
     name: build and non-Lean tests (${{ matrix.target }})
     strategy:
@@ -168,5 +178,4 @@ jobs:
             exit 1
           fi
           echo "$host"
-      - run: cargo build --locked --workspace --all-features
       - run: cargo test --locked --workspace --all-features
