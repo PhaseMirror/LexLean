@@ -287,7 +287,10 @@ fn failures_are_unavailable() {
             }
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
-        assert!(!alive(), "the child {pid} of the overrunning tool is ended with it");
+        assert!(
+            !alive(),
+            "the child {pid} of the overrunning tool is ended with it"
+        );
     }
     for (name, result) in [
         ("an exporter that crashes", ask(&crashes, &prod_ok)),
@@ -483,7 +486,13 @@ fn origin() -> (tempfile::TempDir, Pin) {
 fn entries(dir: &Path) -> Vec<String> {
     let mut names: Vec<String> = std::fs::read_dir(dir)
         .expect("cache")
-        .map(|entry| entry.expect("entry").file_name().to_string_lossy().into_owned())
+        .map(|entry| {
+            entry
+                .expect("entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
         .collect();
     names.sort();
     names
@@ -523,7 +532,11 @@ fn acquisition_is_atomic_and_heals() {
         }
         other => panic!("a missing remote is not acquired: {other:?}"),
     }
-    assert!(entries(failed.path()).is_empty(), "{:?}", entries(failed.path()));
+    assert!(
+        entries(failed.path()).is_empty(),
+        "{:?}",
+        entries(failed.path())
+    );
     // ... and one that cannot be reached is tried again, and still leaves
     // nothing for a later run to take for a checkout.
     let mut unreachable = pin.clone();
@@ -534,7 +547,11 @@ fn acquisition_is_atomic_and_heals() {
         }
         other => panic!("an unreachable remote is not acquired: {other:?}"),
     }
-    assert!(entries(failed.path()).is_empty(), "{:?}", entries(failed.path()));
+    assert!(
+        entries(failed.path()).is_empty(),
+        "{:?}",
+        entries(failed.path())
+    );
     // A cache that is not the pin (an interrupted run's empty repository, a
     // changed file) is discarded and fetched once more.
     let damaged = tempfile::tempdir().expect("tempdir");
@@ -1242,7 +1259,9 @@ fn boundary_inputs() {
         std::thread::scope(|scope| {
             let handles: Vec<_> = corpora
                 .iter()
-                .map(|c| scope.spawn(move || (c.name.clone(), differential::eligible_roots(&c.project))))
+                .map(|c| {
+                    scope.spawn(move || (c.name.clone(), differential::eligible_roots(&c.project)))
+                })
                 .collect();
             handles
                 .into_iter()
@@ -1305,7 +1324,10 @@ fn boundary_inputs() {
         })
         .collect();
     for count in [3, 4, 5] {
-        assert!(fields.contains(&count), "a split into {count} fields: {fields:?}");
+        assert!(
+            fields.contains(&count),
+            "a split into {count} fields: {fields:?}"
+        );
     }
     // Every constructor of every parameter type of every root of the examples
     // and the probes is built by some input.
@@ -1426,7 +1448,11 @@ fn tables_are_versioned() {
     let differences = differential::KnownDifferences::parse(&differences_text).expect("table");
     let overlap = differential::NonOverlapTable::parse(&overlap_text).expect("table");
     history
-        .check("known-differences.toml", differences.version, &differences.digest())
+        .check(
+            "known-differences.toml",
+            differences.version,
+            &differences.digest(),
+        )
         .expect("the committed differences are their version");
     history
         .check("known-non-overlap.toml", overlap.version, &overlap.digest())
@@ -1449,7 +1475,10 @@ fn tables_are_versioned() {
     let error = history
         .check("known-differences.toml", edited.version, &edited.digest())
         .expect_err("a row changed without a new version is refused");
-    assert!(error.contains("rows changed") && error.contains("raise `version`"), "{error}");
+    assert!(
+        error.contains("rows changed") && error.contains("raise `version`"),
+        "{error}"
+    );
     let removed = differential::NonOverlapTable::parse(&overlap_text.replacen(
         "[[construct]]\nkey = \"type.type\"",
         "[[construct]]\nkey = \"type.type-planted\"",
@@ -1481,9 +1510,18 @@ fn tables_are_versioned() {
             .expect_err(&format!("`{from}` -> `{to}` is refused"))
     };
     refused("{ version = 2,", "{ version = 3,");
-    refused("lexlean/oracle-table-versions/1", "lexlean/oracle-table-versions/2");
-    refused("file = \"known-non-overlap.toml\"", "file = \"known-differences.toml\"");
-    refused("{ version = 1, rows_sha256 = \"e46b", "{ version = 1, rows_sha256 = \"E46b");
+    refused(
+        "lexlean/oracle-table-versions/1",
+        "lexlean/oracle-table-versions/2",
+    );
+    refused(
+        "file = \"known-non-overlap.toml\"",
+        "file = \"known-differences.toml\"",
+    );
+    refused(
+        "{ version = 1, rows_sha256 = \"e46b",
+        "{ version = 1, rows_sha256 = \"E46b",
+    );
     let same = text.replacen(
         "2b09c7bbd4a744100b620c3b327ace1a38389e7654b55d2a97b96530c249921f",
         "e46beeaee24c5346bd67e6b3e025deb9dc97ed08346b5e2cf474250139aafb2d",
@@ -1573,7 +1611,11 @@ fn plants() -> Vec<Plant> {
             },
             null: |s| replace_once(s, "true => {", "true => { let _null = 0;"),
             kind: Behavior,
-            keys: &["outcome:value/value", "outcome:value/overflow", "outcome:overflow/value"],
+            keys: &[
+                "outcome:value/value",
+                "outcome:value/overflow",
+                "outcome:overflow/value",
+            ],
         },
         Plant {
             name: "an inverted comparison",
@@ -1581,7 +1623,11 @@ fn plants() -> Vec<Plant> {
             edit: |s| replace_once(s, "(cost <= _x_1)", "(cost > _x_1)"),
             null: |s| replace_once(s, "(cost <= _x_1)", "(cost <= (_x_1 + 0))"),
             kind: Behavior,
-            keys: &["outcome:value/value", "outcome:value/overflow", "outcome:overflow/value"],
+            keys: &[
+                "outcome:value/value",
+                "outcome:value/overflow",
+                "outcome:overflow/value",
+            ],
         },
         Plant {
             name: "a dropped recursive arm",
@@ -1717,7 +1763,13 @@ fn plants() -> Vec<Plant> {
             name: "characters counted as bytes",
             root: "Coverage.Prims.text",
             edit: |s| replace_once(s, "(s).chars().count() as u64", "(s).len() as u64"),
-            null: |s| replace_once(s, "(s).chars().count() as u64", "((s).chars().count() as u64 + 0)"),
+            null: |s| {
+                replace_once(
+                    s,
+                    "(s).chars().count() as u64",
+                    "((s).chars().count() as u64 + 0)",
+                )
+            },
             kind: Behavior,
             keys: &["outcome:value/value"],
         },
@@ -1745,7 +1797,13 @@ fn plants() -> Vec<Plant> {
             name: "a checked addition made a panic on overflow",
             root: "Production.Main.checkedSum",
             edit: |s| replace_once(s, "(left).checked_add(right)", "Some((left) + (right))"),
-            null: |s| replace_once(s, "(left).checked_add(right)", "(left).checked_add(right).map(|x| x)"),
+            null: |s| {
+                replace_once(
+                    s,
+                    "(left).checked_add(right)",
+                    "(left).checked_add(right).map(|x| x)",
+                )
+            },
             kind: Behavior,
             keys: &["outcome:value/panic"],
         },
@@ -1772,7 +1830,13 @@ fn plants() -> Vec<Plant> {
         Plant {
             name: "an allocation in a rust-core root",
             root: "Production.Main.halvings",
-            edit: |s| replace_once(s, "let _x_43 = 1;", "let _x_43 = { let _v = alloc::vec![1u8]; _v[0] as u64 };"),
+            edit: |s| {
+                replace_once(
+                    s,
+                    "let _x_43 = 1;",
+                    "let _x_43 = { let _v = alloc::vec![1u8]; _v[0] as u64 };",
+                )
+            },
             null: |s| replace_once(s, "let _x_43 = 1;", "let _x_43 = 0 + 1;"),
             kind: Resource,
             keys: &["allocation:rust-core-root"],
@@ -1893,8 +1957,7 @@ fn planted_discrepancies() {
         "some root has more than one plant, which is the case the keys exist for"
     );
     let make = |edit: &dyn Fn(&str) -> Option<String>, plant: &str, root: &str| {
-        differential::planted(find(root), edit)
-            .unwrap_or_else(|reason| panic!("{plant}: {reason}"))
+        differential::planted(find(root), edit).unwrap_or_else(|reason| panic!("{plant}: {reason}"))
     };
     // One evaluation holds every control, plant, null edit, and equivalent
     // mutant; each has a crate and a result of its own, so a root with several
@@ -1940,7 +2003,10 @@ fn planted_discrepancies() {
             diffs.is_empty(),
             "{}: its null edit (the same site, the same meaning) is not a discrepancy: {:?}",
             plant.name,
-            diffs.iter().map(|d| (d.kind, d.key.clone())).collect::<Vec<_>>()
+            diffs
+                .iter()
+                .map(|d| (d.kind, d.key.clone()))
+                .collect::<Vec<_>>()
         );
     }
     for (position, equivalent) in equivalent_list.iter().enumerate() {
@@ -1949,7 +2015,10 @@ fn planted_discrepancies() {
             diffs.is_empty(),
             "{}: an equivalent mutant is not a discrepancy: {:?}",
             equivalent.name,
-            diffs.iter().map(|d| (d.kind, d.key.clone())).collect::<Vec<_>>()
+            diffs
+                .iter()
+                .map(|d| (d.kind, d.key.clone()))
+                .collect::<Vec<_>>()
         );
     }
     // Each plant is a disagreement, however many others share its root.
@@ -1962,9 +2031,7 @@ fn planted_discrepancies() {
         let hits: Vec<&differential::Diff> = judgement
             .unlisted
             .iter()
-            .filter(|diff| {
-                diff.kind == plant.kind && plant.keys.contains(&diff.key.as_str())
-            })
+            .filter(|diff| diff.kind == plant.kind && plant.keys.contains(&diff.key.as_str()))
             .collect();
         by_plant.push(
             judgement
@@ -1999,7 +2066,11 @@ fn planted_discrepancies() {
         assert!(!verdict.validated());
         assert!(verdict.report().contains(&run_of_plant.root));
     }
-    assert!(missed.is_empty(), "plants the differential did not detect:\n{}", missed.join("\n"));
+    assert!(
+        missed.is_empty(),
+        "plants the differential did not detect:\n{}",
+        missed.join("\n")
+    );
     // The same plants, run each alone, are found as they are in company: what
     // is found does not depend on what else is built beside it.
     for name in [
@@ -2012,11 +2083,12 @@ fn planted_discrepancies() {
             .position(|plant| plant.name == name)
             .unwrap_or_else(|| panic!("{name} is a plant"));
         let alone = differential::evaluate(std::slice::from_ref(&runs[planted_at + position]));
-        let alone: BTreeSet<(differential::DiffKind, String)> = differential::judge(&alone[0], &table)
-            .unlisted
-            .iter()
-            .map(|d| (d.kind, d.key.clone()))
-            .collect();
+        let alone: BTreeSet<(differential::DiffKind, String)> =
+            differential::judge(&alone[0], &table)
+                .unlisted
+                .iter()
+                .map(|d| (d.kind, d.key.clone()))
+                .collect();
         assert_eq!(alone, by_plant[position], "{name}: alone and in company");
     }
 }

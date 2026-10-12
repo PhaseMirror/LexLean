@@ -335,14 +335,15 @@ impl Seeder<'_, '_> {
             SemanticType::Set { element } => {
                 let pool = self.pool(element, depth + 1, inner);
                 if orderable(element) {
-                    lists(&pool, |items| {
-                        sorted_unique(items, |item| item)
-                    })
+                    lists(&pool, |items| sorted_unique(items, |item| item))
                 } else {
                     // Values without an order the collections can state are
                     // sets of one member, and the empty set.
                     std::iter::once(Value::List { items: Vec::new() })
-                        .chain(pool.into_iter().map(|item| Value::List { items: vec![item] }))
+                        .chain(
+                            pool.into_iter()
+                                .map(|item| Value::List { items: vec![item] }),
+                        )
                         .collect()
                 }
             }
@@ -384,25 +385,23 @@ impl Seeder<'_, '_> {
                     })
                     .collect()
             }
-            SemanticType::ContractViolation | SemanticType::ReasoningFailure => {
-                covering(
-                    &[
-                        self.pool(&SemanticType::Bool, depth + 1, 2),
-                        self.pool(&SemanticType::Bool, depth + 1, 2),
-                    ],
-                    4,
-                )
-                .into_iter()
-                .map(|mut pair| {
-                    let right = pair.pop().expect("a right");
-                    let left = pair.pop().expect("a left");
-                    Value::Pair {
-                        left: Box::new(left),
-                        right: Box::new(right),
-                    }
-                })
-                .collect()
-            }
+            SemanticType::ContractViolation | SemanticType::ReasoningFailure => covering(
+                &[
+                    self.pool(&SemanticType::Bool, depth + 1, 2),
+                    self.pool(&SemanticType::Bool, depth + 1, 2),
+                ],
+                4,
+            )
+            .into_iter()
+            .map(|mut pair| {
+                let right = pair.pop().expect("a right");
+                let left = pair.pop().expect("a left");
+                Value::Pair {
+                    left: Box::new(left),
+                    right: Box::new(right),
+                }
+            })
+            .collect(),
             SemanticType::Named { .. } => {
                 let (_, constructors) = source_type(self.modules, ty).expect("a document type");
                 // Past the depth bound the constructor with the fewest fields
@@ -559,7 +558,11 @@ fn covering(pools: &[Vec<Value>], limit: usize) -> Vec<Vec<Value>> {
                     .enumerate()
                     .filter_map(|(m, at)| at.map(|at| (m, at)))
                     .filter(|(m, at)| {
-                        let key = if *m < k { (*m, *at, k, c) } else { (k, c, *m, *at) };
+                        let key = if *m < k {
+                            (*m, *at, k, c)
+                        } else {
+                            (k, c, *m, *at)
+                        };
                         !covered.contains(&key)
                     })
                     .count();
@@ -622,7 +625,10 @@ fn inputs(seeder: &Seeder<'_, '_>, parameters: &[SemanticType]) -> Vec<Vec<Value
                 continue;
             }
             for value in &pools[i] {
-                let mut tuple: Vec<Value> = pools.iter().map(|pool| pool[1.min(pool.len() - 1)].clone()).collect();
+                let mut tuple: Vec<Value> = pools
+                    .iter()
+                    .map(|pool| pool[1.min(pool.len() - 1)].clone())
+                    .collect();
                 tuple[i] = value.clone();
                 tuple[j] = value.clone();
                 out.push(tuple);
@@ -845,13 +851,20 @@ fn built(
             built(modules, l, left, into, depth + 1);
             built(modules, r, right, into, depth + 1);
         }
-        (SemanticType::Named { .. }, Value::Adt {
-            constructor,
-            fields,
-        }) => {
+        (
+            SemanticType::Named { .. },
+            Value::Adt {
+                constructor,
+                fields,
+            },
+        ) => {
             into.insert(format!("{key}: constructor {constructor}"));
             let (_, constructors) = source_type(modules, ty).expect("a document type");
-            for (field, item) in constructors[*constructor as usize].fields.iter().zip(fields) {
+            for (field, item) in constructors[*constructor as usize]
+                .fields
+                .iter()
+                .zip(fields)
+            {
                 built(modules, field, item, into, depth + 1);
             }
         }

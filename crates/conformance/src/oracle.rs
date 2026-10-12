@@ -542,9 +542,8 @@ fn fetch_into(pin: &Pin, staging: &Path, delays: &[Duration]) -> Result<(), Unav
     let git = |arguments: &[&str]| -> Result<Ran, Failure> {
         let mut command = Command::new("git");
         command.args(arguments).current_dir(staging);
-        let ran = run(command, Duration::from_secs(pin.timeout_seconds)).map_err(|detail| {
-            Failure::Transient(format!("git {}: {detail}", arguments[0]))
-        })?;
+        let ran = run(command, Duration::from_secs(pin.timeout_seconds))
+            .map_err(|detail| Failure::Transient(format!("git {}: {detail}", arguments[0])))?;
         if ran.status == Some(0) {
             Ok(ran)
         } else {
@@ -596,11 +595,7 @@ fn fetch_into(pin: &Pin, staging: &Path, delays: &[Duration]) -> Result<(), Unav
 /// [`Unavailable::NotAcquired`] when the fetch fails (after the tries `delays`
 /// allow) and [`Unavailable::PinMismatch`] when what the remote serves is not
 /// the pinned oracle.
-pub fn cached_source(
-    pin: &Pin,
-    cache: &Path,
-    delays: &[Duration],
-) -> Result<PathBuf, Unavailable> {
+pub fn cached_source(pin: &Pin, cache: &Path, delays: &[Duration]) -> Result<PathBuf, Unavailable> {
     let dir = cache.join("source");
     if dir.exists() {
         if verify_checkout(pin, &dir).is_ok() {
@@ -621,7 +616,9 @@ pub fn cached_source(
 fn rust_channel(repo: &Path) -> Result<String, String> {
     let text = std::fs::read_to_string(repo.join("rust-toolchain.toml"))
         .map_err(|error| format!("rust-toolchain.toml: {error}"))?;
-    let value: toml::Value = text.parse().map_err(|error| format!("rust-toolchain.toml: {error}"))?;
+    let value: toml::Value = text
+        .parse()
+        .map_err(|error| format!("rust-toolchain.toml: {error}"))?;
     value["toolchain"]["channel"]
         .as_str()
         .map(str::to_owned)
@@ -851,12 +848,12 @@ impl Oracle {
         // without the network. Only the fetch can fail for a moment, and it is
         // tried again.
         let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
-        let home = build
-            .parent()
-            .map_or_else(|| build.join("cargo-home"), |cache| cache.join("cargo-home"));
-        let rust = rust_channel(repo_root().as_std_path()).map_err(|detail| {
-            Unavailable::ToolchainDrift(detail)
-        })?;
+        let home = build.parent().map_or_else(
+            || build.join("cargo-home"),
+            |cache| cache.join("cargo-home"),
+        );
+        let rust = rust_channel(repo_root().as_std_path())
+            .map_err(|detail| Unavailable::ToolchainDrift(detail))?;
         let cargo_command = |arguments: &[&str]| {
             let mut command = Command::new(&cargo);
             command
@@ -871,8 +868,8 @@ impl Oracle {
             command
         };
         retry(&RETRY_DELAYS, |_| {
-            let ran = run(cargo_command(&["fetch", "--locked"]), limit)
-                .map_err(Failure::Transient)?;
+            let ran =
+                run(cargo_command(&["fetch", "--locked"]), limit).map_err(Failure::Transient)?;
             if ran.status == Some(0) {
                 return Ok(());
             }

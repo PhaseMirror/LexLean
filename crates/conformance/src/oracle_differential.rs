@@ -1191,12 +1191,23 @@ pub fn eligible_roots(project: &P) -> Vec<(String, String, Accepted)> {
                 .collect();
             // The production differential's seeded inputs, and the boundary
             // inputs the root's own types and literals call for.
-            let (parameters, _) =
-                lexlean::production::certificate::root_signature(&modules, &root.module, &root.name)
-                    .expect("a root signature");
-            let types: Vec<lexlean::ir::semantic::SemanticType> =
-                parameters.iter().map(|parameter| parameter.r#type.clone()).collect();
-            let seeds = seeds::cases(&modules, &root.report.root, &lowered.program, &types, &root_cases);
+            let (parameters, _) = lexlean::production::certificate::root_signature(
+                &modules,
+                &root.module,
+                &root.name,
+            )
+            .expect("a root signature");
+            let types: Vec<lexlean::ir::semantic::SemanticType> = parameters
+                .iter()
+                .map(|parameter| parameter.r#type.clone())
+                .collect();
+            let seeds = seeds::cases(
+                &modules,
+                &root.report.root,
+                &lowered.program,
+                &types,
+                &root_cases,
+            );
             root_cases.extend(seeds);
             let lean_module = checked.modules[&root.module].document.lean_module.clone();
             (
@@ -1275,7 +1286,11 @@ pub fn seed_audit(
                 .collect();
             SeedAudit {
                 root: root.report.root.clone(),
-                boundary: accepted.cases.iter().filter(|case| seeds::is_boundary(case)).count(),
+                boundary: accepted
+                    .cases
+                    .iter()
+                    .filter(|case| seeds::is_boundary(case))
+                    .count(),
                 uncovered: seeds::uncovered(&modules, &types, &inputs),
                 parameters: types,
             }
@@ -1466,9 +1481,8 @@ fn cargo_bounded(
     arguments: &[&str],
     limit: std::time::Duration,
 ) -> Result<oracle::Ran, String> {
-    let mut command = std::process::Command::new(
-        std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned()),
-    );
+    let mut command =
+        std::process::Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned()));
     command
         .args(arguments)
         .current_dir(dir)
@@ -1593,10 +1607,7 @@ pub fn execute(
         let harness = match oracle_harness(&parsed, run.function(), signature, &accepted.cases) {
             Ok(text) => text,
             Err(reason) => {
-                failed.insert(
-                    key,
-                    Err(format!("the harness cannot be written: {reason}")),
-                );
+                failed.insert(key, Err(format!("the harness cannot be written: {reason}")));
                 continue;
             }
         };
@@ -2130,7 +2141,10 @@ impl KnownDifferences {
     /// The SHA-256 of the table's rows: what a version of the table names.
     #[must_use]
     pub fn digest(&self) -> String {
-        rows_digest(&self.spec, &serde_json::json!({"difference": self.difference}))
+        rows_digest(
+            &self.spec,
+            &serde_json::json!({"difference": self.difference}),
+        )
     }
 
     /// Parse and validate a table.
@@ -2225,8 +2239,7 @@ impl TableVersions {
         let text =
             std::fs::read_to_string(repo_root().join("oracle/table-versions.toml").as_std_path())
                 .expect("oracle/table-versions.toml");
-        Self::parse(&text)
-            .unwrap_or_else(|reason| panic!("oracle/table-versions.toml: {reason}"))
+        Self::parse(&text).unwrap_or_else(|reason| panic!("oracle/table-versions.toml: {reason}"))
     }
 
     /// Parse and validate a history.
@@ -2419,7 +2432,10 @@ impl NonOverlapTable {
     /// The SHA-256 of the table's rows: what a version of the table names.
     #[must_use]
     pub fn digest(&self) -> String {
-        rows_digest(&self.spec, &serde_json::json!({"construct": self.construct}))
+        rows_digest(
+            &self.spec,
+            &serde_json::json!({"construct": self.construct}),
+        )
     }
 
     /// Parse and validate a table.
@@ -2977,7 +2993,11 @@ pub fn render_candidate(
     let mut work = 0;
     let mut allocations = 0;
     for line in ran.stdout.lines() {
-        let number = |count: &str| count.parse().map_err(|e: std::num::ParseIntError| e.to_string());
+        let number = |count: &str| {
+            count
+                .parse()
+                .map_err(|e: std::num::ParseIntError| e.to_string())
+        };
         if let Some(count) = line.strip_prefix("work ") {
             work = number(count)?;
         } else if let Some(count) = line.strip_prefix("allocations ") {

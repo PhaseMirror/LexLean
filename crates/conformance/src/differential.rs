@@ -532,7 +532,11 @@ fn invalidate(modules: &Modules<'_>, ty: &SemanticType, value: &Value) -> Option
 
 /// The interpreter's outcome within a small fuel, on a thread whose stack
 /// holds the recursion that fuel allows.
-pub(crate) fn bounded(program: &lexlean::calculus::Program, function: u64, values: &[Value]) -> Outcome {
+pub(crate) fn bounded(
+    program: &lexlean::calculus::Program,
+    function: u64,
+    values: &[Value],
+) -> Outcome {
     std::thread::scope(|scope| {
         std::thread::Builder::new()
             .stack_size(1 << 29)
