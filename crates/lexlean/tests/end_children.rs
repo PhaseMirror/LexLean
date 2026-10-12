@@ -81,11 +81,15 @@ fn own_pgid() -> i32 {
 /// The kernel's record of which signals this process catches and which it
 /// ignores, as the two masks (bit `n - 1` for signal `n`): `SigCgt` and
 /// `SigIgn` of `/proc/self/status` where the host has `/proc`, the `caught`
-/// and `ignored` columns of `ps` where it does not (macOS). A host that can
-/// say neither is an error, not a pass: the "no disposition changed" assertions
-/// would be vacuous.
+/// and `ignored` columns of `ps` where the host's `ps` has them. `None` is a
+/// host that cannot say (the `ps` of macOS has neither column): there the
+/// comparison of masks is not made, and what shows that the library installed
+/// no handler is [`a_signal_the_host_did_not_handle_ends_it_by_default`],
+/// which needs no mask. A host with `/proc` can always say, and the cases
+/// that use this require it, so the comparison is not vacuous where it can be
+/// made.
 #[cfg(unix)]
-fn signal_dispositions() -> (u64, u64) {
+fn signal_dispositions() -> Option<(u64, u64)> {
     if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
         let mask = |key: &str| {
             status
@@ -93,12 +97,12 @@ fn signal_dispositions() -> (u64, u64) {
                 .find_map(|line| u64::from_str_radix(line.strip_prefix(key)?.trim(), 16).ok())
                 .unwrap_or_else(|| panic!("/proc/self/status has no {key}"))
         };
-        return (mask("SigCgt:"), mask("SigIgn:"));
+        return Some((mask("SigCgt:"), mask("SigIgn:")));
     }
     let ps = ["/bin/ps", "/usr/bin/ps"]
         .into_iter()
         .find(|path| std::path::Path::new(path).is_file())
-        .expect("the host has neither /proc nor ps, so the signal dispositions cannot be read");
+        .expect("the host has neither /proc nor ps, so the process table cannot be read");
     let column = |keyword: &str| {
         let output = std::process::Command::new(ps)
             .args([
@@ -111,10 +115,28 @@ fn signal_dispositions() -> (u64, u64) {
             .expect("ps runs");
         let text = String::from_utf8_lossy(&output.stdout);
         let digits = text.trim();
-        u64::from_str_radix(digits.strip_prefix("0x").unwrap_or(digits), 16)
-            .unwrap_or_else(|_| panic!("ps cannot report the {keyword} signals: {text:?}"))
+        u64::from_str_radix(digits.strip_prefix("0x").unwrap_or(digits), 16).ok()
     };
-    (column("caught"), column("ignored"))
+    Some((column("caught")?, column("ignored")?))
+}
+
+/// The masks read before must be the masks read now, where the host can read
+/// them, and a host with `/proc` must be able to.
+#[cfg(unix)]
+fn assert_dispositions_unchanged(before: Option<(u64, u64)>, what: &str) {
+    if std::path::Path::new("/proc/self/status").is_file() {
+        assert!(
+            before.is_some(),
+            "a host with /proc reports its signal dispositions"
+        );
+    }
+    if let Some(before) = before {
+        assert_eq!(
+            Some(before),
+            signal_dispositions(),
+            "{what} changed a signal disposition of the host"
+        );
+    }
 }
 
 /// An embedding host runs the compiler on a thread, ends the live children
@@ -241,8 +263,106 @@ fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
     }
 }
 
-/// The environment variable that makes [`the_host_process`] the host of the
-/// signal case; without it that test does nothing.
+/// A host process: this test binary, run again for one case, as the leader
+/// of its own process group the way a service manager starts one. A fresh
+/// process holds none of the library's process-wide state from earlier
+/// cases, so what it reads of its signal dispositions and what ends its
+/// children is the library's doing alone, whatever the order of the cases; the
+/// signals come from outside as a service manager's would; and the exit
+/// status is the host's.
+#[cfg(unix)]
+struct Host {
+    child: std::process::Child,
+    pid: u32,
+    lines: std::sync::mpsc::Receiver<String>,
+    reader: std::thread::JoinHandle<()>,
+    errors: std::thread::JoinHandle<String>,
+}
+
+#[cfg(unix)]
+impl Host {
+    fn start(case: &str) -> Self {
+        use std::io::{BufRead, BufReader};
+        use std::os::unix::process::CommandExt;
+
+        let mut child =
+            std::process::Command::new(std::env::current_exe().expect("the test binary"))
+                .args(["--exact", case, "--nocapture", "--test-threads=1"])
+                .env(HOST_ENV, "1")
+                .process_group(0)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .expect("the host starts");
+        let pid = child.id();
+        let stdout = child.stdout.take().expect("piped");
+        let stderr = child.stderr.take().expect("piped");
+        let (tx, lines) = std::sync::mpsc::channel::<String>();
+        let reader = std::thread::spawn(move || {
+            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                let _ = tx.send(line);
+            }
+        });
+        let errors = std::thread::spawn(move || {
+            BufReader::new(stderr)
+                .lines()
+                .map_while(Result::ok)
+                .collect::<Vec<_>>()
+                .join("\n")
+        });
+        Host {
+            child,
+            pid,
+            lines,
+            reader,
+            errors,
+        }
+    }
+
+    /// The next event the host says, or `None` when it says nothing more
+    /// within `seconds` (it ended, or it is stuck). libtest writes
+    /// `test <name> ... ` without a newline before a case that prints, so the
+    /// first of the host's lines does not start the line it is on.
+    fn next_event(&self, deadline: std::time::Instant) -> Option<String> {
+        loop {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            let line = self.lines.recv_timeout(remaining).ok()?;
+            if let Some((_, event)) = line.split_once("HOST: ") {
+                return Some(event.to_owned());
+            }
+        }
+    }
+
+    fn signal(&self, signal: rustix::process::Signal) {
+        rustix::process::kill_process(
+            rustix::process::Pid::from_raw(i32::try_from(self.pid).expect("a process id"))
+                .expect("a process id"),
+            signal,
+        )
+        .expect("the host is signalled");
+    }
+
+    /// End the host if it is still running (a host that said nothing more is
+    /// stuck: it is ended, not waited for), reap it, and end what it started
+    /// before the readers wait for its pipes to close. Returns how it ended,
+    /// what it printed to stderr, and what of its children was still alive
+    /// when it ended.
+    fn finish(mut self, stuck: bool) -> (std::process::ExitStatus, String, Vec<(i32, String)>) {
+        if stuck {
+            let _ = self.child.kill();
+        }
+        let status = self.child.wait().expect("the host exits");
+        let alive = support::running(&format!("sleep 10000.{}", self.pid));
+        support::end_all(&alive);
+        self.reader.join().expect("the stdout reader");
+        let errors = self.errors.join().expect("the stderr reader");
+        (status, errors, alive)
+    }
+}
+
+/// The environment variable that makes the host tests the hosts of the signal
+/// cases; without it they do nothing.
 #[cfg(unix)]
 const HOST_ENV: &str = "LEXLEAN_END_CHILDREN_HOST";
 
@@ -250,13 +370,6 @@ const HOST_ENV: &str = "LEXLEAN_END_CHILDREN_HOST";
 /// own handling for them: the host ends the children from that handling's
 /// thread, survives to run its own cleanup and to exit with its own status,
 /// and the library installed and changed nothing.
-///
-/// The host is a process of its own (this test binary, run again for one case)
-/// and not this one: a fresh process holds none of the library's
-/// process-wide state from earlier cases, so what it reads of its signal
-/// dispositions is the library's doing alone whatever the order of the cases,
-/// the signals come from outside as a service manager's would, and the exit
-/// status is the host's.
 #[test]
 fn the_host_ends_children_from_its_own_signal_thread() {
     let _serial = serial();
@@ -266,91 +379,79 @@ fn the_host_ends_children_from_its_own_signal_thread() {
 
 #[cfg(unix)]
 fn scenario_signals() {
-    use std::io::{BufRead, BufReader};
-    use std::os::unix::process::CommandExt;
     use std::time::{Duration, Instant};
 
-    let mut host = std::process::Command::new(std::env::current_exe().expect("the test binary"))
-        .args([
-            "--exact",
-            "the_host_process",
-            "--nocapture",
-            "--test-threads=1",
-        ])
-        .env(HOST_ENV, "1")
-        // A service manager starts a host as the leader of its own process
-        // group, so a signal sent to that group by mistake would end it.
-        .process_group(0)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .expect("the host starts");
-    let host_pid = host.id();
-    let stdout = host.stdout.take().expect("piped");
-    let stderr = host.stderr.take().expect("piped");
-    let (lines_tx, lines_rx) = std::sync::mpsc::channel::<String>();
-    let reader = std::thread::spawn(move || {
-        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-            let _ = lines_tx.send(line);
-        }
-    });
-    let errors = std::thread::spawn(move || {
-        BufReader::new(stderr)
-            .lines()
-            .map_while(Result::ok)
-            .collect::<Vec<_>>()
-            .join("\n")
-    });
-    let signal_host = |signal| {
-        rustix::process::kill_process(
-            rustix::process::Pid::from_raw(i32::try_from(host_pid).expect("a process id"))
-                .expect("a process id"),
-            signal,
-        )
-        .expect("the host is signalled");
-    };
-    let mut rounds = 0;
+    let host = Host::start("the_host_process");
     let give_up = Instant::now() + Duration::from_secs(120);
+    let mut rounds = 0;
     let outcome = loop {
-        let remaining = give_up.saturating_duration_since(Instant::now());
-        let Ok(line) = lines_rx.recv_timeout(remaining) else {
-            break "the host said nothing more";
-        };
-        // libtest writes `test <name> ... ` without a newline before a case
-        // that prints, so the first of the host's lines does not start the
-        // line it is on.
-        let Some((_, event)) = line.split_once("HOST: ") else {
-            continue;
-        };
-        if event.starts_with("ready ") {
-            rounds += 1;
-            signal_host(if rounds == 1 {
-                rustix::process::Signal::INT
-            } else {
-                rustix::process::Signal::TERM
-            });
-        } else if event == "done" {
-            break "done";
+        match host.next_event(give_up).as_deref() {
+            Some(event) if event.starts_with("ready ") => {
+                rounds += 1;
+                host.signal(if rounds == 1 {
+                    rustix::process::Signal::INT
+                } else {
+                    rustix::process::Signal::TERM
+                });
+            }
+            Some("done") => break "done",
+            Some(_) => {}
+            None => break "the host said nothing more",
         }
     };
-    // A host that said nothing more is stuck: end it rather than wait for it,
-    // and end what it started before the readers wait for its pipes to close.
-    if outcome != "done" {
-        let _ = host.kill();
-    }
-    let status = host.wait().expect("the host exits");
-    let marker = format!("sleep 10000.{host_pid}");
-    let left = support::running(&marker);
-    support::end_all(&left);
-    reader.join().expect("the stdout reader");
-    let errors = errors.join().expect("the stderr reader");
+    let (status, errors, left) = host.finish(outcome != "done");
     assert!(
         outcome == "done" && status.success(),
         "the host must survive both signals, run its own cleanup, and exit by its own status, not by a signal (it said {outcome:?} and ended with {status:?})\n{errors}"
     );
     assert_eq!(rounds, 2, "one SIGINT and one SIGTERM");
     assert!(left.is_empty(), "the host's children survived: {left:?}");
+}
+
+/// The library installs nothing, on every host: a signal that the host did not
+/// handle ends the host by its default action, and does not end the child
+/// the library started. A handler that the library had installed for the
+/// signals it watches in the executable (`SIGINT`, `SIGTERM`, `SIGHUP`,
+/// `SIGQUIT`) would end the child first, and the host's death would then
+/// be the same one, so what is asserted is the child: it is alive when the host
+/// has died. This is what shows it where the host cannot report the signal
+/// dispositions it would otherwise be compared by (macOS).
+#[test]
+fn a_signal_the_host_did_not_handle_ends_it_by_default() {
+    let _serial = serial();
+    #[cfg(unix)]
+    scenario_unhandled();
+}
+
+#[cfg(unix)]
+fn scenario_unhandled() {
+    use std::os::unix::process::ExitStatusExt;
+    use std::time::{Duration, Instant};
+
+    let host = Host::start("the_unhandled_host_process");
+    let give_up = Instant::now() + Duration::from_secs(120);
+    let ready = host.next_event(give_up);
+    let started = ready
+        .as_deref()
+        .is_some_and(|event| event.starts_with("ready "));
+    if started {
+        host.signal(rustix::process::Signal::QUIT);
+    }
+    let (status, errors, left) = host.finish(!started);
+    assert!(
+        started,
+        "the host did not start its child: {ready:?}\n{errors}"
+    );
+    assert_eq!(
+        status.signal(),
+        Some(signal_hook::consts::SIGQUIT),
+        "a signal the host did not handle ends it by the signal's default action: {status:?}\n{errors}"
+    );
+    assert_eq!(
+        left.len(),
+        1,
+        "the library installed no handler, so it did not end the child when the host died of the signal: {left:?}"
+    );
 }
 
 /// The host of [`the_host_ends_children_from_its_own_signal_thread`]: it
@@ -405,11 +506,7 @@ fn host_process() {
         lexlean::verify::allow_children();
         let (mut child, guard) = spawn_sleep(10000);
         let child_pid = child.id();
-        assert_eq!(
-            dispositions,
-            signal_dispositions(),
-            "starting a child changed a signal disposition of the host"
-        );
+        assert_dispositions_unchanged(dispositions, "starting a child");
         say(format!("ready {round} {pid} {child_pid}"));
         let (signal, outcome) = outcomes_rx
             .recv_timeout(Duration::from_secs(60))
@@ -440,16 +537,47 @@ fn host_process() {
         assert!(left.is_empty(), "round {round}: left running: {left:?}");
         let _ = child.wait();
         drop(guard);
-        assert_eq!(
-            dispositions,
-            signal_dispositions(),
-            "ending the children changed a signal disposition of the host"
-        );
+        assert_dispositions_unchanged(dispositions, "ending the children");
         assert_eq!(pid, std::process::id(), "the host is untouched");
         assert_eq!(pgid, own_pgid(), "the host's group is untouched");
     }
     handler.join().expect("the handling thread");
     say("done".to_owned());
+}
+
+/// The host of [`a_signal_the_host_did_not_handle_ends_it_by_default`]: it
+/// handles no signal, starts a child through the library, and waits to be
+/// ended by the signal the case sends it. It lowers its core-file limit so
+/// that `SIGQUIT`, whose default action dumps core, leaves no file.
+#[test]
+fn the_unhandled_host_process() {
+    #[cfg(unix)]
+    if std::env::var_os(HOST_ENV).is_some() {
+        unhandled_host_process();
+    }
+}
+
+#[cfg(unix)]
+fn unhandled_host_process() {
+    use std::io::Write;
+
+    rustix::process::setrlimit(
+        rustix::process::Resource::Core,
+        rustix::process::Rlimit {
+            current: Some(0),
+            maximum: Some(0),
+        },
+    )
+    .expect("the core-file limit is lowered");
+    let pid = std::process::id();
+    let (child, _guard) = spawn_sleep(10000);
+    {
+        let mut out = std::io::stdout().lock();
+        writeln!(out, "HOST: ready 1 {pid} {}", child.id()).expect("stdout");
+        out.flush().expect("stdout");
+    }
+    std::thread::sleep(std::time::Duration::from_secs(120));
+    panic!("the signal the case sent did not end the host");
 }
 
 /// A call with no live child is a no-op, and a second call is idempotent.

@@ -1075,10 +1075,10 @@ pub(crate) fn run(id: &str) {
             let matrix = &ci[ci.find("\n  host-matrix:").expect("the host matrix")..];
             assert_eq!(
                 matrix
-                    .matches("cargo test --locked --workspace --all-features\n")
+                    .matches("cargo test --locked --workspace --all-features --no-fail-fast\n")
                     .count(),
                 1,
-                "the host matrix runs the workspace's tests once"
+                "the host matrix runs the workspace's tests once, and reports every failing test of the host, not the first binary's"
             );
             assert!(
                 !ci.contains("cargo build"),

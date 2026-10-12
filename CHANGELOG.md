@@ -120,7 +120,12 @@ versions, and the entries below say what each tag does and does not claim.
   counts the signalling sites across every source file of the library. The
   tests run a host process of its own that registers its own handling of
   `SIGINT` and `SIGTERM`, deliver each from outside, and compare its signal
-  dispositions before and after the library starts and ends children; the
+  dispositions before and after the library starts and ends children (where
+  the host can report them; the `ps` of macOS cannot, so a second host that
+  handles nothing is sent `SIGQUIT` and must die of it with its child still
+  running, on every host); the macOS and Windows host legs of the CI now run
+  `cargo test --no-fail-fast`, so that a host reports every failing test and
+  not the first failing binary's; the
   concurrent-start case ends the children sixty times and catches a planted
   removal of the registration lock in 100 of 100 runs. `CL-22` and `LLV7018`
   are registered (`LLV7017` is the verification width of §22.11), and the

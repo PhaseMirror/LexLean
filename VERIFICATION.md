@@ -2187,12 +2187,19 @@ the way a service manager starts one) that registers its own handling of
 live, and requires that the host ends the children from its handling's thread,
 survives to run its own cleanup, exits by its own status and not by a signal,
 that its pid and pgid are untouched, and that its signal dispositions (`SigCgt`
-and `SigIgn` of `/proc/self/status`, the `caught` and `ignored` columns of
-`ps` where there is no `/proc`; a host that can read neither is an error, not
-a pass) are equal before the library starts a child, after it has started
-one, and after it has ended it. A fresh process is the case's own, because a
-disposition that an earlier case of the same process had already changed would
-hide the library's doing. It covers the no-op, the idempotent second call, a
+and `SigIgn` of `/proc/self/status`, or the `caught` and `ignored` columns of
+`ps`) are equal before the library starts a child, after it has started
+one, and after it has ended it; a host with `/proc` must be able to report
+them, a host with neither `/proc` nor `ps` is an error and not a pass, and
+the `ps` of macOS has neither column, which the first run of this branch on
+the two macOS legs showed (`ps cannot report the caught signals`). What shows
+the same thing on every host is a second host process that handles no signal:
+it is sent `SIGQUIT` while a child the library started is running, and must
+die of that signal by its default action with the child still running, which
+a handler the library had installed would have ended first
+(`a_signal_the_host_did_not_handle_ends_it_by_default`). A fresh process is
+each case's own, because a disposition that an earlier case of the same
+process had already changed would hide the library's doing. It covers the no-op, the idempotent second call, a
 child that already exited (`AlreadyGone`), the refusal of a child started
 after the call, and a concurrent-starts stress that ends the live children
 sixty times while four threads keep starting them and reads the process table
@@ -2219,8 +2226,8 @@ Planted: `end_leader` ends only the direct child and not its group
 grandchild survives and its group is reported failing, not ended.
 
 ```text
-thread 'an_embedding_host_ends_every_live_group' (9926) panicked at crates/lexlean/tests/end_children.rs:201:5:
-every live group is reported ended: [ChildGroupEnd { group: 9928, outcome: Failed("processes of group 9928 still existed 2000 ms after SIGKILL") }]
+thread 'an_embedding_host_ends_every_live_group' (32748) panicked at crates/lexlean/tests/end_children.rs:223:5:
+every live group is reported ended: [ChildGroupEnd { group: 32750, outcome: Failed("processes of group 32750 still existed 2000 ms after SIGKILL") }]
 ```
 
 Planted: `end_leader` signals the host's own process group
@@ -2230,7 +2237,7 @@ Expected: the host process, which leads its own group, is killed by its own
 `SIGKILL` before it can finish, and the case says so.
 
 ```text
-thread 'the_host_ends_children_from_its_own_signal_thread' (10388) panicked at crates/lexlean/tests/end_children.rs:348:5:
+thread 'the_host_ends_children_from_its_own_signal_thread' (1162) panicked at crates/lexlean/tests/end_children.rs:403:5:
 the host must survive both signals, run its own cleanup, and exit by its own status, not by a signal (it said "the host said nothing more" and ended with ExitStatus(unix_wait_status(9)))
 ```
 
@@ -2240,7 +2247,7 @@ verify::lifeline::tests::a_refused_group_is_reported`. Expected: a simulated
 `EPERM` is reported ended, not failed.
 
 ```text
-thread 'verify::lifeline::tests::a_refused_group_is_reported' (10694) panicked at crates/lexlean/src/verify/lifeline.rs:616:17:
+thread 'verify::lifeline::tests::a_refused_group_is_reported' (1582) panicked at crates/lexlean/src/verify/lifeline.rs:616:17:
 EPERM is reported, not taken for success: Some(Ended)
 ```
 
@@ -2250,7 +2257,7 @@ instead of calling the public function. Command: `cargo test -p repo-conformance
 path" check finds a second signal site in the module.
 
 ```text
-thread 'conformance_cl_22' (11274) panicked at crates/conformance/src/cases/cli_api.rs:1101:13:
+thread 'conformance_cl_22' (2241) panicked at crates/conformance/src/cases/cli_api.rs:1101:13:
 assertion `left == right` failed: §24.6: a process group is signalled in exactly one place
   left: ["verify/lifeline.rs", "verify/lifeline.rs"]
  right: ["verify/lifeline.rs"]
@@ -2262,7 +2269,7 @@ shared one function). Same command. Expected: the same check finds the second
 site in another file, which a check of `lifeline.rs` alone could not.
 
 ```text
-thread 'conformance_cl_22' (13276) panicked at crates/conformance/src/cases/cli_api.rs:1101:13:
+thread 'conformance_cl_22' (8184) panicked at crates/conformance/src/cases/cli_api.rs:1101:13:
 assertion `left == right` failed: §24.6: a process group is signalled in exactly one place
   left: ["verify/child.rs", "verify/lifeline.rs"]
  right: ["verify/lifeline.rs"]
@@ -2274,7 +2281,7 @@ verify::child::timeout_tests::a_timeout_ends_what_the_child_started`.
 Expected: the grandchild outlives the timeout and the case fails.
 
 ```text
-thread 'verify::child::timeout_tests::a_timeout_ends_what_the_child_started' (13573) panicked at crates/lexlean/src/verify/child.rs:670:9:
+thread 'verify::child::timeout_tests::a_timeout_ends_what_the_child_started' (8473) panicked at crates/lexlean/src/verify/child.rs:670:9:
 ```
 
 Planted: the shutdown state is dropped from `end_live_children` (the
@@ -2284,7 +2291,7 @@ end_children a_child_started_after_the_end_is_refused`. Expected: the child
 starts, and the case fails at its own refusal assertion.
 
 ```text
-thread 'a_child_started_after_the_end_is_refused' (11732) panicked at crates/lexlean/tests/end_children.rs:518:18:
+thread 'a_child_started_after_the_end_is_refused' (4360) panicked at crates/lexlean/tests/end_children.rs:646:18:
 a child started after the end must be refused
 ```
 
@@ -2298,28 +2305,40 @@ timing assumption; the case now ends them sixty times and the plant was caught
 in 100 of 100 runs, at cycle 0 in the one quoted.
 
 ```text
-thread 'concurrent_starts_are_ended_or_refused' (12193) panicked at crates/lexlean/tests/end_children.rs:651:9:
-cycle 0: a child started concurrently with the call survived it: [(12199, "sleep 300.12192 "), (12202, "sleep 300.12192 "), (12203, "sleep 300.12192 "), (12204, "sleep 300.12192 ")]
+thread 'concurrent_starts_are_ended_or_refused' (4888) panicked at crates/lexlean/tests/end_children.rs:779:9:
+cycle 0: a child started concurrently with the call survived it: [(4893, "sleep 300.4887 "), (4894, "sleep 300.4887 "), (4896, "sleep 300.4887 ")]
 ```
 
 Planted: the library installs its interrupt handler without the executable
 having armed it (the `ARMED` test removed from `install`), which is what a
 host that embeds the library must never see. Command: `cargo test -p lexlean
 --test end_children the_host_ends_children_from_its_own_signal_thread`.
-Expected: the host's caught-signal mask changes (the bit of `SIGQUIT`, which
-the host did not register) when it starts its first child, and the case fails
-there. The first version of this assertion ran in the process of the other
+Expected on a host that can report its masks (Linux): the host's caught-signal
+mask changes (the bit of `SIGQUIT`, which the host did not register) when it
+starts its first child, and the case fails there; and on every host the
+unhandled `SIGQUIT` finds the child already ended, which is the second case
+quoted below. The first version of this assertion ran in the process of the other
 cases, where an earlier case had already installed the handler and the
 comparison passed under the plant; that is why the host is a process of its
 own.
 
 ```text
-thread 'the_host_ends_children_from_its_own_signal_thread' (12685) panicked at crates/lexlean/tests/end_children.rs:348:5:
+thread 'the_host_ends_children_from_its_own_signal_thread' (5490) panicked at crates/lexlean/tests/end_children.rs:403:5:
 the host must survive both signals, run its own cleanup, and exit by its own status, not by a signal (it said "the host said nothing more" and ended with ExitStatus(unix_wait_status(25856)))
-thread 'the_host_process' (12689) panicked at crates/lexlean/tests/end_children.rs:408:9:
+thread 'the_host_process' (5494) panicked at crates/lexlean/tests/end_children.rs:134:9:
 assertion `left == right` failed: starting a child changed a signal disposition of the host
-  left: (4294984770, 4096)
- right: (4294984774, 4096)
+  left: Some((4294984770, 4096))
+ right: Some((4294984774, 4096))
+```
+
+and, with no mask read, `cargo test -p lexlean --test end_children
+a_signal_the_host_did_not_handle_ends_it_by_default`:
+
+```text
+thread 'a_signal_the_host_did_not_handle_ends_it_by_default' (5955) panicked at crates/lexlean/tests/end_children.rs:450:5:
+assertion `left == right` failed: the library installed no handler, so it did not end the child when the host died of the signal: []
+  left: 0
+ right: 1
 ```
 
 Removed: every plant was restored; the tests pass.
@@ -5974,6 +5993,13 @@ was removed.
   `ci.yml has no `cargo build` step: the host matrix's `cargo test` builds the crate`
   (`conformance_rp_14`). The summary step given no `if: ${{ !cancelled() }}` is
   refused by the condition count of the same case (the record above).
+- **a host leg that stops at its first failing binary.** `--no-fail-fast`
+  removed from the matrix's `cargo test`: `the host matrix runs the workspace's
+  tests once, and reports every failing test of the host, not the first binary's`
+  (`conformance_rp_14`). The defect is real, not hypothetical: the first run of
+  the change that added `end_children` failed both macOS legs in about three
+  minutes at that one binary, and nothing was known of any other test of those
+  hosts until it was fixed and run again.
 - **a width that is not Unicode.** `from_environment` reading the variable with
   `std::env::var(..).ok()` (a non-Unicode value then selects the default width, silently):
   `verify::operational::tests::the_environment_is_read_as_bytes` fails with
