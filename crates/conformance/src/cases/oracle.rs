@@ -169,12 +169,17 @@ fn failures_are_unavailable() {
     std::fs::create_dir_all(&scratch).expect("scratch");
     let library = dir.path().join("lib");
     std::fs::create_dir_all(&library).expect("lib");
-    let mut pin = Pin::committed();
-    pin.timeout_seconds = 1;
+    // The time every tool is allowed. It is generous, because a loaded host
+    // runs these among hundreds of tests and a reference that ran out of
+    // time would be a flake, not a verdict; only the tool that is meant to
+    // overrun is given a tiny one (`ask_within`).
+    const GENEROUS: u64 = 120;
     let exporter_ok = fake_tool(dir.path(), "export-ok", WRITES_IR);
     let prod_ok_body = "out=''\nwhile [ $# -gt 0 ]; do if [ \"$1\" = '--output' ]; then out=\"$2\"; fi; shift; done\nmkdir -p \"$out/src\"\nprintf '[package]\\nname = \"x\"\\n' > \"$out/Cargo.toml\"\nprintf 'pub fn f() -> u64 { 1 }\\n' > \"$out/src/lib.rs\"";
     let prod_ok = fake_tool(dir.path(), "prod-ok", prod_ok_body);
-    let ask = |exporter: &Path, prod: &Path| {
+    let ask_within = |seconds: u64, exporter: &Path, prod: &Path| {
+        let mut pin = Pin::committed();
+        pin.timeout_seconds = seconds;
         Oracle::with_tools(
             &pin,
             exporter.to_path_buf(),
@@ -183,6 +188,7 @@ fn failures_are_unavailable() {
         )
         .verdict(&library, "M", "M.f", "crate-x")
     };
+    let ask = |exporter: &Path, prod: &Path| ask_within(GENEROUS, exporter, prod);
     // The reference: working tools are an acceptance.
     match ask(&exporter_ok, &prod_ok) {
         Ok(Verdict::Accepted { package, .. }) => assert!(package.contains_key("src/lib.rs")),
@@ -245,7 +251,10 @@ fn failures_are_unavailable() {
             "an exporter whose IR defines nothing",
             ask(&empty, &prod_ok),
         ),
-        ("an exporter that overruns its time", ask(&slow, &prod_ok)),
+        (
+            "an exporter that overruns its time",
+            ask_within(1, &slow, &prod_ok),
+        ),
         ("an exporter that is not there", ask(&missing, &prod_ok)),
         ("a generator that crashes", ask(&exporter_ok, &crashes)),
         (
@@ -319,6 +328,229 @@ fn gates_decide() {
         differential::Gate::NotValidated(reason) => assert!(reason.contains("planted")),
         other => panic!("another host reports not validated: {other:?}"),
     }
+}
+
+// ---- toolchains --------------------------------------------------------------
+
+/// The pin's toolchains are the repository's own, and a pin or a checkout that
+/// names others is refused with a message that names both.
+fn toolchains_are_the_repositorys() {
+    let pin = Pin::committed();
+    oracle::check_toolchains(&pin, repo_root().as_std_path())
+        .expect("the committed pin names the repository's toolchains");
+    let repo = tempfile::tempdir().expect("tempdir");
+    let state = |channel: &str, lean: &str| {
+        write(
+            repo.path(),
+            "rust-toolchain.toml",
+            &format!("[toolchain]\nchannel = \"{channel}\"\n"),
+        );
+        write(repo.path(), "lean-toolchain", &format!("{lean}\n"));
+        oracle::check_toolchains(&pin, repo.path())
+    };
+    state(&pin.rust_toolchain, &pin.lean_toolchain).expect("agreeing toolchains");
+    for (name, result, needles) in [
+        (
+            "another Rust",
+            state("9.99.9", &pin.lean_toolchain),
+            vec!["rust_toolchain", "9.99.9", pin.rust_toolchain.as_str()],
+        ),
+        (
+            "another Lean",
+            state(&pin.rust_toolchain, "leanprover/lean4:v0.0.1"),
+            vec!["lean_toolchain", "v0.0.1", pin.lean_toolchain.as_str()],
+        ),
+    ] {
+        match result {
+            Err(Unavailable::ToolchainDrift(detail)) => {
+                for needle in needles {
+                    assert!(detail.contains(needle), "{name}: {detail}");
+                }
+            }
+            other => panic!("{name} is a drift: {other:?}"),
+        }
+    }
+    std::fs::remove_file(repo.path().join("lean-toolchain")).expect("rm");
+    assert!(matches!(
+        oracle::check_toolchains(&pin, repo.path()),
+        Err(Unavailable::ToolchainDrift(_))
+    ));
+    // The oracle's own Lean, which the pin hashes, is LexLean's.
+    let source = tempfile::tempdir().expect("tempdir");
+    write(
+        source.path(),
+        "lean/lean-toolchain",
+        &format!("{}\n", pin.lean_toolchain),
+    );
+    oracle::check_source_toolchain(&pin, source.path()).expect("the oracle needs the pinned Lean");
+    write(
+        source.path(),
+        "lean/lean-toolchain",
+        "leanprover/lean4:v0.0.1\n",
+    );
+    match oracle::check_source_toolchain(&pin, source.path()) {
+        Err(Unavailable::ToolchainDrift(detail)) => {
+            assert!(detail.contains("v0.0.1") && detail.contains(&pin.lean_toolchain));
+        }
+        other => panic!("an oracle that needs another Lean is a drift: {other:?}"),
+    }
+}
+
+// ---- acquisition ---------------------------------------------------------------
+
+/// A local git repository holding [`pin_tree`], and the pin that names its
+/// commit and the digest of its files.
+fn origin() -> (tempfile::TempDir, Pin) {
+    let dir = tempfile::tempdir().expect("tempdir");
+    pin_tree(dir.path());
+    let git = |arguments: &[&str]| -> String {
+        let output = std::process::Command::new("git")
+            .args([
+                "-c",
+                "user.name=lexlean",
+                "-c",
+                "user.email=lexlean@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+            ])
+            .args(arguments)
+            .current_dir(dir.path())
+            .output()
+            .expect("git runs");
+        assert!(output.status.success(), "git {arguments:?}");
+        String::from_utf8_lossy(&output.stdout).trim().to_owned()
+    };
+    git(&["init", "--quiet"]);
+    git(&["add", "-A"]);
+    git(&["commit", "--quiet", "-m", "origin"]);
+    let mut pin = synthetic_pin();
+    pin.commit = git(&["rev-parse", "HEAD"]);
+    pin.remote = dir.path().display().to_string();
+    pin.timeout_seconds = 120;
+    let (digest, files) = oracle::tree_digest(dir.path(), &pin).expect("digest");
+    pin.tree_sha256 = digest;
+    pin.tree_files = files;
+    (dir, pin)
+}
+
+/// What a cache directory holds, by name.
+fn entries(dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .expect("cache")
+        .map(|entry| entry.expect("entry").file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    names
+}
+
+/// A fetch is atomic and a bad cache heals: a fetch that fails leaves nothing
+/// a later run could take for a checkout, a cached checkout that is not the
+/// pin is discarded and fetched again, and files that are not the pin are
+/// refused whatever the remote says.
+fn acquisition_is_atomic_and_heals() {
+    use std::time::Duration;
+    let quick = [Duration::from_millis(5), Duration::from_millis(5)];
+    let (origin, pin) = origin();
+    // The reference: a fetch of the pin puts the pinned files in place and
+    // nothing else beside them.
+    let cache = tempfile::tempdir().expect("tempdir");
+    let source = oracle::cached_source(&pin, cache.path(), &quick).expect("a fetch of the pin");
+    assert_eq!(source, cache.path().join("source"));
+    oracle::verify_checkout(&pin, &source).expect("the fetched files are the pin");
+    assert_eq!(entries(cache.path()), ["source"]);
+    // A cache that is the pin is used as it is: no fetch (the remote is gone).
+    let mut gone = pin.clone();
+    gone.remote = cache.path().join("no-remote").display().to_string();
+    assert_eq!(
+        oracle::cached_source(&gone, cache.path(), &quick).expect("the cache is the pin"),
+        source
+    );
+    // A fetch that fails leaves nothing behind. A remote that does not exist is
+    // permanent and ends the tries at once ...
+    let failed = tempfile::tempdir().expect("tempdir");
+    match oracle::cached_source(&gone, failed.path(), &quick) {
+        Err(Unavailable::NotAcquired(detail)) => {
+            assert!(
+                detail.contains("no longer has the pinned commit") && detail.contains("§17.19"),
+                "the repin procedure is named: {detail}"
+            );
+        }
+        other => panic!("a missing remote is not acquired: {other:?}"),
+    }
+    assert!(entries(failed.path()).is_empty(), "{:?}", entries(failed.path()));
+    // ... and one that cannot be reached is tried again, and still leaves
+    // nothing for a later run to take for a checkout.
+    let mut unreachable = pin.clone();
+    unreachable.remote = "git://127.0.0.1:1/lean4-prod.git".to_owned();
+    match oracle::cached_source(&unreachable, failed.path(), &quick) {
+        Err(Unavailable::NotAcquired(detail)) => {
+            assert!(detail.contains("after 3 tries"), "{detail}");
+        }
+        other => panic!("an unreachable remote is not acquired: {other:?}"),
+    }
+    assert!(entries(failed.path()).is_empty(), "{:?}", entries(failed.path()));
+    // A cache that is not the pin (an interrupted run's empty repository, a
+    // changed file) is discarded and fetched once more.
+    let damaged = tempfile::tempdir().expect("tempdir");
+    write(damaged.path(), "source/.git/HEAD", "ref: refs/heads/none\n");
+    write(damaged.path(), "source/lean/a.txt", "poisoned");
+    let healed = oracle::cached_source(&pin, damaged.path(), &quick).expect("a cache that heals");
+    oracle::verify_checkout(&pin, &healed).expect("the healed cache is the pin");
+    assert_eq!(
+        std::fs::read_to_string(healed.join("lean/a.txt")).expect("file"),
+        "alpha"
+    );
+    assert_eq!(entries(damaged.path()), ["source"]);
+    // A remote that serves files that are not the pin is a mismatch, once,
+    // and leaves nothing.
+    let mut wrong = pin.clone();
+    wrong.tree_sha256 = "0".repeat(64);
+    let refused = tempfile::tempdir().expect("tempdir");
+    match oracle::cached_source(&wrong, refused.path(), &quick) {
+        Err(Unavailable::PinMismatch(_)) => {}
+        other => panic!("files that are not the pin are a mismatch: {other:?}"),
+    }
+    assert!(entries(refused.path()).is_empty());
+    drop(origin);
+}
+
+/// The retry: transient failures are tried again, up to the delays, and a
+/// permanent one ends the tries.
+fn retries_are_bounded() {
+    use oracle::Failure;
+    use std::time::{Duration, Instant};
+    let quick = [Duration::from_millis(20), Duration::from_millis(20)];
+    let mut tries = 0;
+    let got = oracle::retry(&quick, |at| {
+        tries += 1;
+        if at < 2 {
+            Err(Failure::Transient(format!("blip {at}")))
+        } else {
+            Ok("done")
+        }
+    });
+    assert_eq!((got, tries), (Ok("done"), 3), "two blips are survived");
+    let mut tries = 0;
+    let started = Instant::now();
+    let got: Result<(), Failure> = oracle::retry(&quick, |_| {
+        tries += 1;
+        Err(Failure::Transient(format!("down {tries}")))
+    });
+    assert_eq!(got, Err(Failure::Transient("down 3".into())));
+    assert_eq!(tries, 3, "the delays bound the tries");
+    assert!(
+        started.elapsed() >= Duration::from_millis(40),
+        "the delays are waited"
+    );
+    let mut tries = 0;
+    let got: Result<(), Failure> = oracle::retry(&quick, |_| {
+        tries += 1;
+        Err(Failure::Permanent("gone".into()))
+    });
+    assert_eq!((got, tries), (Err(Failure::Permanent("gone".into())), 1));
+    // The real delays are about a minute in all.
+    let total: u64 = oracle::RETRY_DELAYS.iter().map(Duration::as_secs).sum();
+    assert!((30..=120).contains(&total), "{total} s");
 }
 
 // ---- OR-08: evidence only ---------------------------------------------------
@@ -1669,6 +1901,7 @@ fn run_case(id: &str) {
     match id {
         "OR-01" => {
             pin_and_digest();
+            toolchains_are_the_repositorys();
             checkouts_that_are_not_the_pin();
         }
         "OR-02" => overlap(),
@@ -1679,6 +1912,8 @@ fn run_case(id: &str) {
         "OR-07" => {
             failures_are_unavailable();
             acquisition_fails_closed();
+            acquisition_is_atomic_and_heals();
+            retries_are_bounded();
             vacuous_runs_are_unavailable();
             gates_decide();
             disagreement_is_recorded();

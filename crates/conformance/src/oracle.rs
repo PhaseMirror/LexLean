@@ -590,7 +590,17 @@ fn fetch_into(pin: &Pin, staging: &Path, delays: &[Duration]) -> Result<(), Unav
 /// The cached checkout of the pinned oracle in `cache`: one that is there and
 /// is the pin is used; one that is there and is not (an interrupted run, a
 /// damaged cache) is discarded and fetched again once; none is fetched.
-fn cached_source(pin: &Pin, cache: &Path, delays: &[Duration]) -> Result<PathBuf, Unavailable> {
+///
+/// # Errors
+///
+/// [`Unavailable::NotAcquired`] when the fetch fails (after the tries `delays`
+/// allow) and [`Unavailable::PinMismatch`] when what the remote serves is not
+/// the pinned oracle.
+pub fn cached_source(
+    pin: &Pin,
+    cache: &Path,
+    delays: &[Duration],
+) -> Result<PathBuf, Unavailable> {
     let dir = cache.join("source");
     if dir.exists() {
         if verify_checkout(pin, &dir).is_ok() {
