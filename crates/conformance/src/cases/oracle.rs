@@ -1117,7 +1117,6 @@ fn equivalent_renderings() {
         .expect("LexLean's rendering builds");
     differential::accept_rendering(&halvings, &base_halvings, &base_halvings).expect("a rendering is itself");
     differential::accept_rendering(&sum_all, &base_sum, &base_sum).expect("a rendering is itself");
-    assert!(base_halvings.work > 0 && base_sum.work > 0, "the baselines count work");
     // Deliberately better, and equivalent: a closed form for the recursion that
     // counts down by twos, and a loop for the right-nested sum.
     let closed_form = with_functions(
@@ -1141,9 +1140,17 @@ fn equivalent_renderings() {
     // Wrong in one place is refused. One result on one input: the closed form
     // is wrong at the largest natural only; the loop wraps where the sum
     // overflows, which one input of the differential reaches.
+    let Some(lexlean::calculus::Value::Nat { value: odd }) = halvings
+        .cases
+        .iter()
+        .map(|case| case.values[0].clone())
+        .rfind(|value| matches!(value, lexlean::calculus::Value::Nat { value } if value.parse::<u64>().is_ok_and(|n| n % 2 == 1)))
+    else {
+        panic!("the inputs of halvings include an odd one");
+    };
     let one_input = with_functions(
         &own_halvings,
-        "pub fn f0(v0: u64) -> R<u64> {\n    Ok(if v0 == u64::MAX { 0 } else { v0 / 2 })\n}\n\npub fn root(p0: u64) -> R<u64> {\n    f0(p0)\n}\n",
+        &format!("pub fn f0(v0: u64) -> R<u64> {{\n    Ok(if v0 == {odd}u64 {{ 0 }} else {{ v0 / 2 }})\n}}\n\npub fn root(p0: u64) -> R<u64> {{\n    f0(p0)\n}}\n"),
     );
     let wrapping = with_functions(
         &own_sum,

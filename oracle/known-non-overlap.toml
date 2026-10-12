@@ -99,6 +99,22 @@ disposition = "formal-only"
 reason = "A proposition connective is never a runtime value in LexLean (registry disposition formal-only); a proposition about values is erased by the oracle as well, so no program of either compiler realizes it."
 
 [[construct]]
+key = "term.first"
+kind = "oracle-breaks"
+probe = "OracleProbe.ProbeFirst.firstRoot"
+refusal = "does-not-compile"
+scope = "construct"
+reason = "The oracle takes a pair projection and renders it as a field access .fst or .snd on a Rust tuple, which rustc rejects (a defect of its code generator, found on LexLean's Lean); no root that realizes the projection yields a crate that can be run."
+
+[[construct]]
+key = "term.second"
+kind = "oracle-breaks"
+probe = "OracleProbe.ProbeSecond.secondRoot"
+refusal = "does-not-compile"
+scope = "construct"
+reason = "The oracle takes a pair projection and renders it as a field access .fst or .snd on a Rust tuple, which rustc rejects (a defect of its code generator, found on LexLean's Lean); no root that realizes the projection yields a crate that can be run."
+
+[[construct]]
 key = "term.function_ref"
 kind = "oracle-refuses"
 probe = "OracleProbe.ProbeFunctionRef.referenceRoot"

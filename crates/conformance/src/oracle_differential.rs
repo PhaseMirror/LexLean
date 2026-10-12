@@ -1622,12 +1622,14 @@ fn rejection_class(message: &str) -> &'static str {
     }
 }
 
+/// What kind of thing an outcome is: a value, an overflow, or a panic.
 fn kind_of(outcome: &Json) -> String {
-    outcome
-        .get("kind")
-        .and_then(Json::as_str)
-        .unwrap_or("?")
-        .to_owned()
+    match outcome.get("kind").and_then(Json::as_str) {
+        Some("overflow") => "overflow",
+        Some("panic") => "panic",
+        _ => "value",
+    }
+    .to_owned()
 }
 
 /// An outcome with the oracle's own name for an overflow removed: an

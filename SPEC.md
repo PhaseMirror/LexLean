@@ -5528,6 +5528,11 @@ LexLean refuses as production roots (`production-polymorphic-root`,
 `production-named-type-boundary`, and `production-universe-boundary`), with the
 production marking removed so that LexLean still compiles them to Lean. LexLean's
 verdict on a rejection project is the diagnostic its fixture records.
+The corpus has 102 roots; the oracle generates Rust for 30 of them and
+refuses 72; 23 of the crates it generates for eligible roots compile and are
+run on 337 inputs, and each of the other seven is a recorded difference (six
+crates that rustc rejects, and the crate of the rejected root with the
+literal beyond 64 bits).
 
 **Overlap.** A runtime construct of the registry *overlaps* when a corpus root
 that realizes it is accepted by the oracle and compared; it is *outside the
