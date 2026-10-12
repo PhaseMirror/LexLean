@@ -202,6 +202,9 @@ fn check_and_build_agree_on_the_report_budget() {
 /// is wrong or that Lean reads by the parse.
 fn numbers_are_read_as_lean_reads_them() {
     use lexlean::production::preserve::{lex, LexemeKind};
+    // The toolchain is resolved from `ELAN_HOME`, which a case that replaces it
+    // holds exclusively, so it is resolved and used under the shared lock.
+    let _guard = support::env_shared();
     let project = P::copy_example("production");
     let loaded = lexlean::project::Project::load(&project.root.join("lexlean.toml")).expect("load");
     let toolchain =
@@ -229,7 +232,6 @@ fn numbers_are_read_as_lean_reads_them() {
             "def x{index} := {case}axiom bad{index} : False\n#check @bad{index}\n"
         ));
     }
-    let _guard = support::env_shared();
     let directory = tempfile::tempdir().expect("tempdir");
     let path = directory.path().join("Numbers.lean");
     std::fs::write(&path, &source).expect("write");

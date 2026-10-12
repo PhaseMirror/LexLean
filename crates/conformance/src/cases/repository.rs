@@ -411,7 +411,7 @@ pub(crate) fn run(id: &str) {
             let model = repo_model::Model::load(&root.join("model").into_std_path_buf())
                 .expect("the model loads");
             let table = spec_table();
-            assert_eq!(table.len(), 338, "§31 has 338 rows");
+            assert_eq!(table.len(), 339, "§31 has 339 rows");
             assert_eq!(model.ids.id.len(), table.len(), "register row count");
             for ((spec_id, spec_suite, spec_statement), row) in
                 table.iter().zip(model.ids.id.iter())
@@ -1075,10 +1075,10 @@ pub(crate) fn run(id: &str) {
             let matrix = &ci[ci.find("\n  host-matrix:").expect("the host matrix")..];
             assert_eq!(
                 matrix
-                    .matches("cargo test --locked --workspace --all-features\n")
+                    .matches("cargo test --locked --workspace --all-features --no-fail-fast\n")
                     .count(),
                 1,
-                "the host matrix runs the workspace's tests once"
+                "the host matrix runs the workspace's tests once, and reports every failing test of the host, not the first binary's"
             );
             assert!(
                 !ci.contains("cargo build"),

@@ -923,8 +923,13 @@ pub fn run(id: &str) {
                 matches!(extract(&foreign), Err(Rejection::Drift(reason)) if reason.contains("pinned to 4.32.1"))
             );
             if support::lean_backed("NE-04") {
-                // Every source identity matches the pinned toolchain.
-                let toolchain = toolchain();
+                // Every source identity matches the pinned toolchain. It is
+                // resolved from `ELAN_HOME`, which a case that replaces it
+                // holds exclusively, so it is resolved under the shared lock.
+                let toolchain = {
+                    let _guard = support::env_shared();
+                    toolchain()
+                };
                 for (source, sha256) in authority
                     .call
                     .iter()

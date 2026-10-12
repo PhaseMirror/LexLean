@@ -178,4 +178,8 @@ jobs:
             exit 1
           fi
           echo "$host"
-      - run: cargo test --locked --workspace --all-features
+      # `--no-fail-fast`: cargo otherwise stops at the first test binary that
+      # fails, so a host with two independent failures reports one, and each
+      # further one costs a whole run of the leg. The job fails exactly when a
+      # test fails, as before; only what it reports is complete (SPEC.md §8.3).
+      - run: cargo test --locked --workspace --all-features --no-fail-fast
