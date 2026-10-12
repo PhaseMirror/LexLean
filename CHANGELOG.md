@@ -24,17 +24,26 @@ versions, and the entries below say what each tag does and does not claim.
   repository ships no licence text for a copy to carry, so the suite
   acquires it (`LEXLEAN_ORACLE_DIR`, or a fetch of the commit), refuses a
   checkout that does not hash to the pin, and builds it with the pinned
-  toolchains. The corpus is every production root of the four certified
+  toolchains. The fetch is atomic (made beside the cache, verified, then
+  renamed), a cache that is not the pin is discarded and fetched once more, a
+  transient network failure is tried again twice, and the oracle's crates.io
+  dependencies are fetched `--locked` into a Cargo home of their own and built
+  offline; the pin's toolchains must be the repository's, and every build and
+  run is bounded in time. The corpus is every production root of the four certified
   examples, one probe root for each runtime construct they do not realize in
   an accepted root, and the production-refusal fixtures with their marking
   removed: 102 roots, of which the oracle generates Rust for 30 and refuses
-  72. The comparison is of acceptance, contract, behavior, and resources and
-  never of bytes; on the 23 compiled crates it agrees with the interpreter and
-  LexLean's own rendering on 337 inputs. Every difference is in
+    72 (66 of roots LexLean takes, 6 of roots it rejects). The comparison is of
+  acceptance, contract, behavior, and resources and never of bytes; on the 23
+  compiled crates it agrees with the interpreter and LexLean's own rendering on
+  1411 inputs, the seeded ones of the existing differentials and boundary
+  inputs derived from each root's types and literals. Every difference is in
   `oracle/known-differences.toml` or is a disagreement, and every construct of
-  the production registry is realized by an accepted root or is a row of
-  `oracle/known-non-overlap.toml`, both versioned and re-asserted on every
-  run. Planted arithmetic, control, and ABI discrepancies are detected, a
+  the production registry is realized in the closure of a compiled root or is a
+  row of `oracle/known-non-overlap.toml`; both are re-asserted on every run and
+  versioned by the digest of their rows (`oracle/table-versions.toml`). Planted
+  arithmetic, control, resource, and ABI discrepancies, each judged on its own,
+  are detected, a
   better equivalent rendering is accepted despite its bytes, an oracle that
   fails is unavailable and never validated, and the new gate
   `audit-oracle-isolation` fails on any mention of the oracle in the inputs of

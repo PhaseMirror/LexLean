@@ -243,6 +243,52 @@ fn failures_are_unavailable() {
     );
     let slow = fake_tool(dir.path(), "slow", "sleep 30");
     let missing = dir.path().join("does-not-exist");
+    // A tool that overruns is ended with everything it started, not left
+    // running beside the suite: its child is dead when the verdict returns.
+    #[cfg(target_os = "linux")]
+    {
+        let pidfile = dir.path().join("grandchild.pid");
+        let spawns = fake_tool(
+            dir.path(),
+            "spawns",
+            &format!("sleep 120 &\necho $! > {}\nwait", pidfile.display()),
+        );
+        let started = std::time::Instant::now();
+        assert!(
+            matches!(
+                ask_within(1, &spawns, &prod_ok),
+                Err(Unavailable::ToolFailed { .. })
+            ),
+            "an exporter that starts a child and overruns is unavailable"
+        );
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(30),
+            "the overrun is ended at its bound, not at its child's"
+        );
+        let pid = std::fs::read_to_string(&pidfile)
+            .expect("the tool wrote its child's pid")
+            .trim()
+            .to_owned();
+        // A killed child is a zombie until its parent's parent reaps it, which
+        // a container's first process may not do: a zombie is dead.
+        let alive = || {
+            std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|stat| {
+                !stat
+                    .rsplit(')')
+                    .next()
+                    .unwrap_or("")
+                    .trim_start()
+                    .starts_with('Z')
+            })
+        };
+        for _ in 0..100 {
+            if !alive() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        assert!(!alive(), "the child {pid} of the overrunning tool is ended with it");
+    }
     for (name, result) in [
         ("an exporter that crashes", ask(&crashes, &prod_ok)),
         ("an exporter killed by a signal", ask(&killed, &prod_ok)),
