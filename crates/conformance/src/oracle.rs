@@ -246,6 +246,10 @@ pub enum Unavailable {
     /// The run had nothing to validate: a comparison over zero cases says
     /// nothing, and is never read as agreement.
     Vacuous(String),
+    /// The pin names toolchains other than LexLean's own, or the pinned
+    /// oracle needs another Lean: a repository inconsistency to be fixed by
+    /// repinning, not a condition of the host or of the network.
+    ToolchainDrift(String),
 }
 
 impl fmt::Display for Unavailable {
@@ -265,6 +269,10 @@ impl fmt::Display for Unavailable {
                 )
             }
             Self::Vacuous(detail) => write!(f, "nothing was validated: {detail}"),
+            Self::ToolchainDrift(detail) => write!(
+                f,
+                "the oracle's pin and LexLean's toolchains disagree (repin: SPEC.md §17.19): {detail}"
+            ),
         }
     }
 }
@@ -337,18 +345,49 @@ fn toolchain_command(program: &str, cwd: &Path) -> Command {
 }
 
 /// What a finished process left.
-struct Ran {
-    status: Option<i32>,
-    stdout: String,
-    stderr: String,
+pub(crate) struct Ran {
+    pub(crate) status: Option<i32>,
+    pub(crate) stdout: String,
+    pub(crate) stderr: String,
 }
 
-/// Run `command` to completion within `limit`, or kill it.
-fn run(mut command: Command, limit: Duration) -> Result<Ran, String> {
+/// End a child and everything it started: the process group it leads (unix)
+/// or its process tree (windows), then the child itself.
+fn stop_tree(child: &mut std::process::Child) {
+    #[cfg(unix)]
+    {
+        use rustix::process::{kill_process_group, Pid, Signal};
+        if let Some(group) = i32::try_from(child.id()).ok().and_then(Pid::from_raw) {
+            let _ = kill_process_group(group, Signal::KILL);
+        }
+    }
+    #[cfg(windows)]
+    {
+        let _ = Command::new("taskkill")
+            .args(["/PID", &child.id().to_string(), "/T", "/F"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+/// Run `command` to completion within `limit`, or end it and everything it
+/// started, and say so.
+pub(crate) fn run(mut command: Command, limit: Duration) -> Result<Ran, String> {
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // The child leads a group of its own, so that a timeout ends what it
+    // started (`lake` starts `lean`, `cargo` starts `rustc`).
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
     let mut child = command
         .spawn()
         .map_err(|error| format!("cannot start: {error}"))?;
@@ -370,13 +409,15 @@ fn run(mut command: Command, limit: Duration) -> Result<Ran, String> {
             Ok(Some(status)) => break status,
             Ok(None) => {
                 if start.elapsed() > limit {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return Err(format!("killed after {} s", limit.as_secs()));
+                    stop_tree(&mut child);
+                    return Err(format!("ended after {} s", limit.as_secs()));
                 }
                 std::thread::sleep(Duration::from_millis(10));
             }
-            Err(error) => return Err(format!("cannot wait: {error}")),
+            Err(error) => {
+                stop_tree(&mut child);
+                return Err(format!("cannot wait: {error}"));
+            }
         }
     };
     let text = |bytes: Vec<u8>| String::from_utf8_lossy(&bytes).into_owned();
@@ -420,36 +461,212 @@ fn copy_tree(from: &Path, to: &Path, pin: &Pin, root: &Path) -> Result<(), Strin
     Ok(())
 }
 
-/// Fetch the pinned commit of the oracle into `dir`.
-fn fetch(pin: &Pin, dir: &Path) -> Result<(), Unavailable> {
+/// How a step failed: for a moment, or for good.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Failure {
+    /// The network or the host failed in a way a later try may not.
+    Transient(String),
+    /// Trying again cannot help: the upstream no longer has what the pin names.
+    Permanent(String),
+}
+
+/// The delays between the tries of a network step: three tries over about
+/// a minute.
+pub const RETRY_DELAYS: [Duration; 2] = [Duration::from_secs(10), Duration::from_secs(45)];
+
+/// Try `attempt` once, and again after each of `delays` while it fails
+/// transiently; a permanent failure ends the tries.
+///
+/// # Errors
+///
+/// The failure of the last try.
+pub fn retry<T>(
+    delays: &[Duration],
+    mut attempt: impl FnMut(usize) -> Result<T, Failure>,
+) -> Result<T, Failure> {
+    let mut tries = 0;
+    loop {
+        match attempt(tries) {
+            Ok(value) => return Ok(value),
+            Err(failure @ Failure::Permanent(_)) => return Err(failure),
+            Err(failure) => match delays.get(tries) {
+                Some(delay) => std::thread::sleep(*delay),
+                None => return Err(failure),
+            },
+        }
+        tries += 1;
+    }
+}
+
+/// Whether a failed `git fetch` says the upstream no longer has the commit.
+fn upstream_is_gone(stderr: &str) -> bool {
+    let text = stderr.to_ascii_lowercase();
+    [
+        "repository not found",
+        "couldn't find remote ref",
+        "not our ref",
+        "unadvertised object",
+        "does not appear to be a git repository",
+        "no such file or directory",
+        "not found",
+        "invalid refspec",
+    ]
+    .iter()
+    .any(|marker| text.contains(marker))
+}
+
+/// Fetch the pinned commit of the oracle, verify that it is the pin, and only
+/// then put it at `dir`.
+///
+/// The fetch happens in a directory beside `dir` that is removed on every
+/// failure, so a fetch that fails leaves nothing that a later run could take
+/// for a checkout. The fetch is tried again after a transient failure (see
+/// [`RETRY_DELAYS`]); a commit that the remote no longer has, and files that do
+/// not hash to the pin, end it at once.
+fn fetch(pin: &Pin, dir: &Path, delays: &[Duration]) -> Result<(), Unavailable> {
     let fail = |detail: String| Unavailable::NotAcquired(detail);
-    std::fs::create_dir_all(dir).map_err(|error| fail(error.to_string()))?;
-    for arguments in [
-        vec!["init", "--quiet"],
-        vec![
-            "fetch",
-            "--quiet",
-            "--depth",
-            "1",
-            pin.remote.as_str(),
-            pin.commit.as_str(),
-        ],
-        vec!["checkout", "--quiet", "--detach", "FETCH_HEAD"],
-    ] {
+    let staging = dir.with_extension(format!("fetching-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&staging);
+    std::fs::create_dir_all(&staging).map_err(|error| fail(error.to_string()))?;
+    let outcome = fetch_into(pin, &staging, delays).and_then(|()| {
+        verify_checkout(pin, &staging)?;
+        std::fs::rename(&staging, dir).map_err(|error| fail(format!("{}: {error}", dir.display())))
+    });
+    if outcome.is_err() {
+        let _ = std::fs::remove_dir_all(&staging);
+    }
+    outcome
+}
+
+fn fetch_into(pin: &Pin, staging: &Path, delays: &[Duration]) -> Result<(), Unavailable> {
+    let git = |arguments: &[&str]| -> Result<Ran, Failure> {
         let mut command = Command::new("git");
-        command.args(&arguments).current_dir(dir);
-        let ran = run(command, Duration::from_secs(pin.timeout_seconds))
-            .map_err(|detail| fail(format!("git {}: {detail}", arguments[0])))?;
-        if ran.status != Some(0) {
-            return Err(fail(format!(
+        command.args(arguments).current_dir(staging);
+        let ran = run(command, Duration::from_secs(pin.timeout_seconds)).map_err(|detail| {
+            Failure::Transient(format!("git {}: {detail}", arguments[0]))
+        })?;
+        if ran.status == Some(0) {
+            Ok(ran)
+        } else {
+            let detail = format!(
                 "git {} exited {:?}: {}",
                 arguments[0],
                 ran.status,
                 last_lines(&ran.stderr)
-            )));
+            );
+            Err(if upstream_is_gone(&ran.stderr) {
+                Failure::Permanent(detail)
+            } else {
+                Failure::Transient(detail)
+            })
         }
+    };
+    let finished = git(&["init", "--quiet"])
+        .and_then(|_| {
+            retry(delays, |_| {
+                git(&[
+                    "fetch",
+                    "--quiet",
+                    "--depth",
+                    "1",
+                    pin.remote.as_str(),
+                    pin.commit.as_str(),
+                ])
+            })
+        })
+        .and_then(|_| git(&["checkout", "--quiet", "--detach", "FETCH_HEAD"]));
+    match finished {
+        Ok(_) => Ok(()),
+        Err(Failure::Permanent(detail)) => Err(Unavailable::NotAcquired(format!(
+            "{detail}; the upstream no longer has the pinned commit, so the pin has to be moved to a commit or a mirror that does (SPEC.md §17.19)"
+        ))),
+        Err(Failure::Transient(detail)) => Err(Unavailable::NotAcquired(format!(
+            "{detail} (after {} tries)",
+            delays.len() + 1
+        ))),
+    }
+}
+
+/// The cached checkout of the pinned oracle in `cache`: one that is there and
+/// is the pin is used; one that is there and is not (an interrupted run, a
+/// damaged cache) is discarded and fetched again once; none is fetched.
+fn cached_source(pin: &Pin, cache: &Path, delays: &[Duration]) -> Result<PathBuf, Unavailable> {
+    let dir = cache.join("source");
+    if dir.exists() {
+        if verify_checkout(pin, &dir).is_ok() {
+            return Ok(dir);
+        }
+        std::fs::remove_dir_all(&dir).map_err(|error| {
+            Unavailable::NotAcquired(format!(
+                "{} is not the pinned oracle and cannot be removed: {error}",
+                dir.display()
+            ))
+        })?;
+    }
+    fetch(pin, &dir, delays)?;
+    Ok(dir)
+}
+
+/// The channel `rust-toolchain.toml` of `repo` pins.
+fn rust_channel(repo: &Path) -> Result<String, String> {
+    let text = std::fs::read_to_string(repo.join("rust-toolchain.toml"))
+        .map_err(|error| format!("rust-toolchain.toml: {error}"))?;
+    let value: toml::Value = text.parse().map_err(|error| format!("rust-toolchain.toml: {error}"))?;
+    value["toolchain"]["channel"]
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| "rust-toolchain.toml states no channel".to_owned())
+}
+
+/// Refuse a pin whose toolchains are not LexLean's own. The oracle is built
+/// with the toolchains the repository pins (`rust-toolchain.toml`,
+/// `lean-toolchain`), and the pin states which they are so that a bump of
+/// either shows up here, as this error, rather than as a build that fails
+/// somewhere else.
+///
+/// # Errors
+///
+/// [`Unavailable::ToolchainDrift`] naming both values.
+pub fn check_toolchains(pin: &Pin, repo: &Path) -> Result<(), Unavailable> {
+    let drift = Unavailable::ToolchainDrift;
+    let rust = rust_channel(repo).map_err(&drift)?;
+    if pin.rust_toolchain != rust {
+        return Err(drift(format!(
+            "oracle/lean4-prod.toml states rust_toolchain `{}` and rust-toolchain.toml pins `{rust}`",
+            pin.rust_toolchain
+        )));
+    }
+    let lean = std::fs::read_to_string(repo.join("lean-toolchain"))
+        .map_err(|error| drift(format!("lean-toolchain: {error}")))?;
+    if pin.lean_toolchain != lean.trim() {
+        return Err(drift(format!(
+            "oracle/lean4-prod.toml states lean_toolchain `{}` and lean-toolchain pins `{}`",
+            pin.lean_toolchain,
+            lean.trim()
+        )));
     }
     Ok(())
+}
+
+/// Refuse a checkout of the oracle that needs another Lean than the pin
+/// states: its own `lean/lean-toolchain` is part of the tree the pin hashes,
+/// and it must be LexLean's.
+///
+/// # Errors
+///
+/// [`Unavailable::ToolchainDrift`] naming both values.
+pub fn check_source_toolchain(pin: &Pin, source: &Path) -> Result<(), Unavailable> {
+    let needed = std::fs::read_to_string(source.join("lean/lean-toolchain"))
+        .map_err(|error| Unavailable::ToolchainDrift(format!("lean/lean-toolchain: {error}")))?;
+    if needed.trim() == pin.lean_toolchain {
+        Ok(())
+    } else {
+        Err(Unavailable::ToolchainDrift(format!(
+            "the oracle's lean/lean-toolchain needs `{}` and the pin builds it with `{}`",
+            needed.trim(),
+            pin.lean_toolchain
+        )))
+    }
 }
 
 /// Refuse a checkout that is not the pinned oracle: the files the pin names
@@ -546,18 +763,13 @@ impl Oracle {
             .map_err(|error| Unavailable::NotAcquired(error.to_string()))?;
         lock.lock()
             .map_err(|error| Unavailable::NotAcquired(error.to_string()))?;
+        check_toolchains(pin, repo_root().as_std_path())?;
         let source = match source {
             Some(dir) => dir,
-            None => {
-                let dir = cache.join("source");
-                if !dir.join(".git").is_dir() {
-                    let _ = std::fs::remove_dir_all(&dir);
-                    fetch(pin, &dir)?;
-                }
-                dir
-            }
+            None => cached_source(pin, cache, &RETRY_DELAYS)?,
         };
         verify_checkout(pin, &source)?;
+        check_source_toolchain(pin, &source)?;
         let build = cache.join(format!("build-{}", &pin.tree_sha256[..16]));
         let exporter = build.join("lean/.lake/build/bin").join(format!(
             "{}{}",
@@ -622,37 +834,84 @@ impl Oracle {
                 format!("{:?}: {}", ran.status, last_lines(&ran.stderr)),
             ));
         }
-        // The first attempt is offline: the dependencies of the oracle's
-        // workspace are often already in the registry cache, and a build
-        // that needs no network is a build that cannot be cut short by it.
+        // The oracle's own crates.io dependencies are fetched exactly as its
+        // Cargo.lock names them (`--locked`; the lock file is part of the tree
+        // the pin hashes) into a Cargo home of their own, so that the build
+        // reads nothing the host happened to have cached, and then built
+        // without the network. Only the fetch can fail for a moment, and it is
+        // tried again.
         let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
-        let mut last = String::new();
-        for offline in [true, false] {
+        let home = build
+            .parent()
+            .map_or_else(|| build.join("cargo-home"), |cache| cache.join("cargo-home"));
+        let rust = rust_channel(repo_root().as_std_path()).map_err(|detail| {
+            Unavailable::ToolchainDrift(detail)
+        })?;
+        let cargo_command = |arguments: &[&str]| {
             let mut command = Command::new(&cargo);
             command
-                .args([
-                    "build",
-                    "--release",
-                    "--locked",
-                    "-p",
-                    pin.cargo_package.as_str(),
-                ])
+                .args(arguments)
                 .current_dir(build.join("rust"))
+                .env("CARGO_HOME", &home)
                 .env("CARGO_TARGET_DIR", build.join("target"))
-                .env("RUSTUP_TOOLCHAIN", &pin.rust_toolchain)
+                .env("RUSTUP_TOOLCHAIN", &rust)
                 .env("CARGO_INCREMENTAL", "0")
                 .env_remove("RUSTFLAGS")
                 .env_remove("CARGO_ENCODED_RUSTFLAGS");
-            if offline {
-                command.arg("--offline");
+            command
+        };
+        retry(&RETRY_DELAYS, |_| {
+            let ran = run(cargo_command(&["fetch", "--locked"]), limit)
+                .map_err(Failure::Transient)?;
+            if ran.status == Some(0) {
+                return Ok(());
             }
-            match run(command, limit) {
-                Ok(ran) if ran.status == Some(0) => return Ok(()),
-                Ok(ran) => last = format!("{:?}: {}", ran.status, last_lines(&ran.stderr)),
-                Err(detail) => last = detail,
+            let detail = format!("{:?}: {}", ran.status, last_lines(&ran.stderr));
+            let text = ran.stderr.to_ascii_lowercase();
+            let network = [
+                "spurious network error",
+                "failed to download",
+                "could not resolve",
+                "timed out",
+                "connection",
+                "ssl",
+                "failed to query replaced source",
+                "unable to update",
+                "network",
+            ]
+            .iter()
+            .any(|marker| text.contains(marker));
+            Err(if network {
+                Failure::Transient(detail)
+            } else {
+                Failure::Permanent(detail)
+            })
+        })
+        .map_err(|failure| match failure {
+            Failure::Transient(detail) | Failure::Permanent(detail) => {
+                failed("cargo fetch", detail)
             }
+        })?;
+        let ran = run(
+            cargo_command(&[
+                "build",
+                "--release",
+                "--locked",
+                "--offline",
+                "-p",
+                pin.cargo_package.as_str(),
+            ]),
+            limit,
+        )
+        .map_err(|detail| failed("cargo build", detail))?;
+        if ran.status == Some(0) {
+            Ok(())
+        } else {
+            Err(failed(
+                "cargo build",
+                format!("{:?}: {}", ran.status, last_lines(&ran.stderr)),
+            ))
         }
-        Err(failed("cargo build", last))
     }
 
     /// The pin this oracle was acquired by.
