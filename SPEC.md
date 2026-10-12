@@ -5452,6 +5452,180 @@ step accounting at the request's fuel and above; it is not a claim about
 machine time, about calculus programs outside the grammar, or about Rust
 programs, and a scope beyond the grammar is refused before any premise is read.
 
+### 17.19 Differential validation oracle
+
+Everything that validates the Rust backend (§17.16) and the production
+pipeline that feeds it (§17.17) is LexLean's own: a lowering checked by a
+kernel-checked theorem for each root, an interpreter, and a rustc
+differential against that interpreter. A misreading that LexLean's calculus
+and its checkers share would be invisible to every one of them. `lean4-prod`
+(`https://github.com/auser/lean4-prod`) is an independent generator of Rust
+from Lean 4: it imports the compiled Lean module LexLean generates (§18),
+lowers a root through Lean's own compiler (LCNF), and renders Rust by its own
+rules. The differential compares the two on the programs both take. It can
+falsify LexLean; it can never establish anything, and it is built so that it
+cannot be mistaken for doing so.
+
+**Role.** The oracle is *validation evidence* and nothing else.
+
+- It is not an authority (§27.4). LexLean relies on nothing it says, so no
+  row of `model/authorities.toml` cites it and no claim of
+  `model/ledger.toml` rests on it.
+- It is not a proof. That the two generators agree on a corpus and its
+  seeded inputs says that two independent programs computed the same, not
+  that either is right.
+- It is not the completeness of a candidate universe. That the oracle
+  generates or refuses a program is a fact about the oracle's domain, which
+  is a fragment of LexLean's (below); it is no statement of what a GNAF
+  universe (§17.15) contains, and no optimality certificate (§17.18) cites it.
+- It is no input to an identity. Not the compiler-semantics ID (§21.2), a
+  semantic ID, a build ID, the identity of a verified artifact, an
+  attestation, a preservation record, nor a certificate names it, takes a
+  digest of it, or changes with it.
+
+Removing the oracle, or disabling it, changes no behavior of the compiler and
+no formal proof artifact: the only code that names it is the conformance
+crate's `oracle`, `oracle_corpus`, and `oracle_differential` modules and
+their cases, and `audit-oracle-isolation` (§27.10) is the gate that keeps it so.
+
+**Pin.** `oracle/lean4-prod.toml` (`lexlean/oracle-pin/1`) states the
+oracle's remote, the exact commit, `git_tree` (the commit's tree, for a reader
+with git), the path prefixes of the files the integration uses (`lean/`,
+`rust/`, and `rust-toolchain.toml`), and the SHA-256 of their canonical frame:
+the domain `lexlean-oracle-tree-v1`, then, for each file in ascending byte
+order of its path, the path and the SHA-256 of its bytes, each preceded by its
+length as a big-endian `u64` (a `.git`, `.lake`, or `target` directory is not
+part of the tree). Its role is `validation-evidence`; any other value, a
+missing or unknown field, a commit or digest that is not lowercase
+hexadecimal of the right length, and `vendored = true` make the pin
+malformed. The pin states the licence finding it rests on: every Rust
+manifest of the oracle declares `license = "MIT"`, but the repository ships no
+licence text and no copyright notice, which the MIT licence requires a copy to
+carry. Nothing of the oracle is therefore vendored; it is *acquired*.
+
+**Acquisition.** The conformance suite takes the checkout named by
+`LEXLEAN_ORACLE_DIR` or, when that is unset, fetches the pinned commit with
+`git` into its cache (`LEXLEAN_ORACLE_CACHE`, by default
+`lexlean-oracle/` of the Cargo target directory). It uses the checkout only
+if the files the pin names hash to the pin's digest and, for a git checkout,
+`HEAD` is the pinned commit. It builds `prod-export` with the pinned Lake and
+`prod-cli` with the pinned Cargo (offline first, then with the network) in a
+copy of the used files. Every invocation of the oracle's tools has the pin's
+time limit.
+
+**Corpus.** The corpus is three kinds of project, all compiled by LexLean to
+Lean and handed to the oracle's exporter in the same way: every production
+root of `examples/production`, `examples/production-coverage`,
+`examples/models`, and `examples/reasoning`; the *probe project*, a minimal
+root for each runtime construct of the production registry
+(`language/production-1.2.toml`, §17.13) that none of those roots realizes
+alone in a root the oracle accepts, so that the oracle's verdict on a
+construct is a verdict on that construct and not on whatever else a large root
+holds; and the *rejection projects*, the committed negative fixtures that
+LexLean refuses as production roots (`production-polymorphic-root`,
+`production-higher-order-escape`, `production-runtime-incompatible-type`,
+`production-literal-width`, `production-phantom-type-parameter`,
+`production-named-type-boundary`, and `production-universe-boundary`), with the
+production marking removed so that LexLean still compiles them to Lean. LexLean's
+verdict on a rejection project is the diagnostic its fixture records.
+
+**Overlap.** A runtime construct of the registry *overlaps* when a corpus root
+that realizes it is accepted by the oracle and compared; it is *outside the
+overlap* when the oracle refuses every root that realizes it. The registry is
+partitioned by `oracle/known-non-overlap.toml` (`lexlean/oracle-overlap/1`,
+versioned): a construct is either realized by an accepted corpus root or is a
+row of the table, never neither. A row for a construct whose disposition is
+`formal-only` or `erased` (no runtime value realizes it, in either compiler) is
+of kind `not-runtime` and states the disposition, which the registry must
+still state. A row for a runtime construct is of kind `oracle-refuses` and
+names its *probe*, a root of the corpus whose closure realizes the construct,
+the kind of refusal the oracle gives that probe, whether the probe realizes the
+construct alone (`construct`) or is a root of a certified example whose
+closure holds it among others (`closure`), and the reason. The conformance
+suite re-asserts every row: the probe must still realize the construct, the
+oracle must still refuse it for that kind, and no root the oracle accepts may
+realize the construct; a row that fails any of these, a row for a name that is
+no construct of the registry, and a construct in neither the accepted roots
+nor the table are refused.
+
+**Comparison.** The comparison is of meaning and never of bytes: the oracle's
+Rust and LexLean's differ in every function, and both may change without the
+validation changing. For each root it compares, in order:
+
+1. *acceptance*: whether each side takes the root, and, for a root only the
+   oracle refuses or only LexLean refuses, the kind of refusal. The oracle's
+   refusals are its own structured words (`prod-export failed:` from the
+   exporter, `Code generation refused:` from the generator), and are classified
+   as `escaping-local-function`, `opaque-lowering`, `unresolved-external-call`,
+   `unsupported-local-function`, or `codegen-<its error>`;
+2. *contract*: the root's signature as a shape that depends on neither side's
+   names (a closed data type is the shapes of the fields of its constructors in
+   order), its failure typing (a call that can fail with an overflow), how a
+   side passes its collections, and that the Rust text of the oracle's
+   signature is what the oracle's own IR states of it;
+3. *behavior*: the observable outcome (the JSON form of §17.16's harnesses) on
+   every seeded input of the differentials of RB-06 and SP-11, where an
+   overflow is an overflow whichever of its errors the oracle raised, and where
+   LexLean's own rendering, built and run beside the oracle's, must also print
+   the interpreter's outcome;
+4. *resources*: the allocations a call of the oracle's code performs, counted
+   by a global allocator of the harness, against the allocation class that
+   eligibility states of the root (§17.13): a root eligible for `rust-core`
+   must not allocate; and that no call panics.
+
+A resource LexLean states only as a bound the oracle meets more tightly (a
+`rust-std` root the oracle runs without allocating) is no difference.
+Recursion depth and the runtime's counted work are not comparable and are not
+compared.
+
+**Differences.** Every way the two sides differ on a root is a difference with
+a kind (`acceptance`, `contract`, `behavior`, or `resource`) and a name
+(`oracle-refuses:<kind>`, `oracle-accepts:<class>`, `shape:parameter:<i>`,
+`shape:result`, `failure-typing:only-lexlean`, `failure-typing:only-oracle`,
+`borrowed-parameter`, `signature-drift`, `outcome:<lexlean kind>/<oracle kind>`,
+`allocation:rust-core-root`, `oracle-crate-does-not-run`). The *known
+deliberate differences* are the rows of `oracle/known-differences.toml`
+(`lexlean/oracle-differences/1`, versioned): a kind, a name, the reason the
+two compilers are meant to differ there, and the exact roots on which they
+do. A difference of the run that no row names is a *disagreement*; a row that
+lists a root on which the difference does not arise is stale and refused, so
+that every difference is stated, tested, and re-asserted on every run, and
+neither a new difference nor a vanished one can pass unseen. Each
+disagreement carries both sides' evidence: LexLean's contract, targets,
+effects, and outcomes, the oracle's refusal or signature and outcomes, the
+inputs, and the digest of the oracle's crate.
+
+**Failure.** The oracle can say two things about a program: it generates Rust
+for it, or it refuses it in its own words. Anything else is not an answer. An
+oracle that was not acquired, whose checkout is not the pin, that did not
+build, a tool of it that crashed, was killed, overran its time, wrote nothing
+or an IR defining nothing, a generator that failed without a refusal, and a
+comparison over no root or no case, are *unavailable*, and unavailable is not
+validated. On the normative host (Linux x86-64) an unavailable oracle fails
+the case that needed it; on any other host the case runs only its
+host-independent assertions and prints `NOT VALIDATED` with the reason. A
+disagreement fails closed: the case fails and prints, for every difference,
+the evidence of both sides. An oracle crate that does not compile is a
+difference (`oracle-crate-does-not-run`) and never an omission.
+
+**Isolation.** `audit-oracle-isolation`, in `cargo xtask validate-model`
+(§27.10), reads every file the identities and records are computed from or
+held in --- the shipped crate, `language/`, `schemas/`, the compiler project,
+the committed examples, and `model/authorities.toml` and `model/ledger.toml`
+--- and fails on any file that names the oracle (`lean4-prod`, `prod-export`,
+the pin's path and schema tags), its pinned commit, its git tree, or the
+digest of its files; a root it scans that holds no file fails it. Every
+record's schema is closed, so an `oracle` field in a build manifest, a
+preservation record, an attestation, a semantic snapshot, a compiler input, or
+a certificate is refused.
+
+**Evidence.** `OR-01` to `OR-08` (§31) check the pin, the corpus and the
+tables, the matching of the corpus, planted discrepancies, the known
+differences, a better equivalent rendering, the failures, and the isolation.
+They are `build` evidence that LexLean and the oracle agree where the tables
+say they do, and a measurement of where they do not; they are no proof of
+either.
+
 ## 18. Lean backend
 
 ### 18.1 Output contract
@@ -7956,6 +8130,14 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `RS-12` | `reasoning` | The compiler project's reasoning oracles declare exactly the declarations of every reasoner the reasoning example's production roots run (the forward reasoners Triage and Grade, the generic Spend, the breadth-first search Plan with deduplication, the depth-first search Screen, and the generate-and-verify reasoner Dose) and of Review, which the example states by theorem, and a calculus transcription of each produces the oracle's verdict on every fixture argument as the kernel decides, the explained answer and the six-counter ledger of its run too for Triage, Plan, Screen, and Dose, compiles to committed rust-core and rust-std packages, and charges at least the guard evaluations and firings of the reasoner's ledger in calculus steps. | §17.14, §17.16 |
 | `RS-13` | `reasoning` | GNAF requests over forward-chaining plans of the clinical rule base charge rule search as execution in calculus steps and are answered over their declared plans, each plan computes on every patient of the request's domain the level the oracle's Triage derives from the same findings as the kernel decides, and a request whose search is charged nothing or whose universe is the candidates a search discovered is refused. | §17.15 |
 | `RS-14` | `reasoning` | The committed reasoning example verifies a multi-step clinical forward derivation with its invariant and termination, a generic terminating countdown, a deduplicating breadth-first planner, a depth-first search and a generate-and-verify reasoner over model-generated candidates, and an answer proved correct with its check erased, with every generated theorem kernel-checked, and planting a rule-threshold mutation in it is refused by verification. | §17.12, §28.6 |
+| `OR-01` | `oracle` | The differential oracle is lean4-prod, pinned in oracle/lean4-prod.toml by its remote, its exact commit, and the SHA-256 of the canonical frame of every file the integration uses, with the role validation-evidence and nothing of it vendored because its repository ships no licence text; a checkout is acquired only if those files hash to the pin and, in a git checkout, HEAD is the pinned commit, and a pin with another role or a missing, unknown, vendored, or malformed field, a checkout with one byte changed, one file added, removed, or renamed, an empty checkout, and an authority row or ledger claim that cites the oracle are each refused. | §17.19, §27.4 |
+| `OR-02` | `oracle` | The differential corpus is every production root of examples/production, examples/production-coverage, examples/models, and examples/reasoning, a minimal probe root for each runtime construct of the production registry that those roots do not realize in a root the oracle accepts, and the committed production-refusal fixtures with their marking removed; every construct of the registry is realized by a corpus root the oracle accepts or is a row of the versioned known-non-overlap table, a formal-only or erased construct as such and a runtime construct with a probe whose refusal by the oracle is re-asserted, and a construct in neither, a row for a construct a root the oracle accepts realizes, a row whose probe the oracle no longer refuses for its stated reason, and a row naming no construct of the registry are each refused. | §17.13, §17.19 |
+| `OR-03` | `oracle` | On every corpus root the oracle accepts, the Rust it generates is built under the pinned rustc and called on the seeded inputs of the RB-06 and SP-11 differentials, and its observable outcome, an overflow included, equals the interpreter's and LexLean's own rendering's, its signature, failure typing, and parameter passing equal the root's contract except where a known difference lists it, and no call of a root eligible for rust-core allocates or panics; the acceptance or refusal of every other root, including the rejected fixtures, equals the verdict the tables record, and the whole run is validated. | §17.16, §17.17, §17.19 |
+| `OR-04` | `oracle` | A planted arithmetic discrepancy (a checked operation made wrapping, replaced by another operation, or given an off-by-one literal), a planted control discrepancy (swapped branches, an inverted comparison, a dropped recursive arm), and a planted ABI discrepancy (swapped parameters, a changed parameter width, a dropped failure typing) in the oracle's generated Rust are each detected as a disagreement that records the root, the inputs, and both sides' outcomes or contracts, and the unplanted crates of the same run still agree. | §17.19 |
+| `OR-05` | `oracle` | Known deliberate differences are the rows of the versioned oracle/known-differences.toml, each with its kind, name, reason, and exact roots; a difference of the run that no row names is a disagreement, a listed difference is accepted, and a row that lists a root on which the difference no longer arises, a row with no reason or no root, a repeated row, and an unknown field are each refused, so that every difference LexLean and the oracle have is stated, tested, and re-asserted on every run. | §17.19 |
+| `OR-06` | `oracle` | The differential compares outcomes, contracts, and resources and never bytes: a rendering that is deliberately better than LexLean's and semantically equivalent to it, a loop for a recursion and a closed form for an iteration, byte-different from LexLean's rendering and from the oracle's, is accepted on every input, and a rendering that differs in one result on one input or in the width of one parameter is refused. | §17.16, §17.19 |
+| `OR-07` | `oracle` | An oracle that was not acquired, whose checkout is not the pin, that did not build, that crashed, was killed, overran its time, wrote nothing or an IR defining nothing, or whose generator failed without refusing a program, and a comparison over no root or no case, are each unavailable and never validated, which fails the gate on the normative host and is reported as not validated elsewhere, while the oracle's own structured refusals are answers; and a disagreement fails closed with a record of both sides' evidence for every difference. | §17.19 |
+| `OR-08` | `oracle` | The oracle is validation evidence and an input to no identity: no file the shipped crate, the language data, the schemas, the compiler project, the committed examples' records, or the authority and ledger files hold names the oracle, its pinned commit, or its digest, so that planting any of them in any of those places fails audit-oracle-isolation; no input of the compiler-semantics ID names it, an oracle field in a build manifest, a preservation record, an attestation, a snapshot, a compiler input, or a GNAF certificate fails its closed schema, and no module of the conformance crate but the oracle's own uses it, so that removing it changes none of them. | §17.19, R2, R8, R9, R10 |
 
 **Total required capability IDs:** 325.
 

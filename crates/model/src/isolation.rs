@@ -117,7 +117,9 @@ pub fn scan(root: &Path) -> Result<Scanned, String> {
     let mut scanned = Scanned::default();
     for relative in SCANNED {
         let mut files = Vec::new();
-        files_under(&root.join(relative), &mut files)?;
+        if root.join(relative).exists() {
+            files_under(&root.join(relative), &mut files)?;
+        }
         if files.is_empty() {
             return Err(format!(
                 "`{relative}` holds no file: an audit of nothing has not passed"

@@ -2581,3 +2581,155 @@ pub fn accept_rendering(
     }
     Ok(())
 }
+
+
+// ---- host-independent material ---------------------------------------------------
+
+/// The registry constructs each eligible root of `project` realizes, by
+/// root, as LexLean's production eligibility states them: no Lean and no
+/// oracle.
+#[must_use]
+pub fn lexlean_constructs(project: &P) -> BTreeMap<String, BTreeSet<String>> {
+    let checked = support::checked_project(project);
+    lexlean::production::lower::roots(&checked)
+        .expect("the eligibility reports")
+        .into_iter()
+        .map(|root| {
+            (
+                root.report.root.clone(),
+                root.report.constructs.keys().cloned().collect(),
+            )
+        })
+        .collect()
+}
+
+/// A root made of a committed target fixture, for the cases that exercise the
+/// comparison without the oracle: LexLean's side as the fixture states it, and
+/// an oracle side whose contract is LexLean's own and whose crate is `source`.
+///
+/// # Panics
+///
+/// Panics when the fixture is not one with its entry at function 0.
+#[must_use]
+pub fn fixture_root(fixture: &str, source: &str) -> RootRun {
+    let path = repo_root().join(format!("compiler/fixtures/{fixture}.json"));
+    let fixture: lexlean::calculus::Fixture =
+        serde_json::from_slice(&std::fs::read(path.as_std_path()).expect("fixture"))
+            .expect("a fixture");
+    assert_eq!(fixture.entry, 0, "a fixture whose entry is function 0");
+    let function = fixture.program.functions[0].clone();
+    let contract = Contract {
+        parameters: function
+            .types
+            .iter()
+            .map(|ty| lexlean_shape(&fixture.program, ty, &mut Vec::new()))
+            .collect(),
+        result: lexlean_shape(&fixture.program, &function.result, &mut Vec::new()),
+        failure: lexlean::calculus::rust::fallible_functions(&fixture.program)
+            .expect("a valid program")[0],
+        borrowed: Vec::new(),
+        drift: Vec::new(),
+    };
+    let case = Case {
+        root: "Fixture.root".to_owned(),
+        arguments: Vec::new(),
+        values: fixture.arguments.clone(),
+        outcome: fixture.expected.clone(),
+        function: 0,
+        invalid: None,
+    };
+    let mut package = BTreeMap::new();
+    package.insert("src/lib.rs".to_owned(), source.as_bytes().to_vec());
+    package.insert("Cargo.toml".to_owned(), b"[package]\nname = \"x\"\n".to_vec());
+    RootRun {
+        corpus: "fixtures".to_owned(),
+        root: "Fixture.root".to_owned(),
+        lean_module: "Fixture".to_owned(),
+        lexlean: LexLeanSide::Eligible(Box::new(Accepted {
+            targets: vec!["rust-core".to_owned(), "rust-std".to_owned()],
+            effects: BTreeSet::new(),
+            constructs: BTreeSet::new(),
+            program: fixture.program,
+            contract: contract.clone(),
+            cases: vec![case],
+        })),
+        oracle: OracleSide::Generated {
+            ir: String::new(),
+            package,
+            contract,
+            signature: (Vec::new(), String::new()),
+        },
+    }
+}
+
+/// The acquired oracle, when this host can have one: the gate of the cases
+/// that need the oracle but not the whole corpus run.
+///
+/// # Panics
+///
+/// Panics on the normative host when the oracle is unavailable.
+#[must_use]
+pub fn oracle_gate(id: &str) -> Option<&'static Oracle> {
+    if !support::lean_backed(id) {
+        eprintln!("{id}: NOT VALIDATED: this host has no pinned Lean toolchain, so the oracle did not run (§8.3)");
+        return None;
+    }
+    match oracle::acquire() {
+        Ok(oracle) => Some(oracle),
+        Err(reason) => {
+            assert!(
+                !support::normative_host(),
+                "{id}: the oracle is unavailable ({reason}); that is not a validation, and on the normative host it fails the gate (§17.19)"
+            );
+            eprintln!("{id}: NOT VALIDATED: {reason}");
+            None
+        }
+    }
+}
+
+impl Validation {
+    /// Write the evidence of a disagreement to `dir/oracle-evidence.json`:
+    /// every difference with LexLean's and the oracle's evidence, and every
+    /// stale row. A validated or unavailable run records nothing.
+    ///
+    /// # Errors
+    ///
+    /// The I/O error that kept the record from being written.
+    pub fn record(&self, dir: &Path) -> std::io::Result<Option<PathBuf>> {
+        let Self::Disagreement(unlisted, stale) = self else {
+            return Ok(None);
+        };
+        std::fs::create_dir_all(dir)?;
+        let path = dir.join("oracle-evidence.json");
+        let text = serde_json::to_string_pretty(&serde_json::json!({
+            "spec": "lexlean/oracle-evidence/1",
+            "role": oracle::ROLE,
+            "disagreements": unlisted,
+            "stale": stale.iter().map(|(row, root)| serde_json::json!({"row": row, "root": root})).collect::<Vec<_>>(),
+        }))
+        .map_err(std::io::Error::other)?;
+        std::fs::write(&path, text)?;
+        Ok(Some(path))
+    }
+}
+
+/// Require a run to be validated: a disagreement is recorded (where
+/// `LEXLEAN_ORACLE_EVIDENCE` points, else in the oracle's cache) and fails
+/// with both sides' evidence; anything else that is not validated fails.
+///
+/// # Panics
+///
+/// Panics unless `validation` is validated.
+pub fn require(id: &str, validation: &Validation) {
+    if validation.validated() {
+        return;
+    }
+    let directory = std::env::var_os("LEXLEAN_ORACLE_EVIDENCE")
+        .map_or_else(|| std::env::temp_dir().join("lexlean-oracle-evidence"), PathBuf::from);
+    let recorded = validation
+        .record(&directory)
+        .ok()
+        .flatten()
+        .map_or_else(String::new, |path| format!("\nrecorded in {}", path.display()));
+    panic!("{id}: {}{recorded}", validation.report());
+}

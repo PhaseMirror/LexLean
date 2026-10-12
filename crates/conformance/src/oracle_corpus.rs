@@ -307,7 +307,10 @@ pub fn probes() -> Vec<Probe> {
         targets: BOTH,
     });
     out.push(Probe {
-        keys: &["type.parameter"],
+        // A type parameter is realized only by instantiation, so no closure
+        // holds the construct; the probe is a generic definition used at one
+        // type, whose refusal by the oracle is the row of `type.parameter`.
+        keys: &["declaration.definition"],
         module: "ProbeGeneric",
         root: "genericRoot",
         declarations: vec![
