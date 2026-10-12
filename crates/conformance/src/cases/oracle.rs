@@ -1247,12 +1247,10 @@ fn matching() {
 /// the audit that says so can fail (no Lean, no oracle).
 fn boundary_inputs() {
     use lexlean::calculus::Value;
+    type Roots = std::sync::Arc<Vec<(String, String, differential::Accepted)>>;
     // The eligible roots of the examples and the probes: stated once for the
     // process, by the corpus run or by this case, whichever asks first.
-    let stated: Vec<(
-        String,
-        std::sync::Arc<Vec<(String, String, differential::Accepted)>>,
-    )> = std::thread::scope(|scope| {
+    let stated: Vec<(String, Roots)> = std::thread::scope(|scope| {
         let handles: Vec<_> = corpus::corpora()
             .into_iter()
             .filter(|c| matches!(c.kind, corpus::Kind::Example | corpus::Kind::Probes))
