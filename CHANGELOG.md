@@ -117,7 +117,11 @@ versions, and the entries below say what each tag does and does not claim.
   signal disposition, and never signals the host's own process or group. The
   executable's interrupt thread and a run's own timeout now end groups through
   that one function (`verify::lifeline::end_leader`), and `conformance_cl_22`
-  counts the signalling sites across every source file of the library. The
+  counts the signalling sites across every source file of the library. On
+  Windows `taskkill` exits 128 alike for a tree that has exited, a process that
+  has exited with its handle still open, and access denied, so a `taskkill`
+  that fails is classified by whether `tasklist` still lists the root process
+  (`AlreadyGone` when it does not, `Failed` when it does or cannot say). The
   tests run a host process of its own that registers its own handling of
   `SIGINT` and `SIGTERM`, deliver each from outside, and compare its signal
   dispositions before and after the library starts and ends children (where

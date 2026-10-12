@@ -422,25 +422,60 @@ pub(crate) fn group_members(group: i32) -> Option<Vec<Member>> {
 /// End the tree rooted at `id` on windows, and report a `taskkill` that
 /// failed like a group that could not be ended (the one place a tree is
 /// ended; see the unix function of the same name).
+///
+/// `taskkill /T /F` exits 128 alike for a tree that is gone, for a process
+/// that has exited while its handle is still open (the library's `Child` holds
+/// it), and for access denied, so its exit status cannot tell a tree that has
+/// already exited, which is not a failure (SPEC.md §24.6), from one that could
+/// not be ended. Whether `tasklist` still lists the process can.
 #[cfg(windows)]
 pub(crate) fn end_leader(id: u32) -> GroupEnd {
-    tree_outcome(
-        Command::new("taskkill")
-            .args(["/PID", &id.to_string(), "/T", "/F"])
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status(),
+    let killed = Command::new("taskkill")
+        .args(["/PID", &id.to_string(), "/T", "/F"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    let listed = match &killed {
+        Ok(status) if status.success() => None,
+        _ => process_listed(id),
+    };
+    tree_outcome(killed, listed)
+}
+
+/// Whether `tasklist` still shows the process `id`; `None` when it cannot say
+/// (it did not run, or it failed).
+#[cfg(windows)]
+fn process_listed(id: u32) -> Option<bool> {
+    let output = Command::new("tasklist")
+        .args(["/FI", &format!("PID eq {id}"), "/FO", "CSV", "/NH"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()
+        .filter(|output| output.status.success())?;
+    let quoted = format!("\"{id}\"");
+    Some(
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .any(|line| line.split(',').nth(1) == Some(quoted.as_str())),
     )
 }
 
-/// What `taskkill` did, as the outcome of ending a process tree: a tool that
-/// could not be run, and one that ran and failed (access denied, no such
-/// process tree), are both reported, never taken for success.
+/// What `taskkill` did, as the outcome of ending a process tree. `listed` is
+/// whether `tasklist` still shows the root process, `None` when it could not
+/// say. A success is an ended tree; a failure of a process that is no longer
+/// listed is a tree that was already gone; a tool that could not be run, and
+/// one that ran and failed (access denied) while the process is listed or
+/// `tasklist` cannot say, are both reported, never taken for success.
 #[cfg(any(windows, test))]
-pub(crate) fn tree_outcome(ended: std::io::Result<std::process::ExitStatus>) -> GroupEnd {
-    match ended {
+pub(crate) fn tree_outcome(
+    killed: std::io::Result<std::process::ExitStatus>,
+    listed: Option<bool>,
+) -> GroupEnd {
+    match killed {
         Ok(status) if status.success() => GroupEnd::Ended,
+        _ if listed == Some(false) => GroupEnd::AlreadyGone,
         Ok(status) => GroupEnd::Failed(format!("taskkill failed: {status}")),
         Err(io_error) => GroupEnd::Failed(format!("taskkill could not be run: {io_error}")),
     }

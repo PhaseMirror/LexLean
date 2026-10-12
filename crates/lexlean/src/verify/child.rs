@@ -684,18 +684,33 @@ mod timeout_tests {
         }
     }
 
-    /// A `taskkill` that ran and failed is a failed outcome, like one that
-    /// could not be run; only a success is an ended tree.
+    /// `taskkill` exits 128 for a tree that is gone, for a process that has
+    /// exited with its handle open, and for access denied, so the outcome of
+    /// ending a tree also asks whether `tasklist` still lists the process: a
+    /// success is an ended tree; a failure of a process that is no longer
+    /// listed is a tree that was already gone; a failure of one that is
+    /// listed, or that `tasklist` cannot say anything of, and a `taskkill`
+    /// that could not be run, are reported.
     #[test]
     fn a_failing_taskkill_is_reported() {
         use crate::verify::lifeline::{tree_outcome, GroupEnd};
-        assert_eq!(tree_outcome(Ok(exit_status(0))), GroupEnd::Ended);
-        let failed = tree_outcome(Ok(exit_status(128)));
-        assert!(
-            matches!(&failed, GroupEnd::Failed(reason) if reason.contains("taskkill failed")),
-            "exit 128 is reported: {failed:?}"
+        assert_eq!(tree_outcome(Ok(exit_status(0)), None), GroupEnd::Ended);
+        assert_eq!(
+            tree_outcome(Ok(exit_status(128)), Some(false)),
+            GroupEnd::AlreadyGone,
+            "a tree no longer listed is already gone, not a failure"
         );
-        let missing = tree_outcome(Err(std::io::Error::other("absent")));
+        let denied = tree_outcome(Ok(exit_status(128)), Some(true));
+        assert!(
+            matches!(&denied, GroupEnd::Failed(reason) if reason.contains("taskkill failed")),
+            "exit 128 with the process still listed is reported: {denied:?}"
+        );
+        let unknown = tree_outcome(Ok(exit_status(128)), None);
+        assert!(
+            matches!(&unknown, GroupEnd::Failed(reason) if reason.contains("taskkill failed")),
+            "exit 128 that tasklist cannot explain is reported: {unknown:?}"
+        );
+        let missing = tree_outcome(Err(std::io::Error::other("absent")), None);
         assert!(
             matches!(&missing, GroupEnd::Failed(reason) if reason.contains("could not be run")),
             "a taskkill that could not be run is reported: {missing:?}"

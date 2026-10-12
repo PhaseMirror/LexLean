@@ -2208,7 +2208,19 @@ after every call. The correct function passes every cycle: it failed in 0 of
 concurrent_starts_are_ended_or_refused`. A simulated `EPERM` and a failing
 `taskkill` are unit tests of the outcome handling
 (`verify::lifeline::tests::a_refused_group_is_reported`,
-`verify::child::timeout_tests::a_failing_taskkill_is_reported`). The unix
+`verify::child::timeout_tests::a_failing_taskkill_is_reported`). On Windows
+`taskkill /PID <pid> /T /F` exits 128 alike for a process that does not exist,
+a process that has exited while its handle is still open (the library's `Child`
+holds it), and access denied (measured on Windows 11 by the author of #74), so
+a tree that has already exited could not be told from one that could not be
+ended, and the acceptance criterion "a call after the children have already
+exited reports them as gone, not as a failure" would have failed there. A
+`taskkill` that fails is therefore classified by asking `tasklist` whether the
+root process is still listed: not listed is `AlreadyGone`; listed, or
+`tasklist` unable to say, is `Failed`; the classification is the pure function
+`verify::lifeline::tree_outcome`, tested on every host with the five cases
+(success, exit 128 not listed, exit 128 still listed, exit 128 unexplained,
+`taskkill` not runnable). The unix
 cases are compiled out on Windows, and `cargo clippy --workspace --all-targets
 --all-features -- -D warnings` was run for `x86_64-unknown-linux-gnu`,
 `x86_64-pc-windows-msvc`, and `aarch64-apple-darwin`, which is how a Windows
@@ -2217,7 +2229,7 @@ branch had not yet reached the host matrix). `conformance_cl_22` holds the
 register, the public functions, the single kill path, and the registered
 `LLV7018` to the source.
 
-Each of the nine plants below was applied alone to the finished sources,
+Each of the ten plants below was applied alone to the finished sources,
 produced the failure quoted, and was removed.
 
 Planted: `end_leader` ends only the direct child and not its group
@@ -2249,6 +2261,16 @@ verify::lifeline::tests::a_refused_group_is_reported`. Expected: a simulated
 ```text
 thread 'verify::lifeline::tests::a_refused_group_is_reported' (1582) panicked at crates/lexlean/src/verify/lifeline.rs:616:17:
 EPERM is reported, not taken for success: Some(Ended)
+```
+
+Planted: `tree_outcome` takes every failed `taskkill` for a tree that was
+already gone (`_ => GroupEnd::AlreadyGone`). Command: `cargo test -p lexlean
+--lib a_failing_taskkill`. Expected: an exit status 128 for a process that
+`tasklist` still lists is reported, not called gone.
+
+```text
+thread 'verify::child::timeout_tests::a_failing_taskkill_is_reported' (4104) panicked at crates/lexlean/src/verify/child.rs:704:9:
+exit 128 with the process still listed is reported: AlreadyGone
 ```
 
 Planted: the executable's interrupt thread signals the live groups itself
