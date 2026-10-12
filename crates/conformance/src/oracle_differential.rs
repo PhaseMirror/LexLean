@@ -98,7 +98,9 @@ fn parse_sx(text: &str) -> Result<Vec<Sx>, String> {
             }
             _ => {
                 let start = at;
-                while at < chars.len() && !chars[at].is_whitespace() && !matches!(chars[at], '(' | ')')
+                while at < chars.len()
+                    && !chars[at].is_whitespace()
+                    && !matches!(chars[at], '(' | ')')
                 {
                     at += 1;
                 }
@@ -154,7 +156,11 @@ fn ir_type(sx: &Sx) -> Result<IrTy, String> {
             "UInt16" => IrTy::Fixed("u16".into()),
             "UInt32" => IrTy::Fixed("u32".into()),
             "UInt64" => IrTy::Fixed("u64".into()),
-            other => return Err(format!("the IR type `{other}` is not one the harness knows")),
+            other => {
+                return Err(format!(
+                    "the IR type `{other}` is not one the harness knows"
+                ))
+            }
         }),
         Sx::List(items) => match items.as_slice() {
             [Sx::Atom(head), argument] if head == "Option" => {
@@ -175,7 +181,9 @@ fn ir_type(sx: &Sx) -> Result<IrTy, String> {
                 Ok(IrTy::PUnit)
             }
             [Sx::Atom(head), Sx::Text(name)] if head == "named" => Ok(IrTy::Named(name.clone())),
-            other => Err(format!("the IR type {other:?} is not one the harness knows")),
+            other => Err(format!(
+                "the IR type {other:?} is not one the harness knows"
+            )),
         },
         Sx::Text(_) => Err("a string is not a type".into()),
     }
@@ -234,7 +242,9 @@ fn read_ir(text: &str) -> Result<Ir, String> {
                 }
                 ir.types.insert(name.clone(), declared);
             }
-            [Sx::Atom(head), Sx::Atom(name), Sx::List(parameters), result, _body] if head == "def" => {
+            [Sx::Atom(head), Sx::Atom(name), Sx::List(parameters), result, _body]
+                if head == "def" =>
+            {
                 let mut declared = Vec::new();
                 for parameter in parameters {
                     let Sx::List(pair) = parameter else {
@@ -245,8 +255,7 @@ fn read_ir(text: &str) -> Result<Ir, String> {
                     };
                     declared.push((parameter_name.clone(), ir_type(parameter_type)?));
                 }
-                ir.defs
-                    .insert(name.clone(), (declared, ir_type(result)?));
+                ir.defs.insert(name.clone(), (declared, ir_type(result)?));
             }
             _ => {}
         }
@@ -638,11 +647,13 @@ fn oracle_contract(
     let mut drift = Vec::new();
     for (at, ((_, ty), text)) in parameters.iter().zip(&signature.0).enumerate() {
         let expected = match ty {
-            IrTy::List(element) => format!("&[{}]", rust_type(ir, element)),
-            other => rust_type(ir, other),
+            IrTy::List(element) => format!("&[{}]", rust_type(element)),
+            other => rust_type(other),
         };
         if flat(&expected) != flat(text) {
-            drift.push(format!("parameter {at}: the IR states `{expected}`, the crate `{text}`"));
+            drift.push(format!(
+                "parameter {at}: the IR states `{expected}`, the crate `{text}`"
+            ));
         }
     }
     let result_text = if failure {
@@ -655,10 +666,10 @@ fn oracle_contract(
     } else {
         signature.1.clone()
     };
-    if flat(&rust_type(ir, result)) != flat(&result_text) {
+    if flat(&rust_type(result)) != flat(&result_text) {
         drift.push(format!(
             "result: the IR states `{}`, the crate `{}`",
-            rust_type(ir, result),
+            rust_type(result),
             signature.1
         ));
     }
@@ -686,7 +697,7 @@ fn oracle_contract(
 
 // ---- rendering calls into the oracle's crate -------------------------------
 
-fn rust_type(ir: &Ir, ty: &IrTy) -> String {
+fn rust_type(ty: &IrTy) -> String {
     match ty {
         IrTy::Unit => "()".into(),
         IrTy::PUnit => "o::PUnit".into(),
@@ -697,12 +708,12 @@ fn rust_type(ir: &Ir, ty: &IrTy) -> String {
         IrTy::Text => "alloc::string::String".into(),
         IrTy::Bytes => "alloc::vec::Vec<u8>".into(),
         IrTy::Ordering => "core::cmp::Ordering".into(),
-        IrTy::Option(value) => format!("Option<{}>", rust_type(ir, value)),
+        IrTy::Option(value) => format!("Option<{}>", rust_type(value)),
         IrTy::Result(ok, error) => {
-            format!("Result<{}, {}>", rust_type(ir, ok), rust_type(ir, error))
+            format!("Result<{}, {}>", rust_type(ok), rust_type(error))
         }
-        IrTy::List(element) => format!("alloc::vec::Vec<{}>", rust_type(ir, element)),
-        IrTy::Tuple(left, right) => format!("({}, {})", rust_type(ir, left), rust_type(ir, right)),
+        IrTy::List(element) => format!("alloc::vec::Vec<{}>", rust_type(element)),
+        IrTy::Tuple(left, right) => format!("({}, {})", rust_type(left), rust_type(right)),
         IrTy::Named(name) => format!("o::{}", last_segment(name)),
     }
 }
@@ -753,25 +764,25 @@ fn literal(ir: &Ir, ty: &IrTy, value: &Value) -> Result<String, String> {
                 lexlean::calculus::OrderingValue::Gt => "Greater",
             }
         ),
-        (IrTy::Option(inner), Value::None) => format!("None::<{}>", rust_type(ir, inner)),
+        (IrTy::Option(inner), Value::None) => format!("None::<{}>", rust_type(inner)),
         (IrTy::Option(inner), Value::Some { value }) => {
             format!("Some({})", literal(ir, inner, value)?)
         }
         (IrTy::Result(ok, error), Value::Ok { value }) => format!(
             "Ok::<{}, {}>({})",
-            rust_type(ir, ok),
-            rust_type(ir, error),
+            rust_type(ok),
+            rust_type(error),
             literal(ir, ok, value)?
         ),
         (IrTy::Result(ok, error), Value::Error { value }) => format!(
             "Err::<{}, {}>({})",
-            rust_type(ir, ok),
-            rust_type(ir, error),
+            rust_type(ok),
+            rust_type(error),
             literal(ir, error, value)?
         ),
         (IrTy::List(element), Value::List { items }) => {
             if items.is_empty() {
-                format!("alloc::vec::Vec::<{}>::new()", rust_type(ir, element))
+                format!("alloc::vec::Vec::<{}>::new()", rust_type(element))
             } else {
                 let items = items
                     .iter()
@@ -785,7 +796,13 @@ fn literal(ir: &Ir, ty: &IrTy, value: &Value) -> Result<String, String> {
             literal(ir, left_ty, left)?,
             literal(ir, right_ty, right)?
         ),
-        (IrTy::Named(name), Value::Adt { constructor, fields }) => {
+        (
+            IrTy::Named(name),
+            Value::Adt {
+                constructor,
+                fields,
+            },
+        ) => {
             let constructors = ir.types.get(name).ok_or("an undeclared type")?;
             let at = usize::try_from(*constructor).map_err(|e| e.to_string())?;
             let declared = constructors.get(at).ok_or("an undeclared constructor")?;
@@ -995,8 +1012,7 @@ fn oracle_harness(
         };
         let _ = write!(
             out,
-            "        {at} => {{\n{binds}            let before = allocations();\n            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {call}));\n            let spent = allocations() - before;\n            match outcome {{\n                Ok({}) => ({{ match value {{ {printing} }} }}, spent),\n                Err(_) => (\"{{\\\"kind\\\":\\\"panic\\\"}}\".to_owned(), spent),\n            }}\n        }}\n",
-            if fallible { "value" } else { "value" }
+            "        {at} => {{\n{binds}            let before = allocations();\n            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {call}));\n            let spent = allocations() - before;\n            match outcome {{\n                Ok(value) => ({{ match value {{ {printing} }} }}, spent),\n                Err(_) => (\"{{\\\"kind\\\":\\\"panic\\\"}}\".to_owned(), spent),\n            }}\n        }}\n",
         );
     }
     out.push_str("        _ => unreachable!(),\n    }\n}\n");
@@ -1061,13 +1077,17 @@ pub fn stage(project: &P) -> Staged {
             std::fs::write(&path, &module.lean_text).expect("source");
             let object = library.join(format!("{relative}.olean"));
             std::fs::create_dir_all(object.parent().expect("parent")).expect("lib dir");
-            let ran = crate::preservation::pinned_with("lean", dir.path(), &[library.clone()])
-                .arg(format!("--root={}", source.display()))
-                .arg("-o")
-                .arg(&object)
-                .arg(&path)
-                .output()
-                .expect("lean runs");
+            let ran = crate::preservation::pinned_with(
+                "lean",
+                dir.path(),
+                std::slice::from_ref(&library),
+            )
+            .arg(format!("--root={}", source.display()))
+            .arg("-o")
+            .arg(&object)
+            .arg(&path)
+            .output()
+            .expect("lean runs");
             assert!(
                 ran.status.success(),
                 "the pinned Lean rejects the module {} that LexLean generated:\n{}{}",
@@ -1078,7 +1098,10 @@ pub fn stage(project: &P) -> Staged {
             done.insert(module.lean_module.clone());
         }
         remaining = later;
-        assert!(remaining.len() < before, "the generated modules import each other cyclically");
+        assert!(
+            remaining.len() < before,
+            "the generated modules import each other cyclically"
+        );
     }
     Staged { _dir: dir, library }
 }
@@ -1129,9 +1152,7 @@ fn effects_of(report: &lexlean::production::RootReport) -> BTreeSet<String> {
 }
 
 /// LexLean's statement of every eligible root of `project`.
-pub fn eligible_roots(
-    project: &P,
-) -> Vec<(String, String, Accepted)> {
+pub fn eligible_roots(project: &P) -> Vec<(String, String, Accepted)> {
     use lexlean::production::lower::{linked_modules, lower_root, roots};
     let checked = support::checked_project(project);
     let modules = linked_modules(&checked);
@@ -1172,7 +1193,12 @@ pub fn eligible_roots(
                 lean_module,
                 root.report.root.clone(),
                 Accepted {
-                    targets: root.report.targets.iter().map(|t| t.target.clone()).collect(),
+                    targets: root
+                        .report
+                        .targets
+                        .iter()
+                        .map(|t| t.target.clone())
+                        .collect(),
                     effects: effects_of(root.report),
                     constructs: root.report.constructs.keys().cloned().collect(),
                     program: lowered.program,
@@ -1203,15 +1229,16 @@ fn ask(
                 step: "reading the oracle's IR".into(),
                 detail,
             })?;
-            let source = String::from_utf8_lossy(
-                package.get("src/lib.rs").map_or(&[][..], Vec::as_slice),
-            )
-            .into_owned();
+            let source =
+                String::from_utf8_lossy(package.get("src/lib.rs").map_or(&[][..], Vec::as_slice))
+                    .into_owned();
             let name = last_segment(root);
             let (contract, signature) =
-                oracle_contract(&parsed, name, &source).map_err(|detail| Unavailable::ToolFailed {
-                    step: "reading the oracle's crate".into(),
-                    detail,
+                oracle_contract(&parsed, name, &source).map_err(|detail| {
+                    Unavailable::ToolFailed {
+                        step: "reading the oracle's crate".into(),
+                        detail,
+                    }
                 })?;
             Ok(OracleSide::Generated {
                 ir,
@@ -1248,6 +1275,10 @@ fn parallel_map<T: Sync, R: Send>(items: &[T], job: impl Fn(&T) -> R + Sync) -> 
         .collect()
 }
 
+/// A root put to the oracle: its Lean module, its qualified name, LexLean's
+/// statement when it is eligible, and the recorded rejection when it is not.
+type Asked = (String, String, Option<Accepted>, Option<(String, String)>);
+
 /// Both sides' statements about every root of every corpus.
 ///
 /// # Errors
@@ -1256,11 +1287,11 @@ fn parallel_map<T: Sync, R: Send>(items: &[T], job: impl Fn(&T) -> R + Sync) -> 
 /// refusing a program.
 pub fn survey(oracle: &Oracle) -> Result<Vec<RootRun>, Unavailable> {
     let corpora = corpus::corpora();
-    let per_corpus: Vec<Result<Vec<RootRun>, Unavailable>> =
-        parallel_map(&corpora.iter().enumerate().collect::<Vec<_>>(), |(index, corpus)| {
+    let per_corpus: Vec<Result<Vec<RootRun>, Unavailable>> = parallel_map(
+        &corpora.iter().enumerate().collect::<Vec<_>>(),
+        |(index, corpus)| {
             let staged = stage(&corpus.project);
-            let mut asked: Vec<(String, String, Option<Accepted>, Option<(String, String)>)> =
-                Vec::new();
+            let mut asked: Vec<Asked> = Vec::new();
             match &corpus.kind {
                 Kind::Example | Kind::Probes => {
                     for (module, root, accepted) in eligible_roots(&corpus.project) {
@@ -1304,7 +1335,8 @@ pub fn survey(oracle: &Oracle) -> Result<Vec<RootRun>, Unavailable> {
                 });
             }
             Ok(out)
-        });
+        },
+    );
     let mut roots = Vec::new();
     for result in per_corpus {
         roots.extend(result?);
@@ -1385,8 +1417,15 @@ pub fn execute(
             compile_only.insert(run.root.clone(), name);
             continue;
         }
-        let (LexLeanSide::Eligible(accepted), OracleSide::Generated { ir, package, signature, .. }) =
-            (&run.lexlean, &run.oracle)
+        let (
+            LexLeanSide::Eligible(accepted),
+            OracleSide::Generated {
+                ir,
+                package,
+                signature,
+                ..
+            },
+        ) = (&run.lexlean, &run.oracle)
         else {
             continue;
         };
@@ -1397,7 +1436,10 @@ pub fn execute(
         let harness = match oracle_harness(&parsed, run.function(), signature, &accepted.cases) {
             Ok(text) => text,
             Err(reason) => {
-                failed.insert(run.root.clone(), Err(format!("the harness cannot be written: {reason}")));
+                failed.insert(
+                    run.root.clone(),
+                    Err(format!("the harness cannot be written: {reason}")),
+                );
                 continue;
             }
         };
@@ -1433,13 +1475,20 @@ pub fn execute(
                     function: 0,
                     name: "root".to_owned(),
                     parameters: vec![Passing::Own; accepted.program.functions[0].types.len()],
-                    errors: if fallible { Errors::Overflow } else { Errors::None },
+                    errors: if fallible {
+                        Errors::Overflow
+                    } else {
+                        Errors::None
+                    },
                 }],
                 sources: Vec::new(),
             };
             let rendered = package_of(&manifest, &run.root);
-            let arguments: Vec<Vec<Value>> =
-                accepted.cases.iter().map(|case| case.values.clone()).collect();
+            let arguments: Vec<Vec<Value>> = accepted
+                .cases
+                .iter()
+                .map(|case| case.values.clone())
+                .collect();
             let passing = vec![Passing::Own; accepted.program.functions[0].types.len()];
             let calls = [crate::rust_harness::Calls {
                 entry: 0,
@@ -1447,13 +1496,9 @@ pub fn execute(
                 passing: &passing,
                 arguments: &arguments,
             }];
-            let harness = crate::rust_harness::render_calls(
-                &accepted.program,
-                profile,
-                &crate_name,
-                &calls,
-            )
-            .unwrap_or_else(|reason| panic!("{}: {reason}", run.root));
+            let harness =
+                crate::rust_harness::render_calls(&accepted.program, profile, &crate_name, &calls)
+                    .unwrap_or_else(|reason| panic!("{}: {reason}", run.root));
             lexlean_cases.insert(run.root.clone(), arguments.len());
             lexlean_of.insert(run.root.clone(), crate_name.clone());
             lexlean_built.push(Built {
@@ -1554,7 +1599,10 @@ pub fn execute(
                 Err(format!(
                     "the oracle's crate ended the run with {:?}: {}",
                     ran.status.code(),
-                    String::from_utf8_lossy(&ran.stderr).lines().last().unwrap_or("")
+                    String::from_utf8_lossy(&ran.stderr)
+                        .lines()
+                        .last()
+                        .unwrap_or("")
                 )),
             );
             continue;
@@ -1693,7 +1741,10 @@ pub fn differences(run: &RootRun, executed: Option<&Result<Executed, String>>) -
         (
             LexLeanSide::Eligible(accepted),
             OracleSide::Generated {
-                contract, signature, package, ..
+                contract,
+                signature,
+                package,
+                ..
             },
         ) => {
             let evidence = |detail: Json| {
@@ -1770,11 +1821,7 @@ pub fn differences(run: &RootRun, executed: Option<&Result<Executed, String>>) -
                         };
                         if normalized(got) != expected {
                             mismatched
-                                .entry(format!(
-                                    "outcome:{}/{}",
-                                    kind_of(&expected),
-                                    kind_of(got)
-                                ))
+                                .entry(format!("outcome:{}/{}", kind_of(&expected), kind_of(got)))
                                 .or_default()
                                 .push(row.clone());
                         }
@@ -1870,10 +1917,13 @@ impl KnownDifferences {
     #[must_use]
     pub fn committed() -> Self {
         let text = std::fs::read_to_string(
-            repo_root().join("oracle/known-differences.toml").as_std_path(),
+            repo_root()
+                .join("oracle/known-differences.toml")
+                .as_std_path(),
         )
         .expect("oracle/known-differences.toml");
-        Self::parse(&text).unwrap_or_else(|reason| panic!("oracle/known-differences.toml: {reason}"))
+        Self::parse(&text)
+            .unwrap_or_else(|reason| panic!("oracle/known-differences.toml: {reason}"))
     }
 
     /// Parse and validate a table.
@@ -1900,7 +1950,10 @@ impl KnownDifferences {
                 return Err(format!("`{}` states no reason", row.id));
             }
             if row.roots.is_empty() {
-                return Err(format!("`{}` names no root: a known difference is known on roots", row.id));
+                return Err(format!(
+                    "`{}` names no root: a known difference is known on roots",
+                    row.id
+                ));
             }
             if row.roots.iter().collect::<BTreeSet<_>>().len() != row.roots.len() {
                 return Err(format!("`{}` names a root twice", row.id));
@@ -1928,10 +1981,9 @@ pub fn judge(diffs: &[Diff], table: &KnownDifferences) -> Judgement {
     let mut judgement = Judgement::default();
     let mut matched: BTreeSet<(String, String)> = BTreeSet::new();
     for diff in diffs {
-        let row = table
-            .difference
-            .iter()
-            .find(|row| row.kind == diff.kind && row.key == diff.key && row.roots.contains(&diff.root));
+        let row = table.difference.iter().find(|row| {
+            row.kind == diff.kind && row.key == diff.key && row.roots.contains(&diff.root)
+        });
         match row {
             Some(row) => {
                 matched.insert((row.id.clone(), diff.root.clone()));
@@ -2003,10 +2055,13 @@ impl NonOverlapTable {
     #[must_use]
     pub fn committed() -> Self {
         let text = std::fs::read_to_string(
-            repo_root().join("oracle/known-non-overlap.toml").as_std_path(),
+            repo_root()
+                .join("oracle/known-non-overlap.toml")
+                .as_std_path(),
         )
         .expect("oracle/known-non-overlap.toml");
-        Self::parse(&text).unwrap_or_else(|reason| panic!("oracle/known-non-overlap.toml: {reason}"))
+        Self::parse(&text)
+            .unwrap_or_else(|reason| panic!("oracle/known-non-overlap.toml: {reason}"))
     }
 
     /// Parse and validate a table.
@@ -2038,10 +2093,7 @@ impl NonOverlapTable {
                 }
                 "oracle-refuses" | "oracle-breaks" | "instantiated" => {
                     if row.probe.is_none() || row.refusal.is_none() || row.scope.is_none() {
-                        return Err(format!(
-                            "`{}` names no probe, refusal, or scope",
-                            row.key
-                        ));
+                        return Err(format!("`{}` names no probe, refusal, or scope", row.key));
                     }
                 }
                 other => return Err(format!("`{}` has the unknown kind `{other}`", row.key)),
@@ -2071,8 +2123,12 @@ pub struct Coverage {
 /// Panics when the registry file is not valid.
 #[must_use]
 pub fn registry() -> BTreeMap<String, String> {
-    let text = std::fs::read_to_string(repo_root().join("language/production-1.2.toml").as_std_path())
-        .expect("the registry");
+    let text = std::fs::read_to_string(
+        repo_root()
+            .join("language/production-1.2.toml")
+            .as_std_path(),
+    )
+    .expect("the registry");
     let data: toml::Value = text.parse().expect("the registry parses");
     data["construct"]
         .as_array()
@@ -2096,7 +2152,8 @@ pub fn coverage(
 ) -> Coverage {
     let roots = &run.roots;
     let mut out = Coverage::default();
-    let by_root: BTreeMap<&str, &RootRun> = roots.iter().map(|run| (run.root.as_str(), run)).collect();
+    let by_root: BTreeMap<&str, &RootRun> =
+        roots.iter().map(|run| (run.root.as_str(), run)).collect();
     let mut realized: BTreeSet<String> = BTreeSet::new();
     for root in roots {
         if let LexLeanSide::Eligible(accepted) = &root.lexlean {
@@ -2114,8 +2171,10 @@ pub fn coverage(
     for row in &table.construct {
         out.listed.insert(row.key.clone());
         let Some(disposition) = registry.get(&row.key) else {
-            out.problems
-                .push(format!("`{}` is listed but is not a construct of the registry", row.key));
+            out.problems.push(format!(
+                "`{}` is listed but is not a construct of the registry",
+                row.key
+            ));
             continue;
         };
         if row.kind == "not-runtime" {
@@ -2142,13 +2201,17 @@ pub fn coverage(
         }
         let probe = row.probe.as_deref().unwrap_or_default();
         let Some(run_of_probe) = by_root.get(probe) else {
-            out.problems
-                .push(format!("`{}`: the probe `{probe}` is not a root of the corpus", row.key));
+            out.problems.push(format!(
+                "`{}`: the probe `{probe}` is not a root of the corpus",
+                row.key
+            ));
             continue;
         };
         let LexLeanSide::Eligible(accepted) = &run_of_probe.lexlean else {
-            out.problems
-                .push(format!("`{}`: LexLean no longer takes the probe `{probe}`", row.key));
+            out.problems.push(format!(
+                "`{}`: LexLean no longer takes the probe `{probe}`",
+                row.key
+            ));
             continue;
         };
         if row.kind == "instantiated" {
@@ -2159,8 +2222,10 @@ pub fn coverage(
                 ));
             }
         } else if !accepted.constructs.contains(&row.key) {
-            out.problems
-                .push(format!("`{}`: the probe `{probe}` does not realize it", row.key));
+            out.problems.push(format!(
+                "`{}`: the probe `{probe}` does not realize it",
+                row.key
+            ));
         }
         let observed = match (&run_of_probe.oracle, run.executed.get(probe)) {
             (OracleSide::Refused { kind, .. }, _) => kind.clone(),
@@ -2313,7 +2378,10 @@ pub fn corpus_run() -> &'static Result<Run, Unavailable> {
         let mut timings = BTreeMap::new();
         timings.insert("acquire".to_owned(), acquired);
         timings.insert("survey".to_owned(), surveyed - acquired);
-        timings.insert("execute".to_owned(), start.elapsed().as_secs_f64() - surveyed);
+        timings.insert(
+            "execute".to_owned(),
+            start.elapsed().as_secs_f64() - surveyed,
+        );
         Ok(Run {
             roots,
             executed,
@@ -2372,7 +2440,6 @@ pub fn gate(id: &str) -> Option<&'static Run> {
         }
     }
 }
-
 
 // ---- planted discrepancies and other renderings ---------------------------------
 
@@ -2461,7 +2528,11 @@ pub fn render_candidate(
     use crate::rust_build::{cargo_in, workspace, Built};
     let program = &accepted.program;
     let passing = vec![Passing::Own; program.functions[0].types.len()];
-    let arguments: Vec<Vec<Value>> = accepted.cases.iter().map(|case| case.values.clone()).collect();
+    let arguments: Vec<Vec<Value>> = accepted
+        .cases
+        .iter()
+        .map(|case| case.values.clone())
+        .collect();
     let calls = [crate::rust_harness::Calls {
         entry: 0,
         function: "root",
@@ -2489,7 +2560,10 @@ pub fn render_candidate(
     );
     let build = cargo_in(dir.path(), &["build", "--offline", "--workspace"]);
     if !build.status.success() {
-        return Err(build_errors(&String::from_utf8_lossy(&build.stderr), "p/candidate"));
+        return Err(build_errors(
+            &String::from_utf8_lossy(&build.stderr),
+            "p/candidate",
+        ));
     }
     let ran = std::process::Command::new(
         dir.path()
@@ -2509,7 +2583,11 @@ pub fn render_candidate(
     let mut work = 0;
     for line in stdout.lines() {
         match line.strip_prefix("work ") {
-            Some(count) => work = count.parse().map_err(|e: std::num::ParseIntError| e.to_string())?,
+            Some(count) => {
+                work = count
+                    .parse()
+                    .map_err(|e: std::num::ParseIntError| e.to_string())?
+            }
             None => outcomes.push(serde_json::from_str(line).map_err(|e| e.to_string())?),
         }
     }
@@ -2584,7 +2662,6 @@ pub fn accept_rendering(
     Ok(())
 }
 
-
 // ---- host-independent material ---------------------------------------------------
 
 /// The registry constructs each eligible root of `project` realizes, by
@@ -2642,7 +2719,10 @@ pub fn fixture_root(fixture: &str, source: &str) -> RootRun {
     };
     let mut package = BTreeMap::new();
     package.insert("src/lib.rs".to_owned(), source.as_bytes().to_vec());
-    package.insert("Cargo.toml".to_owned(), b"[package]\nname = \"x\"\n".to_vec());
+    package.insert(
+        "Cargo.toml".to_owned(),
+        b"[package]\nname = \"x\"\n".to_vec(),
+    );
     RootRun {
         corpus: "fixtures".to_owned(),
         root: "Fixture.root".to_owned(),
@@ -2726,12 +2806,16 @@ pub fn require(id: &str, validation: &Validation) {
     if validation.validated() {
         return;
     }
-    let directory = std::env::var_os("LEXLEAN_ORACLE_EVIDENCE")
-        .map_or_else(|| std::env::temp_dir().join("lexlean-oracle-evidence"), PathBuf::from);
+    let directory = std::env::var_os("LEXLEAN_ORACLE_EVIDENCE").map_or_else(
+        || std::env::temp_dir().join("lexlean-oracle-evidence"),
+        PathBuf::from,
+    );
     let recorded = validation
         .record(&directory)
         .ok()
         .flatten()
-        .map_or_else(String::new, |path| format!("\nrecorded in {}", path.display()));
+        .map_or_else(String::new, |path| {
+            format!("\nrecorded in {}", path.display())
+        });
     panic!("{id}: {}{recorded}", validation.report());
 }

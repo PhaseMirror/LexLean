@@ -110,8 +110,9 @@ impl Pin {
     /// repository, not a condition of the host.
     #[must_use]
     pub fn committed() -> Self {
-        let text = std::fs::read_to_string(repo_root().join("oracle/lean4-prod.toml").as_std_path())
-            .expect("oracle/lean4-prod.toml");
+        let text =
+            std::fs::read_to_string(repo_root().join("oracle/lean4-prod.toml").as_std_path())
+                .expect("oracle/lean4-prod.toml");
         Self::parse(&text).unwrap_or_else(|reason| panic!("oracle/lean4-prod.toml: {reason}"))
     }
 
@@ -251,12 +252,17 @@ impl fmt::Display for Unavailable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NotAcquired(detail) => write!(f, "the oracle was not acquired: {detail}"),
-            Self::PinMismatch(detail) => write!(f, "the checkout is not the pinned oracle: {detail}"),
+            Self::PinMismatch(detail) => {
+                write!(f, "the checkout is not the pinned oracle: {detail}")
+            }
             Self::BuildFailed { step, detail } => {
                 write!(f, "the oracle did not build at `{step}`: {detail}")
             }
             Self::ToolFailed { step, detail } => {
-                write!(f, "the oracle failed at `{step}` without refusing the program: {detail}")
+                write!(
+                    f,
+                    "the oracle failed at `{step}` without refusing the program: {detail}"
+                )
             }
             Self::Vacuous(detail) => write!(f, "nothing was validated: {detail}"),
         }
@@ -321,10 +327,9 @@ fn cache_root() -> PathBuf {
 /// would choose.
 fn toolchain_command(program: &str, cwd: &Path) -> Command {
     let bin = crate::preservation::toolchain_bin();
-    let path = std::env::join_paths(
-        std::iter::once(bin.clone())
-            .chain(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())),
-    )
+    let path = std::env::join_paths(std::iter::once(bin.clone()).chain(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    )))
     .expect("a search path");
     let mut command = Command::new(bin.join(program));
     command.current_dir(cwd).env("PATH", path);
@@ -344,7 +349,9 @@ fn run(mut command: Command, limit: Duration) -> Result<Ran, String> {
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = command.spawn().map_err(|error| format!("cannot start: {error}"))?;
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("cannot start: {error}"))?;
     let mut out = child.stdout.take().ok_or("no stdout")?;
     let mut err = child.stderr.take().ok_or("no stderr")?;
     let stdout = std::thread::spawn(move || {
@@ -419,7 +426,14 @@ fn fetch(pin: &Pin, dir: &Path) -> Result<(), Unavailable> {
     std::fs::create_dir_all(dir).map_err(|error| fail(error.to_string()))?;
     for arguments in [
         vec!["init", "--quiet"],
-        vec!["fetch", "--quiet", "--depth", "1", pin.remote.as_str(), pin.commit.as_str()],
+        vec![
+            "fetch",
+            "--quiet",
+            "--depth",
+            "1",
+            pin.remote.as_str(),
+            pin.commit.as_str(),
+        ],
         vec!["checkout", "--quiet", "--detach", "FETCH_HEAD"],
     ] {
         let mut command = Command::new("git");
@@ -516,7 +530,11 @@ impl Oracle {
     /// # Errors
     ///
     /// As [`acquire`].
-    pub fn acquire_in(pin: &Pin, cache: &Path, source: Option<PathBuf>) -> Result<Self, Unavailable> {
+    pub fn acquire_in(
+        pin: &Pin,
+        cache: &Path,
+        source: Option<PathBuf>,
+    ) -> Result<Self, Unavailable> {
         std::fs::create_dir_all(cache)
             .map_err(|error| Unavailable::NotAcquired(format!("{}: {error}", cache.display())))?;
         // One process builds; the others wait for the finished build.
@@ -541,9 +559,11 @@ impl Oracle {
         };
         verify_checkout(pin, &source)?;
         let build = cache.join(format!("build-{}", &pin.tree_sha256[..16]));
-        let exporter = build
-            .join("lean/.lake/build/bin")
-            .join(format!("{}{}", pin.lean_target, std::env::consts::EXE_SUFFIX));
+        let exporter = build.join("lean/.lake/build/bin").join(format!(
+            "{}{}",
+            pin.lean_target,
+            std::env::consts::EXE_SUFFIX
+        ));
         let prod = build
             .join("target/release")
             .join(format!("prod{}", std::env::consts::EXE_SUFFIX));
@@ -551,8 +571,7 @@ impl Oracle {
             let _ = std::fs::remove_dir_all(&build);
             std::fs::create_dir_all(&build)
                 .map_err(|error| Unavailable::NotAcquired(error.to_string()))?;
-            copy_tree(&source, &build, pin, &source)
-                .map_err(Unavailable::NotAcquired)?;
+            copy_tree(&source, &build, pin, &source).map_err(Unavailable::NotAcquired)?;
             Self::build(pin, &build)?;
         }
         let scratch = cache.join("scratch");
@@ -611,7 +630,13 @@ impl Oracle {
         for offline in [true, false] {
             let mut command = Command::new(&cargo);
             command
-                .args(["build", "--release", "--locked", "-p", pin.cargo_package.as_str()])
+                .args([
+                    "build",
+                    "--release",
+                    "--locked",
+                    "-p",
+                    pin.cargo_package.as_str(),
+                ])
                 .current_dir(build.join("rust"))
                 .env("CARGO_TARGET_DIR", build.join("target"))
                 .env("RUSTUP_TOOLCHAIN", &pin.rust_toolchain)
@@ -666,10 +691,19 @@ impl Oracle {
             step: step.to_owned(),
             detail,
         };
-        let search = std::env::join_paths([library]).map_err(|e| tool("LEAN_PATH", e.to_string()))?;
+        let search =
+            std::env::join_paths([library]).map_err(|e| tool("LEAN_PATH", e.to_string()))?;
         let mut export = Command::new(&self.exporter);
         export
-            .args(["--module", module, "--root", root, "--ir-module", "Oracle", "--out"])
+            .args([
+                "--module",
+                module,
+                "--root",
+                root,
+                "--ir-module",
+                "Oracle",
+                "--out",
+            ])
             .arg(work.path().join("export"))
             .env("LEAN_PATH", &search)
             .env("PATH", self.path_with_toolchain());
@@ -707,7 +741,14 @@ impl Oracle {
             .arg(&ir_path)
             .arg("--output")
             .arg(&package_dir)
-            .args(["--name", crate_name, "--version", "0.1.0", "--description", "oracle"])
+            .args([
+                "--name",
+                crate_name,
+                "--version",
+                "0.1.0",
+                "--description",
+                "oracle",
+            ])
             .args(["--repository", "https://example.invalid/oracle"])
             .args(["--homepage", "https://example.invalid/oracle"])
             .arg("--readme")
@@ -759,8 +800,9 @@ impl Oracle {
 
     fn path_with_toolchain(&self) -> std::ffi::OsString {
         std::env::join_paths(
-            std::iter::once(self.bin.clone())
-                .chain(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())),
+            std::iter::once(self.bin.clone()).chain(std::env::split_paths(
+                &std::env::var_os("PATH").unwrap_or_default(),
+            )),
         )
         .expect("a search path")
     }

@@ -439,6 +439,10 @@ The completed repository MUST have this layout. Additional files are allowed onl
 │   ├── errors.toml
 │   ├── ids.toml
 │   └── ledger.toml
+├── oracle/
+│   ├── known-differences.toml
+│   ├── known-non-overlap.toml
+│   └── lean4-prod.toml
 ├── schemas/
 │   ├── attestation.schema.json
 │   ├── attestation-v2.schema.json
@@ -474,7 +478,8 @@ The completed repository MUST have this layout. Additional files are allowed onl
 ├── tests/
 │   ├── fixtures/
 │   ├── golden/
-│   └── negative/
+│   ├── negative/
+│   └── oracle/
 └── xtask/
     ├── Cargo.toml
     └── src/
@@ -8142,9 +8147,9 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `OR-05` | `oracle` | Known deliberate differences are the rows of the versioned oracle/known-differences.toml, each with its kind, name, reason, and exact roots; a difference of the run that no row names is a disagreement, a listed difference is accepted, and a row that lists a root on which the difference no longer arises, a row with no reason or no root, a repeated row, and an unknown field are each refused, so that every difference LexLean and the oracle have is stated, tested, and re-asserted on every run. | §17.19 |
 | `OR-06` | `oracle` | The differential compares outcomes, contracts, and resources and never bytes: a rendering that is deliberately better than LexLean's and semantically equivalent to it, a loop for a recursion and a closed form for an iteration, byte-different from LexLean's rendering and from the oracle's, is accepted on every input, and a rendering that differs in one result on one input or in the width of one parameter is refused. | §17.16, §17.19 |
 | `OR-07` | `oracle` | An oracle that was not acquired, whose checkout is not the pin, that did not build, that crashed, was killed, overran its time, wrote nothing or an IR defining nothing, or whose generator failed without refusing a program, and a comparison over no root or no case, are each unavailable and never validated, which fails the gate on the normative host and is reported as not validated elsewhere, while the oracle's own structured refusals are answers; and a disagreement fails closed with a record of both sides' evidence for every difference. | §17.19 |
-| `OR-08` | `oracle` | The oracle is validation evidence and an input to no identity: no file the shipped crate, the language data, the schemas, the compiler project, the committed examples' records, or the authority and ledger files hold names the oracle, its pinned commit, or its digest, so that planting any of them in any of those places fails audit-oracle-isolation; no input of the compiler-semantics ID names it, an oracle field in a build manifest, a preservation record, an attestation, a snapshot, a compiler input, or a GNAF certificate fails its closed schema, and no module of the conformance crate but the oracle's own uses it, so that removing it changes none of them. | §17.19, R2, R8, R9, R10 |
+| `OR-08` | `oracle` | The oracle is validation evidence and an input to no identity: no file the shipped crate, the language data, the schemas, the compiler project, the committed examples' records, or the authority and ledger files hold names the oracle, its pinned commit, or its digest, so that planting any of them in any of those places fails audit-oracle-isolation; no input of the compiler-semantics ID names it, an oracle field in a build manifest, a preservation record, an attestation, a snapshot, a compiler input, or a GNAF certificate fails its closed schema, and no module of the conformance crate but the oracle's own uses it, so that removing it changes none of them. | §17.19, §27.2 |
 
-**Total required capability IDs:** 325.
+**Total required capability IDs:** 333.
 
 No row may be downgraded to `some-true` or `open`. Upstream Lean facts are ledger/authority rows, not substitutions for these build behaviors.
 

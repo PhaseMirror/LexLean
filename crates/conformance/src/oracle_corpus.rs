@@ -69,6 +69,17 @@ pub struct Probe {
     pub targets: &'static [&'static str],
 }
 
+/// A probe in tabular form: the constructs it is for, its module, its root,
+/// its parameters, its result, and its body.
+type Spec = (
+    &'static [&'static str],
+    &'static str,
+    &'static str,
+    Vec<Json>,
+    Json,
+    Json,
+);
+
 const BOTH: &[&str] = &["rust-core", "rust-std"];
 const STD: &[&str] = &["rust-std"];
 
@@ -120,13 +131,7 @@ fn call(name: &str, arguments: Vec<Json>) -> Json {
 
 /// A root: an executable definition with a production block that admits
 /// every effect, since a declared effect may exceed the inferred ones.
-fn root(
-    name: &str,
-    parameters: Vec<Json>,
-    result: Json,
-    body: Json,
-    targets: &[&str],
-) -> Json {
+fn root(name: &str, parameters: Vec<Json>, result: Json, body: Json, targets: &[&str]) -> Json {
     json!({
         "kind": "definition",
         "name": name,
@@ -212,7 +217,11 @@ pub fn probes() -> Vec<Probe> {
             name,
             vec![param("a", scalar_t(kind)), param("b", scalar_t(kind))],
             option_t(scalar_t(kind)),
-            prim("checked_add", vec![var("a"), var("b")], option_t(scalar_t(kind))),
+            prim(
+                "checked_add",
+                vec![var("a"), var("b")],
+                option_t(scalar_t(kind)),
+            ),
             BOTH,
         ));
     }
@@ -242,7 +251,11 @@ pub fn probes() -> Vec<Probe> {
         "convertRoot",
         vec![param("a", scalar_t("int8"))],
         option_t(scalar_t("uint16")),
-        prim("checked_convert", vec![var("a")], option_t(scalar_t("uint16"))),
+        prim(
+            "checked_convert",
+            vec![var("a")],
+            option_t(scalar_t("uint16")),
+        ),
         BOTH,
     ));
     out.push(one(
@@ -299,7 +312,10 @@ pub fn probes() -> Vec<Probe> {
                 nat_t(),
                 call(
                     "twice",
-                    vec![json!({"kind": "function_ref", "function": {"name": "double"}}), var("x")],
+                    vec![
+                        json!({"kind": "function_ref", "function": {"name": "double"}}),
+                        var("x"),
+                    ],
                 ),
                 BOTH,
             ),
@@ -348,7 +364,11 @@ pub fn probes() -> Vec<Probe> {
         BOTH,
     ));
     out.push(Probe {
-        keys: &["declaration.class", "declaration.instance", "term.instance_value"],
+        keys: &[
+            "declaration.class",
+            "declaration.instance",
+            "term.instance_value",
+        ],
         module: "ProbeClass",
         root: "classRoot",
         declarations: vec![
@@ -398,7 +418,11 @@ pub fn probes() -> Vec<Probe> {
         "parseRoot",
         vec![param("s", scalar_t("string"))],
         option_t(scalar_t("uint32")),
-        prim("parse_decimal", vec![var("s")], option_t(scalar_t("uint32"))),
+        prim(
+            "parse_decimal",
+            vec![var("s")],
+            option_t(scalar_t("uint32")),
+        ),
         STD,
     ));
     out.push(one(
@@ -411,12 +435,16 @@ pub fn probes() -> Vec<Probe> {
         STD,
     ));
     // Maps.
-    let map_probes: [(&'static [&'static str], &'static str, &'static str, Vec<Json>, Json, Json); 8] = [
+    let map_probes: [Spec; 8] = [
         (
             &["primitive.map_insert"],
             "ProbeMapInsert",
             "mapInsertRoot",
-            vec![param("m", nat_map()), param("k", nat_t()), param("v", nat_t())],
+            vec![
+                param("m", nat_map()),
+                param("k", nat_t()),
+                param("v", nat_t()),
+            ],
             nat_map(),
             prim("map_insert", vec![var("m"), var("k"), var("v")], nat_map()),
         ),
@@ -494,7 +522,11 @@ pub fn probes() -> Vec<Probe> {
             "map_fold",
             vec![
                 lambda(
-                    vec![param("acc", nat_t()), param("key", nat_t()), param("value", nat_t())],
+                    vec![
+                        param("acc", nat_t()),
+                        param("key", nat_t()),
+                        param("value", nat_t()),
+                    ],
                     &[],
                     add(add(var("acc"), var("key")), var("value")),
                 ),
@@ -506,7 +538,7 @@ pub fn probes() -> Vec<Probe> {
         STD,
     ));
     // Sets.
-    let set_probes: [(&'static [&'static str], &'static str, &'static str, Vec<Json>, Json, Json); 7] = [
+    let set_probes: [Spec; 7] = [
         (
             &["primitive.set_insert"],
             "ProbeSetInsert",
@@ -738,7 +770,10 @@ pub fn probe_project(probes: &[Probe]) -> P {
         .collect();
     let toml = project
         .read("lexlean.toml")
-        .replace("module_prefix = \"Production\"", "module_prefix = \"OracleProbe\"")
+        .replace(
+            "module_prefix = \"Production\"",
+            "module_prefix = \"OracleProbe\"",
+        )
         .replace(
             "entrypoints = [\"src/Main.lex.tex\"]",
             &format!("entrypoints = [{}]", entrypoints.join(", ")),
@@ -779,7 +814,10 @@ fn strip_production(text: &str) -> (String, Vec<String>) {
             }
         }
     }
-    (format!("{}{}{}", &text[..body_start], data, &text[end..]), roots)
+    (
+        format!("{}{}{}", &text[..body_start], data, &text[end..]),
+        roots,
+    )
 }
 
 /// The rejection project of a negative fixture: its sources with the

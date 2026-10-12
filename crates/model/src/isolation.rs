@@ -67,7 +67,8 @@ fn pinned(text: &str, key: &str) -> Option<String> {
 ///
 /// Returns the reason the pin cannot be read.
 pub fn identifiers(root: &Path) -> Result<Vec<String>, String> {
-    let text = std::fs::read_to_string(root.join(PIN)).map_err(|error| format!("{PIN}: {error}"))?;
+    let text =
+        std::fs::read_to_string(root.join(PIN)).map_err(|error| format!("{PIN}: {error}"))?;
     let mut out: Vec<String> = NAMES.iter().map(|name| (*name).to_owned()).collect();
     for key in ["commit", "tree_sha256", "git_tree"] {
         let value = pinned(&text, key).ok_or_else(|| format!("{PIN}: no `{key}`"))?;
@@ -93,12 +94,16 @@ fn files_under(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
         out.push(path.to_path_buf());
         return Ok(());
     }
-    let entries = std::fs::read_dir(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let entries =
+        std::fs::read_dir(path).map_err(|error| format!("{}: {error}", path.display()))?;
     let mut paths: Vec<PathBuf> = entries.flatten().map(|entry| entry.path()).collect();
     paths.sort();
     for entry in paths {
         let name = entry.file_name().map(|n| n.to_string_lossy().into_owned());
-        if matches!(name.as_deref(), Some(".lexlean" | ".git" | "target" | ".lake")) {
+        if matches!(
+            name.as_deref(),
+            Some(".lexlean" | ".git" | "target" | ".lake")
+        ) {
             continue;
         }
         files_under(&entry, out)?;
@@ -152,7 +157,10 @@ mod tests {
     #[test]
     fn a_mention_is_found_and_silence_is_not() {
         let identifiers = vec!["lean4-prod".to_owned(), "a".repeat(40)];
-        assert_eq!(mention("uses lean4-prod here", &identifiers), Some("lean4-prod"));
+        assert_eq!(
+            mention("uses lean4-prod here", &identifiers),
+            Some("lean4-prod")
+        );
         assert_eq!(mention("nothing at all", &identifiers), None);
         assert!(mention(&format!("sha {}", "a".repeat(40)), &identifiers).is_some());
     }

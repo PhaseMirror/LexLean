@@ -43,7 +43,11 @@ const SYNTHETIC_DIGEST: &str = "f85d0b3ee2fe54cb7fa069126812bd692d665b5c4e27a7dd
 /// The pin and the tree digest it names (OR-01), host-independent.
 fn pin_and_digest() {
     let pin = Pin::committed();
-    assert_eq!(pin.role, oracle::ROLE, "the oracle's role is validation evidence");
+    assert_eq!(
+        pin.role,
+        oracle::ROLE,
+        "the oracle's role is validation evidence"
+    );
     assert_eq!(pin.name, "lean4-prod");
     assert_eq!(pin.remote, "https://github.com/auser/lean4-prod");
     assert!(!pin.licence.vendored && !pin.licence.text_shipped);
@@ -55,18 +59,30 @@ fn pin_and_digest() {
         assert_ne!(edited, text, "the edit `{from}` applied");
         Pin::parse(&edited).expect_err(&format!("`{from}` -> `{to}` is refused"))
     };
-    assert!(refused("role = \"validation-evidence\"", "role = \"authority\"")
-        .contains("validation-evidence"));
-    assert!(refused("role = \"validation-evidence\"", "role = \"proof\"")
-        .contains("validation-evidence"));
+    assert!(
+        refused("role = \"validation-evidence\"", "role = \"authority\"")
+            .contains("validation-evidence")
+    );
+    assert!(
+        refused("role = \"validation-evidence\"", "role = \"proof\"")
+            .contains("validation-evidence")
+    );
     assert!(!refused(&format!("commit = \"{}\"\n", pin.commit), "").is_empty());
     assert!(!refused("name = \"lean4-prod\"\n", "").is_empty());
     assert!(!refused("timeout_seconds = 300", "timeout_seconds = 300\nextra = 1").is_empty());
     assert!(refused("vendored = false", "vendored = true").contains("vendored"));
     assert!(!refused(&pin.commit, &pin.commit[..39]).is_empty());
     assert!(!refused(&pin.tree_sha256, &pin.tree_sha256.to_uppercase()).is_empty());
-    assert!(!refused("used = [\"lean/\", \"rust/\", \"rust-toolchain.toml\"]", "used = []").is_empty());
-    assert!(!refused("used = [\"lean/\", \"rust/\", \"rust-toolchain.toml\"]", "used = [\"/etc/\"]").is_empty());
+    assert!(!refused(
+        "used = [\"lean/\", \"rust/\", \"rust-toolchain.toml\"]",
+        "used = []"
+    )
+    .is_empty());
+    assert!(!refused(
+        "used = [\"lean/\", \"rust/\", \"rust-toolchain.toml\"]",
+        "used = [\"/etc/\"]"
+    )
+    .is_empty());
     // The digest: the frame is the one the pin states.
     let dir = tempfile::tempdir().expect("tempdir");
     pin_tree(dir.path());
@@ -80,7 +96,9 @@ fn pin_and_digest() {
     write(dir.path(), ".git/HEAD", "ignored");
     std::fs::create_dir_all(dir.path().join("lean/empty")).expect("dir");
     assert_eq!(
-        oracle::tree_digest(dir.path(), &synthetic_pin()).expect("digest").0,
+        oracle::tree_digest(dir.path(), &synthetic_pin())
+            .expect("digest")
+            .0,
         SYNTHETIC_DIGEST
     );
     // ... and a byte changed, a file added, a file removed, and a file
@@ -89,13 +107,21 @@ fn pin_and_digest() {
         let copy = tempfile::tempdir().expect("tempdir");
         pin_tree(copy.path());
         edit(copy.path());
-        oracle::tree_digest(copy.path(), &synthetic_pin()).expect("digest").0
+        oracle::tree_digest(copy.path(), &synthetic_pin())
+            .expect("digest")
+            .0
     };
     let mut seen = BTreeSet::from([SYNTHETIC_DIGEST.to_owned()]);
     for (name, digest) in [
-        ("a byte changed", changed(&|d| write(d, "lean/a.txt", "alphb"))),
+        (
+            "a byte changed",
+            changed(&|d| write(d, "lean/a.txt", "alphb")),
+        ),
         ("a file added", changed(&|d| write(d, "lean/new.lean", ""))),
-        ("a file removed", changed(&|d| std::fs::remove_file(d.join("rust/b/c.rs")).expect("rm"))),
+        (
+            "a file removed",
+            changed(&|d| std::fs::remove_file(d.join("rust/b/c.rs")).expect("rm")),
+        ),
         (
             "a file renamed",
             changed(&|d| {
@@ -149,8 +175,13 @@ fn failures_are_unavailable() {
     let prod_ok_body = "out=''\nwhile [ $# -gt 0 ]; do if [ \"$1\" = '--output' ]; then out=\"$2\"; fi; shift; done\nmkdir -p \"$out/src\"\nprintf '[package]\\nname = \"x\"\\n' > \"$out/Cargo.toml\"\nprintf 'pub fn f() -> u64 { 1 }\\n' > \"$out/src/lib.rs\"";
     let prod_ok = fake_tool(dir.path(), "prod-ok", prod_ok_body);
     let ask = |exporter: &Path, prod: &Path| {
-        Oracle::with_tools(&pin, exporter.to_path_buf(), prod.to_path_buf(), scratch.clone())
-            .verdict(&library, "M", "M.f", "crate-x")
+        Oracle::with_tools(
+            &pin,
+            exporter.to_path_buf(),
+            prod.to_path_buf(),
+            scratch.clone(),
+        )
+        .verdict(&library, "M", "M.f", "crate-x")
     };
     // The reference: working tools are an acceptance.
     match ask(&exporter_ok, &prod_ok) {
@@ -164,8 +195,14 @@ fn failures_are_unavailable() {
         "echo 'uncaught exception: prod-export failed: unsupported local function in M.f: escaping' >&2\nexit 1",
     );
     match ask(&refuses_export, &prod_ok) {
-        Ok(Verdict::Refused { stage: Stage::Export, message }) => {
-            assert!(message.starts_with("unsupported local function"), "{message}");
+        Ok(Verdict::Refused {
+            stage: Stage::Export,
+            message,
+        }) => {
+            assert!(
+                message.starts_with("unsupported local function"),
+                "{message}"
+            );
         }
         other => panic!("a structured export refusal is a refusal: {other:?}"),
     }
@@ -175,7 +212,10 @@ fn failures_are_unavailable() {
         "echo 'Code generation refused: UnresolvedCall(\"Nat.succ\"): no' >&2\nexit 1",
     );
     match ask(&exporter_ok, &refuses_gen) {
-        Ok(Verdict::Refused { stage: Stage::Codegen, message }) => {
+        Ok(Verdict::Refused {
+            stage: Stage::Codegen,
+            message,
+        }) => {
             assert!(message.starts_with("UnresolvedCall"), "{message}");
         }
         other => panic!("a structured code generation refusal is a refusal: {other:?}"),
@@ -183,7 +223,11 @@ fn failures_are_unavailable() {
     // ... and everything else is not: a crash, a signal, a missing output,
     // an output defining nothing, a timeout, and a failure of the generator
     // that does not state a refusal.
-    let crashes = fake_tool(dir.path(), "crashes", "echo \"thread 'main' panicked at x\" >&2\nexit 101");
+    let crashes = fake_tool(
+        dir.path(),
+        "crashes",
+        "echo \"thread 'main' panicked at x\" >&2\nexit 101",
+    );
     let killed = fake_tool(dir.path(), "killed", "kill -9 $$");
     let silent = fake_tool(dir.path(), "silent", "exit 0");
     let empty = fake_tool(
@@ -197,11 +241,17 @@ fn failures_are_unavailable() {
         ("an exporter that crashes", ask(&crashes, &prod_ok)),
         ("an exporter killed by a signal", ask(&killed, &prod_ok)),
         ("an exporter that writes nothing", ask(&silent, &prod_ok)),
-        ("an exporter whose IR defines nothing", ask(&empty, &prod_ok)),
+        (
+            "an exporter whose IR defines nothing",
+            ask(&empty, &prod_ok),
+        ),
         ("an exporter that overruns its time", ask(&slow, &prod_ok)),
         ("an exporter that is not there", ask(&missing, &prod_ok)),
         ("a generator that crashes", ask(&exporter_ok, &crashes)),
-        ("a generator that writes no crate", ask(&exporter_ok, &silent)),
+        (
+            "a generator that writes no crate",
+            ask(&exporter_ok, &silent),
+        ),
         ("a generator that is not there", ask(&exporter_ok, &missing)),
     ] {
         match result {
@@ -224,7 +274,10 @@ fn acquisition_fails_closed() {
     // A source that is not there.
     match oracle::Oracle::acquire_in(&pin, cache.path(), Some(cache.path().join("nowhere"))) {
         Err(Unavailable::NotAcquired(_)) => {}
-        other => panic!("a missing checkout is not acquired: {:?}", other.map(|_| ())),
+        other => panic!(
+            "a missing checkout is not acquired: {:?}",
+            other.map(|_| ())
+        ),
     }
     // A source that holds nothing of the oracle.
     let empty = tempfile::tempdir().expect("tempdir");
@@ -246,7 +299,10 @@ fn vacuous_runs_are_unavailable() {
     };
     match differential::validate(&empty, &table) {
         differential::Validation::Unavailable(Unavailable::Vacuous(_)) => {}
-        other => panic!("a run over no root is unavailable, not validated: {}", other.report()),
+        other => panic!(
+            "a run over no root is unavailable, not validated: {}",
+            other.report()
+        ),
     }
     assert!(!differential::validate(&empty, &table).validated());
 }
@@ -271,24 +327,56 @@ fn gates_decide() {
 /// the pin.
 fn isolation_tree() -> tempfile::TempDir {
     let dir = tempfile::tempdir().expect("tempdir");
-    write(dir.path(), "oracle/lean4-prod.toml", &read("oracle/lean4-prod.toml"));
-    write(dir.path(), "crates/lexlean/src/lib.rs", "pub fn compile() {}\n");
-    write(dir.path(), "language/semantics-1.2.toml", "version = \"1.2\"\n");
+    write(
+        dir.path(),
+        "oracle/lean4-prod.toml",
+        &read("oracle/lean4-prod.toml"),
+    );
+    write(
+        dir.path(),
+        "crates/lexlean/src/lib.rs",
+        "pub fn compile() {}\n",
+    );
+    write(
+        dir.path(),
+        "language/semantics-1.2.toml",
+        "version = \"1.2\"\n",
+    );
     write(dir.path(), "schemas/attestation.schema.json", "{}\n");
-    write(dir.path(), "compiler/lexlean.lock", "spec = \"lexlean/lock/1\"\n");
-    write(dir.path(), "examples/demo/expected/build/manifest.json", "{}\n");
-    write(dir.path(), "model/authorities.toml", "spec = \"lexlean/authorities/1\"\n");
-    write(dir.path(), "model/ledger.toml", "spec = \"lexlean/ledger/1\"\n");
+    write(
+        dir.path(),
+        "compiler/lexlean.lock",
+        "spec = \"lexlean/lock/1\"\n",
+    );
+    write(
+        dir.path(),
+        "examples/demo/expected/build/manifest.json",
+        "{}\n",
+    );
+    write(
+        dir.path(),
+        "model/authorities.toml",
+        "spec = \"lexlean/authorities/1\"\n",
+    );
+    write(
+        dir.path(),
+        "model/ledger.toml",
+        "spec = \"lexlean/ledger/1\"\n",
+    );
     dir
 }
 
 fn isolation_audit() {
     // The real tree: nothing the identities are computed from names the
     // oracle, and the audit read every root it is meant to.
-    let scanned = repo_model::isolation::scan(repo_root().as_std_path()).expect("the tree is isolated");
+    let scanned =
+        repo_model::isolation::scan(repo_root().as_std_path()).expect("the tree is isolated");
     assert!(scanned.files > 200, "{scanned:?}");
     assert_eq!(scanned.per_root.len(), repo_model::isolation::SCANNED.len());
-    assert!(scanned.per_root.iter().all(|(_, count)| *count > 0), "{scanned:?}");
+    assert!(
+        scanned.per_root.iter().all(|(_, count)| *count > 0),
+        "{scanned:?}"
+    );
     // The compiler-semantics ID is the digest of exactly the embedded files,
     // and none of them names the oracle.
     let identifiers = repo_model::isolation::identifiers(repo_root().as_std_path()).expect("pin");
@@ -362,11 +450,13 @@ fn records_are_closed() {
             .any(|violation| violation.to_string().starts_with("/oracle"))
     };
     // Committed records: valid as they are, refused with the field.
-    let manifest: Value = serde_json::from_str(&read("examples/production/expected/build/manifest.json"))
-        .expect("manifest");
-    let preservation: Value =
-        serde_json::from_str(&read("examples/production/expected/verify/preserve/preservation.json"))
-            .expect("preservation");
+    let manifest: Value =
+        serde_json::from_str(&read("examples/production/expected/build/manifest.json"))
+            .expect("manifest");
+    let preservation: Value = serde_json::from_str(&read(
+        "examples/production/expected/verify/preserve/preservation.json",
+    ))
+    .expect("preservation");
     let fixture: Value =
         serde_json::from_str(&read("compiler/certificates/bridge-attained.json")).expect("fixture");
     let certificate = fixture["certificate"].clone();
@@ -394,7 +484,11 @@ fn records_are_closed() {
         "compiler-input.schema.json",
     ] {
         let schema = load(schema_name);
-        assert_eq!(schema["additionalProperties"], json!(false), "{schema_name} is closed");
+        assert_eq!(
+            schema["additionalProperties"],
+            json!(false),
+            "{schema_name} is closed"
+        );
         assert!(
             found(&schema, &json!({"oracle": {"verdict": "validated"}})),
             "{schema_name}: an oracle field is refused"
@@ -414,7 +508,10 @@ fn oracle_is_only_its_own() {
         if path.extension().is_none_or(|extension| extension != "rs") {
             continue;
         }
-        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let text = std::fs::read_to_string(&path).expect("source");
         if text.contains("crate::oracle") && !name.starts_with("oracle") {
             users.push(name);
@@ -442,7 +539,9 @@ fn lexlean_constructs() -> &'static BTreeMap<String, BTreeSet<String>> {
     CONSTRUCTS.get_or_init(|| {
         let mut out = BTreeMap::new();
         for name in corpus::EXAMPLES {
-            out.extend(differential::lexlean_constructs(&support::P::copy_example(name)));
+            out.extend(differential::lexlean_constructs(&support::P::copy_example(
+                name,
+            )));
         }
         out.extend(differential::lexlean_constructs(&corpus::probe_project(
             &corpus::probes(),
@@ -487,20 +586,29 @@ fn malformed_non_overlap_tables_are_refused() {
             .map(|_| ())
             .expect_err(&format!("`{from}` -> `{to}` is refused"));
     };
-    refused("spec = \"lexlean/oracle-overlap/1\"", "spec = \"lexlean/oracle-overlap/2\"");
+    refused(
+        "spec = \"lexlean/oracle-overlap/1\"",
+        "spec = \"lexlean/oracle-overlap/2\"",
+    );
     refused("version = 1", "version = 0");
     refused("kind = \"not-runtime\"", "kind = \"vendored\"");
     // A row with a blank reason.
     let mut value: toml::Value = text.parse().expect("the table is TOML");
     value["construct"][0]["reason"] = toml::Value::String("  ".to_owned());
-    differential::NonOverlapTable::parse(&value.to_string()).expect_err("a blank reason is refused");
-    refused("[[construct]]\nkey = \"type.type\"", "[[construct]]\nunknown = 1\nkey = \"type.type\"");
+    differential::NonOverlapTable::parse(&value.to_string())
+        .expect_err("a blank reason is refused");
+    refused(
+        "[[construct]]\nkey = \"type.type\"",
+        "[[construct]]\nunknown = 1\nkey = \"type.type\"",
+    );
     refused("disposition = \"formal-only\"\n", "");
     // A construct twice.
     let edited = format!("{text}\n[[construct]]\nkey = \"type.type\"\nkind = \"not-runtime\"\ndisposition = \"formal-only\"\nreason = \"again\"\n");
     differential::NonOverlapTable::parse(&edited).expect_err("a repeated construct is refused");
     // A refusal row without its probe.
-    let edited = format!("{text}\n[[construct]]\nkey = \"term.add\"\nkind = \"oracle-refuses\"\nreason = \"x\"\n");
+    let edited = format!(
+        "{text}\n[[construct]]\nkey = \"term.add\"\nkind = \"oracle-refuses\"\nreason = \"x\"\n"
+    );
     differential::NonOverlapTable::parse(&edited).expect_err("a refusal row needs its probe");
 }
 
@@ -526,28 +634,51 @@ fn lexlean_side_of_the_corpus() {
         .filter(|row| row.kind == "not-runtime")
         .map(|row| &row.key)
         .collect();
-    assert_eq!(listed, not_runtime, "the formal-only and erased constructs are the not-runtime rows");
+    assert_eq!(
+        listed, not_runtime,
+        "the formal-only and erased constructs are the not-runtime rows"
+    );
     for row in &table.construct {
-        assert!(registry.contains_key(&row.key), "`{}` is a construct of the registry", row.key);
+        assert!(
+            registry.contains_key(&row.key),
+            "`{}` is a construct of the registry",
+            row.key
+        );
         if row.kind == "not-runtime" {
             continue;
         }
         let probe = row.probe.as_deref().expect("a probe");
-        let held = constructs
-            .get(probe)
-            .unwrap_or_else(|| panic!("`{}`: the probe `{probe}` is an eligible corpus root", row.key));
+        let held = constructs.get(probe).unwrap_or_else(|| {
+            panic!(
+                "`{}`: the probe `{probe}` is an eligible corpus root",
+                row.key
+            )
+        });
         if row.kind == "instantiated" {
-            assert!(!realized.contains(&row.key), "`{}` is realized by no closure", row.key);
+            assert!(
+                !realized.contains(&row.key),
+                "`{}` is realized by no closure",
+                row.key
+            );
         } else {
-            assert!(held.contains(&row.key), "`{}`: `{probe}` realizes it", row.key);
+            assert!(
+                held.contains(&row.key),
+                "`{}`: `{probe}` realizes it",
+                row.key
+            );
         }
         let in_probe_project = probe.starts_with("OracleProbe.");
         match row.scope.as_deref() {
             Some("construct") => {
-                assert!(in_probe_project, "`{}`: a construct-scope probe is a probe root", row.key);
+                assert!(
+                    in_probe_project,
+                    "`{}`: a construct-scope probe is a probe root",
+                    row.key
+                );
                 let found = corpus::probes().into_iter().any(|candidate| {
                     format!("OracleProbe.{}.{}", candidate.module, candidate.root) == probe
-                        && (row.kind == "instantiated" || candidate.keys.contains(&row.key.as_str()))
+                        && (row.kind == "instantiated"
+                            || candidate.keys.contains(&row.key.as_str()))
                 });
                 assert!(found, "`{}`: the probe `{probe}` is built for it", row.key);
             }
@@ -576,7 +707,9 @@ fn lexlean_side_of_the_corpus() {
     // Every probe realizes the constructs it is for.
     for probe in corpus::probes() {
         let root = format!("OracleProbe.{}.{}", probe.module, probe.root);
-        let held = constructs.get(&root).unwrap_or_else(|| panic!("{root} is eligible"));
+        let held = constructs
+            .get(&root)
+            .unwrap_or_else(|| panic!("{root} is eligible"));
         for key in probe.keys {
             assert!(held.contains(*key), "{root} realizes `{key}`");
         }
@@ -588,7 +721,10 @@ fn lexlean_side_of_the_corpus() {
         assert!(code == "LLT4005" || code == "LLT4001", "{fixture}: {code}");
         assert!(!message.is_empty());
         let (project, roots) = corpus::rejection_project(fixture);
-        assert!(!roots.is_empty(), "{fixture} has a root that carried a marking");
+        assert!(
+            !roots.is_empty(),
+            "{fixture} has a root that carried a marking"
+        );
         support::checked_project(&project);
     }
 }
@@ -616,7 +752,11 @@ fn overlap() {
         differential::coverage(&registry, run, &edited).problems
     };
     let row = |table: &differential::NonOverlapTable, key: &str| {
-        table.construct.iter().position(|row| row.key == key).expect("a row")
+        table
+            .construct
+            .iter()
+            .position(|row| row.key == key)
+            .expect("a row")
     };
     // A construct in neither the accepted roots nor the table.
     assert!(problems(&|t| {
@@ -685,7 +825,10 @@ fn comparison_is_semantic() {
     let expected = expected_outcome(&root);
     // Agreement: no difference, whatever the oracle's crate says in bytes.
     let (_, agreeing) = synthetic(&expected, 0);
-    assert!(diffs_of(&root, &agreeing).is_empty(), "equal outcomes, contracts, and resources agree");
+    assert!(
+        diffs_of(&root, &agreeing).is_empty(),
+        "equal outcomes, contracts, and resources agree"
+    );
     // Disagreement in the outcome is a behavior difference naming both.
     let wrong = json!({"kind": "nat", "value": "12345"});
     let (_, differing) = synthetic(&wrong, 0);
@@ -702,7 +845,9 @@ fn comparison_is_semantic() {
     assert!(found[0].key.starts_with("outcome:"), "{}", found[0].key);
     // A panic is an outcome of its own.
     let (_, panicked) = synthetic(&json!({"kind": "panic"}), 0);
-    assert!(diffs_of(&root, &panicked).iter().any(|d| d.key.ends_with("/panic")));
+    assert!(diffs_of(&root, &panicked)
+        .iter()
+        .any(|d| d.key.ends_with("/panic")));
     // An allocation by a root eligible for rust-core is a resource difference.
     let (_, allocating) = synthetic(&expected, 3);
     let found = diffs_of(&root, &allocating);
@@ -730,10 +875,23 @@ fn matching() {
         .values()
         .filter(|result| matches!(result, Ok(done) if !done.oracle.is_empty()))
         .count();
-    assert!(summary.generated > 20 && summary.refused > 50 && summary.cases > 200, "{summary:?}");
-    let broken = run.executed.values().filter(|result| result.is_err()).count();
-    assert!(broken > 0, "the oracle's crates that rustc rejects are in the run");
-    let spec = support::spec_text().split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        summary.generated > 20 && summary.refused > 50 && summary.cases > 200,
+        "{summary:?}"
+    );
+    let broken = run
+        .executed
+        .values()
+        .filter(|result| result.is_err())
+        .count();
+    assert!(
+        broken > 0,
+        "the oracle's crates that rustc rejects are in the run"
+    );
+    let spec = support::spec_text()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
     let stated = format!(
         "The corpus has {} roots; the oracle generates Rust for {} of them and refuses {}; {} of the crates it generates for eligible roots compile and are run on {} inputs",
         summary.roots, summary.generated, summary.refused, compiled, summary.cases
@@ -751,17 +909,35 @@ fn matching() {
         let differential::LexLeanSide::Eligible(accepted) = &root.lexlean else {
             panic!("{} was run without being eligible", root.root);
         };
-        assert_eq!(done.oracle.len(), accepted.cases.len(), "{}: one outcome per input", root.root);
-        let own = done.lexlean.as_ref().unwrap_or_else(|| panic!("{}: LexLean's rendering ran", root.root));
+        assert_eq!(
+            done.oracle.len(),
+            accepted.cases.len(),
+            "{}: one outcome per input",
+            root.root
+        );
+        let own = done
+            .lexlean
+            .as_ref()
+            .unwrap_or_else(|| panic!("{}: LexLean's rendering ran", root.root));
         for (at, case) in accepted.cases.iter().enumerate() {
             let expected = lexlean::calculus::rust::observable(&case.outcome).expect("observable");
-            assert_eq!(own[at], expected, "{}: LexLean's rendering on {:?}", root.root, case.arguments);
+            assert_eq!(
+                own[at], expected,
+                "{}: LexLean's rendering on {:?}",
+                root.root, case.arguments
+            );
         }
         if accepted.targets.iter().any(|t| t == "rust-core") {
-            assert!(done.oracle.iter().all(|(_, n)| *n == 0), "{}: no allocation in a rust-core root", root.root);
+            assert!(
+                done.oracle.iter().all(|(_, n)| *n == 0),
+                "{}: no allocation in a rust-core root",
+                root.root
+            );
         }
         assert!(
-            done.oracle.iter().all(|(outcome, _)| outcome["kind"] != "panic"),
+            done.oracle
+                .iter()
+                .all(|(outcome, _)| outcome["kind"] != "panic"),
             "{}: no panic",
             root.root
         );
@@ -812,7 +988,11 @@ fn plants() -> Vec<Plant> {
             root: "Coverage.Main.shapes",
             edit: |s| replace_once(s, "let _x_33 = 3;", "let _x_33 = 4;"),
             kind: Behavior,
-            keys: &["outcome:value/value", "outcome:value/overflow", "outcome:overflow/value"],
+            keys: &[
+                "outcome:value/value",
+                "outcome:value/overflow",
+                "outcome:overflow/value",
+            ],
         },
         Plant {
             name: "swapped branches",
@@ -825,14 +1005,22 @@ fn plants() -> Vec<Plant> {
                 (swapped != s).then_some(swapped)
             },
             kind: Behavior,
-            keys: &["outcome:value/value", "outcome:value/overflow", "outcome:overflow/value"],
+            keys: &[
+                "outcome:value/value",
+                "outcome:value/overflow",
+                "outcome:overflow/value",
+            ],
         },
         Plant {
             name: "an inverted comparison",
             root: "Models.Main.step",
             edit: |s| replace_once(s, "(cost <= _x_1)", "(cost > _x_1)"),
             kind: Behavior,
-            keys: &["outcome:value/value", "outcome:value/overflow", "outcome:overflow/value"],
+            keys: &[
+                "outcome:value/value",
+                "outcome:value/overflow",
+                "outcome:overflow/value",
+            ],
         },
         Plant {
             name: "a dropped recursive arm",
@@ -844,14 +1032,30 @@ fn plants() -> Vec<Plant> {
         Plant {
             name: "swapped parameters",
             root: "Coverage.Main.natOps",
-            edit: |s| replace_once(s, "pub fn natOps(a: u64, b: u64)", "pub fn natOps(b: u64, a: u64)"),
+            edit: |s| {
+                replace_once(
+                    s,
+                    "pub fn natOps(a: u64, b: u64)",
+                    "pub fn natOps(b: u64, a: u64)",
+                )
+            },
             kind: Behavior,
-            keys: &["outcome:value/value", "outcome:value/overflow", "outcome:overflow/value"],
+            keys: &[
+                "outcome:value/value",
+                "outcome:value/overflow",
+                "outcome:overflow/value",
+            ],
         },
         Plant {
             name: "a changed parameter width",
             root: "Coverage.Prims.bits",
-            edit: |s| replace_once(s, "pub fn bits(a: u16, b: u16, s: u32)", "pub fn bits(a: u16, b: u16, s: u64)"),
+            edit: |s| {
+                replace_once(
+                    s,
+                    "pub fn bits(a: u16, b: u16, s: u32)",
+                    "pub fn bits(a: u16, b: u16, s: u64)",
+                )
+            },
             kind: Contract,
             keys: &["signature-drift"],
         },
@@ -874,15 +1078,31 @@ fn plants() -> Vec<Plant> {
 fn carries_both_sides(diff: &differential::Diff) {
     assert!(!diff.root.is_empty() && !diff.key.is_empty());
     assert!(!diff.lexlean.is_null(), "{}: LexLean's evidence", diff.key);
-    assert!(!diff.oracle.is_null(), "{}: the oracle's evidence", diff.key);
+    assert!(
+        !diff.oracle.is_null(),
+        "{}: the oracle's evidence",
+        diff.key
+    );
     if diff.kind == differential::DiffKind::Behavior {
         let lexlean = diff.lexlean.to_string();
         let oracle = diff.oracle.to_string();
-        assert!(lexlean.contains("arguments") && oracle.contains("arguments"), "the inputs are recorded");
-        assert!(lexlean.contains("outcome") && oracle.contains("outcome"), "the outcomes are recorded");
+        assert!(
+            lexlean.contains("arguments") && oracle.contains("arguments"),
+            "the inputs are recorded"
+        );
+        assert!(
+            lexlean.contains("outcome") && oracle.contains("outcome"),
+            "the outcomes are recorded"
+        );
     } else {
-        assert!(diff.lexlean.to_string().contains("contract"), "LexLean's contract");
-        assert!(diff.oracle.to_string().contains("contract"), "the oracle's contract");
+        assert!(
+            diff.lexlean.to_string().contains("contract"),
+            "LexLean's contract"
+        );
+        assert!(
+            diff.oracle.to_string().contains("contract"),
+            "the oracle's contract"
+        );
     }
 }
 
@@ -904,7 +1124,10 @@ fn planted_discrepancies() {
     let (_, agreeing) = synthetic(&expected, 0);
     let found = diffs_of(&abi, &agreeing);
     assert!(found.iter().any(|d| d.key == "arity"), "{found:?}");
-    assert!(found.iter().any(|d| d.key.starts_with("failure-typing")), "{found:?}");
+    assert!(
+        found.iter().any(|d| d.key.starts_with("failure-typing")),
+        "{found:?}"
+    );
     for diff in &found {
         carries_both_sides(diff);
     }
@@ -957,7 +1180,11 @@ fn planted_discrepancies() {
             run_of_plant.root,
             plant.kind,
             plant.keys,
-            judgement.unlisted.iter().map(|d| (d.kind, d.key.clone())).collect::<Vec<_>>()
+            judgement
+                .unlisted
+                .iter()
+                .map(|d| (d.kind, d.key.clone()))
+                .collect::<Vec<_>>()
         );
         for diff in hits {
             carries_both_sides(diff);
@@ -966,7 +1193,10 @@ fn planted_discrepancies() {
         let mut diffs_of_run: Vec<differential::Diff> = Vec::new();
         for other in &run.roots {
             if other.root != run_of_plant.root {
-                diffs_of_run.extend(differential::differences(other, run.executed.get(&other.root)));
+                diffs_of_run.extend(differential::differences(
+                    other,
+                    run.executed.get(&other.root),
+                ));
             }
         }
         diffs_of_run.extend(diffs.clone());
@@ -996,10 +1226,16 @@ fn malformed_difference_tables_are_refused() {
     refused(&|v| v["difference"][1]["id"] = v["difference"][0]["id"].clone());
     refused(&|v| {
         let first = v["difference"][0]["roots"][0].clone();
-        v["difference"][0]["roots"].as_array_mut().expect("roots").push(first);
+        v["difference"][0]["roots"]
+            .as_array_mut()
+            .expect("roots")
+            .push(first);
     });
     refused(&|v| {
-        v["difference"][0].as_table_mut().expect("row").insert("note".into(), toml::Value::Integer(1));
+        v["difference"][0]
+            .as_table_mut()
+            .expect("row")
+            .insert("note".into(), toml::Value::Integer(1));
     });
 }
 
@@ -1047,7 +1283,10 @@ fn judgement_is_exact() {
     let listed = differential::KnownDifferences::parse(text).expect("a table");
     let judged = differential::judge(&[known.clone(), planted], &listed);
     assert!(judged.unlisted.is_empty() && judged.stale.is_empty());
-    assert!(differential::judge(&[known], &listed).stale.len() == 1, "the vanished difference is stale");
+    assert!(
+        differential::judge(&[known], &listed).stale.len() == 1,
+        "the vanished difference is stale"
+    );
 }
 
 fn known_differences() {
@@ -1060,7 +1299,10 @@ fn known_differences() {
     };
     let mut diffs = Vec::new();
     for root in &run.roots {
-        diffs.extend(differential::differences(root, run.executed.get(&root.root)));
+        diffs.extend(differential::differences(
+            root,
+            run.executed.get(&root.root),
+        ));
     }
     assert!(!diffs.is_empty());
     // The committed table names every difference of the run, and each of its
@@ -1072,7 +1314,12 @@ fn known_differences() {
     let mut without = table.clone();
     let removed = without.difference.remove(0);
     let judged = differential::judge(&diffs, &without);
-    assert_eq!(judged.unlisted.len(), removed.roots.len(), "the roots of {}", removed.id);
+    assert_eq!(
+        judged.unlisted.len(),
+        removed.roots.len(),
+        "the roots of {}",
+        removed.id
+    );
     // Move a row's key: it names nothing, and what it named is unlisted.
     let mut renamed = table.clone();
     renamed.difference[1].key.push_str("-planted");
@@ -1080,19 +1327,35 @@ fn known_differences() {
     assert!(!judged.unlisted.is_empty() && !judged.stale.is_empty());
     // A listed root the run does not show.
     let mut extended = table.clone();
-    extended.difference[1].roots.push("Production.Main.checkedSum".to_owned());
+    extended.difference[1]
+        .roots
+        .push("Production.Main.checkedSum".to_owned());
     let judged = differential::judge(&diffs, &extended);
-    assert_eq!(judged.stale, [(extended.difference[1].id.clone(), "Production.Main.checkedSum".to_owned())]);
+    assert_eq!(
+        judged.stale,
+        [(
+            extended.difference[1].id.clone(),
+            "Production.Main.checkedSum".to_owned()
+        )]
+    );
 }
 
 // ---- OR-06: meaning, not bytes -------------------------------------------------
 
 /// A rendering that keeps LexLean's runtime and replaces its functions.
-fn with_functions(lexlean: &BTreeMap<String, Vec<u8>>, functions: &str) -> BTreeMap<String, Vec<u8>> {
+fn with_functions(
+    lexlean: &BTreeMap<String, Vec<u8>>,
+    functions: &str,
+) -> BTreeMap<String, Vec<u8>> {
     let source = String::from_utf8_lossy(&lexlean["src/lib.rs"]).into_owned();
-    let at = source.find("\npub fn f0(").expect("the rendering's functions follow its runtime");
+    let at = source
+        .find("\npub fn f0(")
+        .expect("the rendering's functions follow its runtime");
     let mut files = lexlean.clone();
-    files.insert("src/lib.rs".to_owned(), format!("{}\n{functions}", &source[..at]).into_bytes());
+    files.insert(
+        "src/lib.rs".to_owned(),
+        format!("{}\n{functions}", &source[..at]).into_bytes(),
+    );
     files
 }
 
@@ -1115,65 +1378,79 @@ fn equivalent_renderings() {
         .expect("LexLean's rendering builds");
     let base_sum = differential::render_candidate(&sum_all, "rust-std", &own_sum)
         .expect("LexLean's rendering builds");
-    differential::accept_rendering(&halvings, &base_halvings, &base_halvings).expect("a rendering is itself");
+    differential::accept_rendering(&halvings, &base_halvings, &base_halvings)
+        .expect("a rendering is itself");
     differential::accept_rendering(&sum_all, &base_sum, &base_sum).expect("a rendering is itself");
     // Deliberately better, and equivalent: a closed form for the recursion that
-    // counts down by twos, and a loop for the right-nested sum.
-    let closed_form = with_functions(
-        &own_halvings,
-        "pub fn f0(v0: u64) -> R<u64> {\n    Ok(v0 / 2)\n}\n\npub fn root(p0: u64) -> R<u64> {\n    f0(p0)\n}\n",
-    );
-    let looped = with_functions(
-        &own_sum,
-        "pub fn f0(v0: List<u64>) -> R<u64> {\n    let mut total = 0u64;\n    let mut cursor = v0;\n    while let Some((head, rest)) = cursor.uncons() {\n        total = nat_add(total, head)?;\n        cursor = rest;\n    }\n    Ok(total)\n}\n\npub fn root(p0: List<u64>) -> R<u64> {\n    f0(p0)\n}\n",
-    );
+    // counts down by twos, and a loop for the right-nested sum (fixtures).
+    let fixture = |name: &str| read(&format!("tests/oracle/renderings/{name}"));
+    let closed_form = with_functions(&own_halvings, &fixture("halvings.closed-form.rs"));
+    let looped = with_functions(&own_sum, &fixture("sum-all.loop.rs"));
     for (name, accepted, profile, better, own, base) in [
-        ("a closed form for the recursion", &halvings, "rust-core", &closed_form, &own_halvings, &base_halvings),
-        ("a loop for the recursion", &sum_all, "rust-std", &looped, &own_sum, &base_sum),
+        (
+            "a closed form for the recursion",
+            &halvings,
+            "rust-core",
+            &closed_form,
+            &own_halvings,
+            &base_halvings,
+        ),
+        (
+            "a loop for the recursion",
+            &sum_all,
+            "rust-std",
+            &looped,
+            &own_sum,
+            &base_sum,
+        ),
     ] {
-        assert_ne!(better["src/lib.rs"], own["src/lib.rs"], "{name} differs from LexLean's bytes");
+        assert_ne!(
+            better["src/lib.rs"], own["src/lib.rs"],
+            "{name} differs from LexLean's bytes"
+        );
         let rendered = differential::render_candidate(accepted, profile, better)
             .unwrap_or_else(|reason| panic!("{name} builds against the interface: {reason}"));
         differential::accept_rendering(accepted, &rendered, base)
             .unwrap_or_else(|reason| panic!("{name} is accepted: {reason}"));
     }
     // Wrong in one place is refused. One result on one input: the closed form
-    // is wrong at the largest natural only; the loop wraps where the sum
-    // overflows, which one input of the differential reaches.
+    // is wrong at one odd input of the differential; the loop wraps where the
+    // sum overflows, which one input of the differential reaches; another
+    // does more work; another takes a narrower parameter.
     let Some(lexlean::calculus::Value::Nat { value: odd }) = halvings
         .cases
         .iter()
         .map(|case| case.values[0].clone())
-        .rfind(|value| matches!(value, lexlean::calculus::Value::Nat { value } if value.parse::<u64>().is_ok_and(|n| n % 2 == 1)))
+        .rfind(|value| {
+            matches!(value, lexlean::calculus::Value::Nat { value }
+                if value.parse::<u64>().is_ok_and(|n| n % 2 == 1))
+        })
     else {
         panic!("the inputs of halvings include an odd one");
     };
     let one_input = with_functions(
         &own_halvings,
-        &format!("pub fn f0(v0: u64) -> R<u64> {{\n    Ok(if v0 == {odd}u64 {{ 0 }} else {{ v0 / 2 }})\n}}\n\npub fn root(p0: u64) -> R<u64> {{\n    f0(p0)\n}}\n"),
+        &fixture("halvings.wrong-on-one-input.rs").replace("@INPUT@", &odd),
     );
-    let wrapping = with_functions(
-        &own_sum,
-        "pub fn f0(v0: List<u64>) -> R<u64> {\n    let mut total = 0u64;\n    let mut cursor = v0;\n    while let Some((head, rest)) = cursor.uncons() {\n        total = total.wrapping_add(head);\n        cursor = rest;\n    }\n    Ok(total)\n}\n\npub fn root(p0: List<u64>) -> R<u64> {\n    f0(p0)\n}\n",
-    );
-    let busy = with_functions(
-        &own_sum,
-        "pub fn f0(v0: List<u64>) -> R<u64> {\n    tick(1_000_000);\n    let mut total = 0u64;\n    let mut cursor = v0;\n    while let Some((head, rest)) = cursor.uncons() {\n        total = nat_add(total, head)?;\n        cursor = rest;\n    }\n    Ok(total)\n}\n\npub fn root(p0: List<u64>) -> R<u64> {\n    f0(p0)\n}\n",
-    );
-    let narrow = with_functions(
-        &own_halvings,
-        "pub fn f0(v0: u32) -> R<u64> {\n    Ok(u64::from(v0) / 2)\n}\n\npub fn root(p0: u32) -> R<u64> {\n    f0(p0)\n}\n",
-    );
-    let one_input_result = differential::render_candidate(&halvings, "rust-core", &one_input).expect("it builds");
+    let wrapping = with_functions(&own_sum, &fixture("sum-all.wrapping.rs"));
+    let busy = with_functions(&own_sum, &fixture("sum-all.extra-work.rs"));
+    let narrow = with_functions(&own_halvings, &fixture("halvings.narrow-parameter.rs"));
+    let one_input_result =
+        differential::render_candidate(&halvings, "rust-core", &one_input).expect("it builds");
     let error = differential::accept_rendering(&halvings, &one_input_result, &base_halvings)
         .expect_err("a rendering wrong on one input is refused");
     assert!(error.contains("on ["), "the input is named: {error}");
-    let wrapping_result = differential::render_candidate(&sum_all, "rust-std", &wrapping).expect("it builds");
+    let wrapping_result =
+        differential::render_candidate(&sum_all, "rust-std", &wrapping).expect("it builds");
     let error = differential::accept_rendering(&sum_all, &wrapping_result, &base_sum)
         .expect_err("a rendering that wraps where the sum overflows is refused");
     assert!(error.contains("overflow"), "{error}");
-    let busy_result = differential::render_candidate(&sum_all, "rust-std", &busy).expect("it builds");
-    assert_eq!(busy_result.outcomes, base_sum.outcomes, "the busy rendering prints the same outcomes");
+    let busy_result =
+        differential::render_candidate(&sum_all, "rust-std", &busy).expect("it builds");
+    assert_eq!(
+        busy_result.outcomes, base_sum.outcomes,
+        "the busy rendering prints the same outcomes"
+    );
     let error = differential::accept_rendering(&sum_all, &busy_result, &base_sum)
         .expect_err("a rendering that does more work is refused");
     assert!(error.contains("work"), "{error}");
@@ -1184,7 +1461,10 @@ fn equivalent_renderings() {
     // Against the oracle's crates, when it ran: the better rendering differs in
     // bytes from the oracle's too.
     if let Some(run) = differential::gate("OR-06") {
-        for (name, better) in [("Production.Main.halvings", &closed_form), ("Production.Main.sumAll", &looped)] {
+        for (name, better) in [
+            ("Production.Main.halvings", &closed_form),
+            ("Production.Main.sumAll", &looped),
+        ] {
             let root = run.roots.iter().find(|r| r.root == name).expect("a root");
             let differential::OracleSide::Generated { package, .. } = &root.oracle else {
                 panic!("{name} is generated by the oracle");
@@ -1206,8 +1486,12 @@ fn copy_used(from: &Path, to: &Path, pin: &Pin) {
             .collect::<Vec<_>>()
             .join("/");
         if !entry.file_type().is_file()
-            || text.split('/').any(|part| matches!(part, ".git" | ".lake" | "target"))
-            || !pin.used.iter().any(|prefix| text == prefix.trim_end_matches('/') || text.starts_with(prefix.as_str()))
+            || text
+                .split('/')
+                .any(|part| matches!(part, ".git" | ".lake" | "target"))
+            || !pin.used.iter().any(|prefix| {
+                text == prefix.trim_end_matches('/') || text.starts_with(prefix.as_str())
+            })
         {
             continue;
         }
@@ -1243,13 +1527,28 @@ fn checkouts_that_are_not_the_pin() {
                 std::fs::write(d.join(file), bytes).expect("write");
             }),
         ),
-        ("a file added", changed(&|d| write(d, "rust/prod-ir/src/added.rs", ""))),
-        ("a file removed", changed(&|d| std::fs::remove_file(d.join("rust/prod-ir/Cargo.toml")).expect("rm"))),
+        (
+            "a file added",
+            changed(&|d| write(d, "rust/prod-ir/src/added.rs", "")),
+        ),
+        (
+            "a file removed",
+            changed(&|d| std::fs::remove_file(d.join("rust/prod-ir/Cargo.toml")).expect("rm")),
+        ),
         (
             "a file renamed",
-            changed(&|d| std::fs::rename(d.join(file), d.join("lean/Prod/Lowered.lean")).expect("mv")),
+            changed(&|d| {
+                std::fs::rename(d.join(file), d.join("lean/Prod/Lowered.lean")).expect("mv")
+            }),
         ),
-        ("an empty checkout", changed(&|d| std::fs::remove_dir_all(d.join("lean")).and_then(|()| std::fs::remove_dir_all(d.join("rust"))).expect("rm"))),
+        (
+            "an empty checkout",
+            changed(&|d| {
+                std::fs::remove_dir_all(d.join("lean"))
+                    .and_then(|()| std::fs::remove_dir_all(d.join("rust")))
+                    .expect("rm")
+            }),
+        ),
     ] {
         assert!(
             matches!(result, Err(Unavailable::PinMismatch(_))),
@@ -1261,16 +1560,30 @@ fn checkouts_that_are_not_the_pin() {
     copy_used(pristine.path(), repository.path(), &pin);
     let git = |arguments: &[&str]| {
         std::process::Command::new("git")
-            .args(["-c", "user.name=lexlean", "-c", "user.email=lexlean@example.invalid", "-c", "commit.gpgsign=false"])
+            .args([
+                "-c",
+                "user.name=lexlean",
+                "-c",
+                "user.email=lexlean@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+            ])
             .args(arguments)
             .current_dir(repository.path())
             .output()
     };
-    match git(&["init", "--quiet"]).and_then(|_| git(&["add", "-A"])).and_then(|_| git(&["commit", "--quiet", "-m", "elsewhere"])) {
-        Ok(output) if output.status.success() => match oracle::verify_checkout(&pin, repository.path()) {
-            Err(Unavailable::PinMismatch(detail)) => assert!(detail.contains("HEAD"), "{detail}"),
-            other => panic!("another commit of the same files is not the pin: {other:?}"),
-        },
+    match git(&["init", "--quiet"])
+        .and_then(|_| git(&["add", "-A"]))
+        .and_then(|_| git(&["commit", "--quiet", "-m", "elsewhere"]))
+    {
+        Ok(output) if output.status.success() => {
+            match oracle::verify_checkout(&pin, repository.path()) {
+                Err(Unavailable::PinMismatch(detail)) => {
+                    assert!(detail.contains("HEAD"), "{detail}")
+                }
+                other => panic!("another commit of the same files is not the pin: {other:?}"),
+            }
+        }
         _ => eprintln!("OR-01: this host has no usable git; the other-commit refusal was not run"),
     }
 }
@@ -1286,7 +1599,10 @@ fn a_build_that_fails_is_unavailable() {
     let cache = tempfile::tempdir().expect("tempdir");
     match oracle::Oracle::acquire_in(&pin, cache.path(), Some(oracle.source().to_path_buf())) {
         Err(Unavailable::BuildFailed { step, .. }) => assert_eq!(step, "lake build"),
-        other => panic!("an oracle that does not build is unavailable: {:?}", other.map(|_| ())),
+        other => panic!(
+            "an oracle that does not build is unavailable: {:?}",
+            other.map(|_| ())
+        ),
     }
 }
 
@@ -1304,11 +1620,17 @@ fn disagreement_is_recorded() {
     // The stand-in has a row in no table, so its difference is a disagreement.
     let validation = differential::validate(&run, &table);
     let differential::Validation::Disagreement(unlisted, _) = &validation else {
-        panic!("a differing outcome is a disagreement: {}", validation.report());
+        panic!(
+            "a differing outcome is a disagreement: {}",
+            validation.report()
+        );
     };
     assert!(!unlisted.is_empty());
     let report = validation.report();
-    assert!(report.contains("lexlean:") && report.contains("oracle:") && report.contains("99"), "{report}");
+    assert!(
+        report.contains("lexlean:") && report.contains("oracle:") && report.contains("99"),
+        "{report}"
+    );
     let directory = tempfile::tempdir().expect("tempdir");
     let path = validation
         .record(directory.path())
@@ -1317,7 +1639,10 @@ fn disagreement_is_recorded() {
     let record: Json = serde_json::from_slice(&std::fs::read(path).expect("record")).expect("JSON");
     assert_eq!(record["role"], json!("validation-evidence"));
     let first = &record["disagreements"][0];
-    assert!(!first["lexlean"].is_null() && !first["oracle"].is_null(), "both sides are recorded");
+    assert!(
+        !first["lexlean"].is_null() && !first["oracle"].is_null(),
+        "both sides are recorded"
+    );
     assert!(first["oracle"].to_string().contains("99"));
     // A validated or an unavailable verdict records nothing.
     let unavailable = differential::Validation::Unavailable(Unavailable::NotAcquired("x".into()));
@@ -1327,7 +1652,10 @@ fn disagreement_is_recorded() {
         let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             differential::require("OR-07", verdict);
         }));
-        assert!(caught.is_err(), "a verdict that is not validated fails the gate");
+        assert!(
+            caught.is_err(),
+            "a verdict that is not validated fails the gate"
+        );
     }
 }
 
