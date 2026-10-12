@@ -60,6 +60,9 @@ pub struct Case {
     pub dir: Utf8PathBuf,
     /// The invocations in step order; a single-command fixture has one.
     pub invocations: Vec<Invocation>,
+    /// The operational environment variables that hold while the invocations
+    /// run (§28.2), in name order.
+    pub environment: Vec<(String, String)>,
 }
 
 /// The four expected files of one fixture, as text.
@@ -137,14 +140,17 @@ fn read_bool(table: &toml::Value, key: &str, context: &str) -> Result<bool, Stri
         .ok_or_else(|| format!("{context}: `{key}` must be a boolean"))
 }
 
-const TOP_KEYS: [&str; 6] = [
+const TOP_KEYS: [&str; 7] = [
     "spec",
     "command",
     "args",
     "expected_exit",
     "expect_artifacts",
     "invocation",
+    "environment",
 ];
+/// The environment variables a fixture may set (§23.1, §28.2).
+const OPERATIONAL_VARIABLES: [&str; 1] = ["LEXLEAN_VERIFY_WIDTH"];
 const INVOCATION_KEYS: [&str; 5] = [
     "step",
     "command",
@@ -256,9 +262,30 @@ pub fn load_case(dir: &Utf8Path) -> Result<Case, String> {
     } else {
         invocations.push(Invocation { step: 1, ..top });
     }
+    let mut environment = Vec::new();
+    if let Some(variables) = table.get("environment") {
+        let variables = variables
+            .as_table()
+            .ok_or_else(|| format!("{context}: `environment` must be a table of strings"))?;
+        for (name, value) in variables {
+            let value = value.as_str().ok_or_else(|| {
+                format!("{context}: environment variable `{name}` must be a string")
+            })?;
+            // A fixture may state only an operational variable (§23.1):
+            // one that changed semantic configuration would make the
+            // fixture's project depend on the host that ran it.
+            if !OPERATIONAL_VARIABLES.contains(&name.as_str()) {
+                return Err(format!(
+                    "{context}: environment variable `{name}` is not an operational variable of §23.1"
+                ));
+            }
+            environment.push((name.clone(), value.to_owned()));
+        }
+    }
     Ok(Case {
         dir: dir.to_path_buf(),
         invocations,
+        environment,
     })
 }
 
@@ -438,10 +465,20 @@ pub fn observe(case: &Case) -> Result<Observed, String> {
     };
     // Both paths hold the environment lock: a fixture without its own
     // toolchain must not observe another test's temporary `ELAN_HOME`.
+    let fixture_environment: Vec<(&str, Option<&str>)> = case
+        .environment
+        .iter()
+        .map(|(name, value)| (name.as_str(), Some(value.as_str())))
+        .collect();
     match &fake_home {
         Some(home) => {
             let home_text = home.path().to_string_lossy().into_owned();
-            support::with_env(&[("ELAN_HOME", Some(&home_text))], run_all)?;
+            let mut pairs = fixture_environment;
+            pairs.push(("ELAN_HOME", Some(&home_text)));
+            support::with_env(&pairs, run_all)?;
+        }
+        None if !fixture_environment.is_empty() => {
+            support::with_env(&fixture_environment, run_all)?;
         }
         None => {
             let _guard = support::env_shared();

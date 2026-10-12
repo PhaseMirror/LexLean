@@ -12,9 +12,10 @@ How this repository's claims are checked, which recipe enforces which rule, and 
 | `model` | `cargo xtask validate-model` | R1 (model is the single source; every model file parsed with unknown-field rejection), R2 (honesty levels and vocabulary, via the meta-gate), R3 (register/scenario/test bijection, Gherkin subset), R4 (`audit-deferral`), R5 (`audit-errors`), R6 (`audit-shipped`, including the shipped crate's normative links, and every vendored authority's SHA-256 recomputed from its copy), R8 (`audit-generated`, `audit-language-closure`), RP-09 (`audit-no-unsafe`), PD-07 (`audit-production`), §27.5 (CONFORMANCE.md and ERRORS.md equal regeneration) |
 | `spec-links` | `cargo xtask validate-spec-links` | RP-07, §27.6: the §31 table and `model/ids.toml` are bijective and byte-consistent |
 | `lint` | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | no tolerated warnings |
-| `test` | `cargo test --workspace --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI), the model crate's own tests, and all 325 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
+| `test` | `cargo test --workspace --exclude repo-conformance --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI) of every crate but `repo-conformance`, and the model crate's own tests. `repo-conformance` is excluded, not skipped: `bdd` owns it (RP-13) |
 | `features` | `cargo check --workspace --all-features --all-targets` | every target compiles |
-| `bdd` | `cargo test -p repo-conformance --test bdd` | R3, §27.7, §27.8: register ↔ scenario ↔ test bijection, the meta-gate, and its own falsifiability test; the conformance tests it names are run once, by `test` |
+| `bdd` | `cargo test -p repo-conformance --all-features` | R3, §27.7, §27.8: the sole owner of the complete `repo-conformance` suite — its library tests, the `bdd` meta-gate target (register ↔ scenario ↔ test bijection and its own falsifiability test), and the `conformance` target with all 330 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
+| `inventory` | `cargo xtask check-test-inventory` | RP-13: the tests listed by `test` and by `bdd` (`cargo test … -- --list`) are disjoint and their union is the list of `cargo test --workspace --all-features`: no test lost, none run twice |
 | `examples` | `cargo xtask verify-examples` | §28.6, EX-01: every example directory and the `compiler` project (§17.14, §17.15) format, lock, check, build, and verify with real Lean 4.32.1; when an example commits `expected/verify/`, its normalized verification records must equal it (§29.5) |
 | `golden` | `cargo xtask check-golden` | R10, §28.3: the *published* build tree of a real `build` in a fresh directory equals the committed oracles byte for byte |
 | `repro` | `cargo xtask check-reproducibility` | AR-13, §28.4: two clean `build`s in distinct absolute directories publish byte-identical trees with no absolute path inside |
@@ -451,7 +452,7 @@ conformance_rp_10`. The test recomputes the 1.1 ID from the exclusion list in
 §21.2, not from the compiler.
 
 ```text
-thread 'conformance_rp_10' panicked at crates/conformance/src/cases/repository.rs:626:13:
+thread 'conformance_rp_10' panicked at crates/conformance/src/cases/repository.rs:630:13:
 assertion `left == right` failed: RP-10: the 1.1 ID
 ```
 
@@ -1091,9 +1092,9 @@ the constant, a fraction of 0 (nothing is heavy) and a huge one (everything
 is):
 
 ```text
-thread 'verify::resource_tests::a_heartbeat_verdict_is_a_limit_only_for_a_heavy_module' (25315) panicked at crates/lexlean/src/verify/mod.rs:2582:73:
+thread 'verify::resource_tests::a_heartbeat_verdict_is_a_limit_only_for_a_heavy_module' (25315) panicked at crates/lexlean/src/verify/mod.rs:2613:73:
 a limit
-thread 'verify::resource_tests::a_heartbeat_verdict_is_a_limit_only_for_a_heavy_module' (25377) panicked at crates/lexlean/src/verify/mod.rs:2579:9:
+thread 'verify::resource_tests::a_heartbeat_verdict_is_a_limit_only_for_a_heavy_module' (25377) panicked at crates/lexlean/src/verify/mod.rs:2610:9:
 assertion failed: resource_death("M.R0", 1, HEARTBEATS, 5_000, &limits()).is_none()
 ```
 
@@ -1741,7 +1742,7 @@ Command: `cargo test -p lexlean --lib timeout_tests`. Expected: the
 grandchild is still running.
 
 ```text
-thread 'verify::child::timeout_tests::a_timeout_ends_what_the_child_started' (13145) panicked at crates/lexlean/src/verify/child.rs:781:9:
+thread 'verify::child::timeout_tests::a_timeout_ends_what_the_child_started' (13145) panicked at crates/lexlean/src/verify/child.rs:804:9:
 a timeout left running: ["13149: sleep 1000.13144 "]
 ```
 
@@ -2117,7 +2118,7 @@ running). Command: `cargo test -p lexlean --lib -- a_zombie_in_the_group`.
 Expected: the stop waits two seconds and reports the zombie.
 
 ```text
-thread 'verify::child::timeout_tests::a_zombie_in_the_group_counts_as_ended' (30432) panicked at crates/lexlean/src/verify/child.rs:857:9:
+thread 'verify::child::timeout_tests::a_zombie_in_the_group_counts_as_ended' (30432) panicked at crates/lexlean/src/verify/child.rs:880:9:
 assertion `left == right` failed: a zombie is not running
   left: Err("processes of group 30433 still existed 2000 ms after SIGKILL")
  right: Ok(())
@@ -2128,7 +2129,7 @@ Planted: `taskkill_outcome` takes any exit status for success. Command: `cargo t
 reported.
 
 ```text
-thread 'verify::child::timeout_tests::a_failing_taskkill_is_reported' (30484) panicked at crates/lexlean/src/verify/child.rs:803:68:
+thread 'verify::child::timeout_tests::a_failing_taskkill_is_reported' (30484) panicked at crates/lexlean/src/verify/child.rs:826:68:
 exit 128: ()
 ```
 
@@ -3544,7 +3545,7 @@ Removed: the function was deleted; clippy is clean.
 Planted: the last hex digit of the empty-input SHA-256 vector in `crates/model/src/release.rs` changed from `5` to `6`. Command: `cargo test -p repo-model --all-features`. Expected: the unit test fails on the digest.
 
 ```text
-thread 'release::tests::the_local_sha256_agrees_with_the_test_vectors' panicked at crates/model/src/release.rs:558:9:
+thread 'release::tests::the_local_sha256_agrees_with_the_test_vectors' panicked at crates/model/src/release.rs:561:9:
 assertion `left == right` failed
   left: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
  right: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b856"
@@ -3566,7 +3567,7 @@ Removed: the function was deleted; every target checks.
 
 ### bdd can fail
 
-Planted: the `EX-08` scenario removed from `features/suites/examples.feature`. Command: `cargo test -p repo-conformance --test bdd`. Expected: R3 reports the registered ID with no scenario.
+Planted: the `EX-08` scenario removed from `features/suites/examples.feature`. Command: `cargo test -p repo-conformance --all-features` (the meta-gate target alone, which the honesty workflow runs, is `--test bdd`). Expected: R3 reports the registered ID with no scenario.
 
 ```text
 test every_id_has_a_scenario_and_a_test ... FAILED
@@ -5077,6 +5078,10 @@ vacuous, so each was made to fail again after the change.
    right: ["cargo test -p repo-conformance --test bdd"]
   ```
 
+  (Superseded by #48: `bdd` is now the whole suite, `cargo test -p repo-conformance
+  --all-features`, and `test` excludes `repo-conformance`; the records of the
+  current recipes are in "Execution of `just vv` (Issue #48)".)
+
 - The shipped environment is still compiled by the pinned Lean, and a rejected
   module stops the harness. Planted: the text of every shipped module written
   with `def plantedBroken : Nat := "x"` appended (and the cache key changed, so
@@ -5129,3 +5134,347 @@ vacuous, so each was made to fail again after the change.
   (`LexLeanModels`, `LexLeanReasoning`): linking refuses those as binders, and
   the fixtures `binder-bool-literal-name` and `declaration-lean-name` hold
   that.
+
+## Execution of `just vv` (Issue #48)
+
+Issue #48 changes how the gate is run on the standard GitHub-hosted runner
+(`ubuntu-24.04`, 4 vCPU, 16 GB) and nothing it accepts. Every obligation of
+`just vv` is still run from a clean checkout of the exact pinned toolchains,
+with no cache of a build directory, object, verification tree, attestation, or
+proof result, no path filter, and no recipe skipped; the verifier runs at its
+default width of 1 on UOR Atlas; `honesty` and `reproducibility` stay separate
+workflows; the four non-normative hosts stay in the matrix. What changed is who
+owns which tests, how the verifier's process width is chosen and kept out of
+every identity, what the run reports about itself, and two measured costs that
+every build and every verification paid for nothing.
+
+### Ownership of the conformance suite
+
+Before this change `test` was `cargo test --workspace --all-features`, which
+runs every target of `repo-conformance`, and (until #49) `bdd` ran them again;
+after #49 `bdd` ran the `bdd` target alone and `test` owned the suite. The
+ownership is now exact, as the recipes read:
+
+| Recipe | Command | Runs |
+| --- | --- | --- |
+| `test` | `cargo test --workspace --exclude repo-conformance --all-features` | the tests of `lexlean`, `repo-model`, and `xtask`: libraries, integration targets, doctests |
+| `bdd` | `cargo test -p repo-conformance --all-features` | the whole of `repo-conformance`: its library tests, the `bdd` target, the `conformance` target |
+| `inventory` | `cargo xtask check-test-inventory` | nothing; it lists the tests of both recipes and of the whole workspace |
+
+`inventory` is what keeps "excluded" from meaning "lost". It runs `cargo test
+--workspace --all-features -- --list` (the reference: the one command `vv` ran
+before the split) and the `-- --list` of the two recipes' own commands, read
+from the Justfile, and requires (`repo_conformance::inventory::compare`) that
+the lists of `test` and `bdd` are disjoint, that their union is the reference's
+list, that no target of `repo-conformance` is in `test`'s list and every one is
+in `bdd`'s (the binaries are those `cargo metadata` names for the package), and
+that `bdd` lists `conformance_<id>` tests at all. On the tree of this change
+(local run): 525 tests, 169 in `test` and 356 in `bdd`, disjoint, none lost.
+
+It is a recipe of `vv`, and not a test, so that it is one gate with one line in
+the log that runs once, in the normative order after both phases, and is not
+repeated by the host matrix's whole-workspace run on the other hosts.
+`conformance_rp_13` checks everything else about it: the recipe lines, that the
+inventory follows both phases in `vv`, that this file and SPEC.md name the
+commands that run, and the comparison itself on synthetic lists (a partition is
+accepted; a test run twice, a test lost, and a misplaced target are refused).
+The honesty workflow runs `cargo test -p repo-conformance --test bdd`, the
+meta-gate target alone, because it installs no Lean; that is a different job,
+not a second run inside `vv`.
+
+### The verifier's process width
+
+`PROCESS_WIDTH = 1` is gone. The number of `lean`, `leanchecker`, and audit
+processes that run at once is the *verification process width*, an operational
+resource profile (SPEC.md §22.11): read from `LEXLEAN_VERIFY_WIDTH` (unset or
+empty: 1; a decimal integer from 1 to 64; anything else is `LLV7017` before any
+work, `invalid-verify-width`), recorded nowhere, and part of no identity. It is
+not a field of `lexlean.toml`, the lock, a request, or the command line
+(`VerifyRequest` still has exactly its one field, `conformance_cl_15`). The
+normative job sets nothing, so it runs at width 1; a width above 1 is for a host
+whose memory is known, and is exercised in this repository only by the
+conformance cases, on small projects. No width above 1 has been run on UOR Atlas
+and none is claimed.
+
+`verify::pool::run_ordered` runs the independent processes of a stage, at most
+`width` at a time, and hands each result to the caller one at a time in item
+order, whatever order the processes finish in. The stages and their independence
+are the verifier's own, unchanged:
+
+- elaboration proceeds by topological frontier; a module starts only after
+  everything it imports has produced its `.olean`; the frontier is the barrier;
+- replay starts after every elaboration, audit after every replay, so replay and
+  audit do not overlap each other or elaboration; within each, the processes read
+  staged `.olean` files and write none (replay) or write only their own record
+  (audit member);
+- results, records, staged files, the merge of observed axioms, the policy rows
+  and the attestation body are produced in the canonical order, so none of them
+  can depend on completion order; the failure reported is the first in that
+  order, and no item later than a known failure is started (items are claimed in
+  order, so a later failure position can never reopen a stage; the
+  `stop_after` minimum is therefore not distinguishable from a plain store by
+  any test, and `a_later_failure_does_not_reopen_the_stage` fixes the behaviour);
+- width 1 is the previous behaviour literally: the stage runs on the calling
+  thread and a process starts only after the result of the one before has been
+  consumed, so a failure only the consumer sees (a missing `.olean`) stops the
+  stage before another process starts (`width_one_alternates_job_and_consume`).
+
+`conformance_vr_21` verifies the committed `peano-arithmetic` project (`Addition`
+is imported by `Divisibility`, `Doubling`, and `Order`, which `Main` imports:
+frontiers of one, three, and one modules) at width 1 and at width 3 and requires
+the two published directories to be byte-identical, with equal attestation IDs,
+observed axiom sets and policy rows, and process records in order. It reads the
+telemetry of both runs for what the bytes cannot show: at width 1 no two child
+processes overlap; at width 3 the three members of the middle frontier overlap by
+more than 50 ms (a width that is applied does this with half-second processes
+started microseconds apart; up to three attempts are made, each also compared
+byte for byte with width 1, so that a host stalled for a moment is not a failure
+and a width that is not applied, which never overlaps, is), the `Addition`
+frontier ends before the three start and they end before `Main` starts, and the
+elaboration, replay, and audit stages do not overlap one another (all within 5 ms
+of clock rounding). It then verifies the committed `production` example (two
+modules, six production roots) at width 1 and at width 2, the two runs together,
+and requires the whole published tree, the attestation, the canonical compiler
+input, the preservation record, the observed axioms and policy rows, and the
+process records to be equal, and the compiler input to be the committed
+`expected/verify` one; that jobs which finish in reverse order are consumed in
+item order; and that a tampered published directory is refused at width 3 (the
+reuse rule). The production pair costs two production verifications (about
+2 minutes each, run side by side); it is what shows that no pooled stage reaches
+extraction or the certificates. Alone, `conformance_vr_21` takes 176 s on the
+reference container.
+
+### Telemetry
+
+With `LEXLEAN_CI_TELEMETRY=<dir>` the verifier appends JSON lines to
+`<dir>/verify-telemetry.jsonl`: `verify_begin` (width, processors, memory),
+`stage` (wall time, host memory and swap, the verifier's own peak resident set),
+`frontier` (index, members, wall time), `process` (each Lean, `leanchecker`, and
+audit process: stage, module or audit member, wall time, exit code, and, from
+`/proc`, the peak resident set and swap of the process and what it started),
+`completion` (the order in which the processes of a stage finished: the one place
+completion order exists), and `verify_end`. `cargo xtask verify-examples` adds
+`examples-telemetry.jsonl` (wall time per example, and of its `fmt`, `lock`,
+`check`, `build`, and `verify` steps: the verifier's own clock starts after the
+project has been read, linked, and rendered, which each of `check`, `build`, and
+`verify` does again, so that time is the step less the verification it contains)
+and prints, for each example, the digest of its published verified directory; the
+conformance runner adds `cases-telemetry.jsonl` (wall time per `conformance_<id>`
+case, passed or not).
+
+Stages: `certificate-generation`, `toolchain-preflight`, `workspace-preflight`,
+`staging`, `probe`, `elaboration`, `replay`, `audit`, `policy`, `extraction`,
+`certificates`, `pdf`, `attestation`, `scratch-cleanup`, `olean-hash`,
+`executable-hash`, `attestation-body`, `publication`.
+
+Telemetry is write-only and noncanonical. Every measurement key is in a closed
+vocabulary (`wall_ms`, `started_unix_ms`, `peak_rss_kib`, `peak_swap_kib`,
+`mem_total_kib`, `mem_available_kib`, `swap_total_kib`, `swap_used_kib`,
+`host_cpus`, `process_width`, `completion_seq`) that SPEC.md §22.12 states and
+`conformance_vr_22` compares with the code. A JSON key of that vocabulary in any
+file of a verified directory, or a file named as telemetry, fails `cargo xtask
+verify-examples` for every example and `conformance_vr_22`
+(`repo_conformance::evidence::telemetry_in`). A verification with telemetry on
+publishes the bytes one with it off does, and a telemetry directory that cannot
+be written changes no result.
+
+`ci.yml` runs `just --timestamp --timestamp-format '%s%.3f' vv`, which stamps
+each recipe's first command (that is how a recipe is timed without changing it),
+samples the host every five seconds into `resources.tsv` (free memory, swap in
+use, the largest resident set), points `LEXLEAN_CI_TELEMETRY` at `ci-evidence/`,
+and, after the gate, runs `cargo xtask ci-summary`, which writes
+`ci-evidence/summary.md` (also appended to the job summary): the wall time of
+each `vv` recipe with the lowest free memory, highest swap, and largest process
+while it ran; the time of each verification stage; the fifteen slowest verifier
+processes with their peak resident set and swap; the time of each example and its
+steps; the fifteen slowest conformance cases; the stages of each project; and for
+the longest single verification (which on the runner is `uor-atlas`) its stages
+with the lowest free memory, highest swap and the verifier's own peak, its slowest
+and largest processes by module, the processes that swapped, and its slowest
+frontiers. The per-module rows of every verification are in
+`verify-telemetry.jsonl` itself.
+`ci-evidence/` is uploaded with the gate log.
+
+### Waste found and removed
+
+Found by reading the job and by the telemetry above; measured on the reference
+container (4 vCPU, 15 GB), which is not the runner.
+
+- **Every verification hashed the running executable.** The attestation records
+  the SHA-256 of the running `lexlean`, and `verify` read and hashed it every
+  time: 4.7 seconds in the debug builds that the test suite and `cargo xtask
+  verify-examples` use. The new `executable-hash` stage showed it: a five-module
+  project verified in 11.5 s, 4.7 s of it in that stage. The digest is now computed
+  once per process, and `sha2` is compiled at `opt-level = 3` in the dev profile
+  (`[profile.dev.package.sha2]`); the stage takes 0.3 s and the same project
+  verifies in 7.4 s. The conformance suite verifies hundreds of projects in one
+  process, and `verify-examples` sixteen. No value `sha2` computes changes.
+- **Debug information that no gate reads.** `[profile.dev] debug =
+  "line-tables-only"` (the test profile inherits it): backtraces keep file and
+  line. Cold build of `cargo test --workspace --all-features --no-run`, 86 s
+  against 61 s; the target directory 2.7 GB against 1.3 GB; the conformance test
+  binary 279 MB against 136 MB. The runner's disk also holds the proof evidence.
+- **Looked at and left**: `features` (`cargo check --all-targets`) re-checks what
+  `lint` (clippy) checked, 26 s cold, but is a recipe SPEC.md §9.2 names; the
+  feature unification of `-p repo-conformance` against `--workspace` recompiles
+  nothing (the inventory runs the three commands back to back without a build);
+  `rustup toolchain install`, `just`, `cargo-deny`, and elan are each installed
+  once per job; the shipped preservation environment (the calculus modules and the
+  library, about 100 s of the pinned Lean) is compiled by every verification of a
+  project with a production root, five of the examples, and is not shared between
+  them: sharing it would be a proof result standing in for work the current clean
+  checkout owes, which the acceptance rule forbids (the conformance harness shares
+  it between test workspaces, as #49 describes, and each workspace still replays
+  what it imports). No swap or memory setting of the job was changed: the 4 GB
+  overflow file at `vm.swappiness=10` exists for Atlas's 14.4 GB peak at width 1
+  on a 16 GB runner, and nothing measured here can show a smaller one is safe.
+
+### Numbers
+
+Local, on the reference container (4 vCPU, 15 GB, shared with other jobs, so the
+long figures move by several percent between runs), recipes run in the order of
+`vv` on the tree of this change merged with #69:
+
+| Recipe | Took |
+| --- | --- |
+| `model` | 33 s (warm build) |
+| `spec-links` | under 1 s |
+| `test` | 387 s |
+| `features` | 25 s (warm build) |
+| `bdd` | 3541 s (330 conformance tests, the library tests, the meta-gate) |
+| `inventory` | 7 s: 525 tests, 169 in `test`, 356 in `bdd` |
+| `examples` without `uor-atlas` | 1218 s: the eight small ones 2 to 8 s each, `peano-arithmetic` 7 s, `semantic-1.1` 13 s, `production` 132 s, `models` 178 s, `reasoning` 234 s, `production-coverage` 281 s, `compiler` 342 s (12 s of it each in `check` and in `build`, which read, link and render the project) |
+| `golden` | 61 s |
+| `repro` | 162 s |
+| `deny` | 1 s |
+
+(`conformance_vr_21` now takes 176 s by itself: the peano pair at widths 1 and 3,
+and the production pair at widths 1 and 2 run together. The longest cases of the
+suite, from `cases-telemetry.jsonl`: `EX-07` 1383 s, `DF-12` 1083 s, `SP-02` 1027 s,
+`GN-02` 943 s, `GC-02` 891 s; 333 cases, 13815 s summed over the four test
+threads.)
+
+`uor-atlas` was not run: its sources, lock, goldens, and width are those of
+`3f9ce42`, and it takes four hours here. Every other example's normalized
+records equalled its committed `expected/verify`, and the scan for telemetry in
+the verified directory passed for each.
+
+With `LEXLEAN_CI_TELEMETRY` set, the `bdd` and `examples` runs recorded their own
+verifications: 142 in all (76 reached an attestation; the others are the negative
+cases), 5716 s of verifier wall time summed over the test threads, of which the
+`certificates` stage is 3550 s (the shipped preservation environment, about
+100 s per verification of a project with a production root), `elaboration` 1464 s,
+`replay` 350 s, `audit` 112 s, `extraction` 89 s, and `executable-hash` 0.43 s in
+all, where 76 attestations at 4.6 s each would have been about 350 s. Paired runs
+in one session, same machine: a five-module project, 11.5 s before and 7.4 s
+after; the smallest production-rooted project (one root), 124.8 s before and
+114.2 s after (114.0 s with telemetry on: the sampling costs nothing
+measurable). The first complete telemetry of the recipes and of `uor-atlas` is the
+first CI run's.
+
+All of them are local: this change was written on the reference container, not
+on the runner, and no runner measurement is claimed. The first complete run of
+`ci.yml` produces the runner's numbers in its `ci-evidence/` (`summary.md`,
+`vv.txt`, `resources.tsv`, `verify-telemetry.jsonl`, `examples-telemetry.jsonl`,
+`cases-telemetry.jsonl`); the before figures for comparison are those of the last
+green runs on main (3 h 25 min on `3f9ce42`, of which `uor-atlas` is 182.5 minutes
+and is untouched by this change: same sources, same width; the later runs on
+main were reported at 4 h 18 min and 5 h 02 min, and the first run of this branch
+says where the time goes). The
+projection is the `vv` of `9d32a95` less the hashing, less the build and link
+time of the debug builds, plus the inventory's seven seconds and about three
+minutes of CPU for the production pair of `conformance_vr_21`; the runner's run
+decides, and a timing is never evidence of a semantic claim.
+
+### inventory can fail
+
+Each record of this and the next two headings is a defect planted, the command
+run, and the failure observed (verbatim, paths shortened), after which the defect
+was removed.
+
+- **inventory.** `test` restored to `cargo test --workspace --all-features` (the
+  conformance suite runs in both phases):
+  `gate failed: RP-13: 353 test(s) run in both phases, e.g. `a_hidden_conformance_test_is_flagged` of tests/bdd.rs [bdd]`
+  (`cargo xtask check-test-inventory`). `bdd` restored to `--test bdd` (what #49 left):
+  `gate failed: RP-13: 348 test(s) of the workspace run in neither phase, e.g. `conformance_ar_01` of tests/conformance.rs [conformance]`.
+  `bdd` as `--all-features --test conformance`:
+  `gate failed: RP-13: 32 test(s) of the workspace run in neither phase, e.g. `a_hidden_conformance_test_is_flagged` of tests/bdd.rs [bdd]`.
+- **the recipes.** `bdd` restored to `cargo test -p repo-conformance --test bdd`,
+  `cargo test -p repo-conformance --test conformance -- conformance_rp_05 conformance_rp_13`:
+
+  ```text
+  thread 'conformance_rp_05' panicked at crates/conformance/src/cases/repository.rs:329:17:
+  assertion `left == right` failed: §9.2: `bdd` runs exactly the specified command
+    left: ["cargo test -p repo-conformance --test bdd"]
+   right: ["cargo test -p repo-conformance --all-features"]
+  ```
+
+  `test` restored to the whole workspace: `conformance_rp_05` reports `§9.2: `test`
+  runs exactly the specified command` and `conformance_rp_13` the same pair; `inventory`
+  dropped from `vv`: `§9.2: `just vv` runs the twelve gates in the normative order`.
+### width-invariance can fail
+
+- **completion order.** In `verify::pool::run_ordered` every result consumed as it
+  arrives instead of in item order. `cargo test -p repo-conformance --test
+  conformance -- conformance_vr_21`:
+
+  ```text
+  thread 'conformance_vr_21' panicked at crates/conformance/src/cases/operational.rs:312:5:
+  assertion `left == right` failed: and are consumed in item order
+    left: [3, 2, 1, 0]
+   right: [0, 1, 2, 3]
+  ```
+
+  (`cargo test -p lexlean --lib verify::pool` fails two of its tests the same way.)
+  End to end, with that defect built into `lexlean`, the committed peano project at
+  `LEXLEAN_VERIFY_WIDTH=3` published attestation `09b0d13a…`, then `3a92ebff…`, then
+  `2bf41a33…` on three runs, against `cadc86cb…` at width 1: the order of the three
+  members of the middle frontier decided the bytes.
+- **the import barrier.** Every module placed in the first frontier:
+  `conformance_vr_21` fails at `Lean rejected `PeanoArithmetic.Main` (error):
+  object file '$STAGING/oleans/PeanoArithmetic/Order.olean' of module
+  PeanoArithmetic.Order does not exist` (`LLV7002`).
+- **the width in an identity.** `("verifier_width", width)` added to the
+  attestation body: `conformance_vr_20` and `conformance_vr_21` fail on the
+  attestation ID of the same project at width 2 (and 3) against the default.
+- **reuse.** The comparison with a published directory made to succeed whatever
+  it finds: `conformance_vr_21` fails at `a tampered published directory is not
+  reused`.
+- **a width that is not applied.** `let width = operational.width().min(1);` in
+  `verify::run` (the verifier ignores `LEXLEAN_VERIFY_WIDTH`; before the
+  overlap assertions this passed every case, since two runs at width 1 are equal):
+  `conformance_vr_21`:
+
+  ```text
+  thread 'conformance_vr_21' panicked at crates/conformance/src/cases/operational.rs:500:5:
+  three attempts at width 3 never overlapped two members of a three-wide frontier: the width is not applied
+  ```
+
+### telemetry-scan can fail
+
+- **telemetry in an artifact.** `("wall_ms", 1)` added to every process record
+  `ChildRecord::to_json` writes: `conformance_vr_22` fails at
+  `assertion failed: crate::evidence::telemetry_in(with.root.as_std_path()).expect("scans").is_empty()`;
+  the same scan runs over every example in `cargo xtask verify-examples`.
+### The CI job and the width variable can fail
+
+- **a skipped pull-request gate.** The summary step given `if: ${{ !cancelled() &&
+  github.event_name != 'pull_request' }}` (which a test accepting any condition
+  containing `!cancelled()` let through): `ci.yml:116: the only condition allowed is a
+  step's `if: ${{ !cancelled() }}``; a job-level `if: ${{ !cancelled() }}`:
+  `ci.yml:49: the only condition allowed is ...`; the gate step given
+  `if: ${{ !cancelled() }}`: `the summary step and the evidence upload carry it`
+  (left: 3) (all `conformance_rp_14`).
+- **a width that is not Unicode.** `from_environment` reading the variable with
+  `std::env::var(..).ok()` (a non-Unicode value then selects the default width, silently):
+  `verify::operational::tests::the_environment_is_read_as_bytes` fails with
+  `not Unicode: Operational { width: 1, telemetry: None }`.
+- **the CI job.** `paths-ignore: ['**.md']` under `pull_request:`:
+  `ci.yml has no `paths-ignore:``; the runner replaced by `${{ vars.BIG_RUNNER ||
+  'ubuntu-24.04' }}`: `the normative job runs on the standard runner`; the gate step
+  given `if: github.event_name != 'pull_request'`:
+  `ci.yml:82: a condition other than !cancelled() on a step:         if: github.event_name != 'pull_request'`
+  (all `conformance_rp_14`).
+- **a malformed width.** `invalid-verify-width` (`LEXLEAN_VERIFY_WIDTH=0`) is a
+  negative fixture of §28.5: `verify` exits 3 with `LLV7017` before the build is
+  published, on every host.

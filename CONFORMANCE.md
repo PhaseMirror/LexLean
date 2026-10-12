@@ -375,6 +375,8 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `RP-10` | `build` | The embedded compiler-semantics ID equals a clean recomputation from normative language and schema inputs. |
 | `RP-11` | `build` | Every public README capability claim is tied to a registered model ID and honesty level. |
 | `RP-12` | `build` | A release is refused unless the complete release criterion and all required artifacts are satisfied. |
+| `RP-13` | `build` | The ordinary workspace test phase excludes repo-conformance, the bdd phase alone runs its complete suite, and a test inventory proves that the two phases together equal the whole workspace test set with no test lost and none run twice. |
+| `RP-14` | `build` | The normative CI job runs just vv on the standard ubuntu-24.04 runner at the default verifier width 1 from a clean checkout, with no cache, path filter, or skipped recipe, and uploads its CI evidence. |
 
 ## rust-backend
 
@@ -463,6 +465,9 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `VR-17` | `build` | Lean workspace configuration and manifest hashes must match the lock and all dependencies must be locally available. |
 | `VR-18` | `build` | Check and build results never claim verified or kernel-checked status. |
 | `VR-19` | `build` | The native Atlas source graph is self-contained: every generated Atlas module publicly depends only on Init and the generated graph, its only backend-support import is Lean, and no independently authored Atlas implementation exists. |
+| `VR-20` | `build` | The verifier process width is an operational resource profile selected only by the environment, defaulting to 1 and refusing any malformed value with LLV7017, and it enters no lock, identity, or verified artifact. |
+| `VR-21` | `build` | A multi-module project whose imports form nontrivial frontiers verifies at width 1 and at a larger width to byte-identical verified directories and the same attestation identity, observed axiom sets, and policy rows, and no completion order orders a record or changes which failure is reported. |
+| `VR-22` | `build` | Performance telemetry is written only to the CI evidence directory the environment names, a verification with telemetry on publishes byte-identical artifacts to one without, and telemetry planted in a verified artifact fails the gate. |
 
 ## Cited authorities
 

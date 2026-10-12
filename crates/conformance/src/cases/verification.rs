@@ -1,4 +1,4 @@
-//! The `verification` suite: VR-01..VR-19.
+//! The `verification` suite: VR-01..VR-22.
 
 use lexlean::{Selection, VerifyRequest};
 
@@ -36,6 +36,11 @@ const LEAN_BACKED: [&str; 14] = [
 ];
 
 pub(crate) fn run(id: &str) {
+    // The operational cases (§22.11, §22.12) gate their own Lean-backed halves.
+    if matches!(id, "VR-20" | "VR-21" | "VR-22") {
+        super::operational::run(id);
+        return;
+    }
     if LEAN_BACKED.contains(&id) && !support::lean_backed(id) {
         run_platform_independent(id);
         return;

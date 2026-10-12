@@ -7,6 +7,11 @@
 # out so a claim that has drifted from its evidence reads differently from
 # broken code.
 #
+# The gate runs on the standard GitHub-hosted runner at the verifier's default
+# width of 1 (SPEC.md §9.4, §22.11); no larger runner and no wider width is part
+# of it. What the run cost, by recipe, stage, and module, is written to
+# `ci-evidence/` (§22.12) and uploaded with the log.
+#
 # Every version this file needs is read from the file that pins it —
 # `rust-toolchain.toml` through `rustup toolchain install`, `lean-toolchain`
 # through `elan toolchain install` — so the workflow cannot drift from the
@@ -47,6 +52,10 @@ jobs:
     # hours; a shorter local-style timeout would turn complete proof coverage
     # into a CI failure mode.
     timeout-minutes: 360
+    env:
+      # Operational only (SPEC.md §22.12): no artifact records it, and the
+      # telemetry directory is CI evidence, uploaded below.
+      LEXLEAN_CI_TELEMETRY: ${{ github.workspace }}/ci-evidence
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install the pinned Rust toolchain
@@ -82,10 +91,30 @@ jobs:
               sleep 60
             done
           }
+          # One row every five seconds: time, free memory, swap in use, and the
+          # largest resident set, so that the memory of each recipe is read
+          # from the run itself (`cargo xtask ci-summary`).
+          sample_resources() {
+            set +e
+            while true; do
+              avail=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+              swap=$(awk '/^SwapTotal:/ {t=$2} /^SwapFree:/ {f=$2} END {print t-f}' /proc/meminfo)
+              top=$( (ps -eo rss= --sort=-rss || true) | awk 'NR==1 {print $1}')
+              printf '%s\t%s\t%s\t%s\n' "$(date +%s.%N | cut -c1-14)" "$avail" "$swap" "${top:-0}"
+              sleep 5
+            done
+          }
           monitor_resources > >(tee ci-evidence/resources.txt) &
           monitor_pid=$!
-          trap 'kill "$monitor_pid" 2>/dev/null || true; wait "$monitor_pid" 2>/dev/null || true' EXIT
-          just vv 2>&1 | tee ci-evidence/vv.txt
+          sample_resources > ci-evidence/resources.tsv &
+          sample_pid=$!
+          trap 'kill "$monitor_pid" "$sample_pid" 2>/dev/null || true; wait "$monitor_pid" "$sample_pid" 2>/dev/null || true' EXIT
+          just --timestamp --timestamp-format '%s%.3f' vv 2>&1 | tee ci-evidence/vv.txt
+      # What the run cost, by recipe, stage, and module (SPEC.md §9.4). Evidence
+      # only: it is read by people and by later measurements, never by a recipe.
+      - name: Summarize the run's timing and memory
+        if: ${{ !cancelled() }}
+        run: cargo xtask ci-summary --evidence ci-evidence
       # The example gate discovers Atlas rather than receiving an allow-list.
       # These assertions make its complete proof run visible as first-class CI
       # evidence without running the expensive verifier a second time.

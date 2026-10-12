@@ -35,8 +35,8 @@ Feature: repository
   Scenario: The just vv recipe runs every normative acceptance gate in the specified order.
     Given the committed Justfile
     When the vv recipe line is read
-    Then it reads `vv: fmt-check model spec-links lint test features bdd examples golden repro deny`
-    And the Justfile also defines the model-write and golden-write recipes plus each of the eleven gates
+    Then it reads `vv: fmt-check model spec-links lint test features bdd inventory examples golden repro deny`
+    And the Justfile also defines the model-write and golden-write recipes plus each of the twelve gates
 
   @RP-06 @build
   Scenario: CONFORMANCE.md and ERRORS.md are exact generated views of model files.
@@ -86,3 +86,18 @@ Feature: repository
     Then release is refused and one refusal reason names source-tag
     And the criteria include source-tag, checksums, host-binaries, crate-package, semantics-id, conformance-doc, errors-doc, spec, licenses, sbom, and ci-evidence
     And the Justfile release recipe depends on vv and runs `cargo xtask release-check`
+
+  @RP-13 @build
+  Scenario: The ordinary workspace test phase excludes repo-conformance, the bdd phase alone runs its complete suite, and a test inventory proves that the two phases together equal the whole workspace test set with no test lost and none run twice.
+    Given the Justfile test and bdd recipes and the test list of cargo test --workspace --all-features
+    When the test lists of the test recipe and of the bdd recipe are taken
+    Then the two lists are disjoint and their union equals the workspace list
+    And no test of repo-conformance is in the test recipe's list and every conformance_<id> test is in the bdd recipe's list exactly once
+    And a test recipe that includes repo-conformance, or a bdd recipe that runs fewer targets, fails the inventory
+
+  @RP-14 @build
+  Scenario: The normative CI job runs just vv on the standard ubuntu-24.04 runner at the default verifier width 1 from a clean checkout, with no cache, path filter, or skipped recipe, and uploads its CI evidence.
+    Given .github/workflows/ci.yml
+    When the runner, the environment, and the job steps are read
+    Then the job runs on ubuntu-24.04 with the verifier width left at its default and the 360-minute limit
+    And the vv job has no path filter, no cache action, no condition on a recipe, runs just vv once, and uploads ci-evidence

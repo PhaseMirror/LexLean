@@ -1,4 +1,4 @@
-//! The `repository` suite: RP-01..RP-12.
+//! The `repository` suite: RP-01..RP-14.
 
 use std::collections::BTreeSet;
 
@@ -292,10 +292,10 @@ pub(crate) fn run(id: &str) {
             let vv = recipes.get("vv").expect("§9.2: the Justfile defines vv");
             assert_eq!(
                 vv.0,
-                "fmt-check model spec-links lint test features bdd examples golden repro deny",
-                "§9.2: `just vv` runs the eleven gates in the normative order"
+                "fmt-check model spec-links lint test features bdd inventory examples golden repro deny",
+                "§9.2: `just vv` runs the twelve gates in the normative order"
             );
-            let specified: [(&str, &str); 11] = [
+            let specified: [(&str, &str); 12] = [
                 ("fmt-check", "cargo fmt --all -- --check"),
                 ("model", "cargo xtask validate-model"),
                 ("spec-links", "cargo xtask validate-spec-links"),
@@ -303,12 +303,16 @@ pub(crate) fn run(id: &str) {
                     "lint",
                     "cargo clippy --workspace --all-targets --all-features -- -D warnings",
                 ),
-                ("test", "cargo test --workspace --all-features"),
+                (
+                    "test",
+                    "cargo test --workspace --exclude repo-conformance --all-features",
+                ),
                 (
                     "features",
                     "cargo check --workspace --all-features --all-targets",
                 ),
-                ("bdd", "cargo test -p repo-conformance --test bdd"),
+                ("bdd", "cargo test -p repo-conformance --all-features"),
+                ("inventory", "cargo xtask check-test-inventory"),
                 ("examples", "cargo xtask verify-examples"),
                 ("golden", "cargo xtask check-golden"),
                 ("repro", "cargo xtask check-reproducibility"),
@@ -407,7 +411,7 @@ pub(crate) fn run(id: &str) {
             let model = repo_model::Model::load(&root.join("model").into_std_path_buf())
                 .expect("the model loads");
             let table = spec_table();
-            assert_eq!(table.len(), 325, "§31 has 325 rows");
+            assert_eq!(table.len(), 330, "§31 has 330 rows");
             assert_eq!(model.ids.id.len(), table.len(), "register row count");
             for ((spec_id, spec_suite, spec_statement), row) in
                 table.iter().zip(model.ids.id.iter())
@@ -866,6 +870,204 @@ pub(crate) fn run(id: &str) {
                 packaged, in_repo,
                 "the packaged crate reports the same version, language, semantics ID, and toolchain"
             );
+        }
+        // §9.2: the ordinary test phase excludes repo-conformance, `bdd` alone
+        // owns its complete suite, and the inventory proves the partition. The
+        // inventory itself lists tests with `cargo test -- --list`; it is a
+        // recipe of `vv`, one line of the log that runs once after both
+        // phases, and this case holds the rest: the recipe lines, the
+        // comparison it applies, and that the documents say what runs.
+        "RP-13" => {
+            let justfile = root_file("Justfile");
+            let recipes = just_recipes(&justfile);
+            let command = |name: &str| -> String {
+                let (_, lines) = recipes
+                    .get(name)
+                    .unwrap_or_else(|| panic!("the Justfile defines `{name}`"));
+                assert_eq!(lines.len(), 1, "`{name}` is one command");
+                lines[0].clone()
+            };
+            let (test, bdd, inventory) = (command("test"), command("bdd"), command("inventory"));
+            assert_eq!(
+                test,
+                "cargo test --workspace --exclude repo-conformance --all-features"
+            );
+            assert_eq!(bdd, "cargo test -p repo-conformance --all-features");
+            assert_eq!(inventory, "cargo xtask check-test-inventory");
+            let test_arguments =
+                crate::inventory::recipe_arguments(&test).expect("test is cargo test");
+            let bdd_arguments =
+                crate::inventory::recipe_arguments(&bdd).expect("bdd is cargo test");
+            assert!(
+                test_arguments
+                    .windows(2)
+                    .any(|pair| pair == ["--exclude", "repo-conformance"]),
+                "the ordinary phase excludes repo-conformance"
+            );
+            assert!(
+                !bdd_arguments.iter().any(|argument| matches!(
+                    argument.as_str(),
+                    "--test" | "--lib" | "--doc" | "--bins" | "--bin" | "--exclude" | "--skip"
+                )),
+                "`bdd` selects no target of the crate it owns: {bdd_arguments:?}"
+            );
+            let vv = recipes
+                .get("vv")
+                .expect("vv")
+                .0
+                .split_whitespace()
+                .collect::<Vec<_>>();
+            let position = |name: &str| {
+                vv.iter()
+                    .position(|recipe| *recipe == name)
+                    .unwrap_or_else(|| panic!("vv runs `{name}`"))
+            };
+            assert!(
+                position("test") < position("bdd") && position("bdd") < position("inventory"),
+                "the inventory follows both phases"
+            );
+            assert_eq!(
+                vv.iter().filter(|recipe| **recipe == "inventory").count(),
+                1
+            );
+
+            // The comparison refuses a test run twice, a test lost, and a
+            // target of the owned crate in the ordinary phase.
+            let list = |targets: &[(&str, &str, &[&str])]| -> crate::inventory::Parsed {
+                let mut text = String::new();
+                for (description, binary, tests) in targets {
+                    text.push_str(&format!(
+                        "     Running {description} (target/debug/deps/{binary})\n"
+                    ));
+                    for name in *tests {
+                        text.push_str(&format!("{name}: test\n"));
+                    }
+                }
+                crate::inventory::parse(&text).expect("parses")
+            };
+            let crates: BTreeSet<String> = ["repo_conformance", "bdd", "conformance"]
+                .into_iter()
+                .map(str::to_owned)
+                .collect();
+            let unit = (
+                "unittests src/lib.rs",
+                "lexlean-0123456789abcdef",
+                &["a", "b"][..],
+            );
+            let conformance = (
+                "tests/conformance.rs",
+                "conformance-0123456789abcdef",
+                &["conformance_rp_01", "conformance_rp_02"][..],
+            );
+            let bdd_target = ("tests/bdd.rs", "bdd-0123456789abcdef", &["meta"][..]);
+            let whole = list(&[unit, conformance, bdd_target]);
+            let ordinary = list(&[unit]);
+            let owned = list(&[conformance, bdd_target]);
+            crate::inventory::compare(&whole, &ordinary, &owned, &crates)
+                .expect("a partition is accepted");
+            let twice =
+                crate::inventory::compare(&whole, &list(&[unit, conformance]), &owned, &crates)
+                    .expect_err("a test run in both phases");
+            assert!(twice.contains("both phases"), "{twice}");
+            let lost = crate::inventory::compare(&whole, &ordinary, &list(&[bdd_target]), &crates)
+                .expect_err("tests lost");
+            assert!(lost.contains("neither phase"), "{lost}");
+
+            // The documents say what runs.
+            let xtask = root_file("xtask/src/main.rs");
+            assert!(xtask.contains("\"check-test-inventory\" =>"));
+            let spec = root_file("SPEC.md");
+            let verification = root_file("VERIFICATION.md");
+            for recipe_command in [&test, &bdd, &inventory] {
+                assert!(
+                    verification.contains(&format!("`{recipe_command}`")),
+                    "VERIFICATION.md names the command `{recipe_command}`"
+                );
+                assert!(
+                    spec.contains(recipe_command.as_str()),
+                    "SPEC.md names `{recipe_command}`"
+                );
+            }
+            // The honesty workflow keeps its own signal, and the host matrix
+            // (not part of vv) keeps the whole workspace on every host.
+            assert!(root_file(".github/workflows/honesty.yml")
+                .contains("cargo test --locked -p repo-conformance --test bdd"));
+            assert!(root_file(".github/workflows/ci.yml")
+                .contains("cargo test --locked --workspace --all-features"));
+        }
+        // §9.4: the normative job runs on the standard runner at the default
+        // width and keeps no cache, filter, or skipped recipe.
+        "RP-14" => {
+            let ci = root_file(".github/workflows/ci.yml");
+            assert!(
+                ci.contains("    runs-on: ubuntu-24.04\n    # Native Atlas"),
+                "the normative job runs on the standard runner"
+            );
+            for variable in ["LEXLEAN_VERIFY_WIDTH", "vars.", "inputs."] {
+                assert!(
+                    !ci.contains(variable),
+                    "the gate selects no runner and no width: `{variable}`"
+                );
+            }
+            assert!(ci.contains("timeout-minutes: 360"));
+            assert_eq!(
+                ci.matches(" vv 2>&1 | tee ci-evidence/vv.txt").count(),
+                1,
+                "the gate runs once"
+            );
+            for forbidden in [
+                "actions/cache",
+                "paths:",
+                "paths-ignore:",
+                "restore-keys",
+                "continue-on-error",
+                "if: github.event.pull_request",
+            ] {
+                assert!(!ci.contains(forbidden), "ci.yml has no `{forbidden}`");
+            }
+            // A condition appears only on the two evidence steps, in exactly
+            // one form, as a step's own key: not on the job (a skipped job is a
+            // skipped gate), not on the gate step, and never one that is
+            // narrower than "unless the run was cancelled" (a gate that is
+            // skipped on pull requests is the weaker PR-only gate).
+            let mut conditions = 0;
+            for (index, line) in ci.lines().enumerate() {
+                if line.trim_start().starts_with("if:") {
+                    conditions += 1;
+                    assert_eq!(
+                        line, "        if: ${{ !cancelled() }}",
+                        "ci.yml:{}: the only condition allowed is a step's `if: ${{{{ !cancelled() }}}}`",
+                        index + 1
+                    );
+                }
+            }
+            assert_eq!(
+                conditions, 2,
+                "the summary step and the evidence upload carry it"
+            );
+            let gate_step = &ci[ci
+                .find("      - name: Run the normative acceptance gate")
+                .expect("the gate step")..];
+            let gate_step =
+                &gate_step[..gate_step[1..].find("\n      - ").expect("a step follows") + 1];
+            assert!(!gate_step.contains("if:") && gate_step.contains("just --timestamp"));
+            assert!(
+                ci.contains("name: acceptance-gate-evidence") && ci.contains("path: ci-evidence")
+            );
+            assert!(ci.contains("LEXLEAN_CI_TELEMETRY: ${{ github.workspace }}/ci-evidence"));
+            assert!(ci.contains("cargo xtask ci-summary --evidence ci-evidence"));
+            // The supported-host matrix keeps its four other legs.
+            for host in [
+                "ubuntu-24.04-arm",
+                "macos-15-intel",
+                "macos-15",
+                "windows-2022",
+            ] {
+                assert!(ci.contains(host), "the host matrix keeps {host}");
+            }
+            // The honesty and reproducibility workflows stay separate.
+            assert!(root_file(".github/workflows/honesty.yml").contains("just model spec-links"));
+            assert!(root_file(".github/workflows/reproducibility.yml").contains("run: just repro"));
         }
         other => panic!("no repository case is wired for {other}"),
     }
