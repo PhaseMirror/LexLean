@@ -5636,8 +5636,8 @@ after; the smallest production-rooted project (one root), 124.8 s before and
 measurable). The first complete telemetry of the recipes and of `uor-atlas` is the
 first CI run's.
 
-All of them are local: this change was written on the reference container, not
-on the runner, and no runner measurement is claimed. The first complete run of
+All of the figures above are local: this change was written on the reference
+container, not on the runner. The runner's own are in the next subsection. The first complete run of
 `ci.yml` produces the runner's numbers in its `ci-evidence/` (`summary.md`,
 `vv.txt`, `resources.tsv`, `verify-telemetry.jsonl`, `examples-telemetry.jsonl`,
 `cases-telemetry.jsonl`); the before figures for comparison are those of the last
@@ -5649,6 +5649,59 @@ projection is the `vv` of `9d32a95` less the hashing, less the build and link
 time of the debug builds, plus the inventory's seven seconds and about three
 minutes of CPU for the production pair of `conformance_vr_21`; the runner's run
 decides, and a timing is never evidence of a semantic claim.
+
+### Runner numbers (first full run, PR #72)
+
+These come from the first complete run of `ci.yml` on the standard runner, the
+run the paragraph above waited for: CI run 38201023383, job 114654244617
+(`just vv`), `ubuntu-24.04` (4 vCPU, 16 GB), 2026-10-12, head `19e6d30` of
+PR #72 (main at `9abdd71` and its follow-up). All seven jobs were green. They are
+noncanonical evidence of cost, taken from the job's `ci-evidence/`; they prove
+no semantic claim, and nothing in the repository's identities or gates depends
+on them.
+
+The job took 3 h 16 min (03:45:41 to 07:01:37 UTC); the recipes sum to 11711 s
+(195.2 min).
+
+| Recipe | Took (s) |
+| --- | --- |
+| `fmt-check` | 1 |
+| `model` | 42 |
+| `spec-links` | 0 |
+| `lint` | 23 |
+| `test` | 192 |
+| `features` | 12 |
+| `bdd` | 2357 |
+| `inventory` | 4 |
+| `examples` | 8985 (lowest free memory 37 MiB, highest swap 4774 MiB, largest process 15249 MiB) |
+| `golden` | 32 |
+| `repro` | 63 |
+| `deny` | 1 |
+
+Verification time by project, in seconds (the number of verifications): `uor-atlas`
+8276.8 (1), `production` 1879.0 (23), `compiler` 489.7 (6), `reasoning` 328.0 (4),
+`models` 240.6 (6), `nat-add-zero` 237.0 (51), `production-coverage` 155.4,
+`semantic-fixture` 141.3 (6). Over all verifications the stages took
+`elaboration` 5002.3, `replay` 4338.2, `certificates` 2267.8, `audit` 97.8,
+`staging` 68.2, `extraction` 56.4, `probe` 40.9.
+
+UOR Atlas is 8277 s of the `examples` recipe: `elaboration` 4193.2, `replay`
+4070.5, `audit` 11.0. Its slowest modules: `CensusCert4` elaboration 1154.6 s (peak
+RSS 15338 MiB, swap 2672 MiB) and replay 1121.4 s (15329 MiB, swap 2568 MiB);
+`Census` 845.6 s and 818.3 s; `Group` 172.5 s and 166.2 s; `Scales` 160.4 s and
+151.2 s; `Closure` 144 s and 144 s (about 15 GB resident). The slowest frontiers
+by elaboration: #10 (22 members) 1628.8 s, #15 (16) 1045.6 s, #8 (3) 862.4 s. The
+slowest conformance cases, of 333 and 9196 s summed thread time: `SP-02` 795.9 s,
+`EX-07` 754.0 s, `DF-12` 532.5 s, `GC-02` 500.1 s, `SP-09` 407.3 s, `SP-03`
+405.8 s, `SP-04` 403.0 s, `GN-02` 379.0 s.
+
+The wall time of `vv` varies much more between runs of near-identical code than
+any change of this issue moves it: 3 h 25 min on #49, 4 h 18 min on #50, 5 h
+02 min on #69 (without telemetry), 4 h 16 min on #70, and 3 h 16 min on #72.
+A single before and after is therefore not a meaningful comparison, and none is
+claimed; what the run does show is where the time goes (`uor-atlas`, at 8277 s of
+the 11711 s, with memory at the limit of the runner) and that the recipes other
+than `examples` and `bdd` are a few minutes together.
 
 ### inventory can fail
 

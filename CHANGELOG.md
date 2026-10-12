@@ -94,7 +94,10 @@ versions, and the entries below say what each tag does and does not claim.
   samples the host, and uploads a per-recipe, per-stage, per-module summary
   (RP-14). Every verification no longer hashes the running executable (4.7 s in a
   debug build), and the dev profile keeps line tables only. Register: 330 IDs,
-  70 codes (`LLV7017`).
+  70 codes (`LLV7017`). The runner's numbers from the first full run (CI run 38201023383: `vv`
+  3 h 16 min, `uor-atlas` 8277 s of the 11711 s of recipes) are recorded in
+  VERIFICATION.md, "Runner numbers (first full run, PR #72)", as noncanonical
+  evidence of cost.
 - CI evidence is readable from the job log (#48, SPEC.md §9.4,
   VERIFICATION.md, "Execution of `just vv` (Issue #48)"): `cargo xtask
   ci-summary` prints the summary to the log (also when `just vv` failed),
