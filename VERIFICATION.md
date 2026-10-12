@@ -5141,16 +5141,17 @@ identity, attestation, or certificate is computed from it or names it.
 
 **What was observed** (reference container, 4 vCPUs, the pinned toolchains,
 the oracle fetched by `git` at its pinned commit into an empty cache and built
-by the pinned Lake and Cargo; the same files from the checkout the pin names
-hash to the same digest, c0d76452...a4a93a7, 165 files):
+by the pinned Lake and Cargo, its crates.io dependencies fetched `--locked`
+into a Cargo home of the cache's own; the same files from the checkout the pin
+names hash to the same digest, c0d76452...a4a93a7, 165 files):
 
 | | |
 | --- | --- |
 | roots in the corpus | 102: 6 of `production`, 34 of `production-coverage`, 9 of `models`, 8 of `reasoning`, 38 probes, 7 rejected fixtures |
-| the oracle's answer | generates Rust for 30, refuses 72 (42 escaping local function, 13 opaque lowering, 4 unresolved external call, 3 polymorphic type, 2 unbounded `Int`, 2 `Nat.succ`) |
-| crates that compile and run | 23, on 337 seeded inputs of the RB-06/SP-11 differentials; each prints the interpreter's outcome and LexLean's own rendering's, overflow included, with the same contract (modulo a borrowed list parameter) and no allocation in a `rust-core` root |
-| runtime constructs of the registry | 128; 89 overlap (an accepted, compiled, compared root realizes them) and 39 are rows of `oracle/known-non-overlap.toml` with 14 formal-only or erased constructs, 53 rows in all |
-| known differences | 9 rows in `oracle/known-differences.toml`, each exact on its roots |
+| the oracle's answer | generates Rust for 30, refuses 72: 66 of roots LexLean takes (42 escaping local function, 13 opaque lowering, 4 unresolved external call, 3 polymorphic type, 2 unbounded `Int`, 2 `Nat.succ`) and 6 of roots LexLean rejects (4 opaque lowering, 1 `export-refused`, 1 `codegen-OpaqueType`); `opaque-lowering` is 17 over the corpus. The seventh rejected root is generated (a literal beyond 64 bits) |
+| crates that compile and run | 23, on 1411 inputs: the 337 seeded inputs of the RB-06/SP-11 differentials and 1074 boundary inputs (MIN and -1 of each signed width, every constructor of every parameter type, the program's own literals and their neighbours, delimiters); each prints the interpreter's outcome and LexLean's own rendering's, overflow included, with the same contract (modulo a borrowed list parameter) and no allocation in a `rust-core` root |
+| runtime constructs of the registry | 128; 89 are realized in the closure of a compiled root (and exercised by the seeds as far as they reach: that is not a claim that every path through the construct ran) and 39 are rows of `oracle/known-non-overlap.toml` with 14 formal-only or erased constructs, 53 rows in all |
+| known differences | 12 rows in `oracle/known-differences.toml` (version 2), each exact on its roots; the six rejected-and-refused roots are rows (`both-refuse:<kind>`) so that a refusal for another reason is a disagreement |
 
 **Findings about the oracle** (recorded as known differences, not hidden): it
 renders a pair projection as `.fst` or `.snd` on a Rust tuple, which rustc
@@ -5159,28 +5160,46 @@ it exports a natural literal beyond 64 bits that rustc then rejects, where
 LexLean refuses the root first (`LLT4005`); and its domain, by its own
 documentation, excludes the mathematical integer, monomorphization,
 and escaping local functions, which is why 72 of the 102 roots are refused.
-Nothing found disagrees with LexLean on a program both take.
+Nothing found disagrees with LexLean on a program both take, on the seeded and
+the boundary inputs.
 
 **Cost.** `conformance_or_01`..`08` run in one process with one shared corpus
-run: warm cache, 150 s wall for the group (OR-02..OR-05 wait for the one run,
-113 s; OR-06 builds eight candidate crates, 36 s; OR-01, OR-07, OR-08 take
-0.7 s, 2.5 s, 4.5 s); cold cache (fetch, Lake build 42 s, Cargo build 30 s),
-159 s. CPU time of the group is 6.2 min on the four cores, of which the
-survey is Lean compiling the four examples' modules and the oracle exporting
-each root (107 s wall, four corpora side by side) and the execution is 5 s.
-Added to `just vv`: at most a few minutes of wall time, since the group runs
-beside the longest tests of the suite, and no verification of an example.
+run (and one statement of the eligible roots of each corpus, which the survey
+and the audit of the boundary inputs share). Warm cache: 145 s wall for the
+group, 7.3 CPU-minutes on the four cores (OR-02, OR-03, OR-05 wait for the
+one run, about 100 s; OR-04 plants and builds 21 plants, 21 rewrites that mean
+the same and 2 equivalent mutants in one workspace, 127 s; OR-06 builds nine
+candidate crates, 44 s; OR-01, OR-07, OR-08 take 1.3 s, 5.3 s, 7.4 s). Cold
+cache (a fetch of the pinned commit from GitHub, the Lake build, the Cargo
+fetch and build of the oracle): 234 s wall before the roots were shared, 11.4
+CPU-minutes. Phase one of this issue measured 150 s and 6.2 CPU-minutes warm;
+the boundary inputs add about one CPU-minute, since the interpreter runs each
+of them once (about a second over the corpus; stating the roots is the same
+cost as before) and the generated harnesses have four times the inputs. Added
+to `just vv`: at most a few minutes of wall time, since the group runs beside
+the longest tests of the suite, and no verification of an example.
 
 **Limits.** The overlap is a measurement of the pinned oracle on this corpus:
 a construct the table lists as outside it is outside it for the stated reason
 and the stated probe, and a probe of scope `closure` is a root of a certified
 example whose closure holds the construct among others (artifact-backed
 models, reasoners, the recursive-data helper, `less_than`), so its refusal is
-not attributable to that construct alone. The inputs are the seeded ones of
-the existing differentials; the oracle is not run on inputs it would need a
-different ABI for (a list result by output buffer does not occur in the
-corpus). Recursion depth and the runtime's counted work are not comparable
-and are not compared. The oracle is fetched from the network in CI; if it
+not attributable to that construct alone. A construct counted inside the overlap
+is realized in the closure of a root the oracle generated and rustc compiled;
+whether the inputs reach it is the seeds' reach: derived from the types and the
+literals of the root, audited for constructor coverage, and planted against for
+the arithmetic edges the reviewer found, but a bounded set. The oracle is not
+run on inputs it would need a different ABI for (a list result by output
+buffer does not occur in the corpus). Recursion depth and the runtime's counted
+work are not comparable and are not compared; a candidate rendering's *work* is
+the rendering's own count of itself (`tick`), which a rendering that does not
+count reports as none, and the allocations an allocator out of its reach counts
+are the measure that does not depend on it (a rendering that does more and
+neither counts nor allocates passes both: stated, not hidden). The pin makes the
+oracle verifiable, not available: the third-party repository and the crates.io
+dependencies are outside this repository's audits, and the residual risk and the
+repin procedure are in SPEC.md §17.19. The oracle is fetched from the network
+in CI, with three tries over about a minute for a transient failure; if it
 cannot be, the gate fails on the normative host.
 
 ### audit-oracle-isolation can fail
@@ -5252,11 +5271,104 @@ observed, and restored. Command:
   restored: `a rendering wrong on one input is refused: ()`. Planted: the work
   comparison removed. Observed, then restored: `a rendering that does more work
   is refused: ()`.
-- Planted discrepancies in the oracle's crates (`conformance_or_04` plants nine
-  in copies of the generated Rust of seven roots: a checked multiplication made
-  wrapping, an addition replaced by a multiplication, a literal off by one,
-  swapped branches, an inverted comparison, a dropped recursive arm, swapped
-  parameters, a parameter widened from `u32` to `u64`, and a dropped failure
-  typing) are each detected with the kind the case states, and the unplanted
-  crates of the same roots, built and run the same way, agree.
+- Planted discrepancies in the oracle's crates (`conformance_or_04` plants 21
+  in copies of the generated Rust of 13 roots, and each is judged under a crate,
+  a harness, and a result of its own): a checked multiplication made wrapping,
+  an addition replaced by a multiplication, a literal off by one, swapped
+  branches, an inverted comparison, a dropped recursive arm, swapped parameters,
+  a parameter widened from `u32` to `u64`, a dropped failure typing, and the
+  edges: a checked division made wrapping (`MIN / -1`), a negation and an
+  addition made wrapping at the bound, a truncating division made Euclidean, a
+  shift made to wrap, a match arm's constant changed, a split limit one too
+  small, characters counted as bytes, a saturating subtraction made wrapping, a
+  checked addition made a panic, an append in the other order, and an
+  allocation in a `rust-core` root. Each is detected with the kind and the name
+  the case states. Beside each is its *null* rewrite, the same site written to
+  mean the same (`+ 0`, `* 1`, `.map(|x| x)`, `2 + 2` for `4`), and two
+  *equivalent* mutants (the quotient by zero, which the product that follows
+  ignores, and an equality made an inequality under a conjunction with false):
+  none of them is a discrepancy. Three plants are also run alone and found as
+  they are in company. The unplanted crates of the same roots, built and run the
+  same way, agree.
 
+
+### the follow-up review of the differential: what was planted
+
+The review of the first version found that two of the nine plants shared a root
+with another and were judged by the later one's result, that the comparison was
+bound to its seeds, that acquisition could be poisoned and had no retry, and a
+number of smaller things. Each was fixed and each fix was planted against.
+Command: `cargo test -p repo-conformance --test conformance -- <test>` with the
+oracle acquired; every plant was restored.
+
+- **Plants are independent.** The executor keys each run's crate, harness, and
+  result by a key of its own (`Slot`), and refuses two runs under one key before
+  it builds. Planted: `evaluate` keyed by the root (as it was). Observed:
+  `conformance_or_04` failed with `the runs to execute have distinct keys; a
+  shared key would let one run's result stand for another's`. The reviewer's
+  confound is reproduced as a control: the null rewrite of a plant is the same
+  site written to mean the same, and it must not be detected. Planted: the null
+  rewrite of `a literal off by one` made a real change (`2 + 2` for `3`).
+  Observed, then restored: `a literal off by one: its null edit (the same site,
+  the same meaning) is not a discrepancy: [(Behavior, "outcome:value/value")]`.
+  Three plants are run alone and found as they are in company, so what is found
+  does not depend on what is built beside it.
+- **The comparison is not bound to the production differentials' seeds.**
+  Planted: the boundary inputs left out of `eligible_roots`. Observed, then
+  restored: `conformance_or_04` listed, among the 21 plants, the four the seeds
+  alone miss: `a checked signed division made wrapping (MIN / -1) in
+  Coverage.Prims.fixedSmall`, `a match arm's constant changed in
+  Coverage.Main.options`, `a split limit one too small in Coverage.Prims.text`,
+  and `a saturating subtraction made wrapping in Coverage.Main.natOps`, each
+  `found {}`. Planted: the pairwise cover limited to the singles. Observed,
+  then restored: `a checked signed division made wrapping (MIN / -1) in
+  Coverage.Prims.fixedSmall ... found {}` (the pair `-128, -1` is a pair).
+  Planted: `Value::None` left out of the pool of an option. Observed, then
+  restored: `conformance_or_03` failed with `none and error false occur
+  together`. The audit of constructor coverage can fail too: the case removes
+  the inputs that build `none` and observes the audit name `: none`.
+- **Acquisition is atomic, self-healing, and bounded.** Against a local git
+  remote that is the case's own. Planted: the removal of the staging directory
+  on failure left out. Observed, then restored: `["source.fetching-15662"]`
+  left in the cache. Planted: a cache that is not the pin kept. Observed, then
+  restored: `a cache that heals: NotAcquired("... source is not the pinned
+  oracle and cannot be removed")`. Planted: a permanent failure (a remote that
+  does not exist) treated as transient. Observed, then restored: `the repin
+  procedure is named: git fetch exited Some(128): fatal: '...' does not appear
+  to be a git repository`. The unreachable remote is tried three times (`after 3
+  tries`), the wrong content is a pin mismatch once, and `retry` is tested for
+  two blips survived, the delays waited, and a permanent failure ended at once.
+  A cold build in an empty cache with `cargo fetch --locked` into the cache's
+  own Cargo home (no `LEXLEAN_ORACLE_DIR`, the commit fetched from GitHub):
+  38 s for the acquisition test alone, crates.io reachable.
+- **The pin's toolchains are the repository's.** Planted: the comparison with
+  `rust-toolchain.toml` skipped, then the one with `lean-toolchain`. Observed,
+  then restored: `conformance_or_01` failed with `another Rust is a drift:
+  Ok(())` and `another Lean is a drift: Ok(())`. The failure a drift gives
+  names both values (`oracle/lean4-prod.toml states rust_toolchain `...` and
+  rust-toolchain.toml pins `...``).
+- **The tables are versioned by content.** `oracle/table-versions.toml` records
+  the digest of the rows at each version. Planted: a word of a row of
+  `known-differences.toml` changed without a new version. Observed, then
+  restored: `the rows changed (their digest is `3588e785...`) but the table is
+  still at version 2, which oracle/table-versions.toml records as
+  `2b09c7bb...`; raise `version` and record the new rows_sha256 there`. The case
+  also raises the version without recording it (`records it up to version`),
+  records a version that changed nothing (`changed nothing`), and a layout that
+  is no row (a comment) changes nothing.
+- **A rejected root's refusal is compared.** The six rejected roots the oracle
+  refuses are rows (`both-refuse:<kind>`). Planted: the key of the row for
+  `LanguageTwelve.Main.positive` renamed. Observed, then restored:
+  `conformance_or_03` failed on the table (the rows no longer match their
+  version); planted in the code instead, the key `both-refuse-x:<kind>`,
+  `conformance_or_03` failed with `assertion `left == right` failed` on the
+  stand-in whose key is `both-refuse:opaque-lowering`.
+- **Tools that overrun are ended with what they started.** Planted: the process
+  group of a tool left out. Observed, then restored: `conformance_or_07` failed
+  with `the child 27650 of the overrunning tool is ended with it`. The tools of
+  that case that are not meant to overrun run under 120 s, the one that is
+  under 1 s.
+- **A rendering that does more work and counts none of it is refused.**
+  Planted: the comparison of allocations removed. Observed, then restored:
+  `conformance_or_06` failed with `a rendering that does more and counts none of
+  it is refused: ()`.
