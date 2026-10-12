@@ -161,7 +161,7 @@ Every row is validated by `just vv`; the IDs link the claim to its register row,
 | Canonical LaTeX regeneration and the optional hash-checked PDF provider | `TX-01`..`TX-12` | `build` |
 | Canonical diagnostics, source maps, coverage, manifests, and reproducible builds | `AR-01`..`AR-14` | `build` |
 | Fifteen-stage verification with leanchecker replay and exact axiom audit | `VR-01`..`VR-22` | `build` |
-| The exact CLI contract and the stable seven-method Rust `Engine` API | `CL-01`..`CL-21` | `build` |
+| The exact CLI contract, the stable seven-method Rust `Engine` API, and the host-driven end of the children the library started | `CL-01`..`CL-22` | `build` |
 | Filesystem confinement, no shell, no hidden network, closed failure model | `SE-01`..`SE-12` | `build` |
 | Language-1.2 production eligibility: closed targets, effects, and construct dispositions; runtime closures; target-dependent, fail-closed root analysis; deterministic eligibility reports; an exhaustiveness audit | `PD-01`..`PD-07` | `build` |
 | Named-root extraction through Lean's compiler front end: a pinned, probed authority interface; a closed, canonical, root-independent compiler input; fail-closed rejection; and an exact closure cross-check against production eligibility | `NE-01`..`NE-06` | `build` |
