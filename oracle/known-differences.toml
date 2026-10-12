@@ -65,7 +65,7 @@ roots = [
 id = "KD-02"
 kind = "acceptance"
 key = "oracle-refuses:opaque-lowering"
-reason = "The oracle has no monomorphization (its documented limit): a definition that remains parameterized by a type after Lean's compiler, such as a generic definition instantiated at a use site, the collection templates' accessors, or a reasoner's generic state, lowers to a type expression it has no rendering for. LexLean monomorphizes at lowering (§17.17)."
+reason = "The oracle has no monomorphization (its documented limit): a definition that remains parameterized by a type after Lean's compiler lowers to a type expression it has no rendering for. In the Lean LexLean generates these are its generic definitions instantiated at a use site (firstOr, unbox, identity), a definition that takes a function (twice), and the polymorphic accessors and iterations of the collection templates (mapSize, setSize, setElements, mapEntries, iterateUntil). LexLean monomorphizes at lowering (§17.17)."
 roots = [
   "Coverage.Boundary.groveRoot",
   "Coverage.Main.records",
@@ -86,7 +86,7 @@ roots = [
 id = "KD-03"
 kind = "acceptance"
 key = "oracle-refuses:unresolved-external-call"
-reason = "The oracle's operators are the Nat operations of its subset contract and its tagged definitions; a call of any other constant (the mathematical-integer operations such as Int.neg, or a definition that calls a refused one) has nothing to call. LexLean realizes the mathematical integer in 64 bits with explicit overflow (§17.13)."
+reason = "The oracle's operators are the Nat operations of its subset contract and its own exported definitions; a call of any other constant has nothing to call. Here those are the mathematical-integer operations (Int.neg) and the partner of a mutually recursive pair (isEven and isOdd), which its exporter does not follow. LexLean realizes the mathematical integer in 64 bits with explicit overflow and compiles mutual recursion through its own structural helpers (§17.13)."
 roots = [
   "Coverage.Main.intOps",
   "Coverage.Main.mapped",
@@ -98,7 +98,7 @@ roots = [
 id = "KD-04"
 kind = "acceptance"
 key = "oracle-refuses:codegen-PolymorphicType"
-reason = "The oracle refuses a parameterized structure type (its documented limit). The Lean LexLean generates for fixed-width arithmetic at the 16- and 32-bit signed widths and for checked conversions carries LexLeanRuntime.Fixed, a type-class dictionary structure parameterized by the scalar type."
+reason = "The oracle refuses a parameterized structure type (its documented limit). For these roots the Lean LexLean generates keeps LexLeanRuntime.Fixed, a type-class dictionary structure parameterized by the scalar type, in the closure (checked conversions between widths and the combined 16- and 32-bit signed operations); the oracle refuses it as a polymorphic type. Other roots at the same widths (the int16Root and int32Root probes) are taken."
 roots = [
   "Coverage.Prims.conversions",
   "Coverage.Prims.fixedMiddle",
