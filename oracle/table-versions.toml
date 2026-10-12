@@ -1,0 +1,27 @@
+# oracle/table-versions.toml --- what each version of each table of the
+# differential oracle is (SPEC.md §17.19).
+#
+# A table's `version` names the SHA-256 of its rows (the rows and the schema
+# tag in canonical JSON; comments and layout do not count). The run fails when
+# a table's rows are not those recorded for its version, so that a row cannot
+# change without a new version, and when a version is raised without its
+# digest recorded here, so that a version cannot be raised without a change.
+#
+# To change a table: edit the rows, raise `version` by one, and append the
+# new version here with the digest the failure message prints. Earlier
+# versions stay: the file is the history.
+
+spec = "lexlean/oracle-table-versions/1"
+
+[[table]]
+file = "known-differences.toml"
+history = [
+  { version = 1, rows_sha256 = "e46beeaee24c5346bd67e6b3e025deb9dc97ed08346b5e2cf474250139aafb2d" },
+  { version = 2, rows_sha256 = "2b09c7bbd4a744100b620c3b327ace1a38389e7654b55d2a97b96530c249921f" },
+]
+
+[[table]]
+file = "known-non-overlap.toml"
+history = [
+  { version = 1, rows_sha256 = "489579755bea40f4d9d79c441cfddf25818926de9ecb435b742d32d292da32d9" },
+]

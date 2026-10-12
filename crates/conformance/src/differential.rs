@@ -39,7 +39,7 @@ impl Rng {
     }
 }
 
-type Modules<'a> = BTreeMap<String, LinkedModule<'a>>;
+pub(crate) type Modules<'a> = BTreeMap<String, LinkedModule<'a>>;
 
 /// The source value order of keys, on their calculus encodings: numbers by
 /// value, strings by code points, booleans false first, pairs
@@ -73,13 +73,13 @@ fn key_order(left: &Value, right: &Value) -> Ordering {
     }
 }
 
-fn sorted_unique(mut items: Vec<Value>, key: impl Fn(&Value) -> &Value) -> Vec<Value> {
+pub(crate) fn sorted_unique(mut items: Vec<Value>, key: impl Fn(&Value) -> &Value) -> Vec<Value> {
     items.sort_by(|a, b| key_order(key(a), key(b)));
     items.dedup_by(|a, b| key_order(key(a), key(b)) == Ordering::Equal);
     items
 }
 
-fn first_of(value: &Value) -> &Value {
+pub(crate) fn first_of(value: &Value) -> &Value {
     match value {
         Value::Pair { left, right: _ } => left,
         _ => panic!("a map entry is a pair"),
@@ -532,7 +532,7 @@ fn invalidate(modules: &Modules<'_>, ty: &SemanticType, value: &Value) -> Option
 
 /// The interpreter's outcome within a small fuel, on a thread whose stack
 /// holds the recursion that fuel allows.
-fn bounded(program: &lexlean::calculus::Program, function: u64, values: &[Value]) -> Outcome {
+pub(crate) fn bounded(program: &lexlean::calculus::Program, function: u64, values: &[Value]) -> Outcome {
     std::thread::scope(|scope| {
         std::thread::Builder::new()
             .stack_size(1 << 29)

@@ -6,10 +6,12 @@
 # disagreement and fails the differential. A row is exact: it lists the roots
 # it is known on, and a listed root on which the difference no longer arises
 # fails the run, so the table can neither hide a new difference nor outlive
-# an old one. A change to a row raises `version`.
+# an old one. A change to a row raises `version`, and the digest of the rows
+# at each version is recorded in `oracle/table-versions.toml`, which fails the
+# run when the rows and the version disagree.
 
 spec = "lexlean/oracle-differences/1"
-version = 1
+version = 2
 
 [[difference]]
 id = "KD-01"
@@ -156,4 +158,34 @@ reason = "The oracle takes a list parameter as a borrowed slice, &[T] (its docum
 roots = [
   "Coverage.Prims.sequences",
   "Production.Main.sumAll",
+]
+
+[[difference]]
+id = "KD-10"
+kind = "acceptance"
+key = "both-refuse:opaque-lowering"
+reason = "LexLean rejects these roots (LLT4005: a type parameter of the root, a function it takes whose closure would escape, a phantom type parameter, a universe in its signature; §17.17) and the oracle refuses them as well, for its own reason: after Lean's compiler a type that is still parameterized or a universe has no rendering in its lowering. The verdict is the same and the reason is each side's own; a refusal of one of these roots for any other reason is a disagreement."
+roots = [
+  "LanguageTwelve.Main.count",
+  "LanguageTwelve.Main.identity",
+  "LanguageTwelve.Main.pick",
+  "LanguageTwelve.Main.twice",
+]
+
+[[difference]]
+id = "KD-11"
+kind = "acceptance"
+key = "both-refuse:export-refused"
+reason = "LexLean rejects this root (LLT4005: a type with no runtime representation in its signature) and the oracle's exporter refuses it as well, at its own structured stage (prod-export failed), before any lowering. Same verdict, the oracle's own reason."
+roots = [
+  "LanguageTwelve.Main.positive",
+]
+
+[[difference]]
+id = "KD-12"
+kind = "acceptance"
+key = "both-refuse:codegen-OpaqueType"
+reason = "LexLean rejects this root (LLT4005: a named type at the boundary that has no runtime representation) and the oracle's generator refuses it as well, at its own structured stage (an opaque type), after the export. Same verdict, the oracle's own reason."
+roots = [
+  "LanguageTwelve.Main.measure",
 ]

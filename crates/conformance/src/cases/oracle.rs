@@ -1092,6 +1092,8 @@ fn comparison_is_semantic() {
 
 fn matching() {
     comparison_is_semantic();
+    rejected_roots_state_their_refusal();
+    boundary_inputs();
     let Some(run) = differential::gate("OR-03") else {
         return;
     };
@@ -1176,6 +1178,276 @@ fn matching() {
     }
 }
 
+// ---- OR-03: the boundary inputs ----------------------------------------------------
+
+/// The inputs of the roots include the edges of their types and literals, and
+/// the audit that says so can fail (no Lean, no oracle).
+fn boundary_inputs() {
+    use lexlean::calculus::Value;
+    // The eligible roots of the examples and the probes, once (they take a
+    // minute to state, and the corpus run states them again in its own way).
+    type Stated = Vec<(String, String, differential::Accepted)>;
+    static STATED: OnceLock<Vec<(String, Stated)>> = OnceLock::new();
+    let stated = STATED.get_or_init(|| {
+        let corpora: Vec<corpus::Corpus> = corpus::corpora()
+            .into_iter()
+            .filter(|c| matches!(c.kind, corpus::Kind::Example | corpus::Kind::Probes))
+            .collect();
+        std::thread::scope(|scope| {
+            let handles: Vec<_> = corpora
+                .iter()
+                .map(|c| scope.spawn(move || (c.name.clone(), differential::eligible_roots(&c.project))))
+                .collect();
+            handles
+                .into_iter()
+                .map(|handle| handle.join().expect("the roots are stated"))
+                .collect()
+        })
+    });
+    let production_coverage = support::P::copy_example("production-coverage");
+    let inputs = |root: &str| -> Vec<Vec<Value>> {
+        stated
+            .iter()
+            .flat_map(|(_, roots)| roots)
+            .find(|(_, name, _)| name == root)
+            .unwrap_or_else(|| panic!("{root} is eligible"))
+            .2
+            .cases
+            .iter()
+            .map(|case| case.values.clone())
+            .collect()
+    };
+    let int8 = |value: i8| Value::I8 {
+        value: value.to_string(),
+    };
+    // MIN / -1 of a signed width: where a checked division and a wrapping one
+    // part, and no seeded sample reaches.
+    assert!(
+        inputs("Coverage.Prims.fixedSmall").contains(&vec![int8(i8::MIN), int8(-1)]),
+        "i8: -128 and -1 occur together"
+    );
+    let int64 = |value: i64| Value::I64 {
+        value: value.to_string(),
+    };
+    assert!(
+        inputs("Coverage.Prims.fixedWide")
+            .iter()
+            .any(|input| input[..2] == [int64(i64::MIN), int64(-1)]),
+        "i64: MIN and -1 occur together"
+    );
+    // Every arm of a match over an option and a result: the one no sample built.
+    assert!(
+        inputs("Coverage.Main.options").contains(&vec![
+            Value::None,
+            Value::Error {
+                value: Box::new(Value::Bool { value: false })
+            }
+        ]),
+        "none and error false occur together"
+    );
+    // A split into exactly as many fields as the limit allows, and one fewer
+    // and one more.
+    let fields: BTreeSet<usize> = inputs("Coverage.Prims.text")
+        .iter()
+        .filter_map(|input| match (&input[0], &input[1]) {
+            (Value::String { value: text }, Value::String { value: delimiter })
+                if !delimiter.is_empty() =>
+            {
+                Some(text.split(delimiter.as_str()).count())
+            }
+            _ => None,
+        })
+        .collect();
+    for count in [3, 4, 5] {
+        assert!(fields.contains(&count), "a split into {count} fields: {fields:?}");
+    }
+    // Every constructor of every parameter type of every root of the examples
+    // and the probes is built by some input.
+    let mut roots = 0;
+    for corpus in corpus::corpora() {
+        if !matches!(corpus.kind, corpus::Kind::Example | corpus::Kind::Probes) {
+            continue;
+        }
+        let (_, eligible) = stated
+            .iter()
+            .find(|(name, _)| *name == corpus.name)
+            .expect("the corpus was stated");
+        for audit in differential::seed_audit(&corpus.project, eligible, &|_, _| true) {
+            roots += 1;
+            assert!(
+                audit.uncovered.is_empty(),
+                "{}: no input builds {:?}",
+                audit.root,
+                audit.uncovered
+            );
+            if !audit.parameters.is_empty() {
+                assert!(audit.boundary > 0, "{}: boundary inputs", audit.root);
+            }
+        }
+    }
+    assert_eq!(
+        roots,
+        stated.iter().map(|(_, roots)| roots.len()).sum::<usize>(),
+        "every eligible root was audited"
+    );
+    assert!(roots > 50, "{roots} roots audited");
+    // The audit can fail: without the inputs that build `none`, it says so.
+    let (_, eligible) = stated
+        .iter()
+        .find(|(name, _)| name == "production-coverage")
+        .expect("the corpus was stated");
+    let audit = differential::seed_audit(&production_coverage, eligible, &|root, input| {
+        !(root == "Coverage.Main.options" && input[0] == Value::None)
+    });
+    let options = audit
+        .iter()
+        .find(|audit| audit.root == "Coverage.Main.options")
+        .expect("the root");
+    assert!(
+        options.uncovered.iter().any(|arm| arm.ends_with(": none")),
+        "the audit names the arm no input builds: {:?}",
+        options.uncovered
+    );
+}
+
+/// A root LexLean rejects and the oracle refuses is an agreement on the
+/// verdict whose reason the table records, and a refusal for another reason is
+/// a disagreement (no Lean, no oracle).
+fn rejected_roots_state_their_refusal() {
+    use oracle::Stage;
+    let rejected = |root: &str, kind: &str| differential::RootRun {
+        corpus: "production-polymorphic-root".to_owned(),
+        root: root.to_owned(),
+        lean_module: "LanguageTwelve.Main".to_owned(),
+        lexlean: differential::LexLeanSide::Rejected {
+            code: "LLT4005".to_owned(),
+            message: "a type parameter".to_owned(),
+        },
+        oracle: differential::OracleSide::Refused {
+            stage: Stage::Export,
+            kind: kind.to_owned(),
+            message: "the oracle's words".to_owned(),
+        },
+    };
+    let table = differential::KnownDifferences::committed();
+    let named = differential::differences(
+        &rejected("LanguageTwelve.Main.identity", "opaque-lowering"),
+        None,
+    );
+    assert_eq!(named.len(), 1, "a refusal of a rejected root is stated");
+    assert_eq!(named[0].key, "both-refuse:opaque-lowering");
+    carries_both_sides_of_a_verdict(&named[0]);
+    assert!(
+        differential::judge(&named, &table).unlisted.is_empty(),
+        "the recorded reason is accepted"
+    );
+    let other = differential::differences(
+        &rejected("LanguageTwelve.Main.identity", "codegen-OpaqueType"),
+        None,
+    );
+    let judged = differential::judge(&other, &table);
+    assert_eq!(
+        judged.unlisted.len(),
+        1,
+        "a refusal for another reason is a disagreement"
+    );
+    let elsewhere = differential::differences(
+        &rejected("LanguageTwelve.Main.unrecorded", "opaque-lowering"),
+        None,
+    );
+    assert_eq!(
+        differential::judge(&elsewhere, &table).unlisted.len(),
+        1,
+        "a rejected root the table does not name is a disagreement"
+    );
+}
+
+fn carries_both_sides_of_a_verdict(diff: &differential::Diff) {
+    assert_eq!(diff.lexlean["verdict"], "rejected");
+    assert_eq!(diff.oracle["verdict"], "refused");
+    assert!(diff.lexlean["code"] == "LLT4005" && !diff.oracle["message"].is_null());
+}
+
+// ---- OR-05: the versions of the tables ---------------------------------------------
+
+/// A table's version names its rows: a row that changes without a new version,
+/// and a version raised without a change or without its digest recorded, are
+/// each refused (no Lean, no oracle).
+fn tables_are_versioned() {
+    let history = differential::TableVersions::committed();
+    let differences_text = read("oracle/known-differences.toml");
+    let overlap_text = read("oracle/known-non-overlap.toml");
+    let differences = differential::KnownDifferences::parse(&differences_text).expect("table");
+    let overlap = differential::NonOverlapTable::parse(&overlap_text).expect("table");
+    history
+        .check("known-differences.toml", differences.version, &differences.digest())
+        .expect("the committed differences are their version");
+    history
+        .check("known-non-overlap.toml", overlap.version, &overlap.digest())
+        .expect("the committed overlap table is its version");
+    // A layout that is not a row changes nothing ...
+    let commented = differential::KnownDifferences::parse(&format!(
+        "# a remark\n\n{}\n\n# another\n",
+        differences_text.replace("\n\n", "\n\n\n")
+    ))
+    .expect("table");
+    assert_eq!(commented.digest(), differences.digest());
+    // ... and a word of a row changes it, and the version no longer names it.
+    let edited = differential::KnownDifferences::parse(&differences_text.replacen(
+        "Same verdict, the oracle's own reason.",
+        "Same verdict, the oracle's reason.",
+        1,
+    ))
+    .expect("table");
+    assert_ne!(edited.digest(), differences.digest(), "the edit applied");
+    let error = history
+        .check("known-differences.toml", edited.version, &edited.digest())
+        .expect_err("a row changed without a new version is refused");
+    assert!(error.contains("rows changed") && error.contains("raise `version`"), "{error}");
+    let removed = differential::NonOverlapTable::parse(&overlap_text.replacen(
+        "[[construct]]\nkey = \"type.type\"",
+        "[[construct]]\nkey = \"type.type-planted\"",
+        1,
+    ))
+    .expect("table");
+    assert!(history
+        .check("known-non-overlap.toml", removed.version, &removed.digest())
+        .is_err());
+    // A version raised with the rows as they were is not recorded.
+    let raised = differential::KnownDifferences::parse(&differences_text.replacen(
+        &format!("version = {}", differences.version),
+        &format!("version = {}", differences.version + 1),
+        1,
+    ))
+    .expect("table");
+    let error = history
+        .check("known-differences.toml", raised.version, &raised.digest())
+        .expect_err("a version raised without a record is refused");
+    assert!(error.contains("records it up to version"), "{error}");
+    assert!(history.check("unknown.toml", 1, "").is_err());
+    // The history itself is closed.
+    let text = read("oracle/table-versions.toml");
+    let refused = |from: &str, to: &str| {
+        let edited = text.replacen(from, to, 1);
+        assert_ne!(edited, text, "the edit `{from}` applied");
+        differential::TableVersions::parse(&edited)
+            .map(|_| ())
+            .expect_err(&format!("`{from}` -> `{to}` is refused"))
+    };
+    refused("{ version = 2,", "{ version = 3,");
+    refused("lexlean/oracle-table-versions/1", "lexlean/oracle-table-versions/2");
+    refused("file = \"known-non-overlap.toml\"", "file = \"known-differences.toml\"");
+    refused("{ version = 1, rows_sha256 = \"e46b", "{ version = 1, rows_sha256 = \"E46b");
+    let same = text.replacen(
+        "2b09c7bbd4a744100b620c3b327ace1a38389e7654b55d2a97b96530c249921f",
+        "e46beeaee24c5346bd67e6b3e025deb9dc97ed08346b5e2cf474250139aafb2d",
+        1,
+    );
+    assert!(differential::TableVersions::parse(&same)
+        .expect_err("a version of the rows of the one before is refused")
+        .contains("changed nothing"));
+}
+
 // ---- OR-04: planted discrepancies -----------------------------------------------
 
 /// A planted edit of the oracle's crate for a root, and what the differential
@@ -1184,8 +1456,26 @@ struct Plant {
     name: &'static str,
     root: &'static str,
     edit: fn(&str) -> Option<String>,
+    /// The same site rewritten so that it means what it meant: the plant's
+    /// control. A detector that says this is a discrepancy is not looking at
+    /// the behaviour, and a result that stood for another plant's would show
+    /// here as a discrepancy where there is none.
+    null: fn(&str) -> Option<String>,
     kind: differential::DiffKind,
     keys: &'static [&'static str],
+}
+
+/// An edit that changes the text and not the meaning (an equivalent mutant):
+/// the differential must not call it a discrepancy, however the inputs are
+/// chosen.
+struct Equivalent {
+    name: &'static str,
+    root: &'static str,
+    edit: fn(&str) -> Option<String>,
+}
+
+fn replace_all(source: &str, from: &str, to: &str) -> Option<String> {
+    source.contains(from).then(|| source.replace(from, to))
 }
 
 fn replace_once(source: &str, from: &str, to: &str) -> Option<String> {
@@ -1193,7 +1483,7 @@ fn replace_once(source: &str, from: &str, to: &str) -> Option<String> {
 }
 
 fn plants() -> Vec<Plant> {
-    use differential::DiffKind::{Behavior, Contract};
+    use differential::DiffKind::{Behavior, Contract, Resource};
     vec![
         Plant {
             name: "a checked multiplication made wrapping",
@@ -1205,6 +1495,7 @@ fn plants() -> Vec<Plant> {
                     ".wrapping_mul(x_16)",
                 )
             },
+            null: |s| replace_once(s, ".checked_mul(x_16)", ".checked_mul(x_16 * 1)"),
             kind: Behavior,
             keys: &["outcome:overflow/value"],
         },
@@ -1212,19 +1503,17 @@ fn plants() -> Vec<Plant> {
             name: "an addition replaced by a multiplication",
             root: "Production.Main.sumAll",
             edit: |s| replace_once(s, ".checked_add(_x_32)", ".checked_mul(_x_32)"),
+            null: |s| replace_once(s, ".checked_add(_x_32)", ".checked_add(_x_32 + 0)"),
             kind: Behavior,
-            keys: &["outcome:value/value", "outcome:value/overflow"],
+            keys: &["outcome:value/value", "outcome:overflow/value"],
         },
         Plant {
             name: "a literal off by one",
             root: "Coverage.Main.shapes",
             edit: |s| replace_once(s, "let _x_33 = 3;", "let _x_33 = 4;"),
+            null: |s| replace_once(s, "let _x_33 = 3;", "let _x_33 = 2 + 1;"),
             kind: Behavior,
-            keys: &[
-                "outcome:value/value",
-                "outcome:value/overflow",
-                "outcome:overflow/value",
-            ],
+            keys: &["outcome:value/value"],
         },
         Plant {
             name: "swapped branches",
@@ -1236,28 +1525,23 @@ fn plants() -> Vec<Plant> {
                     .replace('\u{1}', "true => {");
                 (swapped != s).then_some(swapped)
             },
+            null: |s| replace_once(s, "true => {", "true => { let _null = 0;"),
             kind: Behavior,
-            keys: &[
-                "outcome:value/value",
-                "outcome:value/overflow",
-                "outcome:overflow/value",
-            ],
+            keys: &["outcome:value/value", "outcome:value/overflow", "outcome:overflow/value"],
         },
         Plant {
             name: "an inverted comparison",
             root: "Models.Main.step",
             edit: |s| replace_once(s, "(cost <= _x_1)", "(cost > _x_1)"),
+            null: |s| replace_once(s, "(cost <= _x_1)", "(cost <= (_x_1 + 0))"),
             kind: Behavior,
-            keys: &[
-                "outcome:value/value",
-                "outcome:value/overflow",
-                "outcome:overflow/value",
-            ],
+            keys: &["outcome:value/value", "outcome:value/overflow", "outcome:overflow/value"],
         },
         Plant {
             name: "a dropped recursive arm",
             root: "Production.Main.sumAll",
             edit: |s| replace_once(s, "total(&(tail_17))?", "0"),
+            null: |s| replace_once(s, "total(&(tail_17))?", "(total(&(tail_17))? + 0)"),
             kind: Behavior,
             keys: &["outcome:value/value", "outcome:overflow/value"],
         },
@@ -1271,12 +1555,15 @@ fn plants() -> Vec<Plant> {
                     "pub fn natOps(b: u64, a: u64)",
                 )
             },
+            null: |s| {
+                replace_once(
+                    s,
+                    "pub fn natOps(a: u64, b: u64)",
+                    "pub fn natOps(a: u64, b: u64,)",
+                )
+            },
             kind: Behavior,
-            keys: &[
-                "outcome:value/value",
-                "outcome:value/overflow",
-                "outcome:overflow/value",
-            ],
+            keys: &["outcome:value/value"],
         },
         Plant {
             name: "a changed parameter width",
@@ -1286,6 +1573,13 @@ fn plants() -> Vec<Plant> {
                     s,
                     "pub fn bits(a: u16, b: u16, s: u32)",
                     "pub fn bits(a: u16, b: u16, s: u64)",
+                )
+            },
+            null: |s| {
+                replace_once(
+                    s,
+                    "pub fn bits(a: u16, b: u16, s: u32)",
+                    "pub fn bits(a: u16, b: u16, s: u32,)",
                 )
             },
             kind: Contract,
@@ -1299,8 +1593,162 @@ fn plants() -> Vec<Plant> {
                     format!("{edited}\npub fn halvings(number: u64) -> u64 {{ halvings_inner(number).unwrap_or(0) }}\n")
                 })
             },
+            null: |s| replace_once(s, "pub fn halvings(", "#[inline]\npub fn halvings("),
             kind: Contract,
             keys: &["failure-typing:only-lexlean"],
+        },
+        // The edges a seeded sample does not reach: each of these was missed
+        // when the inputs were the production differential's alone.
+        Plant {
+            name: "a checked signed division made wrapping (MIN / -1)",
+            root: "Coverage.Prims.fixedSmall",
+            edit: |s| {
+                replace_once(
+                    s,
+                    "(a).checked_div(b)",
+                    "(if b == 0 { None } else { Some((a).wrapping_div(b)) })",
+                )
+            },
+            null: |s| {
+                replace_once(
+                    s,
+                    "(a).checked_div(b)",
+                    "(if b == 0 { None } else { (a).checked_div(b) })",
+                )
+            },
+            kind: Behavior,
+            keys: &["outcome:value/value"],
+        },
+        Plant {
+            name: "a checked negation made wrapping (MIN)",
+            root: "Coverage.Prims.fixedSmall",
+            edit: |s| replace_once(s, "(a).checked_neg()", "Some((a).wrapping_neg())"),
+            null: |s| replace_once(s, "(a).checked_neg()", "(a).checked_neg().map(|x| x)"),
+            kind: Behavior,
+            keys: &["outcome:value/value"],
+        },
+        Plant {
+            name: "a truncating division made Euclidean",
+            root: "Coverage.Prims.fixedWide",
+            edit: |s| replace_once(s, "(a).checked_div(b)", "(a).checked_div_euclid(b)"),
+            null: |s| replace_once(s, "(a).checked_div(b)", "(a).checked_div(b).map(|x| x)"),
+            kind: Behavior,
+            keys: &["outcome:value/value"],
+        },
+        Plant {
+            name: "a checked addition made wrapping (MAX + 1)",
+            root: "Coverage.Prims.fixedWide",
+            edit: |s| replace_once(s, "(c).checked_add(_x_17)", "Some((c).wrapping_add(_x_17))"),
+            null: |s| replace_once(s, "(c).checked_add(_x_17)", "(c).checked_add(_x_17 + 0)"),
+            kind: Behavior,
+            keys: &["outcome:value/value"],
+        },
+        Plant {
+            name: "a shift made to wrap at the width",
+            root: "Coverage.Prims.bits",
+            edit: |s| replace_once(s, "(a).checked_shl(s)", "Some((a).wrapping_shl(s))"),
+            null: |s| replace_once(s, "(a).checked_shl(s)", "(a).checked_shl(s).map(|x| x)"),
+            kind: Behavior,
+            keys: &["outcome:value/value"],
+        },
+        Plant {
+            name: "a match arm's constant changed",
+            root: "Coverage.Main.options",
+            edit: |s| replace_once(s, "let _x_94 = 2;", "let _x_94 = 3;"),
+            null: |s| replace_once(s, "let _x_94 = 2;", "let _x_94 = 1 + 1;"),
+            kind: Behavior,
+            keys: &["outcome:value/value"],
+        },
+        Plant {
+            name: "a split limit one too small",
+            root: "Coverage.Prims.text",
+            edit: |s| replace_once(s, "let _x_74 = 4;", "let _x_74 = 3;"),
+            null: |s| replace_once(s, "let _x_74 = 4;", "let _x_74 = 2 + 2;"),
+            kind: Behavior,
+            keys: &["outcome:value/value"],
+        },
+        Plant {
+            name: "characters counted as bytes",
+            root: "Coverage.Prims.text",
+            edit: |s| replace_once(s, "(s).chars().count() as u64", "(s).len() as u64"),
+            null: |s| replace_once(s, "(s).chars().count() as u64", "((s).chars().count() as u64 + 0)"),
+            kind: Behavior,
+            keys: &["outcome:value/value"],
+        },
+        Plant {
+            name: "a saturating subtraction made wrapping",
+            root: "Coverage.Main.natOps",
+            edit: |s| {
+                replace_all(
+                    s,
+                    "identity::<u64>(a).saturating_sub(b)",
+                    "identity::<u64>(a).wrapping_sub(b)",
+                )
+            },
+            null: |s| {
+                replace_all(
+                    s,
+                    "identity::<u64>(a).saturating_sub(b)",
+                    "identity::<u64>(a).saturating_sub(b).max(0)",
+                )
+            },
+            kind: Behavior,
+            keys: &["outcome:value/value", "outcome:value/overflow"],
+        },
+        Plant {
+            name: "a checked addition made a panic on overflow",
+            root: "Production.Main.checkedSum",
+            edit: |s| replace_once(s, "(left).checked_add(right)", "Some((left) + (right))"),
+            null: |s| replace_once(s, "(left).checked_add(right)", "(left).checked_add(right).map(|x| x)"),
+            kind: Behavior,
+            keys: &["outcome:value/panic"],
+        },
+        Plant {
+            name: "an append in the other order",
+            root: "Coverage.Prims.sequences",
+            edit: |s| {
+                replace_once(
+                    s,
+                    "__append.0.extend(__append.1); __append.0",
+                    "__append.1.extend(__append.0); __append.1",
+                )
+            },
+            null: |s| {
+                replace_once(
+                    s,
+                    "__append.0.extend(__append.1); __append.0",
+                    "__append.0.extend(__append.1.into_iter()); __append.0",
+                )
+            },
+            kind: Behavior,
+            keys: &["outcome:value/value"],
+        },
+        Plant {
+            name: "an allocation in a rust-core root",
+            root: "Production.Main.halvings",
+            edit: |s| replace_once(s, "let _x_43 = 1;", "let _x_43 = { let _v = alloc::vec![1u8]; _v[0] as u64 };"),
+            null: |s| replace_once(s, "let _x_43 = 1;", "let _x_43 = 0 + 1;"),
+            kind: Resource,
+            keys: &["allocation:rust-core-root"],
+        },
+    ]
+}
+
+/// Edits that change the text and not the meaning of the oracle's crate.
+fn equivalents() -> Vec<Equivalent> {
+    vec![
+        Equivalent {
+            name: "the quotient by zero, which the product that follows ignores",
+            root: "Coverage.Main.natOps",
+            edit: |s| replace_once(s, "let _x_2 = 7;", "let _x_2 = 8;"),
+        },
+        Equivalent {
+            // The root's last component is `s == d` conjoined with a
+            // comparison that is always false, so it is false whatever the
+            // equality says.
+            name: "an equality made an inequality under a conjunction with false",
+            root: "Coverage.Prims.text",
+            edit: |s| replace_once(s, "let _x_46 = (s == d);", "let _x_46 = (s != d);"),
         },
     ]
 }
@@ -1325,6 +1773,15 @@ fn carries_both_sides(diff: &differential::Diff) {
         assert!(
             lexlean.contains("outcome") && oracle.contains("outcome"),
             "the outcomes are recorded"
+        );
+    } else if diff.kind == differential::DiffKind::Resource {
+        assert!(
+            diff.lexlean.to_string().contains("targets"),
+            "LexLean's targets"
+        );
+        assert!(
+            diff.oracle.to_string().contains("allocations"),
+            "the oracle's allocations"
         );
     } else {
         assert!(
@@ -1363,6 +1820,16 @@ fn planted_discrepancies() {
     for diff in &found {
         carries_both_sides(diff);
     }
+    // Runs under one key would let one result stand for another's; the
+    // executor refuses them before it builds anything.
+    let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let slot = differential::Slot {
+            key: "same",
+            run: &root,
+        };
+        let _ = differential::execute(&[slot, slot], false);
+    }));
+    assert!(refused.is_err(), "two runs under one key are refused");
     let Some(run) = differential::gate("OR-04") else {
         return;
     };
@@ -1374,50 +1841,99 @@ fn planted_discrepancies() {
             .unwrap_or_else(|| panic!("{name} is a root of the corpus"))
     };
     let all = plants();
-    let mut planted = Vec::new();
+    assert!(
+        all.iter()
+            .any(|a| all.iter().filter(|b| b.root == a.root).count() > 1),
+        "some root has more than one plant, which is the case the keys exist for"
+    );
+    let make = |edit: &dyn Fn(&str) -> Option<String>, plant: &str, root: &str| {
+        differential::planted(find(root), edit)
+            .unwrap_or_else(|reason| panic!("{plant}: {reason}"))
+    };
+    // One evaluation holds every control, plant, null edit, and equivalent
+    // mutant; each has a crate and a result of its own, so a root with several
+    // of them is judged by each, not by the last.
+    let mut runs: Vec<differential::RootRun> = Vec::new();
+    let control_roots: BTreeSet<&str> = all
+        .iter()
+        .map(|plant| plant.root)
+        .chain(equivalents().iter().map(|e| e.root))
+        .collect();
+    for name in &control_roots {
+        runs.push(find(name).clone());
+    }
+    let controls = 0..runs.len();
+    let planted_at = runs.len();
     for plant in &all {
-        planted.push(
-            differential::planted(find(plant.root), &plant.edit)
-                .unwrap_or_else(|reason| panic!("{}: {reason}", plant.name)),
-        );
+        runs.push(make(&plant.edit, plant.name, plant.root));
     }
-    // The control: the unplanted roots, built and run the same way, agree.
-    let mut control: Vec<differential::RootRun> = Vec::new();
-    for name in all.iter().map(|plant| plant.root).collect::<BTreeSet<_>>() {
-        control.push(find(name).clone());
+    let nulls_at = runs.len();
+    for plant in &all {
+        runs.push(make(&plant.null, plant.name, plant.root));
     }
-    let control_diffs = differential::evaluate(&control);
-    for (root, diffs) in control.iter().zip(&control_diffs) {
-        let judgement = differential::judge(diffs, &table);
+    let equivalents_at = runs.len();
+    let equivalent_list = equivalents();
+    for equivalent in &equivalent_list {
+        runs.push(make(&equivalent.edit, equivalent.name, equivalent.root));
+    }
+    let found = differential::evaluate(&runs);
+    let unlisted = |at: usize| differential::judge(&found[at], &table).unlisted;
+    // The controls: the unplanted roots, built and run the same way, agree.
+    for at in controls {
         assert!(
-            judgement.unlisted.is_empty(),
+            unlisted(at).is_empty(),
             "the unplanted {} agrees: {:?}",
-            root.root,
-            judgement.unlisted
+            runs[at].root,
+            unlisted(at)
         );
     }
-    // Each plant is a disagreement.
-    let found = differential::evaluate(&planted);
-    for ((plant, run_of_plant), diffs) in all.iter().zip(&planted).zip(&found) {
-        let judgement = differential::judge(diffs, &table);
+    // The null edits and the equivalent mutants are not discrepancies.
+    for (position, plant) in all.iter().enumerate() {
+        let diffs = unlisted(nulls_at + position);
+        assert!(
+            diffs.is_empty(),
+            "{}: its null edit (the same site, the same meaning) is not a discrepancy: {:?}",
+            plant.name,
+            diffs.iter().map(|d| (d.kind, d.key.clone())).collect::<Vec<_>>()
+        );
+    }
+    for (position, equivalent) in equivalent_list.iter().enumerate() {
+        let diffs = unlisted(equivalents_at + position);
+        assert!(
+            diffs.is_empty(),
+            "{}: an equivalent mutant is not a discrepancy: {:?}",
+            equivalent.name,
+            diffs.iter().map(|d| (d.kind, d.key.clone())).collect::<Vec<_>>()
+        );
+    }
+    // Each plant is a disagreement, however many others share its root.
+    let mut by_plant: Vec<BTreeSet<(differential::DiffKind, String)>> = Vec::new();
+    let mut missed: Vec<String> = Vec::new();
+    for (position, plant) in all.iter().enumerate() {
+        let at = planted_at + position;
+        let run_of_plant = &runs[at];
+        let judgement = differential::judge(&found[at], &table);
         let hits: Vec<&differential::Diff> = judgement
             .unlisted
             .iter()
-            .filter(|diff| diff.kind == plant.kind && plant.keys.contains(&diff.key.as_str()))
+            .filter(|diff| {
+                diff.kind == plant.kind && plant.keys.contains(&diff.key.as_str())
+            })
             .collect();
-        assert!(
-            !hits.is_empty(),
-            "{} in {} is detected as {:?} {:?}: found {:?}",
-            plant.name,
-            run_of_plant.root,
-            plant.kind,
-            plant.keys,
+        by_plant.push(
             judgement
                 .unlisted
                 .iter()
                 .map(|d| (d.kind, d.key.clone()))
-                .collect::<Vec<_>>()
+                .collect(),
         );
+        if hits.is_empty() {
+            missed.push(format!(
+                "{} in {} is detected as {:?} {:?}: found {:?}",
+                plant.name, run_of_plant.root, plant.kind, plant.keys, by_plant[position]
+            ));
+            continue;
+        }
         for diff in hits {
             carries_both_sides(diff);
         }
@@ -1431,11 +1947,31 @@ fn planted_discrepancies() {
                 ));
             }
         }
-        diffs_of_run.extend(diffs.clone());
+        diffs_of_run.extend(found[at].clone());
         let judged = differential::judge(&diffs_of_run, &table);
         let verdict = differential::Validation::Disagreement(judged.unlisted, judged.stale);
         assert!(!verdict.validated());
         assert!(verdict.report().contains(&run_of_plant.root));
+    }
+    assert!(missed.is_empty(), "plants the differential did not detect:\n{}", missed.join("\n"));
+    // The same plants, run each alone, are found as they are in company: what
+    // is found does not depend on what else is built beside it.
+    for name in [
+        "an addition replaced by a multiplication",
+        "swapped branches",
+        "a checked signed division made wrapping (MIN / -1)",
+    ] {
+        let position = all
+            .iter()
+            .position(|plant| plant.name == name)
+            .unwrap_or_else(|| panic!("{name} is a plant"));
+        let alone = differential::evaluate(std::slice::from_ref(&runs[planted_at + position]));
+        let alone: BTreeSet<(differential::DiffKind, String)> = differential::judge(&alone[0], &table)
+            .unlisted
+            .iter()
+            .map(|d| (d.kind, d.key.clone()))
+            .collect();
+        assert_eq!(alone, by_plant[position], "{name}: alone and in company");
     }
 }
 
@@ -1523,6 +2059,7 @@ fn judgement_is_exact() {
 
 fn known_differences() {
     malformed_difference_tables_are_refused();
+    tables_are_versioned();
     judgement_is_exact();
     let table = differential::KnownDifferences::committed();
     assert!(table.version >= 1 && table.difference.len() >= 5);

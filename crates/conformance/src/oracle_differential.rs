@@ -43,6 +43,7 @@ use sha2::{Digest, Sha256};
 use crate::differential::Case;
 use crate::oracle::{self, Oracle, Stage, Unavailable, Verdict};
 use crate::oracle_corpus::{self as corpus, Kind};
+use crate::oracle_seeds as seeds;
 use crate::support::{self, repo_root, P};
 
 // ---- the oracle's intermediate representation ------------------------------
@@ -1182,12 +1183,21 @@ pub fn eligible_roots(project: &P) -> Vec<(String, String, Accepted)> {
                 borrowed: Vec::new(),
                 drift: Vec::new(),
             };
-            let root_cases: Vec<Case> = cases
+            let mut root_cases: Vec<Case> = cases
                 .remove(&root.report.root)
                 .unwrap_or_default()
                 .into_iter()
                 .filter(|case| case.function == 0 && case.invalid.is_none())
                 .collect();
+            // The production differential's seeded inputs, and the boundary
+            // inputs the root's own types and literals call for.
+            let (parameters, _) =
+                lexlean::production::certificate::root_signature(&modules, &root.module, &root.name)
+                    .expect("a root signature");
+            let types: Vec<lexlean::ir::semantic::SemanticType> =
+                parameters.iter().map(|parameter| parameter.r#type.clone()).collect();
+            let seeds = seeds::cases(&modules, &root.report.root, &lowered.program, &types, &root_cases);
+            root_cases.extend(seeds);
             let lean_module = checked.modules[&root.module].document.lean_module.clone();
             (
                 lean_module,
@@ -1206,6 +1216,69 @@ pub fn eligible_roots(project: &P) -> Vec<(String, String, Accepted)> {
                     cases: root_cases,
                 },
             )
+        })
+        .collect()
+}
+
+/// What the boundary seeds of one root amount to.
+#[derive(Debug, Clone)]
+pub struct SeedAudit {
+    /// The root.
+    pub root: String,
+    /// The inputs of the root that the boundary seeds added to the production
+    /// differential's.
+    pub boundary: usize,
+    /// The constructors of its parameter types that no input builds.
+    pub uncovered: Vec<String>,
+    /// Its parameter types.
+    pub parameters: Vec<lexlean::ir::semantic::SemanticType>,
+}
+
+/// For each of `roots`, the eligible roots of `project` as
+/// [`eligible_roots`] states them, how many inputs the boundary seeds added
+/// and which constructors of its parameter types the inputs `keep` accepts
+/// leave unbuilt (no Lean, no oracle). `keep` lets the audit be shown to fail
+/// on inputs that leave a constructor out.
+#[must_use]
+pub fn seed_audit(
+    project: &P,
+    roots: &[(String, String, Accepted)],
+    keep: &dyn Fn(&str, &[Value]) -> bool,
+) -> Vec<SeedAudit> {
+    use lexlean::production::lower::{linked_modules, roots as eligible};
+    let checked = support::checked_project(project);
+    let modules = linked_modules(&checked);
+    eligible(&checked)
+        .expect("the eligibility reports")
+        .into_iter()
+        .map(|root| {
+            let accepted = &roots
+                .iter()
+                .find(|(_, name, _)| *name == root.report.root)
+                .expect("every root is eligible")
+                .2;
+            let (parameters, _) = lexlean::production::certificate::root_signature(
+                &modules,
+                &root.module,
+                &root.name,
+            )
+            .expect("a root signature");
+            let types: Vec<lexlean::ir::semantic::SemanticType> = parameters
+                .iter()
+                .map(|parameter| parameter.r#type.clone())
+                .collect();
+            let inputs: Vec<Vec<Value>> = accepted
+                .cases
+                .iter()
+                .filter(|case| keep(&root.report.root, &case.values))
+                .map(|case| case.values.clone())
+                .collect();
+            SeedAudit {
+                root: root.report.root.clone(),
+                boundary: accepted.cases.iter().filter(|case| seeds::is_boundary(case)).count(),
+                uncovered: seeds::uncovered(&modules, &types, &inputs),
+                parameters: types,
+            }
         })
         .collect()
 }
@@ -1845,7 +1918,23 @@ pub fn differences(run: &RootRun, executed: Option<&Result<Executed, String>>) -
                 serde_json::json!({"verdict": "generated", "lib_rs_sha256": sha256_hex(&package["src/lib.rs"]), "rustc": rustc}),
             );
         }
-        (LexLeanSide::Rejected { .. }, OracleSide::Refused { .. }) => {}
+        // Both refuse, and the oracle's reason is recorded: a root LexLean
+        // rejects that the oracle also refuses is an agreement on the verdict
+        // and a difference in its reason, and the table names the reason of
+        // every one, so a refusal for another reason is a disagreement.
+        (
+            LexLeanSide::Rejected { code, message },
+            OracleSide::Refused {
+                stage,
+                kind,
+                message: refusal,
+            },
+        ) => push(
+            DiffKind::Acceptance,
+            format!("both-refuse:{kind}"),
+            serde_json::json!({"verdict": "rejected", "code": code, "message": message}),
+            serde_json::json!({"verdict": "refused", "stage": format!("{stage:?}"), "kind": kind, "message": refusal}),
+        ),
         (
             LexLeanSide::Eligible(accepted),
             OracleSide::Generated {
@@ -1989,7 +2078,7 @@ pub fn differences(run: &RootRun, executed: Option<&Result<Executed, String>>) -
 // ---- the tables ------------------------------------------------------------------
 
 /// One row of the table of known deliberate differences.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct KnownDifference {
     /// The row's identifier.
@@ -2030,8 +2119,18 @@ impl KnownDifferences {
                 .as_std_path(),
         )
         .expect("oracle/known-differences.toml");
-        Self::parse(&text)
-            .unwrap_or_else(|reason| panic!("oracle/known-differences.toml: {reason}"))
+        let table = Self::parse(&text)
+            .unwrap_or_else(|reason| panic!("oracle/known-differences.toml: {reason}"));
+        TableVersions::committed()
+            .check("known-differences.toml", table.version, &table.digest())
+            .unwrap_or_else(|reason| panic!("oracle/known-differences.toml: {reason}"));
+        table
+    }
+
+    /// The SHA-256 of the table's rows: what a version of the table names.
+    #[must_use]
+    pub fn digest(&self) -> String {
+        rows_digest(&self.spec, &serde_json::json!({"difference": self.difference}))
     }
 
     /// Parse and validate a table.
@@ -2068,6 +2167,147 @@ impl KnownDifferences {
             }
         }
         Ok(table)
+    }
+}
+
+// ---- the versions of the tables ------------------------------------------------
+
+/// The SHA-256 of a table's rows and schema tag, in a canonical form (JSON with
+/// sorted keys): comments, blank lines, and the order of the keys of a row do
+/// not change it; a word of a row does.
+fn rows_digest(spec: &str, rows: &Json) -> String {
+    let canonical = serde_json::json!({"spec": spec, "rows": rows});
+    sha256_hex(&serde_json::to_vec(&canonical).expect("rows serialize"))
+}
+
+/// One released version of a table and the digest of its rows.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Released {
+    /// The version.
+    pub version: u64,
+    /// The digest of the rows at that version.
+    pub rows_sha256: String,
+}
+
+/// The history of one table.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TableHistory {
+    /// The table's file in `oracle/`.
+    pub file: String,
+    /// Every version, in order.
+    pub history: Vec<Released>,
+}
+
+/// `oracle/table-versions.toml`: what each version of each table is.
+///
+/// A table's `version` used to be a number nobody could be held to. Here it
+/// names the digest of its rows, so that a row that changes without a new
+/// version, and a version that is raised with no change, both fail.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TableVersions {
+    /// The schema tag.
+    pub spec: String,
+    /// The tables.
+    pub table: Vec<TableHistory>,
+}
+
+impl TableVersions {
+    /// The committed history.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the history is not valid.
+    #[must_use]
+    pub fn committed() -> Self {
+        let text =
+            std::fs::read_to_string(repo_root().join("oracle/table-versions.toml").as_std_path())
+                .expect("oracle/table-versions.toml");
+        Self::parse(&text)
+            .unwrap_or_else(|reason| panic!("oracle/table-versions.toml: {reason}"))
+    }
+
+    /// Parse and validate a history.
+    ///
+    /// # Errors
+    ///
+    /// The first way it is not a history: an unknown schema or field, a table
+    /// twice, a version that does not follow the one before it, a digest that
+    /// is not 64 lowercase hexadecimal digits, or a version with the rows of
+    /// the one before (a version that changed nothing).
+    pub fn parse(text: &str) -> Result<Self, String> {
+        let versions: Self = toml::from_str(text).map_err(|error| error.to_string())?;
+        if versions.spec != "lexlean/oracle-table-versions/1" {
+            return Err(format!("unknown schema `{}`", versions.spec));
+        }
+        let mut files = BTreeSet::new();
+        for table in &versions.table {
+            if !files.insert(&table.file) {
+                return Err(format!("`{}` is a table twice", table.file));
+            }
+            if table.history.is_empty() {
+                return Err(format!("`{}` has no version", table.file));
+            }
+            for (at, released) in table.history.iter().enumerate() {
+                if released.version != at as u64 + 1 {
+                    return Err(format!(
+                        "`{}`: version {} follows {} (versions are 1, 2, 3, ...)",
+                        table.file, released.version, at
+                    ));
+                }
+                if released.rows_sha256.len() != 64
+                    || !released
+                        .rows_sha256
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                {
+                    return Err(format!(
+                        "`{}` version {}: the digest is not 64 lowercase hexadecimal digits",
+                        table.file, released.version
+                    ));
+                }
+                if at > 0 && table.history[at - 1].rows_sha256 == released.rows_sha256 {
+                    return Err(format!(
+                        "`{}` version {} has the rows of version {}: a version that changed nothing",
+                        table.file,
+                        released.version,
+                        released.version - 1
+                    ));
+                }
+            }
+        }
+        Ok(versions)
+    }
+
+    /// Whether the table `file` at `version` with rows of `digest` is the last
+    /// version this history records.
+    ///
+    /// # Errors
+    ///
+    /// Says which of the three it is: a table with no history, a version the
+    /// history does not end at, or rows that are not those of the version.
+    pub fn check(&self, file: &str, version: u64, digest: &str) -> Result<(), String> {
+        let table = self
+            .table
+            .iter()
+            .find(|table| table.file == file)
+            .ok_or_else(|| format!("oracle/table-versions.toml has no history for {file}"))?;
+        let last = table.history.last().expect("a history has a version");
+        if version != last.version {
+            return Err(format!(
+                "the table is at version {version} and oracle/table-versions.toml records it up to version {}; record the rows_sha256 of version {version} (`{digest}`) there, or restore the version",
+                last.version
+            ));
+        }
+        if digest != last.rows_sha256 {
+            return Err(format!(
+                "the rows changed (their digest is `{digest}`) but the table is still at version {version}, which oracle/table-versions.toml records as `{}`; raise `version` and record the new rows_sha256 there",
+                last.rows_sha256
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -2111,7 +2351,7 @@ pub fn judge(diffs: &[Diff], table: &KnownDifferences) -> Judgement {
 }
 
 /// A row of the table of known non-overlap.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NonOverlap {
     /// The registry construct.
@@ -2168,8 +2408,18 @@ impl NonOverlapTable {
                 .as_std_path(),
         )
         .expect("oracle/known-non-overlap.toml");
-        Self::parse(&text)
-            .unwrap_or_else(|reason| panic!("oracle/known-non-overlap.toml: {reason}"))
+        let table = Self::parse(&text)
+            .unwrap_or_else(|reason| panic!("oracle/known-non-overlap.toml: {reason}"));
+        TableVersions::committed()
+            .check("known-non-overlap.toml", table.version, &table.digest())
+            .unwrap_or_else(|reason| panic!("oracle/known-non-overlap.toml: {reason}"));
+        table
+    }
+
+    /// The SHA-256 of the table's rows: what a version of the table names.
+    #[must_use]
+    pub fn digest(&self) -> String {
+        rows_digest(&self.spec, &serde_json::json!({"construct": self.construct}))
     }
 
     /// Parse and validate a table.

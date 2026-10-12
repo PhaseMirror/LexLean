@@ -7,7 +7,9 @@
 # re-asserted on every run: its probe must still realize the construct, the
 # oracle must still refuse the probe for the stated kind, and no root the
 # oracle accepts may realize the construct. A change to a row raises
-# `version`.
+# `version`, and the digest of the rows at each version is recorded in
+# `oracle/table-versions.toml`, which fails the run when the rows and the
+# version disagree.
 
 spec = "lexlean/oracle-overlap/1"
 version = 1
