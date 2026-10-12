@@ -1056,6 +1056,34 @@ pub(crate) fn run(id: &str) {
             );
             assert!(ci.contains("LEXLEAN_CI_TELEMETRY: ${{ github.workspace }}/ci-evidence"));
             assert!(ci.contains("cargo xtask ci-summary --evidence ci-evidence"));
+            // The summary reaches the job log and the step summary, and does
+            // not depend on the gate having passed. `evidence::publish` has the
+            // unit tests (a plant in it fails them); this pins that the task
+            // calls it with the process environment and the process's stdout,
+            // so neither can be dropped from the task itself.
+            let task = root_file("xtask/src/ci.rs");
+            assert!(
+                task.contains("evidence::publish(")
+                    && task.contains("&|name| std::env::var_os(name)")
+                    && task.contains("&mut std::io::stdout().lock()"),
+                "ci-summary prints to stdout and reads GITHUB_STEP_SUMMARY from the environment"
+            );
+            // The host matrix builds through its one `cargo test`: the same
+            // profile, locking, and features build the crate's library and
+            // binary, so a separate build step is time spent on nothing the
+            // test does not already require (§8.3).
+            let matrix = &ci[ci.find("\n  host-matrix:").expect("the host matrix")..];
+            assert_eq!(
+                matrix
+                    .matches("cargo test --locked --workspace --all-features\n")
+                    .count(),
+                1,
+                "the host matrix runs the workspace's tests once"
+            );
+            assert!(
+                !ci.contains("cargo build"),
+                "ci.yml has no `cargo build` step: the host matrix's `cargo test` builds the crate"
+            );
             // The supported-host matrix keeps its four other legs.
             for host in [
                 "ubuntu-24.04-arm",

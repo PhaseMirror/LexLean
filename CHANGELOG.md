@@ -60,6 +60,14 @@ versions, and the entries below say what each tag does and does not claim.
   (RP-14). Every verification no longer hashes the running executable (4.7 s in a
   debug build), and the dev profile keeps line tables only. Register: 330 IDs,
   70 codes (`LLV7017`).
+- CI evidence is readable from the job log (#48, SPEC.md §9.4,
+  VERIFICATION.md, "Execution of `just vv` (Issue #48)"): `cargo xtask
+  ci-summary` prints the summary to the log (also when `just vv` failed),
+  appends it to `$GITHUB_STEP_SUMMARY` cut at 512 KiB, and lists at most the
+  fifteen slowest rows of each table, besides keeping `summary.md`; the
+  supported-host job drops the `cargo build` its `cargo test` repeated (SPEC.md
+  §8.3). Pinned by `conformance_rp_14` and the unit tests of
+  `repo_conformance::evidence`; no register ID or code is added.
 - The acceptance gate fits its job again (SPEC.md §9.2, VERIFICATION.md,
   "Runtime of `just vv`"): the run of this branch was cancelled at the
   360-minute limit. `bdd` is `cargo test -p repo-conformance --test bdd`, the
