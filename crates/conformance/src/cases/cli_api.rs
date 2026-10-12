@@ -1,4 +1,4 @@
-//! The `cli-api` suite: CL-01..CL-21.
+//! The `cli-api` suite: CL-01..CL-22.
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
@@ -13,6 +13,36 @@ fn api_source() -> String {
             .as_std_path(),
     )
     .expect("api.rs")
+}
+
+/// Every `.rs` file under `dir`, as (path relative to `dir` with `/`
+/// separators, text), in path order.
+fn library_sources(dir: &std::path::Path, out: &mut Vec<(String, String)>) {
+    fn walk(root: &std::path::Path, dir: &std::path::Path, out: &mut Vec<(String, String)>) {
+        let mut entries: Vec<_> = std::fs::read_dir(dir)
+            .expect("the library source directory is readable")
+            .map(|entry| entry.expect("a directory entry").path())
+            .collect();
+        entries.sort();
+        for path in entries {
+            if path.is_dir() {
+                walk(root, &path, out);
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                let relative = path
+                    .strip_prefix(root)
+                    .expect("under the root")
+                    .components()
+                    .map(|part| part.as_os_str().to_string_lossy().into_owned())
+                    .collect::<Vec<_>>()
+                    .join("/");
+                out.push((
+                    relative,
+                    std::fs::read_to_string(&path).expect("a UTF-8 source file"),
+                ));
+            }
+        }
+    }
+    walk(dir, dir, out);
 }
 
 /// Every string value anywhere inside a JSON document.
@@ -1004,6 +1034,120 @@ pub(crate) fn run(id: &str) {
             }
         }
         "CL-21" => super::typed_diagnostics::run(),
+        // §24.6: the host-driven end of the children the library started is
+        // one public function, the only kill path, and a registered refusal.
+        "CL-22" => {
+            let lifeline = std::fs::read_to_string(
+                support::repo_root()
+                    .join("crates/lexlean/src/verify/lifeline.rs")
+                    .as_std_path(),
+            )
+            .expect("lifeline.rs");
+            assert!(
+                lifeline.contains("pub fn end_live_children() -> Vec<ChildGroupEnd>"),
+                "§24.6: end_live_children is public with the documented return"
+            );
+            assert!(
+                lifeline.contains("pub fn allow_children()"),
+                "§24.6: the host re-enables children explicitly"
+            );
+            assert!(
+                lifeline.contains("pub enum GroupEnd {")
+                    && lifeline.contains("Ended,")
+                    && lifeline.contains("AlreadyGone,")
+                    && lifeline.contains("Failed("),
+                "§24.6: the outcome is per group: ended, already gone, or failing"
+            );
+            // Exactly one kill path: across every source file of the library,
+            // a process group is signalled in one place and a process tree
+            // is ended in one place, and that place is lifeline.rs. A second
+            // site anywhere (the timeout of a run, the interrupt thread, a
+            // new module) is the defect: two paths can disagree about what
+            // ending a child means. `test_kill_process_group(` is the
+            // existence probe, not a signal, and is not counted.
+            let mut sources = Vec::new();
+            library_sources(
+                support::repo_root()
+                    .join("crates/lexlean/src")
+                    .as_std_path(),
+                &mut sources,
+            );
+            assert!(
+                sources.len() > 50,
+                "the scan reads the library, found {} files",
+                sources.len()
+            );
+            let sites = |needle: &str| -> Vec<String> {
+                sources
+                    .iter()
+                    .flat_map(|(path, text)| {
+                        let mut found = Vec::new();
+                        let mut rest = text.as_str();
+                        while let Some(at) = rest.find(needle) {
+                            let boundary = rest[..at]
+                                .chars()
+                                .next_back()
+                                .is_none_or(|c| !(c.is_alphanumeric() || c == '_'));
+                            if boundary {
+                                found.push(path.clone());
+                            }
+                            rest = &rest[at + needle.len()..];
+                        }
+                        found
+                    })
+                    .collect()
+            };
+            let groups = sites("kill_process_group(");
+            assert_eq!(
+                groups,
+                ["verify/lifeline.rs"],
+                "§24.6: a process group is signalled in exactly one place"
+            );
+            let trees = sites("Command::new(\"taskkill\")");
+            assert_eq!(
+                trees,
+                ["verify/lifeline.rs"],
+                "§24.6: a process tree is ended in exactly one place"
+            );
+            let child = std::fs::read_to_string(
+                support::repo_root()
+                    .join("crates/lexlean/src/verify/child.rs")
+                    .as_std_path(),
+            )
+            .expect("child.rs");
+            assert!(
+                child.contains("lifeline::end_leader(child.id())"),
+                "§24.6: a run ends its own child at its timeout through the same function"
+            );
+            let handler = lifeline
+                .split("signals.forever()")
+                .nth(1)
+                .expect("the interrupt thread waits for the signals")
+                .split("emulate_default_handler")
+                .next()
+                .expect("the signal's own action is restored");
+            assert!(
+                handler.contains("end_live_children"),
+                "§24.6: the interrupt thread ends the live groups through the public function"
+            );
+            assert!(
+                !handler.contains("kill_process_group") && !handler.contains("end_leader"),
+                "§24.6: the interrupt thread has no kill path of its own"
+            );
+            // The refusal of a child started after the end is registered.
+            let model = repo_model::Model::load_from_repo_root().expect("the model loads");
+            let row = model
+                .errors
+                .error
+                .iter()
+                .find(|row| row.code == "LLV7018")
+                .expect("LLV7018 is registered");
+            assert_eq!(
+                row.class, "environment",
+                "LLV7018 is an environment failure"
+            );
+            assert_eq!(row.exit, 3, "LLV7018 exits 3");
+        }
         other => panic!("no cli-api case is wired for {other}"),
     }
 }

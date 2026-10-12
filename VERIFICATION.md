@@ -2155,6 +2155,175 @@ Removed: all seven were restored (the unit test of the audit,
 dependency with no role, a role with no dependency, and a SPEC without the
 table).
 
+### a host ends the children the library started
+
+A host that embeds the library (`lexlean::cli::run`, a service, a test
+harness) owns its own signals and its own termination, and the library
+installs no handler for it; until this change it had no way to end the
+children the library had started, so an interrupted host left its `lake` and
+`lean` running. The library now exposes `lexlean::verify::end_live_children`,
+which ends every child process group it started in this process and has not
+seen exit and reports each group as `Ended`, `AlreadyGone`, or `Failed` with
+the OS error, and `lexlean::verify::allow_children`, which re-enables starting
+children after the call. The shutdown state is set and the live list is taken
+under the one lock that registers a child, so a child started concurrently
+with the call is either ended by it or refused (`LLV7018`), never left
+running; a zombie in a group counts as ended, and the host's own process and
+process group are never signalled. The executable's interrupt thread and a
+run's own timeout end groups through the same function
+(`verify::lifeline::end_leader`), so exactly one implementation of "end the
+live groups" exists, the executable is its first user, and a second place
+that signals a group is a failure of `conformance_cl_22`, which counts the
+sites across every source file of the library, not a review comment.
+
+`crates/lexlean/tests/end_children.rs` runs an embedding host that calls
+`lexlean::cli::run` against a fake `git` that starts a long `sleep`, ends the
+live children while it runs, and requires that no process of the group
+remains, that the call reports every group ended, and that the run returns a
+diagnostic rather than hanging. It runs a host **process** of its own (the
+test binary, run again for one case, as the leader of its own process group
+the way a service manager starts one) that registers its own handling of
+`SIGINT` and `SIGTERM`, delivers each to it from outside while a child is
+live, and requires that the host ends the children from its handling's thread,
+survives to run its own cleanup, exits by its own status and not by a signal,
+that its pid and pgid are untouched, and that its signal dispositions (`SigCgt`
+and `SigIgn` of `/proc/self/status`, the `caught` and `ignored` columns of
+`ps` where there is no `/proc`; a host that can read neither is an error, not
+a pass) are equal before the library starts a child, after it has started
+one, and after it has ended it. A fresh process is the case's own, because a
+disposition that an earlier case of the same process had already changed would
+hide the library's doing. It covers the no-op, the idempotent second call, a
+child that already exited (`AlreadyGone`), the refusal of a child started
+after the call, and a concurrent-starts stress that ends the live children
+sixty times while four threads keep starting them and reads the process table
+after every call. The correct function passes every cycle: it failed in 0 of
+100 runs of `cargo test -p lexlean --test end_children
+concurrent_starts_are_ended_or_refused`. A simulated `EPERM` and a failing
+`taskkill` are unit tests of the outcome handling
+(`verify::lifeline::tests::a_refused_group_is_reported`,
+`verify::child::timeout_tests::a_failing_taskkill_is_reported`). The unix
+cases are compiled out on Windows, and `cargo clippy --workspace --all-targets
+--all-features -- -D warnings` was run for `x86_64-unknown-linux-gnu`,
+`x86_64-pc-windows-msvc`, and `aarch64-apple-darwin`, which is how a Windows
+`spawn` that used a `Child` after moving it was found (the first run of this
+branch had not yet reached the host matrix). `conformance_cl_22` holds the
+register, the public functions, the single kill path, and the registered
+`LLV7018` to the source.
+
+Each of the nine plants below was applied alone to the finished sources,
+produced the failure quoted, and was removed.
+
+Planted: `end_leader` ends only the direct child and not its group
+(`kill_process` for `kill_process_group`). Command: `cargo test -p lexlean
+--test end_children an_embedding_host_ends_every_live_group`. Expected: the
+grandchild survives and its group is reported failing, not ended.
+
+```text
+thread 'an_embedding_host_ends_every_live_group' (9926) panicked at crates/lexlean/tests/end_children.rs:201:5:
+every live group is reported ended: [ChildGroupEnd { group: 9928, outcome: Failed("processes of group 9928 still existed 2000 ms after SIGKILL") }]
+```
+
+Planted: `end_leader` signals the host's own process group
+(`kill_process_group(getpgid(None))` for the child's group). Command: `cargo
+test -p lexlean --test end_children the_host_ends_children_from_its_own_signal_thread`.
+Expected: the host process, which leads its own group, is killed by its own
+`SIGKILL` before it can finish, and the case says so.
+
+```text
+thread 'the_host_ends_children_from_its_own_signal_thread' (10388) panicked at crates/lexlean/tests/end_children.rs:348:5:
+the host must survive both signals, run its own cleanup, and exit by its own status, not by a signal (it said "the host said nothing more" and ended with ExitStatus(unix_wait_status(9)))
+```
+
+Planted: `signal_outcome` takes any refusal for success (`Err(_errno) =>
+Some(GroupEnd::Ended)`). Command: `cargo test -p lexlean --lib
+verify::lifeline::tests::a_refused_group_is_reported`. Expected: a simulated
+`EPERM` is reported ended, not failed.
+
+```text
+thread 'verify::lifeline::tests::a_refused_group_is_reported' (10694) panicked at crates/lexlean/src/verify/lifeline.rs:616:17:
+EPERM is reported, not taken for success: Some(Ended)
+```
+
+Planted: the executable's interrupt thread signals the live groups itself
+instead of calling the public function. Command: `cargo test -p repo-conformance
+--test conformance -- conformance_cl_22`. Expected: the "exactly one kill
+path" check finds a second signal site in the module.
+
+```text
+thread 'conformance_cl_22' (11274) panicked at crates/conformance/src/cases/cli_api.rs:1101:13:
+assertion `left == right` failed: §24.6: a process group is signalled in exactly one place
+  left: ["verify/lifeline.rs", "verify/lifeline.rs"]
+ right: ["verify/lifeline.rs"]
+```
+
+Planted: the timeout path of a run signals the group itself (a
+`kill_process_group` call in `verify::child::stop`, as it did before the two
+shared one function). Same command. Expected: the same check finds the second
+site in another file, which a check of `lifeline.rs` alone could not.
+
+```text
+thread 'conformance_cl_22' (13276) panicked at crates/conformance/src/cases/cli_api.rs:1101:13:
+assertion `left == right` failed: §24.6: a process group is signalled in exactly one place
+  left: ["verify/child.rs", "verify/lifeline.rs"]
+ right: ["verify/lifeline.rs"]
+```
+
+Planted: `stop` (the timeout path) no longer ends the group, only the direct
+child. Command: `cargo test -p lexlean --lib
+verify::child::timeout_tests::a_timeout_ends_what_the_child_started`.
+Expected: the grandchild outlives the timeout and the case fails.
+
+```text
+thread 'verify::child::timeout_tests::a_timeout_ends_what_the_child_started' (13573) panicked at crates/lexlean/src/verify/child.rs:670:9:
+```
+
+Planted: the shutdown state is dropped from `end_live_children` (the
+`SHUTDOWN.store(true, Ordering::SeqCst)` removed), so a child started after
+the call is no longer refused. Command: `cargo test -p lexlean --test
+end_children a_child_started_after_the_end_is_refused`. Expected: the child
+starts, and the case fails at its own refusal assertion.
+
+```text
+thread 'a_child_started_after_the_end_is_refused' (11732) panicked at crates/lexlean/tests/end_children.rs:518:18:
+a child started after the end must be refused
+```
+
+Planted: the registration lock is released between reading the shutdown state
+and registering the child (`drop(groups)` before `command.spawn()`, the lock
+taken again to push). Command: `cargo test -p lexlean --test end_children
+concurrent_starts_are_ended_or_refused`. Expected: a child that has started and
+is not yet registered is alive when a call returns. The first version of this
+case ended the children once and caught the plant in 59 of 60 runs, which is a
+timing assumption; the case now ends them sixty times and the plant was caught
+in 100 of 100 runs, at cycle 0 in the one quoted.
+
+```text
+thread 'concurrent_starts_are_ended_or_refused' (12193) panicked at crates/lexlean/tests/end_children.rs:651:9:
+cycle 0: a child started concurrently with the call survived it: [(12199, "sleep 300.12192 "), (12202, "sleep 300.12192 "), (12203, "sleep 300.12192 "), (12204, "sleep 300.12192 ")]
+```
+
+Planted: the library installs its interrupt handler without the executable
+having armed it (the `ARMED` test removed from `install`), which is what a
+host that embeds the library must never see. Command: `cargo test -p lexlean
+--test end_children the_host_ends_children_from_its_own_signal_thread`.
+Expected: the host's caught-signal mask changes (the bit of `SIGQUIT`, which
+the host did not register) when it starts its first child, and the case fails
+there. The first version of this assertion ran in the process of the other
+cases, where an earlier case had already installed the handler and the
+comparison passed under the plant; that is why the host is a process of its
+own.
+
+```text
+thread 'the_host_ends_children_from_its_own_signal_thread' (12685) panicked at crates/lexlean/tests/end_children.rs:348:5:
+the host must survive both signals, run its own cleanup, and exit by its own status, not by a signal (it said "the host said nothing more" and ended with ExitStatus(unix_wait_status(25856)))
+thread 'the_host_process' (12689) panicked at crates/lexlean/tests/end_children.rs:408:9:
+assertion `left == right` failed: starting a child changed a signal disposition of the host
+  left: (4294984770, 4096)
+ right: (4294984774, 4096)
+```
+
+Removed: every plant was restored; the tests pass.
+
 ### a module is a namespace at every segment
 
 Module `Sub.Nat` with a function `blt`, imported by `Sub.Other`, was accepted by

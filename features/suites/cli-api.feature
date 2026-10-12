@@ -158,3 +158,11 @@ Feature: cli-api
     And exact package identities and validated reverse import reachability distinguish connected and disconnected packages independent of source order
     And module, denotation, binder, notation, and segmentation failures are not misclassified
     And repaired and explicitly qualified projects pass while existing diagnostic JSON bytes remain unchanged
+
+  @CL-22 @build
+  Scenario: A host that embeds the library ends every child process group the library started and has not seen exit through the public function `lexlean::verify::end_live_children`, which installs no signal handler, alters no signal disposition, never signals the host's own process or group, reports each group as ended, already gone, or failing with the OS error, and refuses a later child start with LLV7018 until the host re-enables it, and the `lexlean` executable ends its interrupted children through the same function.
+    Given the source of `crates/lexlean/src/verify/lifeline.rs` and the registered error model
+    When the public functions are resolved at their documented path and the kill path is counted
+    Then `end_live_children` and `allow_children` are public at `lexlean::verify` with the documented per-group outcome type
+    And the process group is signalled in exactly one place and the executable's interrupt thread ends the live groups through the public function
+    And LLV7018 is registered in the environment class with exit code 3

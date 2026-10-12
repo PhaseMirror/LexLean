@@ -106,6 +106,26 @@ versions, and the entries below say what each tag does and does not claim.
   supported-host job drops the `cargo build` its `cargo test` repeated (SPEC.md
   §8.3). Pinned by `conformance_rp_14` and the unit tests of
   `repo_conformance::evidence`; no register ID or code is added.
+- A host that embeds the library can end the children the library started
+  (SPEC.md §17.17, §24.6, `CL-22`): `lexlean::verify::end_live_children` ends
+  every child process group the library started in this process and has not
+  seen exit, reporting each as `Ended`, `AlreadyGone`, or `Failed` with the OS
+  error, and `lexlean::verify::allow_children` re-enables starting children
+  afterwards. The shutdown state is set under the same lock that registers a
+  child, so a child started concurrently with the call is ended or refused
+  (`LLV7018`), never left running; the library installs no handler, changes no
+  signal disposition, and never signals the host's own process or group. The
+  executable's interrupt thread and a run's own timeout now end groups through
+  that one function (`verify::lifeline::end_leader`), and `conformance_cl_22`
+  counts the signalling sites across every source file of the library. The
+  tests run a host process of its own that registers its own handling of
+  `SIGINT` and `SIGTERM`, deliver each from outside, and compare its signal
+  dispositions before and after the library starts and ends children; the
+  concurrent-start case ends the children sixty times and catches a planted
+  removal of the registration lock in 100 of 100 runs. `CL-22` and `LLV7018`
+  are registered (`LLV7017` is the verification width of §22.11), and the
+  falsifiability record is in `VERIFICATION.md`. The register has 339
+  conformance IDs.
 - The acceptance gate fits its job again (SPEC.md §9.2, VERIFICATION.md,
   "Runtime of `just vv`"): the run of this branch was cancelled at the
   360-minute limit. `bdd` is `cargo test -p repo-conformance --test bdd`, the

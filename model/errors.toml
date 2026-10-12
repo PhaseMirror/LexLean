@@ -496,3 +496,10 @@ class = "environment"
 exit = 3
 title = "Invalid verification resource profile"
 statement = "The operational verification process width the environment selects is not a decimal integer from 1 to 64."
+
+[[error]]
+code = "LLV7018"
+class = "environment"
+exit = 3
+title = "Child start refused after the host ended the live children"
+statement = "A child process could not be started because the host ended the live children of this process through `lexlean::verify::end_live_children` and has not re-enabled starting children."

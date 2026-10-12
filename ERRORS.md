@@ -429,3 +429,9 @@ Class: `language`. Exit code: 1.
 The operational verification process width the environment selects is not a decimal integer from 1 to 64.
 
 Class: `environment`. Exit code: 3.
+
+## `LLV7018` --- Child start refused after the host ended the live children
+
+A child process could not be started because the host ended the live children of this process through `lexlean::verify::end_live_children` and has not re-enabled starting children.
+
+Class: `environment`. Exit code: 3.
