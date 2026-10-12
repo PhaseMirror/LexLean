@@ -3544,7 +3544,7 @@ Removed: the function was deleted; clippy is clean.
 Planted: the last hex digit of the empty-input SHA-256 vector in `crates/model/src/release.rs` changed from `5` to `6`. Command: `cargo test -p repo-model --all-features`. Expected: the unit test fails on the digest.
 
 ```text
-thread 'release::tests::the_local_sha256_agrees_with_the_test_vectors' panicked at crates/model/src/release.rs:558:9:
+thread 'release::tests::the_local_sha256_agrees_with_the_test_vectors' panicked at crates/model/src/release.rs:559:9:
 assertion `left == right` failed
   left: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
  right: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b856"
@@ -5338,9 +5338,10 @@ oracle acquired; every plant was restored.
   to be a git repository`. The unreachable remote is tried three times (`after 3
   tries`), the wrong content is a pin mismatch once, and `retry` is tested for
   two blips survived, the delays waited, and a permanent failure ended at once.
-  A cold build in an empty cache with `cargo fetch --locked` into the cache's
-  own Cargo home (no `LEXLEAN_ORACLE_DIR`, the commit fetched from GitHub):
-  38 s for the acquisition test alone, crates.io reachable.
+  The cold path was run in this container: an empty cache and a local checkout
+  (the Lake build, `cargo fetch --locked` into the cache's own Cargo home, and
+  the offline build) took 38 s, crates.io reachable; the whole group from an
+  empty cache with the commit fetched from GitHub took 234 s of wall time.
 - **The pin's toolchains are the repository's.** Planted: the comparison with
   `rust-toolchain.toml` skipped, then the one with `lean-toolchain`. Observed,
   then restored: `conformance_or_01` failed with `another Rust is a drift:
