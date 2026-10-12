@@ -3,9 +3,13 @@
 #
 # `just vv` is the single gate, run from a clean checkout on Linux x86-64 with
 # the exact pinned toolchains and no build cache: §9.4 says "from a clean
-# checkout", and a restored target directory is not one. `honesty` is split
-# out so a claim that has drifted from its evidence reads differently from
-# broken code.
+# checkout", and a restored target directory is not one. CI runs its twelve
+# recipes as two legs at once, each its own clean checkout: `examples`, whose
+# native Atlas verification is most of the gate's time, and the other eleven in
+# the order of `vv`. Together they run every recipe of `vv` exactly once, so the
+# gate is the same and the wall time is the longer leg rather than the sum.
+# `honesty` is split out so a claim that has drifted from its evidence reads
+# differently from broken code.
 #
 # The gate runs on the standard GitHub-hosted runner at the verifier's default
 # width of 1 (SPEC.md §9.4, §22.11); no larger runner and no wider width is part
@@ -45,7 +49,14 @@ env:
 
 jobs:
   vv:
-    name: just vv
+    name: just vv (${{ matrix.part }})
+    # A failing leg does not cancel the other: each leg's evidence is complete.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { part: examples, recipes: "examples" }
+          - { part: rest, recipes: "fmt-check model spec-links lint test features bdd inventory golden repro deny" }
     runs-on: ubuntu-24.04
     # Native Atlas elaboration, per-module kernel replay, and per-module axiom
     # audit are intentionally the long pole. GitHub-hosted jobs permit six
@@ -109,7 +120,10 @@ jobs:
           sample_resources > ci-evidence/resources.tsv &
           sample_pid=$!
           trap 'kill "$monitor_pid" "$sample_pid" 2>/dev/null || true; wait "$monitor_pid" "$sample_pid" 2>/dev/null || true' EXIT
-          just --timestamp --timestamp-format '%s%.3f' vv 2>&1 | tee ci-evidence/vv.txt
+          just --timestamp --timestamp-format '%s%.3f' ${{ matrix.recipes }} 2>&1 | tee ci-evidence/vv.txt
+          # The end of the leg's last recipe, as `vv` prints its own at the end
+          # of the whole gate (`repo_conformance::evidence::PART_PASSED_LINE`).
+          printf '[%s] %s\n' "$(date +%s.%3N)" 'vv part: every recipe passed' >> ci-evidence/vv.txt
       # What the run cost, by recipe, stage, and module (SPEC.md §9.4). Evidence
       # only: it is read by people and by later measurements, never by a recipe.
       # It prints the summary to this log and appends it to the step summary, as
@@ -121,16 +135,22 @@ jobs:
       # The example gate discovers Atlas rather than receiving an allow-list.
       # These assertions make its complete proof run visible as first-class CI
       # evidence without running the expensive verifier a second time.
+      # The leg that runs `examples` is chosen by the matrix, not by the log,
+      # so a leg that should have verified Atlas and did not fails here.
       - name: Assert native Atlas was verified by the acceptance gate
         shell: bash
         run: |
           set -euo pipefail
-          grep -F "verify-examples: uor-atlas verified (attestation " ci-evidence/vv.txt
-          grep -F "verify-examples: uor-atlas: 267 normalized verification records equal expected/verify (§29.5)" ci-evidence/vv.txt
+          case " ${{ matrix.recipes }} " in
+            *" examples "*)
+              grep -F "verify-examples: uor-atlas verified (attestation " ci-evidence/vv.txt
+              grep -F "verify-examples: uor-atlas: 267 normalized verification records equal expected/verify (§29.5)" ci-evidence/vv.txt
+              ;;
+          esac
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: ${{ !cancelled() }}
         with:
-          name: acceptance-gate-evidence
+          name: acceptance-gate-evidence-${{ matrix.part }}
           path: ci-evidence
           if-no-files-found: error
           retention-days: 14

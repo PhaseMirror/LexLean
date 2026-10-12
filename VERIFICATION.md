@@ -6035,3 +6035,58 @@ was removed.
 - **a malformed width.** `invalid-verify-width` (`LEXLEAN_VERIFY_WIDTH=0`) is a
   negative fixture of §28.5: `verify` exits 3 with `LLV7017` before the build is
   published, on every host.
+
+## The CI gate in two legs
+
+`just vv` runs its twelve recipes one after another, and `examples` is most of
+that time: 8985 s of the 11711 s on the runner (CI run 38201023383, "Runner
+numbers" above), 8277 s of it UOR Atlas, which runs one Lean process at a time
+because its largest modules peak at about 15 GB on a 16 GB runner. Nothing the
+other recipes check waits on it, yet the job made them wait.
+
+`ci.yml` now runs the gate as one matrix job of two legs at once, each its own
+clean checkout on `ubuntu-24.04` at width 1 with the same set-up: `examples`
+alone, and the other eleven recipes in the order of `vv`, each leg through
+`just --timestamp … ${{ matrix.recipes }}`, which stops at its first failing
+recipe as `vv` does. `just vv`, its recipes, and its order are unchanged
+(`RP-05`), and `release.yml` still runs it whole. The leg that runs `examples`
+is the one that asserts that Atlas verified, chosen by its recipes and not by
+its log. A leg ends its log with a stamped `vv part: every recipe passed`, so
+that `cargo xtask ci-summary` times its last recipe to the end of the leg rather
+than to nothing (`evidence::PART_PASSED_LINE`), and each leg uploads
+`acceptance-gate-evidence-<leg>`. The wall time of the gate becomes the longer
+leg: from the runner numbers, about 8985 s of recipes plus set-up against the
+earlier 11711 s, so roughly 2 h 40 min instead of 3 h 16 min. That is an
+estimate from one run's timings, not a measurement, and the variation between
+runs recorded above is larger than either leg's set-up.
+
+`RP-14` (SPEC.md §9.4) now reads the legs out of the matrix and requires that
+together they run every recipe of `vv` exactly once, each leg in the order of
+`vv`, through the one gate command, with the end line and the per-leg artifact
+name; its other checks (the runner, the width, the time limit, no cache, no
+path filter, no condition but `!cancelled()` on the two evidence steps) are
+unchanged.
+
+### the legs can fail
+
+Each record is a defect planted in `ci.yml`, then `cargo test -p
+repo-conformance --test conformance -- --exact conformance_rp_14`, and the
+failure, after which the file was restored.
+
+- **a recipe dropped from the legs** (`golden` removed from the second leg):
+  `§9.4: the legs run every recipe of vv exactly once`.
+- **a recipe run by both legs** (`examples` added to the second leg): the same.
+- **a leg out of the order of vv** (`bdd` before `test`): `§9.4: the leg
+  ["fmt-check", "model", "spec-links", "lint", "bdd", "test", "features",
+  "inventory", "golden", "repro", "deny"] runs its recipes in the order of vv`.
+- **the Atlas assertion keyed to the log** (`case "$(cat ci-evidence/vv.txt)"`):
+  `the leg that runs examples asserts that Atlas verified`.
+- **the end line of a leg dropped**: `a leg marks the end of its last recipe as
+  the summary reads it`.
+- **each leg running all of vv** (`vv` in place of `${{ matrix.recipes }}`):
+  `every leg runs its recipes through the one gate command`.
+
+The summary reads a leg's end line as it reads any last stamped line, so no
+branch of `recipe_spans` is added for it and none could be planted;
+`a_leg_of_the_gate_ends_its_last_recipe_at_the_leg_s_own_line` fixes how a leg's
+log is timed.
