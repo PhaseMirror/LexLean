@@ -1602,10 +1602,6 @@ const POSITIVE_PATTERN_BINDERS: &str = r#"\begin{lexlean}{Main}
 /// refused as built-in names): every constructor of `Init` whose last
 /// component, written bare, resolves to a constructor.
 fn lean_root_constructors_are_the_refused_pattern_binders() {
-    let project = P::copy_example("production");
-    let loaded = lexlean::project::Project::load(&project.root.join("lexlean.toml")).expect("load");
-    let toolchain =
-        lexlean::verify::toolchain::preflight(&loaded.config.limits).expect("the pinned toolchain");
     let source = "import Lean
 #eval show Lean.Meta.MetaM Unit from do
   let env ← Lean.getEnv
@@ -1625,7 +1621,15 @@ fn lean_root_constructors_are_the_refused_pattern_binders() {
   IO.println s!\"ROOT {hits.qsort (· < ·)}\"
 ";
     let output = {
+        // The toolchain is resolved from `ELAN_HOME`, which a case that
+        // replaces it holds exclusively, so it is resolved and used under the
+        // shared lock (and released before `verify_ok`, which takes it too).
         let _guard = support::env_shared();
+        let project = P::copy_example("production");
+        let loaded =
+            lexlean::project::Project::load(&project.root.join("lexlean.toml")).expect("load");
+        let toolchain = lexlean::verify::toolchain::preflight(&loaded.config.limits)
+            .expect("the pinned toolchain");
         let directory = tempfile::tempdir().expect("tempdir");
         let path = directory.path().join("Roots.lean");
         std::fs::write(&path, source).expect("write");
@@ -1662,6 +1666,9 @@ fn lean_root_constructors_are_the_refused_pattern_binders() {
 /// in the pinned Lean, and the first-level names it holds under each are
 /// listed.
 fn lean_generated_members_are_refused() {
+    // The toolchain is resolved from `ELAN_HOME`, which a case that replaces it
+    // holds exclusively, so it is resolved and used under the shared lock.
+    let _guard = support::env_shared();
     let project = P::copy_example("production");
     let loaded = lexlean::project::Project::load(&project.root.join("lexlean.toml")).expect("load");
     let toolchain =
@@ -1694,7 +1701,6 @@ def generated (ts : List Name) : CoreM Unit := do
     IO.println s!\"{t}: {names.qsort (· < ·)}\"
 #eval generated [`T1, `T2, `T3, `S1, `S2, `M1, `M2, `T4, `S3, `E1]
 ";
-    let _guard = support::env_shared();
     let directory = tempfile::tempdir().expect("tempdir");
     let path = directory.path().join("Generated.lean");
     std::fs::write(&path, source).expect("write");
