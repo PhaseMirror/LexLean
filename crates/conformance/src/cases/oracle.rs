@@ -716,7 +716,9 @@ fn isolation_audit() {
             std::fs::write(&path, text).expect("plant");
             let error = repo_model::isolation::scan(tree.path())
                 .expect_err(&format!("planting {what} in {place} must fail the audit"));
-            assert!(error.contains(place), "{error}");
+            // The audit joins path segments with the host separator, so on
+            // Windows the message reads `crates/lexlean\src\lib.rs`.
+            assert!(error.replace('\\', "/").contains(place), "{error}");
         }
     }
     // An audit that read nothing has not passed.
