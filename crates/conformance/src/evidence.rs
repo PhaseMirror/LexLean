@@ -244,6 +244,121 @@ fn mib(kib: u64) -> u64 {
     kib / 1024
 }
 
+/// The rows of any one table of the summary: the slowest few, never every
+/// process or module of the run (those are in `verify-telemetry.jsonl`).
+pub const TOP: usize = 15;
+
+/// The variable GitHub Actions sets to the file that becomes the step's
+/// summary on the run page.
+pub const STEP_SUMMARY_VARIABLE: &str = "GITHUB_STEP_SUMMARY";
+
+/// The most this report adds to a step summary. GitHub refuses a step summary
+/// of more than 1 MiB and drops it whole, so the report stops at half of that
+/// rather than lose every table to a run with more than the tables expect.
+pub const STEP_SUMMARY_LIMIT: usize = 512 * 1024;
+
+/// `text` cut at a line boundary to fit `limit` bytes, with a note that says
+/// it was cut. Text that fits is returned as it is.
+#[must_use]
+pub fn bounded(text: &str, limit: usize) -> String {
+    const NOTE: &str = "\n_The summary was cut here to fit the step summary; the whole of it is `summary.md` of the uploaded CI evidence._\n";
+    if text.len() <= limit {
+        return text.to_owned();
+    }
+    let mut end = limit.saturating_sub(NOTE.len()).min(text.len());
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    let kept = text[..end].rfind('\n').map_or(0, |at| at + 1);
+    format!("{}{NOTE}", &text[..kept])
+}
+
+/// Read the JSON lines of `file` under `directory`, dropping what is not JSON.
+fn json_lines(directory: &Path, file: &str) -> Vec<serde_json::Value> {
+    std::fs::read_to_string(directory.join(file))
+        .map(|text| {
+            text.lines()
+                .filter_map(|line| serde_json::from_str(line).ok())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// What [`publish`] counted, for the line it ends with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Counts {
+    /// Recipes of `vv` found in the gate log.
+    pub recipes: usize,
+    /// Rows of host samples.
+    pub samples: usize,
+    /// Lines of verifier telemetry.
+    pub verifier: usize,
+    /// Examples timed.
+    pub examples: usize,
+    /// Conformance cases timed.
+    pub cases: usize,
+}
+
+/// Summarize the evidence directory of a gate run (SPEC.md §9.4): the summary
+/// goes to `stdout`, which in CI is the job log, because an uploaded artifact
+/// cannot be read from the log; to the step summary named by the environment
+/// variable [`STEP_SUMMARY_VARIABLE`], when it is set, bounded by
+/// [`STEP_SUMMARY_LIMIT`]; and to `summary.md` in the directory, which stays
+/// the complete record. It reads whatever the run left, so a gate that failed
+/// early still reports the recipes it reached. The summary is evidence read
+/// beside the gate: nothing here writes into a verified artifact.
+///
+/// A step summary that cannot be written is a warning in the log and not an
+/// error: it is a second copy, and the first is already printed.
+///
+/// # Errors
+///
+/// A `stdout` that cannot be written, or a directory that cannot be created
+/// or a `summary.md` that cannot be written in it.
+pub fn publish(
+    justfile: &str,
+    directory: &Path,
+    environment: &dyn Fn(&str) -> Option<std::ffi::OsString>,
+    stdout: &mut dyn std::io::Write,
+) -> std::io::Result<Counts> {
+    use std::io::Write as _;
+    let read = |file: &str| std::fs::read_to_string(directory.join(file)).unwrap_or_default();
+    let spans = recipe_spans(justfile, &read("vv.txt"));
+    let samples = parse_samples(&read("resources.tsv"));
+    let verifier = json_lines(directory, lexlean::verify::telemetry::VERIFY_FILE);
+    let examples = json_lines(directory, "examples-telemetry.jsonl");
+    let cases = json_lines(directory, "cases-telemetry.jsonl");
+    let mut summary = render_summary(&spans, &samples, &verifier, &examples);
+    summary.push_str(&render_detail(&verifier, &cases));
+
+    // The log first: it is what a reader of a failed run has.
+    writeln!(stdout, "{summary}")?;
+    stdout.flush()?;
+    if let Some(step) = environment(STEP_SUMMARY_VARIABLE) {
+        let appended = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&step)
+            .and_then(|mut file| writeln!(file, "{}", bounded(&summary, STEP_SUMMARY_LIMIT)));
+        if let Err(error) = appended {
+            writeln!(
+                stdout,
+                "::warning::the step summary {} was not written: {error}",
+                Path::new(&step).display()
+            )?;
+        }
+    }
+    std::fs::create_dir_all(directory)?;
+    std::fs::write(directory.join("summary.md"), &summary)?;
+    Ok(Counts {
+        recipes: spans.len(),
+        samples: samples.len(),
+        verifier: verifier.len(),
+        examples: examples.len(),
+        cases: cases.len(),
+    })
+}
+
 /// The Markdown summary of one gate run: the wall time of each recipe with the
 /// host's memory extremes while it ran, the verifier's stages, and its slowest
 /// processes. Everything in it is a measurement of this run; none of it is an
@@ -311,11 +426,18 @@ pub fn render_summary(
         );
         let mut rows: Vec<_> = projects.iter().collect();
         rows.sort_by_key(|row| std::cmp::Reverse(row.1 .1));
-        for (project, (count, wall)) in rows {
+        let all = rows.len();
+        for (project, (count, wall)) in rows.into_iter().take(TOP) {
             let _ = writeln!(
                 out,
                 "| {project} | {count} | {:.1} |",
                 *wall as f64 / 1000.0
+            );
+        }
+        if all > TOP {
+            let _ = writeln!(
+                out,
+                "\n{all} projects in all; the {TOP} slowest are listed."
             );
         }
         out.push_str(
@@ -336,7 +458,7 @@ pub fn render_summary(
             .collect();
         processes.sort_by_key(|event| std::cmp::Reverse(ms(event)));
         out.push_str("\n## Slowest verifier processes\n\n| Project | Stage | Tool | Module or audit member | Seconds | Peak RSS (MiB) | Peak swap (MiB) |\n| --- | --- | --- | --- | ---: | ---: | ---: |\n");
-        for event in processes.into_iter().take(15) {
+        for event in processes.into_iter().take(TOP) {
             let kib = |key: &str| {
                 event[key]
                     .as_u64()
@@ -359,7 +481,9 @@ pub fn render_summary(
         out.push_str(
             "\n## Examples\n\n| Example | Seconds | Verifier width | fmt | lock | check | build | verify |\n| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n",
         );
-        for event in examples {
+        let mut slowest: Vec<&serde_json::Value> = examples.iter().collect();
+        slowest.sort_by_key(|event| std::cmp::Reverse(ms(event)));
+        for event in slowest.into_iter().take(TOP) {
             let step = |label: &str| {
                 event["steps"][format!("{label}_ms")].as_u64().map_or_else(
                     || "n/a".to_owned(),
@@ -377,6 +501,13 @@ pub fn render_summary(
                 step("check"),
                 step("build"),
                 step("verify")
+            );
+        }
+        if examples.len() > TOP {
+            let _ = writeln!(
+                out,
+                "\n{} examples in all; the {TOP} slowest are listed.",
+                examples.len()
             );
         }
     }
@@ -410,7 +541,7 @@ pub fn render_detail(verifier: &[serde_json::Value], cases: &[serde_json::Value]
             cases.len(),
             secs(total)
         );
-        for event in rows.into_iter().take(15) {
+        for event in rows.into_iter().take(TOP) {
             let _ = writeln!(
                 out,
                 "| {} | {:.1} | {} |",
@@ -536,7 +667,7 @@ pub fn render_detail(verifier: &[serde_json::Value], cases: &[serde_json::Value]
                 event[key].as_u64().unwrap_or(0)
             })
         });
-        for event in rows.into_iter().take(15) {
+        for event in rows.into_iter().take(TOP) {
             let _ = writeln!(
                 out,
                 "| {} | {} | {} | {:.1} | {} | {} |",
@@ -590,7 +721,7 @@ pub fn render_detail(verifier: &[serde_json::Value], cases: &[serde_json::Value]
 
 #[cfg(test)]
 mod summary_tests {
-    use super::{parse_samples, recipe_spans, render_summary};
+    use super::{bounded, parse_samples, publish, recipe_spans, render_summary};
 
     const JUSTFILE: &str = "\
 vv: a b c
@@ -692,5 +823,125 @@ vv: the acceptance gate passed
             !detail.contains("none\n"),
             "the swapped process is listed: {detail}"
         );
+    }
+
+    /// A gate that failed in its second recipe: a log cut short, a verifier
+    /// that never ran, no host samples. What the run did leave is the evidence.
+    fn failed_run() -> tempfile::TempDir {
+        let directory = tempfile::tempdir().expect("a directory");
+        std::fs::write(
+            directory.path().join("vv.txt"),
+            "[100.0] cargo a\n[160.0] cargo b --flag\nerror: b failed\n",
+        )
+        .expect("a log");
+        directory
+    }
+
+    fn published(
+        directory: &std::path::Path,
+        step: Option<&std::path::Path>,
+    ) -> (String, super::Counts) {
+        let mut printed = Vec::new();
+        let counts = publish(
+            JUSTFILE,
+            directory,
+            &|name| {
+                (name == super::STEP_SUMMARY_VARIABLE)
+                    .then(|| step.map(|path| path.as_os_str().to_owned()))
+                    .flatten()
+            },
+            &mut printed,
+        )
+        .expect("publishes");
+        (String::from_utf8(printed).expect("UTF-8"), counts)
+    }
+
+    #[test]
+    fn the_summary_is_printed_to_the_log_even_when_the_gate_failed() {
+        let run = failed_run();
+        let (printed, counts) = published(run.path(), None);
+        assert!(
+            printed.contains("## Wall time per `just vv` recipe") && printed.contains("| `a` |"),
+            "the recipes the run reached are in the log: {printed}"
+        );
+        assert_eq!(counts.recipes, 2);
+        assert_eq!(
+            format!(
+                "{}\n",
+                std::fs::read_to_string(run.path().join("summary.md")).expect("the file")
+            ),
+            printed,
+            "the log and the file carry the same summary"
+        );
+    }
+
+    #[test]
+    fn the_step_summary_is_appended_to_when_the_variable_names_one_and_only_then() {
+        let run = failed_run();
+        let step = run.path().join("step-summary.md");
+        std::fs::write(&step, "an earlier step\n").expect("an earlier step");
+        let (printed, _) = published(run.path(), Some(&step));
+        let text = std::fs::read_to_string(&step).expect("the step summary");
+        assert!(
+            text.starts_with("an earlier step\n") && text.contains("| `a` |"),
+            "appended after what was there: {text}"
+        );
+        assert!(printed.contains("| `a` |"), "and still printed");
+
+        let other = failed_run();
+        let untouched = other.path().join("never-named.md");
+        published(other.path(), None);
+        assert!(!untouched.exists());
+        assert_eq!(
+            std::fs::read_dir(other.path()).expect("listed").count(),
+            2,
+            "without the variable only `vv.txt` and `summary.md` exist"
+        );
+    }
+
+    #[test]
+    fn a_step_summary_that_cannot_be_written_is_a_warning_and_not_a_failure() {
+        let run = failed_run();
+        let missing = run.path().join("no-such-directory").join("step.md");
+        let (printed, _) = published(run.path(), Some(&missing));
+        assert!(printed.contains("::warning::the step summary"), "{printed}");
+        assert!(run.path().join("summary.md").is_file());
+    }
+
+    #[test]
+    fn what_goes_into_the_step_summary_is_bounded_and_cut_at_a_line() {
+        let long = "a line of the summary, 38 bytes long...\n".repeat(100);
+        assert_eq!(bounded(&long, long.len()), long);
+        for limit in [600, 1000, 1001, 2048] {
+            let cut = bounded(&long, limit);
+            assert!(cut.len() <= limit, "{limit}: {}", cut.len());
+            assert!(cut.contains("was cut here"), "{cut}");
+            assert!(
+                cut.starts_with("a line of the summary, 38 bytes long...\n"),
+                "{cut}"
+            );
+        }
+        // A multi-byte character at the cut is not split.
+        let wide = "\u{2014}".repeat(1000);
+        assert!(bounded(&wide, 700).len() <= 700);
+    }
+
+    #[test]
+    fn a_run_with_thousands_of_projects_and_examples_lists_only_the_slowest() {
+        let verifier: Vec<serde_json::Value> = (0..5000)
+            .map(|n| serde_json::json!({"event": "verify_end", "project": format!("p{n}"), "wall_ms": n}))
+            .collect();
+        let examples: Vec<serde_json::Value> = (0..5000)
+            .map(|n| serde_json::json!({"example": format!("e{n}"), "wall_ms": n, "steps": {}}))
+            .collect();
+        let summary = render_summary(&[], &[], &verifier, &examples);
+        assert!(
+            summary.len() < 16 * 1024,
+            "the summary does not grow with the run: {} bytes",
+            summary.len()
+        );
+        assert!(summary.contains("| p4999 |") && !summary.contains("| p0 |"));
+        assert!(summary.contains("5000 projects in all; the 15 slowest are listed."));
+        assert!(summary.contains("5000 examples in all; the 15 slowest are listed."));
     }
 }

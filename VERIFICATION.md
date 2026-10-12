@@ -5283,11 +5283,17 @@ each recipe's first command (that is how a recipe is timed without changing it),
 samples the host every five seconds into `resources.tsv` (free memory, swap in
 use, the largest resident set), points `LEXLEAN_CI_TELEMETRY` at `ci-evidence/`,
 and, after the gate, runs `cargo xtask ci-summary`, which writes
-`ci-evidence/summary.md` (also appended to the job summary): the wall time of
+`ci-evidence/summary.md`, prints it to the job log (an uploaded artifact cannot
+be read from the log) and appends it to `$GITHUB_STEP_SUMMARY` when GitHub sets
+it, cut there at 512 KiB, half of the 1 MiB GitHub accepts, and bounded by
+construction because every table lists at most fifteen rows. The step carries
+`if: ${{ !cancelled() }}`, so a failed `vv` still reports the recipes it reached
+(`repo_conformance::evidence::publish`, which has the tests). The summary holds the wall time of
 each `vv` recipe with the lowest free memory, highest swap, and largest process
-while it ran; the time of each verification stage; the fifteen slowest verifier
-processes with their peak resident set and swap; the time of each example and its
-steps; the fifteen slowest conformance cases; the stages of each project; and for
+while it ran; the fifteen slowest projects to verify; the time of each verification
+stage; the fifteen slowest verifier processes with their peak resident set and
+swap; the fifteen slowest examples and their steps; the fifteen slowest conformance
+cases; the stages of the twelve slowest projects; and for
 the longest single verification (which on the runner is `uor-atlas`) its stages
 with the lowest free memory, highest swap and the verifier's own peak, its slowest
 and largest processes by module, the processes that swapped, and its slowest
@@ -5314,6 +5320,20 @@ container (4 vCPU, 15 GB), which is not the runner.
   line. Cold build of `cargo test --workspace --all-features --no-run`, 86 s
   against 61 s; the target directory 2.7 GB against 1.3 GB; the conformance test
   binary 279 MB against 136 MB. The runner's disk also holds the proof evidence.
+- **A build step before the host matrix's tests.** Each leg ran `cargo build
+  --locked --workspace --all-features` and then `cargo test` with the same
+  arguments. `cargo test` builds, in the same profile (the test profile inherits
+  `dev`; there is no `[profile.test]`), the library and the binary of `lexlean`
+  (its integration tests run the binary: after `cargo test --workspace
+  --all-features --no-run` on a clean target `target/debug/lexlean` exists) and
+  every dependency, so the shipped crate that does not build fails the leg at the
+  test step. What the build step added was the non-test compilation of `xtask`
+  (no `cfg(not(test))` code exists in the workspace, and no host in the job runs
+  `xtask`): 1.7 s on the reference container with the dependencies built, and one
+  step of the four legs' set-up. That is small, and it is the only measurement
+  claimed; the runners' figure is whatever the next run's step durations show.
+  The step is removed and `conformance_rp_14` refuses a `cargo build` in
+  `ci.yml`. SPEC.md §8.3 says that the host job builds through `cargo test`.
 - **Looked at and left**: `features` (`cargo check --all-targets`) re-checks what
   `lint` (clippy) checked, 26 s cold, but is a recipe SPEC.md §9.2 names; the
   feature unification of `-p repo-conformance` against `--workspace` recompiles
@@ -5465,6 +5485,29 @@ was removed.
   `ci.yml:49: the only condition allowed is ...`; the gate step given
   `if: ${{ !cancelled() }}`: `the summary step and the evidence upload carry it`
   (left: 3) (all `conformance_rp_14`).
+- **a summary that is not in the log.** Each planted in
+  `repo_conformance::evidence::publish` and `xtask/src/ci.rs`, and the unit tests
+  (`cargo test -p repo-conformance --lib evidence`) and `conformance_rp_14` run:
+  - the `writeln!(stdout, "{summary}")` removed: `the_summary_is_printed_to_the_log_even_when_the_gate_failed`
+    and `the_step_summary_is_appended_to_when_the_variable_names_one_and_only_then`
+    fail (the latter at `and still printed`);
+  - the step summary read from another variable than `GITHUB_STEP_SUMMARY`:
+    `the_step_summary_is_appended_to_when_the_variable_names_one_and_only_then`
+    and `a_step_summary_that_cannot_be_written_is_a_warning_and_not_a_failure`
+    fail;
+  - `bounded` returning its input whole: `what_goes_into_the_step_summary_is_bounded_and_cut_at_a_line`
+    fails;
+  - the table of projects listed without its fifteen-row limit:
+    `a_run_with_thousands_of_projects_and_examples_lists_only_the_slowest` fails
+    (`the summary does not grow with the run`);
+  - the task passing `&|_| None` as the environment, or `&mut std::io::sink()` as
+    the output: `ci-summary prints to stdout and reads GITHUB_STEP_SUMMARY from the
+    environment` (`conformance_rp_14`).
+- **a build step restored to the host matrix.** `- run: cargo build --locked
+  --workspace --all-features` before the matrix's `cargo test`:
+  `ci.yml has no `cargo build` step: the host matrix's `cargo test` builds the crate`
+  (`conformance_rp_14`). The summary step given no `if: ${{ !cancelled() }}` is
+  refused by the condition count of the same case (the record above).
 - **a width that is not Unicode.** `from_environment` reading the variable with
   `std::env::var(..).ok()` (a non-Unicode value then selects the default width, silently):
   `verify::operational::tests::the_environment_is_read_as_bytes` fails with

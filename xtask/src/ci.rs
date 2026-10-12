@@ -6,7 +6,7 @@
 //! never read back by a recipe.
 
 use std::collections::BTreeSet;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -165,49 +165,23 @@ fn option(arguments: &[String], name: &str) -> Option<String> {
         .cloned()
 }
 
-/// Read the JSON lines of `file` under `directory`, dropping what is not JSON.
-fn json_lines(directory: &Path, file: &str) -> Vec<Value> {
-    std::fs::read_to_string(directory.join(file))
-        .map(|text| {
-            text.lines()
-                .filter_map(|line| serde_json::from_str(line).ok())
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-/// Summarize the evidence directory of a gate run into `summary.md`.
+/// Summarize the evidence directory of a gate run (SPEC.md §9.4): print the
+/// summary, append it to the step summary when GitHub provides one, and keep
+/// `summary.md`. The work is `repo_conformance::evidence::publish`, which has
+/// the tests; this reads the Justfile and the process environment for it.
 pub fn ci_summary(root: &Path, arguments: &[String]) -> Result<(), Fail> {
     let directory =
         PathBuf::from(option(arguments, "--evidence").unwrap_or_else(|| "ci-evidence".to_owned()));
     let justfile = std::fs::read_to_string(root.join("Justfile"))?;
-    let log = std::fs::read_to_string(directory.join("vv.txt")).unwrap_or_default();
-    let spans = evidence::recipe_spans(&justfile, &log);
-    let samples = evidence::parse_samples(
-        &std::fs::read_to_string(directory.join("resources.tsv")).unwrap_or_default(),
-    );
-    let verifier = json_lines(&directory, lexlean::verify::telemetry::VERIFY_FILE);
-    let examples = json_lines(&directory, "examples-telemetry.jsonl");
-    let cases = json_lines(&directory, "cases-telemetry.jsonl");
-    let mut summary = evidence::render_summary(&spans, &samples, &verifier, &examples);
-    summary.push_str(&evidence::render_detail(&verifier, &cases));
-    std::fs::write(directory.join("summary.md"), &summary)?;
-    if let Some(step) = std::env::var_os("GITHUB_STEP_SUMMARY") {
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(step)
-        {
-            writeln!(file, "{summary}").ok();
-        }
-    }
+    let counts = evidence::publish(
+        &justfile,
+        &directory,
+        &|name| std::env::var_os(name),
+        &mut std::io::stdout().lock(),
+    )?;
     println!(
         "ci-summary: {} recipes, {} host samples, {} verifier events, {} examples, {} conformance cases",
-        spans.len(),
-        samples.len(),
-        verifier.len(),
-        examples.len(),
-        cases.len()
+        counts.recipes, counts.samples, counts.verifier, counts.examples, counts.cases
     );
     Ok(())
 }
