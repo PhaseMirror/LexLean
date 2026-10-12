@@ -636,7 +636,7 @@ fn rust_channel(repo: &Path) -> Result<String, String> {
 /// [`Unavailable::ToolchainDrift`] naming both values.
 pub fn check_toolchains(pin: &Pin, repo: &Path) -> Result<(), Unavailable> {
     let drift = Unavailable::ToolchainDrift;
-    let rust = rust_channel(repo).map_err(&drift)?;
+    let rust = rust_channel(repo).map_err(drift)?;
     if pin.rust_toolchain != rust {
         return Err(drift(format!(
             "oracle/lean4-prod.toml states rust_toolchain `{}` and rust-toolchain.toml pins `{rust}`",
@@ -852,8 +852,8 @@ impl Oracle {
             || build.join("cargo-home"),
             |cache| cache.join("cargo-home"),
         );
-        let rust = rust_channel(repo_root().as_std_path())
-            .map_err(|detail| Unavailable::ToolchainDrift(detail))?;
+        let rust =
+            rust_channel(repo_root().as_std_path()).map_err(Unavailable::ToolchainDrift)?;
         let cargo_command = |arguments: &[&str]| {
             let mut command = Command::new(&cargo);
             command
