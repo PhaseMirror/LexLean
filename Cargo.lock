@@ -500,6 +500,7 @@ dependencies = [
  "camino",
  "lexlean",
  "repo-model",
+ "rustix",
  "serde",
  "serde_json",
  "sha2",

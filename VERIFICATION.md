@@ -9,12 +9,12 @@ How this repository's claims are checked, which recipe enforces which rule, and 
 | Recipe | Command | Rules it enforces |
 | --- | --- | --- |
 | `fmt-check` | `cargo fmt --all -- --check` | one canonical source formatting |
-| `model` | `cargo xtask validate-model` | R1 (model is the single source; every model file parsed with unknown-field rejection), R2 (honesty levels and vocabulary, via the meta-gate), R3 (register/scenario/test bijection, Gherkin subset), R4 (`audit-deferral`), R5 (`audit-errors`), R6 (`audit-shipped`, including the shipped crate's normative links, and every vendored authority's SHA-256 recomputed from its copy), R8 (`audit-generated`, `audit-language-closure`), RP-09 (`audit-no-unsafe`), PD-07 (`audit-production`), §27.5 (CONFORMANCE.md and ERRORS.md equal regeneration) |
+| `model` | `cargo xtask validate-model` | R1 (model is the single source; every model file parsed with unknown-field rejection), R2 (honesty levels and vocabulary, via the meta-gate), R3 (register/scenario/test bijection, Gherkin subset), R4 (`audit-deferral`), R5 (`audit-errors`), R6 (`audit-shipped`, including the shipped crate's normative links, and every vendored authority's SHA-256 recomputed from its copy), R8 (`audit-generated`, `audit-language-closure`), RP-09 (`audit-no-unsafe`), PD-07 (`audit-production`), §17.19 (`audit-oracle-isolation`), §27.5 (CONFORMANCE.md and ERRORS.md equal regeneration) |
 | `spec-links` | `cargo xtask validate-spec-links` | RP-07, §27.6: the §31 table and `model/ids.toml` are bijective and byte-consistent |
 | `lint` | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | no tolerated warnings |
 | `test` | `cargo test --workspace --exclude repo-conformance --all-features` | §28.1 classes 1–2 and 4–5 (unit, property, integration, CLI) of every crate but `repo-conformance`, and the model crate's own tests. `repo-conformance` is excluded, not skipped: `bdd` owns it (RP-13) |
 | `features` | `cargo check --workspace --all-features --all-targets` | every target compiles |
-| `bdd` | `cargo test -p repo-conformance --all-features` | R3, §27.7, §27.8: the sole owner of the complete `repo-conformance` suite — its library tests, the `bdd` meta-gate target (register ↔ scenario ↔ test bijection and its own falsifiability test), and the `conformance` target with all 330 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
+| `bdd` | `cargo test -p repo-conformance --all-features` | R3, §27.7, §27.8: the sole owner of the complete `repo-conformance` suite — its library tests, the `bdd` meta-gate target (register ↔ scenario ↔ test bijection and its own falsifiability test), and the `conformance` target with all 338 conformance tests, which include the §28.2 fixture suite (`conformance_ex_07`) and the crate-packaging round trip (`conformance_rp_12`) |
 | `inventory` | `cargo xtask check-test-inventory` | RP-13: the tests listed by `test` and by `bdd` (`cargo test … -- --list`) are disjoint and their union is the list of `cargo test --workspace --all-features`: no test lost, none run twice |
 | `examples` | `cargo xtask verify-examples` | §28.6, EX-01: every example directory and the `compiler` project (§17.14, §17.15) format, lock, check, build, and verify with real Lean 4.32.1; when an example commits `expected/verify/`, its normalized verification records must equal it (§29.5) |
 | `golden` | `cargo xtask check-golden` | R10, §28.3: the *published* build tree of a real `build` in a fresh directory equals the committed oracles byte for byte |
@@ -3545,7 +3545,7 @@ Removed: the function was deleted; clippy is clean.
 Planted: the last hex digit of the empty-input SHA-256 vector in `crates/model/src/release.rs` changed from `5` to `6`. Command: `cargo test -p repo-model --all-features`. Expected: the unit test fails on the digest.
 
 ```text
-thread 'release::tests::the_local_sha256_agrees_with_the_test_vectors' panicked at crates/model/src/release.rs:561:9:
+thread 'release::tests::the_local_sha256_agrees_with_the_test_vectors' panicked at crates/model/src/release.rs:562:9:
 assertion `left == right` failed
   left: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
  right: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b856"
@@ -5135,6 +5135,250 @@ vacuous, so each was made to fail again after the change.
   the fixtures `binder-bool-literal-name` and `declaration-lean-name` hold
   that.
 
+## Differential validation oracle (Issue #26)
+
+SPEC.md §17.19 and `OR-01`..`OR-08`. The independent Lean 4 to Rust generator
+`lean4-prod` (`https://github.com/auser/lean4-prod`, commit
+`991956fe427bb646498fd0912c89b71be71e7beb`) is pinned in
+`oracle/lean4-prod.toml` and run against the Lean LexLean generates. It is
+validation evidence only: no authority row or ledger claim cites it, and no
+identity, attestation, or certificate is computed from it or names it.
+
+**What was observed** (reference container, 4 vCPUs, the pinned toolchains,
+the oracle fetched by `git` at its pinned commit into an empty cache and built
+by the pinned Lake and Cargo, its crates.io dependencies fetched `--locked`
+into a Cargo home of the cache's own; the same files from the checkout the pin
+names hash to the same digest, c0d76452...a4a93a7, 165 files):
+
+| | |
+| --- | --- |
+| roots in the corpus | 102: 6 of `production`, 34 of `production-coverage`, 9 of `models`, 8 of `reasoning`, 38 probes, 7 rejected fixtures |
+| the oracle's answer | generates Rust for 30, refuses 72: 66 of roots LexLean takes (42 escaping local function, 13 opaque lowering, 4 unresolved external call, 3 polymorphic type, 2 unbounded `Int`, 2 `Nat.succ`) and 6 of roots LexLean rejects (4 opaque lowering, 1 `export-refused`, 1 `codegen-OpaqueType`); `opaque-lowering` is 17 over the corpus. The seventh rejected root is generated (a literal beyond 64 bits) |
+| crates that compile and run | 23, on 1411 inputs: the 337 seeded inputs of the RB-06/SP-11 differentials and 1074 boundary inputs (MIN and -1 of each signed width, every constructor of every parameter type, the program's own literals and their neighbours, delimiters); each prints the interpreter's outcome and LexLean's own rendering's, overflow included, with the same contract (modulo a borrowed list parameter) and no allocation in a `rust-core` root |
+| runtime constructs of the registry | 128; 89 are realized in the closure of a compiled root (and exercised by the seeds as far as they reach: that is not a claim that every path through the construct ran) and 39 are rows of `oracle/known-non-overlap.toml` with 14 formal-only or erased constructs, 53 rows in all |
+| known differences | 12 rows in `oracle/known-differences.toml` (version 2), each exact on its roots; the six rejected-and-refused roots are rows (`both-refuse:<kind>`) so that a refusal for another reason is a disagreement |
+
+**Findings about the oracle** (recorded as known differences, not hidden): it
+renders a pair projection as `.fst` or `.snd` on a Rust tuple, which rustc
+rejects (six roots, including the probes for `term.first` and `term.second`);
+it exports a natural literal beyond 64 bits that rustc then rejects, where
+LexLean refuses the root first (`LLT4005`); and its domain, by its own
+documentation, excludes the mathematical integer, monomorphization,
+and escaping local functions, which is why 72 of the 102 roots are refused.
+Nothing found disagrees with LexLean on a program both take, on the seeded and
+the boundary inputs.
+
+**Cost.** `conformance_or_01`..`08` run in one process with one shared corpus
+run (and one statement of the eligible roots of each corpus, which the survey
+and the audit of the boundary inputs share). Warm cache: 145 s wall for the
+group, 7.3 CPU-minutes on the four cores (OR-02, OR-03, OR-05 wait for the
+one run, about 100 s; OR-04 plants and builds 21 plants, 21 rewrites that mean
+the same and 2 equivalent mutants in one workspace, 127 s; OR-06 builds nine
+candidate crates, 44 s; OR-01, OR-07, OR-08 take 1.3 s, 5.3 s, 7.4 s). Cold
+cache (a fetch of the pinned commit from GitHub, the Lake build, the Cargo
+fetch and build of the oracle): 234 s wall before the roots were shared, 11.4
+CPU-minutes. Phase one of this issue measured 150 s and 6.2 CPU-minutes warm;
+the boundary inputs add about one CPU-minute, since the interpreter runs each
+of them once (about a second over the corpus; stating the roots is the same
+cost as before) and the generated harnesses have four times the inputs. Added
+to `just vv`: at most a few minutes of wall time, since the group runs beside
+the longest tests of the suite, and no verification of an example.
+
+**Limits.** The overlap is a measurement of the pinned oracle on this corpus:
+a construct the table lists as outside it is outside it for the stated reason
+and the stated probe, and a probe of scope `closure` is a root of a certified
+example whose closure holds the construct among others (artifact-backed
+models, reasoners, the recursive-data helper, `less_than`), so its refusal is
+not attributable to that construct alone. A construct counted inside the overlap
+is realized in the closure of a root the oracle generated and rustc compiled;
+whether the inputs reach it is the seeds' reach: derived from the types and the
+literals of the root, audited for constructor coverage, and planted against for
+the arithmetic edges the reviewer found, but a bounded set. The oracle is not
+run on inputs it would need a different ABI for (a list result by output
+buffer does not occur in the corpus). Recursion depth and the runtime's counted
+work are not comparable and are not compared; a candidate rendering's *work* is
+the rendering's own count of itself (`tick`), which a rendering that does not
+count reports as none, and the allocations an allocator out of its reach counts
+are the measure that does not depend on it (a rendering that does more and
+neither counts nor allocates passes both: stated, not hidden). The pin makes the
+oracle verifiable, not available: the third-party repository and the crates.io
+dependencies are outside this repository's audits, and the residual risk and the
+repin procedure are in SPEC.md §17.19. The oracle is fetched from the network
+in CI, with three tries over about a minute for a transient failure; if it
+cannot be, the gate fails on the normative host.
+
+### audit-oracle-isolation can fail
+
+Planted: the oracle's name in a comment on the first line of
+`language/semantics-1.2.toml` (an input of the compiler-semantics ID), and
+separately its pinned commit in a `$comment` of
+`schemas/attestation-v2.schema.json`. Command: `cargo xtask validate-model`.
+Expected: R2 names the file and the identifier.
+
+```text
+gate failed: R2: `crates/lexlean/language/semantics-1.2.toml` mentions the differential oracle (`lean4-prod`); the oracle is validation evidence and no input to a semantic ID, build ID, verified artifact, attestation, or optimality certificate (§17.19)
+gate failed: R2: `crates/lexlean/schemas/attestation-v2.schema.json` mentions the differential oracle (`991956fe427bb646498fd0912c89b71be71e7beb`); the oracle is validation evidence and no input to a semantic ID, build ID, verified artifact, attestation, or optimality certificate (§17.19)
+```
+
+Removed: both restored; the audit reports 5251 files in 7 roots naming no part
+of the oracle. `conformance_or_08` plants seven identifiers of the oracle (its
+name, its Lake target, its commit, its tree digest, its git tree, its pin's
+path, its pin's schema tag) in each of the seven places the identities and
+records are read from, and observes the audit name the file each time; it also
+removes a scanned file and observes the refusal to pass over an empty root, and
+plants an `oracle` field in a build manifest, a preservation record, and a GNAF
+certificate (valid as committed) and in the closed schemas of the attestation,
+the semantic snapshot, and the compiler input.
+
+### the differential can fail
+
+Each of these was planted, the named test run with the oracle acquired,
+observed, and restored. Command:
+`cargo test -p repo-conformance --test conformance -- <test>`.
+
+- The comparison cannot ignore a changed outcome. Planted: the outcome
+  comparison of `differences` made unreachable (`if false && normalized(got) !=
+  expected`). Observed, then restored: `conformance_or_04` failed with `a
+  checked multiplication made wrapping in Production.Main.shapeArea is
+  detected as Behavior ["outcome:overflow/value"]: found []`, and
+  `conformance_or_03` with `assertion `left == right` failed: []` on the
+  stand-in whose outcome differs.
+- An oracle that is silent is not agreement. Planted: the vacuity test of
+  `validate` removed. Observed, then restored: `conformance_or_07` failed with
+  `a run over no root is unavailable, not validated`. Planted: the arm that
+  reads an exporter's exit without a refusal marker made a `Refused` verdict.
+  Observed, then restored: `an exporter that crashes must be unavailable, not
+  an answer: Ok(Refused { stage: Export, message: "" })`. Planted: the gate's
+  `Fail` arm taken on a host that is not the normative one. Observed, then
+  restored: `the normative host fails on an unavailable oracle:
+  NotValidated("the oracle was not acquired: planted")`.
+- A checkout that is not the pin is refused. Planted: the last digit of
+  `tree_sha256` in the pin. Observed, then restored: `OR-03: the oracle is
+  unavailable (the checkout is not the pinned oracle: 165 files hash to
+  c0d76452...a4a93a7; the pin names 165 files hashing to
+  c0d76452...a4a93a8); that is not a validation, and on the normative host it
+  fails the gate (§17.19)`.
+- A difference no row names is a disagreement with both sides' evidence.
+  Planted: `Coverage.Prims.sequences` removed from the roots of the
+  known difference `borrowed-parameter`. Observed, then restored:
+  `OR-03: LexLean and the oracle disagree.` followed by `Coverage.Prims.sequences
+  Contract `borrowed-parameter``, LexLean's contract and the oracle's, its
+  signature `["&[u64]", "alloc::vec::Vec<u8>", "u64"]`, and the path of the
+  record (`oracle-evidence.json`) it was written to.
+- A construct in neither the accepted roots nor the table is refused. Planted:
+  the row of `primitive.map_insert` renamed. Observed, then restored:
+  `conformance_or_02`: `primitive.map_inserted is a construct of the
+  registry`; the other ways (a row for a construct a compared root realizes, a
+  row whose probe is refused for another reason or accepted, a not-runtime row
+  for a runtime construct and the reverse) are planted by the case itself.
+- A rendering wrong on one input, and one that does more work, are refused.
+  Planted: the outcome comparison of `accept_rendering` removed. Observed, then
+  restored: `a rendering wrong on one input is refused: ()`. Planted: the work
+  comparison removed. Observed, then restored: `a rendering that does more work
+  is refused: ()`.
+- Planted discrepancies in the oracle's crates (`conformance_or_04` plants 21
+  in copies of the generated Rust of 13 roots, and each is judged under a crate,
+  a harness, and a result of its own): a checked multiplication made wrapping,
+  an addition replaced by a multiplication, a literal off by one, swapped
+  branches, an inverted comparison, a dropped recursive arm, swapped parameters,
+  a parameter widened from `u32` to `u64`, a dropped failure typing, and the
+  edges: a checked division made wrapping (`MIN / -1`), a negation and an
+  addition made wrapping at the bound, a truncating division made Euclidean, a
+  shift made to wrap, a match arm's constant changed, a split limit one too
+  small, characters counted as bytes, a saturating subtraction made wrapping, a
+  checked addition made a panic, an append in the other order, and an
+  allocation in a `rust-core` root. Each is detected with the kind and the name
+  the case states. Beside each is its *null* rewrite, the same site written to
+  mean the same (`+ 0`, `* 1`, `.map(|x| x)`, `2 + 2` for `4`), and two
+  *equivalent* mutants (the quotient by zero, which the product that follows
+  ignores, and an equality made an inequality under a conjunction with false):
+  none of them is a discrepancy. Three plants are also run alone and found as
+  they are in company. The unplanted crates of the same roots, built and run the
+  same way, agree.
+
+
+### the follow-up review of the differential: what was planted
+
+The review of the first version found that two of the nine plants shared a root
+with another and were judged by the later one's result, that the comparison was
+bound to its seeds, that acquisition could be poisoned and had no retry, and a
+number of smaller things. Each was fixed and each fix was planted against.
+Command: `cargo test -p repo-conformance --test conformance -- <test>` with the
+oracle acquired; every plant was restored.
+
+- **Plants are independent.** The executor keys each run's crate, harness, and
+  result by a key of its own (`Slot`), and refuses two runs under one key before
+  it builds. Planted: `evaluate` keyed by the root (as it was). Observed:
+  `conformance_or_04` failed with `the runs to execute have distinct keys; a
+  shared key would let one run's result stand for another's`. The reviewer's
+  confound is reproduced as a control: the null rewrite of a plant is the same
+  site written to mean the same, and it must not be detected. Planted: the null
+  rewrite of `a literal off by one` made a real change (`2 + 2` for `3`).
+  Observed, then restored: `a literal off by one: its null edit (the same site,
+  the same meaning) is not a discrepancy: [(Behavior, "outcome:value/value")]`.
+  Three plants are run alone and found as they are in company, so what is found
+  does not depend on what is built beside it.
+- **The comparison is not bound to the production differentials' seeds.**
+  Planted: the boundary inputs left out of `eligible_roots`. Observed, then
+  restored: `conformance_or_04` listed, among the 21 plants, the four the seeds
+  alone miss: `a checked signed division made wrapping (MIN / -1) in
+  Coverage.Prims.fixedSmall`, `a match arm's constant changed in
+  Coverage.Main.options`, `a split limit one too small in Coverage.Prims.text`,
+  and `a saturating subtraction made wrapping in Coverage.Main.natOps`, each
+  `found {}`. Planted: the pairwise cover limited to the singles. Observed,
+  then restored: `a checked signed division made wrapping (MIN / -1) in
+  Coverage.Prims.fixedSmall ... found {}` (the pair `-128, -1` is a pair).
+  Planted: `Value::None` left out of the pool of an option. Observed, then
+  restored: `conformance_or_03` failed with `none and error false occur
+  together`. The audit of constructor coverage can fail too: the case removes
+  the inputs that build `none` and observes the audit name `: none`.
+- **Acquisition is atomic, self-healing, and bounded.** Against a local git
+  remote that is the case's own. Planted: the removal of the staging directory
+  on failure left out. Observed, then restored: `["source.fetching-15662"]`
+  left in the cache. Planted: a cache that is not the pin kept. Observed, then
+  restored: `a cache that heals: NotAcquired("... source is not the pinned
+  oracle and cannot be removed")`. Planted: a permanent failure (a remote that
+  does not exist) treated as transient. Observed, then restored: `the repin
+  procedure is named: git fetch exited Some(128): fatal: '...' does not appear
+  to be a git repository`. The unreachable remote is tried three times (`after 3
+  tries`), the wrong content is a pin mismatch once, and `retry` is tested for
+  two blips survived, the delays waited, and a permanent failure ended at once.
+  The cold path was run in this container: an empty cache and a local checkout
+  (the Lake build, `cargo fetch --locked` into the cache's own Cargo home, and
+  the offline build) took 38 s, crates.io reachable; the whole group from an
+  empty cache with the commit fetched from GitHub took 234 s of wall time.
+- **The pin's toolchains are the repository's.** Planted: the comparison with
+  `rust-toolchain.toml` skipped, then the one with `lean-toolchain`. Observed,
+  then restored: `conformance_or_01` failed with `another Rust is a drift:
+  Ok(())` and `another Lean is a drift: Ok(())`. The failure a drift gives
+  names both values (`oracle/lean4-prod.toml states rust_toolchain `...` and
+  rust-toolchain.toml pins `...``).
+- **The tables are versioned by content.** `oracle/table-versions.toml` records
+  the digest of the rows at each version. Planted: a word of a row of
+  `known-differences.toml` changed without a new version. Observed, then
+  restored: `the rows changed (their digest is `3588e785...`) but the table is
+  still at version 2, which oracle/table-versions.toml records as
+  `2b09c7bb...`; raise `version` and record the new rows_sha256 there`. The case
+  also raises the version without recording it (`records it up to version`),
+  records a version that changed nothing (`changed nothing`), and a layout that
+  is no row (a comment) changes nothing.
+- **A rejected root's refusal is compared.** The six rejected roots the oracle
+  refuses are rows (`both-refuse:<kind>`). Planted: the key of the row for
+  `LanguageTwelve.Main.positive` renamed. Observed, then restored:
+  `conformance_or_03` failed on the table (the rows no longer match their
+  version); planted in the code instead, the key `both-refuse-x:<kind>`,
+  `conformance_or_03` failed with `assertion `left == right` failed` on the
+  stand-in whose key is `both-refuse:opaque-lowering`.
+- **Tools that overrun are ended with what they started.** Planted: the process
+  group of a tool left out. Observed, then restored: `conformance_or_07` failed
+  with `the child 27650 of the overrunning tool is ended with it`. The tools of
+  that case that are not meant to overrun run under 120 s, the one that is
+  under 1 s.
+- **A rendering that does more work and counts none of it is refused.**
+  Planted: the comparison of allocations removed. Observed, then restored:
+  `conformance_or_06` failed with `a rendering that does more and counts none of
+  it is refused: ()`.
+
 ## Execution of `just vv` (Issue #48)
 
 Issue #48 changes how the gate is run on the standard GitHub-hosted runner
@@ -5392,8 +5636,8 @@ after; the smallest production-rooted project (one root), 124.8 s before and
 measurable). The first complete telemetry of the recipes and of `uor-atlas` is the
 first CI run's.
 
-All of them are local: this change was written on the reference container, not
-on the runner, and no runner measurement is claimed. The first complete run of
+All of the figures above are local: this change was written on the reference
+container, not on the runner. The runner's own are in the next subsection. The first complete run of
 `ci.yml` produces the runner's numbers in its `ci-evidence/` (`summary.md`,
 `vv.txt`, `resources.tsv`, `verify-telemetry.jsonl`, `examples-telemetry.jsonl`,
 `cases-telemetry.jsonl`); the before figures for comparison are those of the last
@@ -5405,6 +5649,59 @@ projection is the `vv` of `9d32a95` less the hashing, less the build and link
 time of the debug builds, plus the inventory's seven seconds and about three
 minutes of CPU for the production pair of `conformance_vr_21`; the runner's run
 decides, and a timing is never evidence of a semantic claim.
+
+### Runner numbers (first full run, PR #72)
+
+These come from the first complete run of `ci.yml` on the standard runner, the
+run the paragraph above waited for: CI run 38201023383, job 114654244617
+(`just vv`), `ubuntu-24.04` (4 vCPU, 16 GB), 2026-10-12, head `19e6d30` of
+PR #72 (main at `9abdd71` and its follow-up). All seven jobs were green. They are
+noncanonical evidence of cost, taken from the job's `ci-evidence/`; they prove
+no semantic claim, and nothing in the repository's identities or gates depends
+on them.
+
+The job took 3 h 16 min (03:45:41 to 07:01:37 UTC); the recipes sum to 11711 s
+(195.2 min).
+
+| Recipe | Took (s) |
+| --- | --- |
+| `fmt-check` | 1 |
+| `model` | 42 |
+| `spec-links` | 0 |
+| `lint` | 23 |
+| `test` | 192 |
+| `features` | 12 |
+| `bdd` | 2357 |
+| `inventory` | 4 |
+| `examples` | 8985 (lowest free memory 37 MiB, highest swap 4774 MiB, largest process 15249 MiB) |
+| `golden` | 32 |
+| `repro` | 63 |
+| `deny` | 1 |
+
+Verification time by project, in seconds (the number of verifications): `uor-atlas`
+8276.8 (1), `production` 1879.0 (23), `compiler` 489.7 (6), `reasoning` 328.0 (4),
+`models` 240.6 (6), `nat-add-zero` 237.0 (51), `production-coverage` 155.4,
+`semantic-fixture` 141.3 (6). Over all verifications the stages took
+`elaboration` 5002.3, `replay` 4338.2, `certificates` 2267.8, `audit` 97.8,
+`staging` 68.2, `extraction` 56.4, `probe` 40.9.
+
+UOR Atlas is 8277 s of the `examples` recipe: `elaboration` 4193.2, `replay`
+4070.5, `audit` 11.0. Its slowest modules: `CensusCert4` elaboration 1154.6 s (peak
+RSS 15338 MiB, swap 2672 MiB) and replay 1121.4 s (15329 MiB, swap 2568 MiB);
+`Census` 845.6 s and 818.3 s; `Group` 172.5 s and 166.2 s; `Scales` 160.4 s and
+151.2 s; `Closure` 144 s and 144 s (about 15 GB resident). The slowest frontiers
+by elaboration: #10 (22 members) 1628.8 s, #15 (16) 1045.6 s, #8 (3) 862.4 s. The
+slowest conformance cases, of 333 and 9196 s summed thread time: `SP-02` 795.9 s,
+`EX-07` 754.0 s, `DF-12` 532.5 s, `GC-02` 500.1 s, `SP-09` 407.3 s, `SP-03`
+405.8 s, `SP-04` 403.0 s, `GN-02` 379.0 s.
+
+The wall time of `vv` varies much more between runs of near-identical code than
+any change of this issue moves it: 3 h 25 min on #49, 4 h 18 min on #50, 5 h
+02 min on #69 (without telemetry), 4 h 16 min on #70, and 3 h 16 min on #72.
+A single before and after is therefore not a meaningful comparison, and none is
+claimed; what the run does show is where the time goes (`uor-atlas`, at 8277 s of
+the 11711 s, with memory at the limit of the runner) and that the recipes other
+than `examples` and `bdd` are a few minutes together.
 
 ### inventory can fail
 

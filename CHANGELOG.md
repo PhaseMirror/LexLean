@@ -15,6 +15,41 @@ versions, and the entries below say what each tag does and does not claim.
 
 ## Unreleased
 
+- Differential validation oracle (SPEC.md §17.19, `OR-01`..`OR-08`, no new
+  diagnostic code): the independent Lean 4 to Rust generator `lean4-prod`
+  (`https://github.com/auser/lean4-prod`) is pinned in
+  `oracle/lean4-prod.toml` by remote, commit `991956fe427bb646498fd0912c89b71be71e7beb`,
+  and the SHA-256 of the canonical frame of the 165 files the integration
+  uses, with the role `validation-evidence`. Nothing of it is vendored: its
+  repository ships no licence text for a copy to carry, so the suite
+  acquires it (`LEXLEAN_ORACLE_DIR`, or a fetch of the commit), refuses a
+  checkout that does not hash to the pin, and builds it with the pinned
+  toolchains. The fetch is atomic (made beside the cache, verified, then
+  renamed), a cache that is not the pin is discarded and fetched once more, a
+  transient network failure is tried again twice, and the oracle's crates.io
+  dependencies are fetched `--locked` into a Cargo home of their own and built
+  offline; the pin's toolchains must be the repository's, and every build and
+  run is bounded in time. The corpus is every production root of the four certified
+  examples, one probe root for each runtime construct they do not realize in
+  an accepted root, and the production-refusal fixtures with their marking
+  removed: 102 roots, of which the oracle generates Rust for 30 and refuses
+    72 (66 of roots LexLean takes, 6 of roots it rejects). The comparison is of
+  acceptance, contract, behavior, and resources and never of bytes; on the 23
+  compiled crates it agrees with the interpreter and LexLean's own rendering on
+  1411 inputs, the seeded ones of the existing differentials and boundary
+  inputs derived from each root's types and literals. Every difference is in
+  `oracle/known-differences.toml` or is a disagreement, and every construct of
+  the production registry is realized in the closure of a compiled root or is a
+  row of `oracle/known-non-overlap.toml`; both are re-asserted on every run and
+  versioned by the digest of their rows (`oracle/table-versions.toml`). Planted
+  arithmetic, control, resource, and ABI discrepancies, each judged on its own,
+  are detected, a
+  better equivalent rendering is accepted despite its bytes, an oracle that
+  fails is unavailable and never validated, and the new gate
+  `audit-oracle-isolation` fails on any mention of the oracle in the inputs of
+  an identity. Findings against the oracle itself: it renders `Prod.fst` and
+  `Prod.snd` as field accesses rustc rejects, and exports a natural literal
+  beyond 64 bits that rustc rejects. The register has 338 conformance IDs.
 - GNAF certification (SPEC.md §17.18, `GC-01`..`GC-10`, new `LLB6007`): the
   module `Certification` of `compiler/` checks a certificate against a GNAF
   request. A global optimum or argmin is certified by a universal lower bound
@@ -59,7 +94,10 @@ versions, and the entries below say what each tag does and does not claim.
   samples the host, and uploads a per-recipe, per-stage, per-module summary
   (RP-14). Every verification no longer hashes the running executable (4.7 s in a
   debug build), and the dev profile keeps line tables only. Register: 330 IDs,
-  70 codes (`LLV7017`).
+  70 codes (`LLV7017`). The runner's numbers from the first full run (CI run 38201023383: `vv`
+  3 h 16 min, `uor-atlas` 8277 s of the 11711 s of recipes) are recorded in
+  VERIFICATION.md, "Runner numbers (first full run, PR #72)", as noncanonical
+  evidence of cost.
 - CI evidence is readable from the job log (#48, SPEC.md §9.4,
   VERIFICATION.md, "Execution of `just vv` (Issue #48)"): `cargo xtask
   ci-summary` prints the summary to the log (also when `just vv` failed),

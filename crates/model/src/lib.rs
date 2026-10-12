@@ -14,6 +14,7 @@
 pub mod codegen;
 pub mod correspondence;
 pub mod exhaustive;
+pub mod isolation;
 pub mod registry;
 pub mod release;
 pub mod vocabulary;

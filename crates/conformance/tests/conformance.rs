@@ -1654,3 +1654,43 @@ fn conformance_rs_13() {
 fn conformance_rs_14() {
     repo_conformance::cases::run("RS-14");
 }
+
+#[test]
+fn conformance_or_01() {
+    repo_conformance::cases::run("OR-01");
+}
+
+#[test]
+fn conformance_or_02() {
+    repo_conformance::cases::run("OR-02");
+}
+
+#[test]
+fn conformance_or_03() {
+    repo_conformance::cases::run("OR-03");
+}
+
+#[test]
+fn conformance_or_04() {
+    repo_conformance::cases::run("OR-04");
+}
+
+#[test]
+fn conformance_or_05() {
+    repo_conformance::cases::run("OR-05");
+}
+
+#[test]
+fn conformance_or_06() {
+    repo_conformance::cases::run("OR-06");
+}
+
+#[test]
+fn conformance_or_07() {
+    repo_conformance::cases::run("OR-07");
+}
+
+#[test]
+fn conformance_or_08() {
+    repo_conformance::cases::run("OR-08");
+}

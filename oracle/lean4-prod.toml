@@ -1,0 +1,52 @@
+# oracle/lean4-prod.toml --- the pin of the differential validation oracle
+# (SPEC.md §17.19).
+#
+# The oracle is `lean4-prod`, an independent Lean 4 to Rust generator. It is
+# VALIDATION EVIDENCE ONLY: its output is compared with LexLean's, and a
+# disagreement is a finding about one of the two. It is not an authority
+# (there is no row for it in model/authorities.toml and no ledger claim), it
+# is not a proof, it says nothing about the completeness of a candidate
+# universe, and nothing in this file or in what the oracle produces is an
+# input to a semantic ID, a build ID, a verified artifact's identity, an
+# attestation, or a global-optimality certificate. `audit-oracle-isolation`
+# (inside `cargo xtask validate-model`) fails the build when any of those
+# names it.
+#
+# Nothing of the oracle is vendored. Its repository ships no licence text:
+# every Rust manifest declares `license = "MIT"`, but the MIT licence requires
+# its copyright notice to travel with a copy, and none is published, so a copy
+# in this repository would not carry what the licence asks of it. The
+# integration therefore acquires the oracle from its remote at the commit
+# named below, refuses it unless the files it uses hash to `tree_sha256`, and
+# reports the oracle as unavailable, never as agreeing, when it cannot.
+
+spec = "lexlean/oracle-pin/1"
+name = "lean4-prod"
+role = "validation-evidence"
+remote = "https://github.com/auser/lean4-prod"
+commit = "991956fe427bb646498fd0912c89b71be71e7beb"
+git_tree = "dbf2af86f5b313ac8f4b28374a20262390e19f36"
+
+# The files the integration reads or builds, as path prefixes of the checkout
+# (`.git`, `.lake`, and `target` directories excluded), and the SHA-256 of
+# their canonical frame: the domain `lexlean-oracle-tree-v1`, then for each
+# file in ascending byte order of its path, the path and the SHA-256 of its
+# bytes, each preceded by its length as a big-endian u64.
+used = ["lean/", "rust/", "rust-toolchain.toml"]
+tree_files = 165
+tree_sha256 = "c0d76452a429446768e2e38adba7d7c1ab1020b38c4309a11c43bd2b9c4a93a7"
+
+# The toolchains the oracle is built with, which are LexLean's own.
+lean_toolchain = "leanprover/lean4:v4.32.1"
+rust_toolchain = "1.97.1"
+
+# What of the oracle is built, and the bound on one invocation of it.
+lean_target = "prod-export"
+cargo_package = "prod-cli"
+timeout_seconds = 300
+
+[licence]
+declared = "MIT"
+text_shipped = false
+vendored = false
+reason = "The repository ships no licence text or copyright notice, so a vendored copy could not carry the notice the MIT licence requires; the oracle is fetched at the pinned commit and verified by hash instead."

@@ -835,6 +835,23 @@ pub fn audit_authority_scope(root: &Path) -> Result<(), Fail> {
     Ok(())
 }
 
+/// §17.19: the differential oracle is validation evidence and no input to
+/// any identity, verified artifact, attestation, or optimality certificate.
+/// The audit reads everything those are computed from and fails on a mention
+/// of the oracle; a scan that read nothing has not passed.
+///
+/// # Errors
+/// Returns the first file that names the oracle.
+pub fn audit_oracle_isolation(root: &Path) -> Result<(), Fail> {
+    let scanned = repo_model::isolation::scan(root)?;
+    println!(
+        "audit-oracle-isolation: {} files in {} roots name no part of the oracle (R2, §17.19)",
+        scanned.files,
+        scanned.per_root.len()
+    );
+    Ok(())
+}
+
 /// R4: nothing is deferred. The markers are spelled in halves so this gate
 /// can scan its own source; exempting the file would put a hole exactly
 /// where a deferral parked in a gate would sit.
