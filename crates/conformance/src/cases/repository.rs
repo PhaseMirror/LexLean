@@ -1010,10 +1010,69 @@ pub(crate) fn run(id: &str) {
                 );
             }
             assert!(ci.contains("timeout-minutes: 360"));
+            // The gate is one matrix job whose legs run the recipes of `vv`
+            // (§9.4): every recipe exactly once, in the order of `vv` within a
+            // leg, each leg through the one gate command.
+            let vv: Vec<String> = just_recipes(&root_file("Justfile"))
+                .get("vv")
+                .expect("§9.2: the Justfile defines vv")
+                .0
+                .split_whitespace()
+                .map(str::to_owned)
+                .collect();
+            let job = &ci[..ci.find("\n  host-matrix:").expect("the host matrix")];
+            let legs: Vec<Vec<String>> = job
+                .lines()
+                .filter_map(|line| {
+                    let leg = line.trim().strip_prefix("- { part: ")?;
+                    let recipes = leg.split_once(", recipes: \"")?.1.strip_suffix("\" }")?;
+                    Some(recipes.split_whitespace().map(str::to_owned).collect())
+                })
+                .collect();
+            assert!(legs.len() >= 2, "the gate runs in legs: {legs:?}");
+            let mut ran: Vec<&String> = legs.iter().flatten().collect();
+            for leg in &legs {
+                let positions: Vec<usize> = leg
+                    .iter()
+                    .map(|recipe| {
+                        vv.iter().position(|name| name == recipe).unwrap_or_else(|| {
+                            panic!("§9.4: the leg {leg:?} runs `{recipe}`, which is not a recipe of vv")
+                        })
+                    })
+                    .collect();
+                assert!(
+                    positions.windows(2).all(|pair| pair[0] < pair[1]),
+                    "§9.4: the leg {leg:?} runs its recipes in the order of vv"
+                );
+            }
+            ran.sort();
+            let mut all: Vec<&String> = vv.iter().collect();
+            all.sort();
             assert_eq!(
-                ci.matches(" vv 2>&1 | tee ci-evidence/vv.txt").count(),
+                ran, all,
+                "§9.4: the legs run every recipe of vv exactly once"
+            );
+            assert_eq!(
+                ci.matches(
+                    "just --timestamp --timestamp-format '%s%.3f' ${{ matrix.recipes }} 2>&1 | tee ci-evidence/vv.txt"
+                )
+                .count(),
                 1,
-                "the gate runs once"
+                "every leg runs its recipes through the one gate command"
+            );
+            assert!(
+                ci.contains(&format!(
+                    "'{}' >> ci-evidence/vv.txt",
+                    crate::evidence::PART_PASSED_LINE
+                )),
+                "a leg marks the end of its last recipe as the summary reads it"
+            );
+            // The Atlas assertions are chosen by the leg's recipes, never by
+            // what the log happens to hold.
+            assert!(
+                ci.contains("case \" ${{ matrix.recipes }} \" in")
+                    && ci.contains("*\" examples \"*)"),
+                "the leg that runs examples asserts that Atlas verified"
             );
             for forbidden in [
                 "actions/cache",
@@ -1052,7 +1111,9 @@ pub(crate) fn run(id: &str) {
                 &gate_step[..gate_step[1..].find("\n      - ").expect("a step follows") + 1];
             assert!(!gate_step.contains("if:") && gate_step.contains("just --timestamp"));
             assert!(
-                ci.contains("name: acceptance-gate-evidence") && ci.contains("path: ci-evidence")
+                ci.contains("name: acceptance-gate-evidence-${{ matrix.part }}")
+                    && ci.contains("path: ci-evidence"),
+                "each leg uploads its evidence under a name of its own"
             );
             assert!(ci.contains("LEXLEAN_CI_TELEMETRY: ${{ github.workspace }}/ci-evidence"));
             assert!(ci.contains("cargo xtask ci-summary --evidence ci-evidence"));

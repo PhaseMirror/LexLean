@@ -112,6 +112,13 @@ mod tests {
 /// recipe's span.
 pub const PASSED_LINE: &str = "echo \"vv: the acceptance gate passed\"";
 
+/// The line a leg of the CI gate appends, stamped, when every recipe it ran
+/// has passed (SPEC.md §9.4). A leg does not run `vv`, so it never prints
+/// [`PASSED_LINE`]; its last recipe ends at the last stamped line, which
+/// without this one is that recipe's own first command, and it would be
+/// timed at nothing. `conformance_rp_14` requires `ci.yml` to append it.
+pub const PART_PASSED_LINE: &str = "vv part: every recipe passed";
+
 /// The wall time of one recipe of `just vv`, read from the gate log.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RecipeSpan {
@@ -166,9 +173,10 @@ fn vv_commands(justfile: &str) -> Vec<(String, String)> {
 /// `[<seconds since the epoch>] <command>` before each command it runs, so a
 /// recipe lasts from its command's line to the next recipe's.
 ///
-/// A recipe whose command never appears (the run failed before it) has no
-/// span. The last recipe ends at [`PASSED_LINE`], or at the last stamped line
-/// of a log that never reached it.
+/// A recipe whose command never appears (the run failed before it, or a leg
+/// of the CI gate does not run it) has no span. The last recipe ends at
+/// [`PASSED_LINE`], or at the last stamped line of a log that never reached
+/// it, which in a leg of the CI gate is [`PART_PASSED_LINE`].
 #[must_use]
 pub fn recipe_spans(justfile: &str, log: &str) -> Vec<RecipeSpan> {
     let commands = vv_commands(justfile);
@@ -753,6 +761,24 @@ vv: the acceptance gate passed
             .map(|span| (span.recipe.as_str(), span.seconds()))
             .collect();
         assert_eq!(seconds, [("a", 30.5), ("b", 59.5), ("c", 10.25)]);
+    }
+
+    /// A leg of the CI gate runs some of the recipes and ends with its own
+    /// stamped line: its recipes are timed, the last one to that line, and the
+    /// recipes of the other leg have no span.
+    #[test]
+    fn a_leg_of_the_gate_ends_its_last_recipe_at_the_leg_s_own_line() {
+        let log = format!(
+            "[100.000] cargo b --flag\n[190.000] cargo c\n[200.250] {}\n",
+            super::PART_PASSED_LINE
+        );
+        let log = log.as_str();
+        let spans = recipe_spans(JUSTFILE, log);
+        let seconds: Vec<(&str, f64)> = spans
+            .iter()
+            .map(|span| (span.recipe.as_str(), span.seconds()))
+            .collect();
+        assert_eq!(seconds, [("b", 90.0), ("c", 10.25)]);
     }
 
     #[test]

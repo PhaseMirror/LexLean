@@ -15,6 +15,15 @@ versions, and the entries below say what each tag does and does not claim.
 
 ## Unreleased
 
+- The normative CI gate runs in two legs at once (SPEC.md §9.4, `RP-14`, no new
+  ID or code): `examples`, which is about three quarters of the gate's time on
+  the runner, and the other eleven recipes of `vv` in their order, each leg a
+  clean checkout on the standard runner at width 1. Together they run every
+  recipe of `vv` exactly once, which `conformance_rp_14` now checks on
+  `ci.yml`; `just vv` itself is unchanged and `release.yml` still runs it
+  whole. The gate's wall time becomes the longer leg, about 2 h 40 min where the
+  last full run took 3 h 16 min (an estimate from that run's timings). Each leg
+  uploads its own `acceptance-gate-evidence-<leg>`.
 - Differential validation oracle (SPEC.md §17.19, `OR-01`..`OR-08`, no new
   diagnostic code): the independent Lean 4 to Rust generator `lean4-prod`
   (`https://github.com/auser/lean4-prod`) is pinned in
