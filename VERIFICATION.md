@@ -5163,9 +5163,9 @@ Nothing found disagrees with LexLean on a program both take.
 
 **Cost.** `conformance_or_01`..`08` run in one process with one shared corpus
 run: warm cache, 150 s wall for the group (OR-02..OR-05 wait for the one run,
-113 s; OR-06 builds nine candidate crates, 36 s; OR-01, OR-07, OR-08 take
+113 s; OR-06 builds eight candidate crates, 36 s; OR-01, OR-07, OR-08 take
 0.7 s, 2.5 s, 4.5 s); cold cache (fetch, Lake build 42 s, Cargo build 30 s),
-159 s. CPU time of the group is 6.3 min on the four cores, of which the
+159 s. CPU time of the group is 6.2 min on the four cores, of which the
 survey is Lean compiling the four examples' modules and the oracle exporting
 each root (107 s wall, four corpora side by side) and the execution is 5 s.
 Added to `just vv`: at most a few minutes of wall time, since the group runs
@@ -5253,7 +5253,7 @@ observed, and restored. Command:
   comparison removed. Observed, then restored: `a rendering that does more work
   is refused: ()`.
 - Planted discrepancies in the oracle's crates (`conformance_or_04` plants nine
-  in copies of the generated Rust of six roots: a checked multiplication made
+  in copies of the generated Rust of seven roots: a checked multiplication made
   wrapping, an addition replaced by a multiplication, a literal off by one,
   swapped branches, an inverted comparison, a dropped recursive arm, swapped
   parameters, a parameter widened from `u32` to `u64`, and a dropped failure
