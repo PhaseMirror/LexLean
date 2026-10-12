@@ -1247,33 +1247,34 @@ fn matching() {
 /// the audit that says so can fail (no Lean, no oracle).
 fn boundary_inputs() {
     use lexlean::calculus::Value;
-    // The eligible roots of the examples and the probes, once (they take a
-    // minute to state, and the corpus run states them again in its own way).
-    type Stated = Vec<(String, String, differential::Accepted)>;
-    static STATED: OnceLock<Vec<(String, Stated)>> = OnceLock::new();
-    let stated = STATED.get_or_init(|| {
-        let corpora: Vec<corpus::Corpus> = corpus::corpora()
+    // The eligible roots of the examples and the probes: stated once for the
+    // process, by the corpus run or by this case, whichever asks first.
+    let stated: Vec<(
+        String,
+        std::sync::Arc<Vec<(String, String, differential::Accepted)>>,
+    )> = std::thread::scope(|scope| {
+        let handles: Vec<_> = corpus::corpora()
             .into_iter()
             .filter(|c| matches!(c.kind, corpus::Kind::Example | corpus::Kind::Probes))
-            .collect();
-        std::thread::scope(|scope| {
-            let handles: Vec<_> = corpora
-                .iter()
-                .map(|c| {
-                    scope.spawn(move || (c.name.clone(), differential::eligible_roots(&c.project)))
+            .map(|c| {
+                scope.spawn(move || {
+                    (
+                        c.name.clone(),
+                        differential::shared_roots(&c.name, &c.project),
+                    )
                 })
-                .collect();
-            handles
-                .into_iter()
-                .map(|handle| handle.join().expect("the roots are stated"))
-                .collect()
-        })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .map(|handle| handle.join().expect("the roots are stated"))
+            .collect()
     });
     let production_coverage = support::P::copy_example("production-coverage");
     let inputs = |root: &str| -> Vec<Vec<Value>> {
         stated
             .iter()
-            .flat_map(|(_, roots)| roots)
+            .flat_map(|(_, roots)| roots.iter())
             .find(|(_, name, _)| name == root)
             .unwrap_or_else(|| panic!("{root} is eligible"))
             .2
@@ -1340,7 +1341,7 @@ fn boundary_inputs() {
             .iter()
             .find(|(name, _)| *name == corpus.name)
             .expect("the corpus was stated");
-        for audit in differential::seed_audit(&corpus.project, eligible, &|_, _| true) {
+        for audit in differential::seed_audit(&corpus.project, eligible.as_slice(), &|_, _| true) {
             roots += 1;
             assert!(
                 audit.uncovered.is_empty(),
@@ -1364,9 +1365,10 @@ fn boundary_inputs() {
         .iter()
         .find(|(name, _)| name == "production-coverage")
         .expect("the corpus was stated");
-    let audit = differential::seed_audit(&production_coverage, eligible, &|root, input| {
-        !(root == "Coverage.Main.options" && input[0] == Value::None)
-    });
+    let audit =
+        differential::seed_audit(&production_coverage, eligible.as_slice(), &|root, input| {
+            !(root == "Coverage.Main.options" && input[0] == Value::None)
+        });
     let options = audit
         .iter()
         .find(|audit| audit.root == "Coverage.Main.options")

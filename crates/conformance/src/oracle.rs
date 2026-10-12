@@ -852,8 +852,7 @@ impl Oracle {
             || build.join("cargo-home"),
             |cache| cache.join("cargo-home"),
         );
-        let rust =
-            rust_channel(repo_root().as_std_path()).map_err(Unavailable::ToolchainDrift)?;
+        let rust = rust_channel(repo_root().as_std_path()).map_err(Unavailable::ToolchainDrift)?;
         let cargo_command = |arguments: &[&str]| {
             let mut command = Command::new(&cargo);
             command

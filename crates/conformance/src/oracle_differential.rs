@@ -1298,6 +1298,24 @@ pub fn seed_audit(
         .collect()
 }
 
+/// [`eligible_roots`] of the project of the corpus `name`, stated once per
+/// process: stating them is the longest step of the survey and the audits of
+/// the boundary inputs need the same ones, so whichever asks first states them
+/// and the other waits for it.
+pub fn shared_roots(name: &str, project: &P) -> std::sync::Arc<Vec<(String, String, Accepted)>> {
+    type Cell = std::sync::Arc<OnceLock<std::sync::Arc<Vec<(String, String, Accepted)>>>>;
+    static STATED: std::sync::Mutex<BTreeMap<String, Cell>> =
+        std::sync::Mutex::new(BTreeMap::new());
+    let cell = STATED
+        .lock()
+        .expect("the roots' registry")
+        .entry(name.to_owned())
+        .or_default()
+        .clone();
+    cell.get_or_init(|| std::sync::Arc::new(eligible_roots(project)))
+        .clone()
+}
+
 /// The oracle's statement of one root.
 fn ask(
     oracle: &Oracle,
@@ -1382,7 +1400,9 @@ pub fn survey(oracle: &Oracle) -> Result<Vec<RootRun>, Unavailable> {
             let mut asked: Vec<Asked> = Vec::new();
             match &corpus.kind {
                 Kind::Example | Kind::Probes => {
-                    for (module, root, accepted) in eligible_roots(&corpus.project) {
+                    for (module, root, accepted) in
+                        shared_roots(&corpus.name, &corpus.project).iter().cloned()
+                    {
                         asked.push((module, root, Some(accepted), None));
                     }
                 }
