@@ -50,3 +50,20 @@ missing_safety_doc = "deny"
 opt-level = 3
 lto = "thin"
 codegen-units = 1
+
+# Hashing is the one place unoptimized code costs seconds rather than
+# milliseconds: every verification reads the running executable (a debug
+# executable is a few hundred megabytes) and every olean, and `sha2` compiled
+# at the dev profile's opt-level 0 hashes about 60 MB/s, which was 4.7 seconds
+# of each verification in the test suite and the example gate. Optimizing this
+# one dependency in the dev profile changes no value it computes.
+[profile.dev.package.sha2]
+opt-level = 3
+
+# Backtraces keep their file and line, which is all a failing gate needs from
+# debug information. Full variable-level information doubled the size of every
+# test binary (the conformance binary: 279 MB, 136 MB with this) and a cold
+# build of the workspace's tests took 86 s against 61 s (the test profile
+# inherits this one), on a runner whose disk also holds the proof evidence.
+[profile.dev]
+debug = "line-tables-only"

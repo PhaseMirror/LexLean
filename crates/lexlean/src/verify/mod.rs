@@ -24,7 +24,10 @@ pub mod axiom;
 pub mod child;
 pub mod leanchecker;
 pub(crate) mod lifeline;
+pub mod operational;
+pub mod pool;
 pub mod source_audit;
+pub mod telemetry;
 pub mod toolchain;
 pub mod workspace;
 
@@ -46,6 +49,7 @@ use crate::lock::Lock;
 use crate::project::Project;
 use crate::source::coverage::Origin;
 use crate::verify::child::{run as run_child, ChildHome, ChildRecord, ChildSpec, Normalizer};
+use crate::verify::operational::Operational;
 use crate::verify::toolchain::Toolchain;
 
 /// The outcome of a successful verification.
@@ -710,40 +714,6 @@ fn require_silent(
     Ok(())
 }
 
-/// Proof processes run one at a time. A single Atlas environment approaches
-/// the memory available on the normative GitHub runner; overlapping two made
-/// the hosted runner lose its control-plane heartbeat while swapping. Lean is
-/// still free to use its own internal parallelism, while this fixed outer
-/// width makes the verifier's peak resident set bounded and reproducible.
-const PROCESS_WIDTH: usize = 1;
-
-/// Run one deterministic batch of independent verification processes. All
-/// workers are joined before an error is returned so no child can outlive a
-/// failed verification or write into a staging tree after it is discarded.
-fn run_process_batch<T, F>(items: &[usize], job: F) -> Result<Vec<T>, Diagnostic>
-where
-    T: Send,
-    F: Fn(usize) -> Result<T, Diagnostic> + Sync,
-{
-    let joined = std::thread::scope(|scope| {
-        let job = &job;
-        let handles: Vec<_> = items
-            .iter()
-            .map(|&item| scope.spawn(move || job(item)))
-            .collect();
-        handles
-            .into_iter()
-            .map(std::thread::ScopedJoinHandle::join)
-            .collect::<Vec<_>>()
-    });
-    let mut values = Vec::with_capacity(items.len());
-    for result in joined {
-        let result = result.map_err(|_| internal("verification process worker panicked"))?;
-        values.push(result?);
-    }
-    Ok(values)
-}
-
 /// The bytes the production roots generate, counted toward
 /// `max_total_source_bytes` as they are generated.
 struct GeneratedBytes {
@@ -781,8 +751,13 @@ pub fn run(
     lock: &Lock,
     checked: &CheckedProject,
     build: &mut RenderedBuild,
+    operational: &Operational,
 ) -> Result<VerifyOutcome, LexLeanError> {
     let limits = project.config.limits;
+    let width = operational.width();
+    let telemetry_run = telemetry::Run::begin(operational, &project.config.name);
+    let mut stages = telemetry_run.stages();
+    stages.enter("certificate-generation");
 
     // Every production root is lowered before any Lean work, and before the
     // toolchain is touched: the lowered program grows with the size of the types a generic
@@ -956,10 +931,12 @@ pub fn run(
             });
         }
     }
+    stages.enter("toolchain-preflight");
     // Stage 4: toolchain preflight (§22.2).
     let mut toolchain: Toolchain = toolchain::preflight(&limits).map_err(fail)?;
     let toolchain_bin = toolchain.root.join("bin");
 
+    stages.enter("workspace-preflight");
     // Stage 5: Lake workspace preflight (§10.4) and module-name conflicts
     // (§18.8, §18.9).
     workspace::preflight(project, lock).map_err(fail)?;
@@ -1065,6 +1042,7 @@ pub fn run(
         }
     }
 
+    stages.enter("staging");
     // Staging under the build root with owner-only permissions (§25.6).
     let verified_root = project
         .root
@@ -1165,6 +1143,7 @@ pub fn run(
     toolchain.leanchecker.version_output =
         format!("{}\n{probe_answer}", toolchain.leanchecker.version_output);
 
+    stages.enter("probe");
     // Stage 6: the external-interface probe (§18.8).
     write_staged(
         staging.path(),
@@ -1228,12 +1207,22 @@ pub fn run(
     )?;
     process_records.push(probe_record);
 
+    stages.enter("elaboration");
     // Stage 7: module elaboration in topological import order (§22.3).
     // A topological frontier contains no dependency edges, so its members
     // may run concurrently without making an imported olean observable
     // before the process that owns it has completed successfully.
     let mut placed: BTreeSet<String> = BTreeSet::new();
     let mut remaining: Vec<usize> = (0..build.modules.len()).collect();
+    // The names are copied out so that the workers of a frontier hold no
+    // borrow of `build`, which the consumer of their results releases
+    // buffers of while later members are still running.
+    let lean_names: Vec<String> = build
+        .modules
+        .iter()
+        .map(|module| module.lean_module.clone())
+        .collect();
+    let mut frontier_index = 0usize;
     while !remaining.is_empty() {
         let ready: Vec<usize> = remaining
             .iter()
@@ -1249,21 +1238,27 @@ pub fn run(
         if ready.is_empty() {
             return Err(fail(internal("module order did not converge")));
         }
-        for batch in ready.chunks(PROCESS_WIDTH) {
-            for &module_index in batch {
-                let module_path = build.modules[module_index].lean_module.replace('.', "/");
-                let olean = olean_root.join(format!("{module_path}.olean"));
-                if let Some(parent) = olean.parent() {
-                    std::fs::create_dir_all(parent.as_std_path()).map_err(|io_error| {
-                        fail(Diagnostic::new(
-                            code!("LLB6003"),
-                            format!("staging oleans: {io_error}"),
-                        ))
-                    })?;
-                }
+        let frontier_started = std::time::Instant::now();
+        for &module_index in &ready {
+            let module_path = lean_names[module_index].replace('.', "/");
+            let olean = olean_root.join(format!("{module_path}.olean"));
+            if let Some(parent) = olean.parent() {
+                std::fs::create_dir_all(parent.as_std_path()).map_err(|io_error| {
+                    fail(Diagnostic::new(
+                        code!("LLB6003"),
+                        format!("staging oleans: {io_error}"),
+                    ))
+                })?;
             }
-            let records = run_process_batch(batch, |module_index| {
-                let module_name = &build.modules[module_index].lean_module;
+        }
+        // The members of a frontier import nothing from each other, so up
+        // to `width` of them run together; their results are consumed in
+        // module order whichever finishes first (§22.11).
+        pool::run_ordered(
+            width,
+            &ready,
+            &|module_index: usize| {
+                let module_name = &lean_names[module_index];
                 let module_path = module_name.replace('.', "/");
                 let source = src_root.join(format!("{module_path}.lean"));
                 let olean = olean_root.join(format!("{module_path}.olean"));
@@ -1291,10 +1286,17 @@ pub fn run(
                     &limits,
                     &normalizer,
                 )
-            })
-            .map_err(fail)?;
-            for (&module_index, record) in batch.iter().zip(records) {
-                let module_name = build.modules[module_index].lean_module.clone();
+            },
+            &|result: &Result<ChildRecord, Diagnostic>| {
+                result.as_ref().map_or(true, |record| {
+                    record.exit_code != 0
+                        || !record.stdout.trim().is_empty()
+                        || !record.stderr.trim().is_empty()
+                })
+            },
+            |module_index, result| {
+                let record = result.map_err(fail)?;
+                let module_name = lean_names[module_index].clone();
                 if record.exit_code != 0 {
                     // Lean reports compile errors on stdout under `lake env
                     // lean`; remap over both streams (§20.4).
@@ -1334,8 +1336,11 @@ pub fn run(
                 )?;
                 process_records.push(record);
                 release_module_diagnostic_buffers(&mut build.modules[module_index]);
-            }
-        }
+                Ok(())
+            },
+        )?;
+        telemetry_run.frontier("elaboration", frontier_index, ready.len(), frontier_started);
+        frontier_index += 1;
         for &module_index in &ready {
             placed.insert(build.modules[module_index].module.clone());
         }
@@ -1347,6 +1352,7 @@ pub fn run(
     // use only compact module metadata and the staged files.
     release_rendered_buffers(build);
 
+    stages.enter("replay");
     // Stage 8: separate-process leanchecker replay per module, sorted
     // (§22.4).
     let mut sorted_modules: Vec<usize> = (0..build.modules.len()).collect();
@@ -1355,9 +1361,11 @@ pub fn run(
             .lean_module
             .cmp(&build.modules[*b].lean_module)
     });
-    for batch in sorted_modules.chunks(PROCESS_WIDTH) {
-        let records = run_process_batch(batch, |module_index| {
-            let module_name = &build.modules[module_index].lean_module;
+    pool::run_ordered(
+        width,
+        &sorted_modules,
+        &|module_index: usize| {
+            let module_name = &lean_names[module_index];
             leanchecker::replay_module(
                 &toolchain,
                 module_name,
@@ -1375,19 +1383,22 @@ pub fn run(
                         diagnostic.with_span(span.clone())
                     })
             })
-        })
-        .map_err(fail)?;
-        for (&module_index, record) in batch.iter().zip(records) {
-            let module_name = &build.modules[module_index].lean_module;
+        },
+        &|result: &Result<ChildRecord, Diagnostic>| result.is_err(),
+        |module_index, result| {
+            let record = result.map_err(fail)?;
+            let module_name = &lean_names[module_index];
             write_staged(
                 staging.path(),
                 &format!("process/leanchecker/{module_name}.json"),
                 &record.to_json().to_file_bytes(),
             )?;
             process_records.push(record);
-        }
-    }
+            Ok(())
+        },
+    )?;
 
+    stages.enter("audit");
     // Stage 9–10: process-sized audit modules and exact output parsing
     // (§18.9, §22.5). Each member imports one generated module, so the
     // final policy audit cannot recreate the monolithic replay peak.
@@ -1398,8 +1409,10 @@ pub fn run(
         write_staged(staging.path(), &source_relative, audit.text.as_bytes())?;
     }
     let audit_indices: Vec<usize> = (0..audit_modules.len()).collect();
-    for batch in audit_indices.chunks(PROCESS_WIDTH) {
-        let records = run_process_batch(batch, |audit_index| {
+    pool::run_ordered(
+        width,
+        &audit_indices,
+        &|audit_index: usize| {
             let audit = &audit_modules[audit_index];
             let source_relative = format!("audit/{}.lean", audit.name);
             let audit_source = staging_utf8.join(&source_relative);
@@ -1423,9 +1436,12 @@ pub fn run(
                 &limits,
                 &normalizer,
             )
-        })
-        .map_err(fail)?;
-        for (&audit_index, audit_record) in batch.iter().zip(records) {
+        },
+        &|result: &Result<ChildRecord, Diagnostic>| {
+            result.as_ref().map_or(true, |record| record.exit_code != 0)
+        },
+        |audit_index, result| {
+            let audit_record = result.map_err(fail)?;
             let audit = &audit_modules[audit_index];
             if audit_record.exit_code != 0 {
                 return Err(fail(Diagnostic::new(
@@ -1459,8 +1475,9 @@ pub fn run(
                 &audit_record.to_json().to_file_bytes(),
             )?;
             process_records.push(audit_record);
-        }
-    }
+            Ok(())
+        },
+    )?;
     if observed.len() != declaration_names.len() {
         return Err(fail(internal(format!(
             "axiom audit family observed {} of {} declarations",
@@ -1470,6 +1487,7 @@ pub fn run(
     }
     write_staged(staging.path(), "audit/output.txt", audit_output.as_bytes())?;
 
+    stages.enter("policy");
     // Stage 11: per-declaration policy enforcement (§22.6).
     let mut declaration_rows: Vec<Json> = Vec::new();
     for module in &build.modules {
@@ -1698,6 +1716,7 @@ pub fn run(
         }
     }
 
+    stages.enter("extraction");
     // Stage 12: named-root extraction (§22.10). Lean's compiler front end
     // reports the computational closure of every production root while the
     // module-system intermediates it reads are still staged; the closure must
@@ -1782,6 +1801,7 @@ pub fn run(
         process_records.push(record);
     }
 
+    stages.enter("certificates");
     // Stage 12b: certificate A (§17.17). Every production root is lowered
     // and certified; the certificates compile beside the shipped library and
     // calculus modules, are replayed, and their axioms audited exactly.
@@ -2081,6 +2101,7 @@ pub fn run(
         let _ = std::fs::remove_dir_all(preserve_oleans.as_std_path());
     }
 
+    stages.enter("pdf");
     // Stage 13: optional configured PDF rendering (§19.7): one row and two
     // process records per module.
     let mut pdf_rows: Vec<Json> = Vec::new();
@@ -2132,6 +2153,7 @@ pub fn run(
         }
     }
 
+    stages.enter("attestation");
     // Stage 14: no unexpected absolute paths in successful output (§22.7),
     // over every process record.
     for record in &process_records {
@@ -2152,6 +2174,7 @@ pub fn run(
         }
     }
 
+    stages.enter("scratch-cleanup");
     // Remove the compilation scratch tree; the fixed §22.8 artifact set
     // keeps exactly `oleans/*.olean` (the module-system `.olean.private`,
     // `.olean.server`, and `.ir` intermediates are not part of the set and
@@ -2177,6 +2200,7 @@ pub fn run(
         }
     }
 
+    stages.enter("olean-hash");
     // Copy oleans into the verified set and hash them.
     let mut olean_rows: Vec<Json> = Vec::new();
     for module in &build.modules {
@@ -2195,17 +2219,16 @@ pub fn run(
         ]));
     }
 
+    stages.enter("executable-hash");
     // Stage 15: the attestation (§22.9). No timestamp is hashed. The
     // running executable must be readable to be recorded; nothing is
     // fabricated in its place.
-    let lexlean_executable_sha256 = std::env::current_exe()
-        .and_then(std::fs::read)
-        .map(|bytes| Sha256Digest::of(&bytes))
-        .map_err(|io_error| {
-            fail(internal(format!(
-                "reading the running executable: {io_error}"
-            )))
-        })?;
+    let lexlean_executable_sha256 = running_executable_sha256().map_err(|io_error| {
+        fail(internal(format!(
+            "reading the running executable: {io_error}"
+        )))
+    })?;
+    stages.enter("attestation-body");
     let tool_json = |tool: &toolchain::Tool| {
         Json::object(vec![
             ("version_output", Json::Str(tool.version_output.clone())),
@@ -2313,6 +2336,7 @@ pub fn run(
     };
     write_staged(staging.path(), "attestation.json", &full.to_file_bytes())?;
 
+    stages.enter("publication");
     // Stage 16: atomic publication (§21.8).
     let target = verified_root.join(this_attestation_id.to_hex());
     if target.as_std_path().exists() {
@@ -2320,10 +2344,13 @@ pub fn run(
         // published set only after every staged file validates against it
         // (§21.8); anything else refuses to overwrite unexplained bytes.
         return match validate_existing(staging.path(), &target) {
-            Ok(()) => Ok(VerifyOutcome {
-                attestation_id: this_attestation_id,
-                root: target,
-            }),
+            Ok(()) => {
+                telemetry_run.succeeded();
+                Ok(VerifyOutcome {
+                    attestation_id: this_attestation_id,
+                    root: target,
+                })
+            }
             Err(reason) => Err(fail(Diagnostic::new(
                 code!("LLB6003"),
                 format!(
@@ -2341,10 +2368,41 @@ pub fn run(
         ))
     })?;
     crate::artifact::fsync_dir(verified_root.as_std_path());
+    telemetry_run.succeeded();
     Ok(VerifyOutcome {
         attestation_id: this_attestation_id,
         root: target,
     })
+}
+
+/// The SHA-256 of the running executable, read once per process that succeeds
+/// in reading it.
+///
+/// The attestation records which `lexlean` made it, and a process is one
+/// executable for as long as it runs, so reading and hashing a few hundred
+/// megabytes for every verification said the same thing again. In a debug
+/// build that was 4.7 seconds of every verification, and the conformance
+/// suite's process verifies hundreds of projects. The value is what a fresh
+/// read would give: the digest is of the file at the path the process was
+/// started from.
+fn running_executable_sha256() -> Result<Sha256Digest, String> {
+    // Only a digest is remembered. A read that failed (a descriptor limit, a
+    // file replaced for a moment) fails the verification that made it and is
+    // made again by the next, instead of failing every later verification of
+    // a long-lived process.
+    static DIGEST: std::sync::Mutex<Option<Sha256Digest>> = std::sync::Mutex::new(None);
+    let mut remembered = DIGEST
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(digest) = *remembered {
+        return Ok(digest);
+    }
+    let digest = std::env::current_exe()
+        .and_then(std::fs::read)
+        .map(|bytes| Sha256Digest::of(&bytes))
+        .map_err(|io_error| io_error.to_string())?;
+    *remembered = Some(digest);
+    Ok(digest)
 }
 
 /// Remove the staging directories that earlier runs left in `verified_root`:
@@ -2409,33 +2467,6 @@ mod tests {
         );
         // A root that does not exist yet is not an error.
         super::remove_stale_staging(&directory.path().join("absent"));
-    }
-
-    use std::sync::{mpsc, Mutex};
-    use std::time::Duration;
-
-    use super::{internal, run_process_batch};
-
-    #[test]
-    fn process_batch_is_concurrent_and_result_order_is_stable() {
-        let (sender, receiver) = mpsc::channel();
-        let receiver = Mutex::new(receiver);
-        let values = run_process_batch(&[7, 3], |item| {
-            if item == 7 {
-                receiver
-                    .lock()
-                    .map_err(|_| internal("test receiver lock was poisoned"))?
-                    .recv_timeout(Duration::from_secs(2))
-                    .map_err(|error| internal(format!("test receive: {error}")))?;
-            } else {
-                sender
-                    .send(())
-                    .map_err(|error| internal(format!("test send: {error}")))?;
-            }
-            Ok(item)
-        })
-        .expect("the independent jobs run together");
-        assert_eq!(values, vec![7, 3]);
     }
 }
 
