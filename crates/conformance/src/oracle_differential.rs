@@ -1377,44 +1377,125 @@ fn build_errors(stderr: &str, member: &str) -> String {
         .join("\n\n")
 }
 
-/// Build the oracle's crate of each root in `roots` with
-/// its harness in one workspace, run every harness, and return what each
-/// printed.
+/// The bound on the build of the generated crates and on one run of one of
+/// the generated programs. A crate that loops or a build that hangs is the
+/// oracle's finding and ends in a clear failure instead of the job's own
+/// time limit; the bounds are generous because a loaded host must not turn
+/// them into a flake.
+const BUILD_LIMIT: std::time::Duration = std::time::Duration::from_secs(900);
+const RUN_LIMIT: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// `cargo` with `arguments` in `dir`, with `dir`'s own target directory and no
+/// inherited rustc flags, ended with everything it started when it overruns
+/// `limit`.
+fn cargo_bounded(
+    dir: &Path,
+    arguments: &[&str],
+    limit: std::time::Duration,
+) -> Result<oracle::Ran, String> {
+    let mut command = std::process::Command::new(
+        std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned()),
+    );
+    command
+        .args(arguments)
+        .current_dir(dir)
+        .env("CARGO_TARGET_DIR", dir.join("target"))
+        .env_remove("RUSTFLAGS")
+        .env_remove("CARGO_ENCODED_RUSTFLAGS");
+    oracle::run(command, limit)
+}
+
+/// One run to execute, under a key that is its own: the key names its crate,
+/// its harness, and its result, so two runs of the same root (a root and
+/// the same root with its oracle crate edited) are two executions that
+/// cannot shadow each other.
+#[derive(Debug, Clone, Copy)]
+pub struct Slot<'a> {
+    /// The key the run's result is returned under.
+    pub key: &'a str,
+    /// The run.
+    pub run: &'a RootRun,
+}
+
+/// `package`'s manifest with its crate named `name`, which is how a crate of
+/// the oracle becomes one member of a workspace beside other crates of the
+/// same root.
+fn renamed(package: &BTreeMap<String, Vec<u8>>, name: &str) -> BTreeMap<String, Vec<u8>> {
+    let mut package = package.clone();
+    let manifest = String::from_utf8_lossy(&package["Cargo.toml"]).into_owned();
+    let original = package_name(&package);
+    let edited = manifest.replacen(
+        &format!("name = \"{original}\""),
+        &format!("name = \"{name}\""),
+        1,
+    );
+    assert_ne!(edited, manifest, "the crate `{original}` was renamed");
+    package.insert("Cargo.toml".to_owned(), edited.into_bytes());
+    package
+}
+
+/// Build the oracle's crate of each slot in `slots` with its harness in one
+/// workspace, run every harness, and return what each printed under its
+/// slot's key.
+///
+/// Every slot has a crate, a harness, and a result of its own: the crate is
+/// named for the slot's position, never for the root, so that runs of the
+/// same root cannot overwrite one another. Keys that are not distinct are a
+/// defect of the caller and panic before anything is built.
 ///
 /// A crate that does not compile is the oracle's finding, reported for its
-/// root; a harness that does not compile is a defect of this module and
-/// panics.
+/// slot; a harness that does not compile is a defect of this module and
+/// panics. The build and every run are bounded ([`BUILD_LIMIT`],
+/// [`RUN_LIMIT`]): the build overrunning is [`Unavailable::ToolFailed`], a
+/// generated program overrunning is the finding of its slot.
+///
+/// # Errors
+///
+/// [`Unavailable::ToolFailed`] when the build cannot be run or overruns.
 ///
 /// # Panics
 ///
-/// Panics when a harness, which is this module's, does not build or run.
-#[must_use]
+/// Panics when two slots share a key, or when a harness, which is this
+/// module's, does not build or run.
 pub fn execute(
-    roots: &[&RootRun],
+    slots: &[Slot<'_>],
     with_lexlean: bool,
-) -> BTreeMap<String, Result<Executed, String>> {
-    use crate::rust_build::{cargo_in, workspace, Built};
+) -> Result<BTreeMap<String, Result<Executed, String>>, Unavailable> {
+    use crate::rust_build::{workspace, Built};
+    let keys: BTreeSet<&str> = slots.iter().map(|slot| slot.key).collect();
+    assert_eq!(
+        keys.len(),
+        slots.len(),
+        "the runs to execute have distinct keys; a shared key would let one run's result stand for another's"
+    );
     let dir = tempfile::Builder::new()
         .prefix("lexlean-oracle-run-")
         .tempdir()
         .expect("tempdir");
     let mut members: Vec<String> = Vec::new();
+    let mut crate_of: BTreeMap<String, String> = BTreeMap::new();
     let mut harness_of: BTreeMap<String, String> = BTreeMap::new();
     let mut lexlean_of: BTreeMap<String, String> = BTreeMap::new();
     let mut lexlean_built: Vec<Built> = Vec::new();
-    let mut lexlean_cases: BTreeMap<String, usize> = BTreeMap::new();
     let mut failed: BTreeMap<String, Result<Executed, String>> = BTreeMap::new();
-    let mut compile_only: BTreeMap<String, String> = BTreeMap::new();
-    for (position, run) in roots.iter().enumerate() {
+    let mut compile_only: BTreeSet<String> = BTreeSet::new();
+    for (position, slot) in slots.iter().enumerate() {
+        let run = slot.run;
+        let key = slot.key.to_owned();
+        let crate_name = format!("oracle-s{position}");
         // A root LexLean rejects and the oracle takes has no inputs to run;
         // whether the oracle's crate for it compiles is still evidence.
         if let (LexLeanSide::Rejected { .. }, OracleSide::Generated { package, .. }) =
             (&run.lexlean, &run.oracle)
         {
-            let name = package_name(package);
-            write_member(dir.path(), &format!("o/{name}"), package);
-            members.push(format!("\"o/{name}\""));
-            compile_only.insert(run.root.clone(), name);
+            write_member(
+                dir.path(),
+                &format!("o/s{position}"),
+                &renamed(package, &crate_name),
+            );
+            members.push(format!("\"o/s{position}\""));
+            crate_of.insert(key.clone(), crate_name);
+            compile_only.insert(key);
             continue;
         }
         let (
@@ -1430,14 +1511,17 @@ pub fn execute(
             continue;
         };
         let parsed = read_ir(ir).expect("the IR parsed when the verdict was asked");
-        let name = package_name(package);
-        write_member(dir.path(), &format!("o/{name}"), package);
+        write_member(
+            dir.path(),
+            &format!("o/s{position}"),
+            &renamed(package, &crate_name),
+        );
         let harness_name = format!("oh{position}");
         let harness = match oracle_harness(&parsed, run.function(), signature, &accepted.cases) {
             Ok(text) => text,
             Err(reason) => {
                 failed.insert(
-                    run.root.clone(),
+                    key,
                     Err(format!("the harness cannot be written: {reason}")),
                 );
                 continue;
@@ -1447,15 +1531,16 @@ pub fn execute(
         files.insert(
             "Cargo.toml".to_owned(),
             format!(
-                "[package]\nname = \"{harness_name}\"\nversion = \"0.0.0\"\nedition = \"2021\"\npublish = false\n\n[dependencies]\noracle_crate = {{ package = \"{name}\", path = \"../../o/{name}\" }}\n"
+                "[package]\nname = \"{harness_name}\"\nversion = \"0.0.0\"\nedition = \"2021\"\npublish = false\n\n[dependencies]\noracle_crate = {{ package = \"{crate_name}\", path = \"../../o/s{position}\" }}\n"
             )
             .into_bytes(),
         );
         files.insert("src/main.rs".to_owned(), harness.into_bytes());
         write_member(dir.path(), &format!("h/{harness_name}"), &files);
-        members.push(format!("\"o/{name}\""));
+        members.push(format!("\"o/s{position}\""));
         members.push(format!("\"h/{harness_name}\""));
-        harness_of.insert(run.root.clone(), harness_name);
+        crate_of.insert(key.clone(), crate_name);
+        harness_of.insert(key.clone(), harness_name);
         if with_lexlean {
             let profile_name = if accepted.targets.iter().any(|t| t == "rust-core") {
                 "rust-core"
@@ -1463,11 +1548,11 @@ pub fn execute(
                 "rust-std"
             };
             let profile = Profile::named(profile_name).expect("a profile");
-            let crate_name = format!("lexlean_{position}");
+            let lexlean_name = format!("lexlean_{position}");
             let fallible = accepted.contract.failure;
             let manifest = Manifest {
                 spec: MANIFEST_SPEC.to_owned(),
-                name: crate_name.clone(),
+                name: lexlean_name.clone(),
                 version: "1.0.0".to_owned(),
                 profile: profile_name.to_owned(),
                 program: accepted.program.clone(),
@@ -1496,13 +1581,16 @@ pub fn execute(
                 passing: &passing,
                 arguments: &arguments,
             }];
-            let harness =
-                crate::rust_harness::render_calls(&accepted.program, profile, &crate_name, &calls)
-                    .unwrap_or_else(|reason| panic!("{}: {reason}", run.root));
-            lexlean_cases.insert(run.root.clone(), arguments.len());
-            lexlean_of.insert(run.root.clone(), crate_name.clone());
+            let harness = crate::rust_harness::render_calls(
+                &accepted.program,
+                profile,
+                &lexlean_name,
+                &calls,
+            )
+            .unwrap_or_else(|reason| panic!("{}: {reason}", run.root));
+            lexlean_of.insert(key, lexlean_name.clone());
             lexlean_built.push(Built {
-                name: crate_name,
+                name: lexlean_name,
                 files: rendered.files,
                 harness,
             });
@@ -1528,11 +1616,16 @@ pub fn execute(
         format!("[workspace]\nresolver = \"2\"\nmembers = [{listed}]\n"),
     )
     .expect("workspace manifest");
-    let build = cargo_in(
+    let build = cargo_bounded(
         dir.path(),
         &["build", "--offline", "--workspace", "--keep-going"],
-    );
-    let stderr = String::from_utf8_lossy(&build.stderr).into_owned();
+        BUILD_LIMIT,
+    )
+    .map_err(|detail| Unavailable::ToolFailed {
+        step: "cargo build of the generated crates".to_owned(),
+        detail: format!("{detail} (the bound is {} s)", BUILD_LIMIT.as_secs()),
+    })?;
+    let stderr = build.stderr;
     let broken: BTreeSet<String> = stderr
         .lines()
         .filter_map(|line| {
@@ -1542,47 +1635,46 @@ pub fn execute(
         })
         .collect();
     let mut out = failed;
-    for (root, name) in &compile_only {
-        let result = if broken.contains(name) {
-            Err(format!(
-                "the oracle's crate `{name}` does not compile:\n{}",
-                build_errors(&stderr, &format!("o/{name}"))
-            ))
-        } else {
-            Ok(Executed::default())
-        };
-        out.insert(root.clone(), result);
-    }
-    for run in roots {
-        let Some(harness_name) = harness_of.get(&run.root) else {
-            continue;
-        };
-        let OracleSide::Generated { package, .. } = &run.oracle else {
-            continue;
-        };
-        let name = package_name(package);
-        if broken.contains(&name) {
+    let does_not_compile = |name: &str, position: usize| {
+        format!(
+            "the oracle's crate `{name}` does not compile:\n{}",
+            build_errors(&stderr, &format!("o/s{position}"))
+        )
+    };
+    for (position, slot) in slots.iter().enumerate() {
+        let key = slot.key;
+        if compile_only.contains(key) {
+            let name = &crate_of[key];
             out.insert(
-                run.root.clone(),
-                Err(format!(
-                    "the oracle's crate `{name}` does not compile:\n{}",
-                    build_errors(&stderr, &format!("o/{name}"))
-                )),
+                key.to_owned(),
+                if broken.contains(name) {
+                    Err(does_not_compile(name, position))
+                } else {
+                    Ok(Executed::default())
+                },
             );
             continue;
         }
-        if let Some(own) = lexlean_of.get(&run.root) {
+        let Some(harness_name) = harness_of.get(key) else {
+            continue;
+        };
+        let name = &crate_of[key];
+        if broken.contains(name) {
+            out.insert(key.to_owned(), Err(does_not_compile(name, position)));
+            continue;
+        }
+        if let Some(own) = lexlean_of.get(key) {
             assert!(
                 !broken.contains(own) && !broken.contains(&format!("run_{own}")),
                 "LexLean's package of {} does not build:\n{}",
-                run.root,
+                slot.run.root,
                 build_errors(&stderr, &format!("p/{own}"))
             );
         }
         assert!(
             !broken.contains(harness_name),
             "the oracle harness of {} does not build:\n{}",
-            run.root,
+            slot.run.root,
             build_errors(&stderr, &format!("h/{harness_name}"))
         );
         let exe = |name: &str| {
@@ -1590,57 +1682,73 @@ pub fn execute(
                 .join("target/debug")
                 .join(format!("{name}{}", std::env::consts::EXE_SUFFIX))
         };
-        let ran = std::process::Command::new(exe(harness_name))
-            .output()
-            .expect("the oracle harness runs");
-        if !ran.status.success() {
+        let ran = match oracle::run(std::process::Command::new(exe(harness_name)), RUN_LIMIT) {
+            Ok(ran) => ran,
+            Err(reason) => {
+                out.insert(
+                    key.to_owned(),
+                    Err(format!(
+                        "the oracle's crate did not finish: {reason} (the bound is {} s)",
+                        RUN_LIMIT.as_secs()
+                    )),
+                );
+                continue;
+            }
+        };
+        if ran.status != Some(0) {
             out.insert(
-                run.root.clone(),
+                key.to_owned(),
                 Err(format!(
                     "the oracle's crate ended the run with {:?}: {}",
-                    ran.status.code(),
-                    String::from_utf8_lossy(&ran.stderr)
-                        .lines()
-                        .last()
-                        .unwrap_or("")
+                    ran.status,
+                    ran.stderr.lines().last().unwrap_or("")
                 )),
             );
             continue;
         }
-        let stdout = String::from_utf8_lossy(&ran.stdout).into_owned();
         let mut oracle_rows = Vec::new();
-        for line in stdout.lines() {
+        for line in ran.stdout.lines() {
             let (json, spent) = line.rsplit_once('\t').expect("a tab separated outcome");
             oracle_rows.push((
-                serde_json::from_str(json).unwrap_or_else(|e| panic!("{}: {e}: {json}", run.root)),
+                serde_json::from_str(json)
+                    .unwrap_or_else(|e| panic!("{}: {e}: {json}", slot.run.root)),
                 spent.parse::<u64>().expect("an allocation count"),
             ));
         }
-        let lexlean = lexlean_of.get(&run.root).map(|own| {
-            let ran = std::process::Command::new(exe(&format!("run_{own}")))
-                .output()
-                .expect("LexLean's harness runs");
-            assert!(
-                ran.status.success(),
+        let lexlean = lexlean_of.get(key).map(|own| {
+            let ran = oracle::run(
+                std::process::Command::new(exe(&format!("run_{own}"))),
+                RUN_LIMIT,
+            )
+            .unwrap_or_else(|reason| {
+                panic!(
+                    "LexLean's rendering of {} did not finish: {reason} (the bound is {} s)",
+                    slot.run.root,
+                    RUN_LIMIT.as_secs()
+                )
+            });
+            assert_eq!(
+                ran.status,
+                Some(0),
                 "LexLean's rendering of {} fails: {}",
-                run.root,
-                String::from_utf8_lossy(&ran.stderr)
+                slot.run.root,
+                ran.stderr
             );
-            String::from_utf8_lossy(&ran.stdout)
+            ran.stdout
                 .lines()
                 .filter(|line| !line.starts_with("work "))
                 .map(|line| serde_json::from_str(line).expect("json"))
                 .collect::<Vec<Json>>()
         });
         out.insert(
-            run.root.clone(),
+            key.to_owned(),
             Ok(Executed {
                 oracle: oracle_rows,
                 lexlean,
             }),
         );
     }
-    out
+    Ok(out)
 }
 
 fn package_of(manifest: &Manifest, root: &str) -> lexlean::calculus::rust::package::Package {
@@ -2373,8 +2481,14 @@ pub fn corpus_run() -> &'static Result<Run, Unavailable> {
         let acquired = start.elapsed().as_secs_f64();
         let roots = survey(oracle)?;
         let surveyed = start.elapsed().as_secs_f64();
-        let refs: Vec<&RootRun> = roots.iter().collect();
-        let executed = execute(&refs, true);
+        let slots: Vec<Slot<'_>> = roots
+            .iter()
+            .map(|run| Slot {
+                key: &run.root,
+                run,
+            })
+            .collect();
+        let executed = execute(&slots, true)?;
         let mut timings = BTreeMap::new();
         timings.insert("acquire".to_owned(), acquired);
         timings.insert("survey".to_owned(), surveyed - acquired);
@@ -2480,9 +2594,16 @@ pub fn planted(run: &RootRun, edit: &dyn Fn(&str) -> Option<String>) -> Result<R
 /// run, since its harness would not be calling what the root's contract says.
 #[must_use]
 pub fn evaluate(runs: &[RootRun]) -> Vec<Vec<Diff>> {
-    let runnable: Vec<&RootRun> = runs
+    let keys: Vec<String> = runs
         .iter()
-        .filter(|run| match (&run.lexlean, &run.oracle) {
+        .enumerate()
+        .map(|(at, run)| format!("{at}:{}", run.root))
+        .collect();
+    let runnable: Vec<Slot<'_>> = runs
+        .iter()
+        .zip(&keys)
+        .map(|(run, key)| Slot { key, run })
+        .filter(|slot| match (&slot.run.lexlean, &slot.run.oracle) {
             (LexLeanSide::Eligible(accepted), OracleSide::Generated { contract, .. }) => {
                 contract.drift.is_empty()
                     && contract.parameters == accepted.contract.parameters
@@ -2491,9 +2612,11 @@ pub fn evaluate(runs: &[RootRun]) -> Vec<Vec<Diff>> {
             _ => false,
         })
         .collect();
-    let executed = execute(&runnable, false);
+    let executed = execute(&runnable, false)
+        .unwrap_or_else(|reason| panic!("the planted runs cannot be executed: {reason}"));
     runs.iter()
-        .map(|run| differences(run, executed.get(&run.root)))
+        .zip(&keys)
+        .map(|(run, key)| differences(run, executed.get(key)))
         .collect()
 }
 
@@ -2503,8 +2626,14 @@ pub fn evaluate(runs: &[RootRun]) -> Vec<Vec<Diff>> {
 pub struct Rendered {
     /// The printed outcome of each input.
     pub outcomes: Vec<Json>,
-    /// The work the runtime counted over all of them.
+    /// The work the rendering's own runtime counted over all of them. This is
+    /// the rendering's statement about itself: a rendering that never counts
+    /// reports none, so it bounds nothing by itself (see `allocations`).
     pub work: u64,
+    /// The allocations a counting allocator, which the harness installs and the
+    /// rendering cannot reach, saw over the whole run. This is the measure
+    /// that does not depend on what the rendering says about itself.
+    pub allocations: u64,
 }
 
 /// Build `files` as a crate exporting `root(..)` with the interface of
@@ -2525,7 +2654,7 @@ pub fn render_candidate(
     profile: &str,
     files: &BTreeMap<String, Vec<u8>>,
 ) -> Result<Rendered, String> {
-    use crate::rust_build::{cargo_in, workspace, Built};
+    use crate::rust_build::{workspace, Built};
     let program = &accepted.program;
     let passing = vec![Passing::Own; program.functions[0].types.len()];
     let arguments: Vec<Vec<Value>> = accepted
@@ -2546,6 +2675,16 @@ pub fn render_candidate(
         &calls,
     )
     .expect("the harness is written");
+    // The harness is LexLean's own, and the allocator it gets is the one
+    // module of it that needs `unsafe`; the candidate crate is another crate
+    // and cannot reach either.
+    let counted = harness.replacen("#![forbid(unsafe_code)]", "#![deny(unsafe_code)]", 1);
+    assert_ne!(counted, harness, "the harness forbids unsafe code");
+    let harness = format!(
+        "{}\n{COUNTING}\n{}\nfn main() {{\n    harness_main();\n    println!(\"allocations {{}}\", allocations());\n}}\n",
+        counted.split_once("\nfn main() {").map_or("", |(head, _)| head),
+        "fn harness_main() {\n    let runner = std::thread::Builder::new().stack_size(64 << 20).spawn(harness_runs).expect(\"the harness thread starts\");\n    if runner.join().is_err() {\n        std::process::exit(101);\n    }\n}"
+    );
     let dir = tempfile::Builder::new()
         .prefix("lexlean-oracle-candidate-")
         .tempdir()
@@ -2558,40 +2697,50 @@ pub fn render_candidate(
             harness,
         }],
     );
-    let build = cargo_in(dir.path(), &["build", "--offline", "--workspace"]);
-    if !build.status.success() {
-        return Err(build_errors(
-            &String::from_utf8_lossy(&build.stderr),
-            "p/candidate",
-        ));
-    }
-    let ran = std::process::Command::new(
-        dir.path()
-            .join("target/debug")
-            .join(format!("run_candidate{}", std::env::consts::EXE_SUFFIX)),
+    let build = cargo_bounded(
+        dir.path(),
+        &["build", "--offline", "--workspace"],
+        BUILD_LIMIT,
     )
-    .output()
-    .map_err(|error| error.to_string())?;
-    if !ran.status.success() {
-        return Err(format!(
-            "the candidate ended the run with {:?}",
-            ran.status.code()
-        ));
+    .map_err(|reason| format!("the candidate's build: {reason}"))?;
+    if build.status != Some(0) {
+        return Err(build_errors(&build.stderr, "p/candidate"));
     }
-    let stdout = String::from_utf8_lossy(&ran.stdout).into_owned();
+    let ran = oracle::run(
+        std::process::Command::new(
+            dir.path()
+                .join("target/debug")
+                .join(format!("run_candidate{}", std::env::consts::EXE_SUFFIX)),
+        ),
+        RUN_LIMIT,
+    )
+    .map_err(|reason| {
+        format!(
+            "the candidate did not finish: {reason} (the bound is {} s)",
+            RUN_LIMIT.as_secs()
+        )
+    })?;
+    if ran.status != Some(0) {
+        return Err(format!("the candidate ended the run with {:?}", ran.status));
+    }
     let mut outcomes = Vec::new();
     let mut work = 0;
-    for line in stdout.lines() {
-        match line.strip_prefix("work ") {
-            Some(count) => {
-                work = count
-                    .parse()
-                    .map_err(|e: std::num::ParseIntError| e.to_string())?
-            }
-            None => outcomes.push(serde_json::from_str(line).map_err(|e| e.to_string())?),
+    let mut allocations = 0;
+    for line in ran.stdout.lines() {
+        let number = |count: &str| count.parse().map_err(|e: std::num::ParseIntError| e.to_string());
+        if let Some(count) = line.strip_prefix("work ") {
+            work = number(count)?;
+        } else if let Some(count) = line.strip_prefix("allocations ") {
+            allocations = number(count)?;
+        } else {
+            outcomes.push(serde_json::from_str(line).map_err(|e| e.to_string())?);
         }
     }
-    Ok(Rendered { outcomes, work })
+    Ok(Rendered {
+        outcomes,
+        work,
+        allocations,
+    })
 }
 
 /// LexLean's own package of a root: its `Cargo.toml`, `src/lib.rs`, and
@@ -2657,6 +2806,12 @@ pub fn accept_rendering(
         return Err(format!(
             "the rendering counts {} units of work, more than the {} of LexLean's own",
             rendering.work, baseline.work
+        ));
+    }
+    if rendering.allocations > baseline.allocations {
+        return Err(format!(
+            "the rendering allocates {} times, more than the {} of LexLean's own",
+            rendering.allocations, baseline.allocations
         ));
     }
     Ok(())

@@ -1686,6 +1686,29 @@ fn equivalent_renderings() {
     let error = differential::accept_rendering(&sum_all, &busy_result, &base_sum)
         .expect_err("a rendering that does more work is refused");
     assert!(error.contains("work"), "{error}");
+    // The work is what the rendering's own runtime counts, so a rendering that
+    // does more and counts none of it is not caught by it. The allocations are
+    // counted by an allocator the harness installs, which the rendering cannot
+    // reach, and they are the measure that does not depend on the rendering.
+    // The limit is stated, not hidden: a rendering that does extra work
+    // without allocating and without counting is not caught by either (SPEC.md
+    // §17.19).
+    let silent = with_functions(&own_sum, &fixture("sum-all.silent-extra.rs"));
+    let silent_result =
+        differential::render_candidate(&sum_all, "rust-std", &silent).expect("it builds");
+    assert_eq!(
+        silent_result.outcomes, base_sum.outcomes,
+        "the silent rendering prints the same outcomes"
+    );
+    assert!(
+        silent_result.work <= base_sum.work,
+        "it counts no more work ({} against {})",
+        silent_result.work,
+        base_sum.work
+    );
+    let error = differential::accept_rendering(&sum_all, &silent_result, &base_sum)
+        .expect_err("a rendering that does more and counts none of it is refused");
+    assert!(error.contains("allocates"), "{error}");
     assert!(
         differential::render_candidate(&halvings, "rust-core", &narrow).is_err(),
         "a rendering with a narrower parameter does not provide the interface"
