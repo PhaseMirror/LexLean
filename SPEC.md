@@ -5638,7 +5638,8 @@ validation changing. For each root it compares, in order:
    refusals are its own structured words (`prod-export failed:` from the
    exporter, `Code generation refused:` from the generator), and are classified
    as `escaping-local-function`, `opaque-lowering`, `unresolved-external-call`,
-   `unsupported-local-function`, or `codegen-<its error>`;
+   `unsupported-local-function`, `export-refused` (an exporter refusal of none
+   of those kinds), or `codegen-<its error>`;
 2. *contract*: the root's signature as a shape that depends on neither side's
    names (a closed data type is the shapes of the fields of its constructors in
    order), its failure typing (a call that can fail with an overflow), how a

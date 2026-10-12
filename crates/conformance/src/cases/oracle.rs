@@ -1036,7 +1036,7 @@ fn overlap() {
     assert!(coverage.problems.is_empty(), "{:#?}", coverage.problems);
     let runtime = registry.values().filter(|d| *d == "runtime").count();
     eprintln!(
-        "OR-02: {} of {runtime} runtime constructs overlap; {} rows list the rest",
+        "OR-02: {} of {runtime} runtime constructs are realized in the closure of a compiled root; {} rows list the rest",
         coverage.overlapping.len(),
         table.construct.len()
     );

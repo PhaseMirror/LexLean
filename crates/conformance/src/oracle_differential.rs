@@ -1152,7 +1152,8 @@ fn effects_of(report: &lexlean::production::RootReport) -> BTreeSet<String> {
         .collect()
 }
 
-/// LexLean's statement of every eligible root of `project`.
+/// LexLean's statement of every eligible root of `project`, with the inputs of
+/// the production differential and the boundary inputs of [`seeds::cases`].
 pub fn eligible_roots(project: &P) -> Vec<(String, String, Accepted)> {
     use lexlean::production::lower::{linked_modules, lower_root, roots};
     let checked = support::checked_project(project);
@@ -2500,8 +2501,10 @@ impl NonOverlapTable {
 /// How the registry's constructs stand against the corpus and the table.
 #[derive(Debug, Clone, Default)]
 pub struct Coverage {
-    /// Runtime constructs exercised by a root the oracle accepted and that
-    /// agreed with LexLean on acceptance.
+    /// Runtime constructs realized in the closure of a root the oracle
+    /// accepted and rustc compiled: the construct is in the program that was
+    /// compared. Whether every input reached it is the seeds' reach, which is
+    /// audited and planted against, not proven.
     pub overlapping: BTreeSet<String>,
     /// Constructs a row of the table lists.
     pub listed: BTreeSet<String>,
@@ -2552,9 +2555,9 @@ pub fn coverage(
     for root in roots {
         if let LexLeanSide::Eligible(accepted) = &root.lexlean {
             realized.extend(accepted.constructs.iter().cloned());
-            // A construct overlaps when a root that realizes it was taken by
-            // the oracle, built, and compared: an oracle crate that does not
-            // compile exercises nothing.
+            // A construct overlaps when a root that realizes it in its
+            // closure was taken by the oracle, built, and compared: an oracle
+            // crate that does not compile is compared with nothing.
             if matches!(root.oracle, OracleSide::Generated { .. })
                 && matches!(run.executed.get(&root.root), Some(Ok(_)))
             {
