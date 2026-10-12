@@ -1660,6 +1660,12 @@ fn disagreement_is_recorded() {
 }
 
 pub fn run(id: &str) {
+    let start = std::time::Instant::now();
+    run_case(id);
+    eprintln!("{id}: {:.1} s", start.elapsed().as_secs_f64());
+}
+
+fn run_case(id: &str) {
     match id {
         "OR-01" => {
             pin_and_digest();
