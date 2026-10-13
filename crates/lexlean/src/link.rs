@@ -658,7 +658,7 @@ fn check_project_inline(
         scopes.pop_frame();
 
         let core = if let Some(ast) = &load.ast.core {
-            Some(
+            let core =
                 CoreModule::parse(&ast.data.text, &project.config.language).map_err(|reason| {
                     err(vec![Diagnostic::new(
                         code!("LLI9001"),
@@ -669,8 +669,22 @@ fn check_project_inline(
                         &load.atoms,
                         ast.data.range,
                     ))])
-                })?,
+                })?;
+            // Rendering walks an expression by recursion, so the depth of a
+            // native module is bounded like any other nesting (§25.5).
+            crate::grammar::chart::depth_check(
+                core.expression_depth(),
+                limits.max_scope_depth,
+                "link (native core module)",
             )
+            .map_err(|diagnostic| {
+                err(vec![diagnostic.with_span(span_of_range(
+                    &load.path,
+                    &load.atoms,
+                    ast.data.range,
+                ))])
+            })?;
+            Some(core)
         } else {
             None
         };

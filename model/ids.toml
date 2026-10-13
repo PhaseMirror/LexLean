@@ -672,7 +672,7 @@ statement = "Language 1.2 graph literals reference only declared nodes, a graph'
 id = "SM-31"
 level = "build"
 suite = "semantic-ir"
-statement = "Language 1.2 accepts a second native core-module schema, and only language 1.2 does, whose annotation nodes, extended names, definition safety and groups, compiled and reducibility state, and matcher, projection, no-confusion, simplification, and equation-record extension state are closed data that the linker validates against the kind of the declaration carrying it and that both backends render, and that the Lean backend's one fixed decoder submits through Lean's checked declaration API, so that the generated module elaborates under the pinned Lean with exactly its pinned axioms."
+statement = "Language 1.2 accepts a second native core-module schema, and only language 1.2 does, whose annotation nodes, extended names, definition safety and groups, compiled and reducibility state, and matcher, projection, no-confusion, simplification, and equation-record extension state are closed data that the linker validates against the kind of the declaration carrying it and bounds in depth by max_scope_depth, and that both backends render, and that the Lean backend's one fixed decoder submits through Lean's checked declaration API, so that the generated module elaborates under the pinned Lean with exactly its pinned axioms."
 
 [[id]]
 id = "DF-01"

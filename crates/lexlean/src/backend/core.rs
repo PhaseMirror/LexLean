@@ -1436,6 +1436,33 @@ fn tex_escape(text: &str) -> String {
     out
 }
 
+/// Run `work` on a thread whose stack is sized for expressions `depth` deep.
+fn on_stack_for<T: Send>(depth: u64, work: impl FnOnce() -> T + Send) -> Result<T, Diagnostic> {
+    let bytes = usize::try_from(depth)
+        .unwrap_or(usize::MAX)
+        .saturating_mul(48 << 10)
+        .saturating_add(1 << 20);
+    std::thread::scope(|scope| {
+        let handle = std::thread::Builder::new()
+            .stack_size(bytes)
+            .spawn_scoped(scope, work)
+            .map_err(|error| {
+                Diagnostic::new(
+                    code!("LLS8002"),
+                    format!(
+                        "a stack of {bytes} bytes for rendering a native core module {depth} expressions deep could not be reserved: {error}"
+                    ),
+                )
+            })?;
+        handle.join().map_err(|_| {
+            Diagnostic::new(
+                code!("LLI9001"),
+                "phase render: the printer of a native core module panicked",
+            )
+        })
+    })
+}
+
 /// Render synchronized declaration statements and proof terms from the same
 /// core DAG as canonical LaTeX.
 pub fn render_latex(checked: &CheckedModule, core: &CoreModule) -> Result<Emitter, Diagnostic> {
@@ -1456,9 +1483,27 @@ pub fn render_latex(checked: &CheckedModule, core: &CoreModule) -> Result<Emitte
         shared_open: &sharing.open,
         requirements: &sharing.requirements,
     };
-    for declaration in declarations {
-        let mut scope = Vec::new();
-        let ty = printer.term(declaration.r#type, &mut scope)?;
+    // The printer recurses by the depth of an expression, which linking bounds
+    // by `max_scope_depth`; its frames are large in a debug build, so it runs
+    // on a stack sized for the depth of this module and not on the caller's.
+    let rendered = on_stack_for(core.expression_depth(), || {
+        declarations
+            .iter()
+            .map(|declaration| {
+                let mut scope = Vec::new();
+                let ty = printer.term(declaration.r#type, &mut scope)?;
+                let value = match declaration.value {
+                    Some(value) => {
+                        let mut scope = Vec::new();
+                        Some(printer.term(value, &mut scope)?)
+                    }
+                    None => None,
+                };
+                Ok((ty, value))
+            })
+            .collect::<Result<Vec<_>, Diagnostic>>()
+    })??;
+    for (declaration, (ty, value)) in declarations.iter().zip(rendered) {
         let mut text = format!(
             "\\subsection*{{\\texttt{{{}}}}}\n\\noindent\\texttt{{{}}}\\par\n\\noindent Axiom policy: \\texttt{{{} [{}]}}.\\par\n",
             tex_escape(&declaration.name),
@@ -1466,9 +1511,7 @@ pub fn render_latex(checked: &CheckedModule, core: &CoreModule) -> Result<Emitte
             declaration.policy.kind(),
             tex_escape(&declaration.policy.axioms().join(", ")),
         );
-        if let Some(value) = declaration.value {
-            let mut scope = Vec::new();
-            let value = printer.term(value, &mut scope)?;
+        if let Some(value) = value {
             let label = if matches!(declaration.kind, CoreDeclKind::Theorem) {
                 "Proof term"
             } else {

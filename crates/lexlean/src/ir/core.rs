@@ -629,6 +629,26 @@ impl CoreModule {
         Self::parse(&tail[..end], language)
     }
 
+    /// The depth of the deepest expression of the DAG: one for a leaf, and
+    /// one more than its deepest child for any other node. The edges all
+    /// point backwards, so one forward pass computes it without recursion.
+    #[must_use]
+    pub fn expression_depth(&self) -> u64 {
+        let mut depth = vec![0_u64; self.nodes.len()];
+        let mut deepest = 0;
+        for (index, node) in self.nodes.iter().enumerate() {
+            let below = node
+                .children()
+                .into_iter()
+                .filter_map(|child| depth.get(child).copied())
+                .max()
+                .unwrap_or(0);
+            depth[index] = below + 1;
+            deepest = deepest.max(below + 1);
+        }
+        deepest
+    }
+
     /// The schema version the module declares: 1 or 2.
     #[must_use]
     pub fn version(&self) -> u8 {

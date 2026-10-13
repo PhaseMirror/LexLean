@@ -2432,6 +2432,25 @@ pub(crate) fn run(id: &str) {
                 assert!(error.to_string().contains(message), "{what}: {error}");
                 refused.assert_no_backend_output_with("LLI9001");
             }
+            // An expression deeper than `max_scope_depth` is a resource limit,
+            // refused before the printer, which recurses by depth, can run.
+            let deep = module(&|data| {
+                let nodes = data["nodes"].as_array_mut().expect("nodes");
+                let base = nodes.len();
+                for step in 0..1100 {
+                    let below = if step == 0 { 0 } else { base + step - 1 };
+                    nodes.push(serde_json::json!({"k": "a", "f": below, "x": 0}));
+                }
+            });
+            let refused = project_in("1.2", &deep);
+            let error = refused.check_fails_with("LLS8002");
+            assert!(
+                error
+                    .to_string()
+                    .contains("max_scope_depth exceeded in phase link (native core module)"),
+                "{error}"
+            );
+            refused.assert_no_backend_output_with("LLS8002");
         }
         other => panic!("no semantic-ir case is wired for {other}"),
     }

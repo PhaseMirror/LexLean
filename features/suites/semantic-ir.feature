@@ -215,7 +215,7 @@ Feature: semantic-ir
     And each invalid graph fails with LLT4001 before any build output
 
   @SM-31 @build
-  Scenario: Language 1.2 accepts a second native core-module schema, and only language 1.2 does, whose annotation nodes, extended names, definition safety and groups, compiled and reducibility state, and matcher, projection, no-confusion, simplification, and equation-record extension state are closed data that the linker validates against the kind of the declaration carrying it and that both backends render, and that the Lean backend's one fixed decoder submits through Lean's checked declaration API, so that the generated module elaborates under the pinned Lean with exactly its pinned axioms.
+  Scenario: Language 1.2 accepts a second native core-module schema, and only language 1.2 does, whose annotation nodes, extended names, definition safety and groups, compiled and reducibility state, and matcher, projection, no-confusion, simplification, and equation-record extension state are closed data that the linker validates against the kind of the declaration carrying it and bounds in depth by max_scope_depth, and that both backends render, and that the Lean backend's one fixed decoder submits through Lean's checked declaration API, so that the generated module elaborates under the pinned Lean with exactly its pinned axioms.
     Given a language-1.2 native core module using every second-schema construct, and copies that plant each refusable defect
     When it is linked in languages 1.0, 1.1, and 1.2 and rendered by both backends
     Then only language 1.2 accepts it, the LaTeX document and the Lean text carry every construct, and the pinned Lean elaborates the Lean with exactly the pinned axioms

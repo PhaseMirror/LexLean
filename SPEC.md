@@ -4828,6 +4828,7 @@ fun p f args o =>
 def LexLeanPreservation.RunConv : LexLeanTarget.TargetSyntax.Program →
   Nat → List LexLeanTarget.TargetSyntax.Value → LexLeanPreservation.Obs → Prop :=
 fun p entry args o => ∃ n, LexLeanPreservation.obs (LexLeanTarget.TargetSemantics.run n p entry args) = some o
+```
 
 ```lean-library
 def LexLeanPreservation.Rust.WT : LexLeanTarget.TargetSyntax.Program →
@@ -4854,6 +4855,7 @@ def LexLeanPreservation.Rust.RCI : LexLeanPreservation.Rust.RCrate →
   LexLeanPreservation.Rust.RIdent → List LexLeanTarget.TargetSyntax.Value → LexLeanPreservation.Rust.ROut → Prop :=
 fun c f args o =>
   o ≠ LexLeanTarget.RustSemantics.ROutcome.exhausted ∧ ∃ n, LexLeanTarget.RustSemantics.invoke n c f args = o
+```
 
 ```lean-library
 def LexLeanPreservation.Rust.Realizes : Bool → LexLeanPreservation.Obs → LexLeanPreservation.Rust.ROut → Prop :=
@@ -4888,6 +4890,7 @@ fun p c A n f =>
                     ∃ ro,
                       LexLeanPreservation.Rust.RealizesFn F o ro ∧
                         LexLeanPreservation.Rust.RCI c (LexLeanPreservation.Rust.fnIdent f) args ro
+```
 
 ```lean-library
 def LexLeanPreservation.someObs : LexLeanPreservation.Obs → LexLeanPreservation.Obs :=
@@ -4896,6 +4899,7 @@ fun x =>
   | LexLeanPreservation.Obs.value v => LexLeanPreservation.Obs.value v.some
   | LexLeanPreservation.Obs.overflow => LexLeanPreservation.Obs.overflow
   | LexLeanPreservation.Obs.stuck => LexLeanPreservation.Obs.stuck
+```
 
 ```lean-library
 def LexLeanPreservation.Rust.Representable : LexLeanTarget.TargetSyntax.Value → Prop :=
@@ -4908,6 +4912,7 @@ LexLeanPreservation.Rust.runItem_abort_infallible : ∀ (profile : LexLeanTarget
   (item : LexLeanTarget.RustSyntax.Item) (values : List LexLeanTarget.TargetSyntax.Value),
   LexLeanTarget.RustSemantics.runItem profile item values = LexLeanTarget.RustSemantics.ROutcome.abort →
     LexLeanTarget.RustSemantics.itemFallible item = false
+```
 
 `Realizes` allows the machine's *abort* as the realization of an overflow:
 the outcome of an item that cannot fail, at the one overflow no machine can
@@ -8364,7 +8369,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `SM-28` | `semantic-ir` | Language 1.2 finite maps and sets over closed ordered key types, their literals, and their primitive operations are typed, lowered to the fixed ordered-collection runtime, and verified. | §17.12 |
 | `SM-29` | `semantic-ir` | Reordered equivalent map, set, and graph literals link to byte-identical semantic data and generated Lean, LaTeX, and lexicon-closure artifacts, while duplicate keys, non-literal literal keys, and key types without a canonical order are rejected. | §17.12, §21 |
 | `SM-30` | `semantic-ir` | Language 1.2 graph literals reference only declared nodes, a graph's nodes are its keys and every successor, and successor, reachability, and topological-order queries are deterministic, bounded by the node count, and report a cycle as none. | §17.12 |
-| `SM-31` | `semantic-ir` | Language 1.2 accepts a second native core-module schema, and only language 1.2 does, whose annotation nodes, extended names, definition safety and groups, compiled and reducibility state, and matcher, projection, no-confusion, simplification, and equation-record extension state are closed data that the linker validates against the kind of the declaration carrying it and that both backends render, and that the Lean backend's one fixed decoder submits through Lean's checked declaration API, so that the generated module elaborates under the pinned Lean with exactly its pinned axioms. | §17.10 |
+| `SM-31` | `semantic-ir` | Language 1.2 accepts a second native core-module schema, and only language 1.2 does, whose annotation nodes, extended names, definition safety and groups, compiled and reducibility state, and matcher, projection, no-confusion, simplification, and equation-record extension state are closed data that the linker validates against the kind of the declaration carrying it and bounds in depth by max_scope_depth, and that both backends render, and that the Lean backend's one fixed decoder submits through Lean's checked declaration API, so that the generated module elaborates under the pinned Lean with exactly its pinned axioms. | §17.10 |
 | `DF-01` | `declarations` | A valid type-definition sentence emits one nonrecursive sort-valued Lean def linked to its document entry. | §15.7, §18.6 |
 | `DF-02` | `declarations` | A valid term-definition sentence emits one nonrecursive explicitly typed Lean def. | §15.7, §18.6 |
 | `DF-03` | `declarations` | A valid predicate-definition sentence emits one nonrecursive Prop-valued Lean def. | §15.7, §18.6 |
