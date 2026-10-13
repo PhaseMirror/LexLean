@@ -5393,18 +5393,25 @@ certificate with enumeration where enumeration answers, compare the host's
 `observations` with the trials of every pair of systems of four requests,
 check `preserves` against `improves` for every schema application of six
 requests, and require that `normalityVerdict` is the only reader of
-`isNormal`. `conformance_gc_09` compiles the 13 modules of
-`compiler/proofs/LexLeanCertification/` over the compiler project's generated
-modules and the shipped preservation library, audits their text for forbidden
-tokens, compares the exact axioms of the 107 registered declarations
-(`compiler/proofs/library.toml`) with Lean's `#print axioms`, instantiates the
+`isNormal`. `conformance_gc_09` compiles the Lean the compiler generates from the 13 native
+modules of `compiler/proofs/` over the compiler project's generated modules and
+the shipped preservation library, compares the exact axioms of the 3,957
+declarations it audits by name (what their rows pin) with Lean's `#print
+axioms`, instantiates the
 soundness theorems at every certified fixture, elaborates the preservation
 theorems at ascriptions stated in the module's own relations (so the library
 cannot be proving a second copy), replays the library and the instances
 through `leanchecker` (the same kernel, §22.4, not an independent checker), and
 requires Lean to reject the library when the checker's strict test is weakened
-and when a false lemma (the schema's strict saving reversed) is planted in a
-staged copy of `Schemas`. `conformance_gc_10` requires the generated files to
+and when a false lemma (a theorem's statement exchanged for another's, its
+proof kept) is planted in a staged copy of `Schemas`, and the exact axiom audit
+to see an axiom added to a theorem (its proof replaced by `sorryAx`).
+`conformance_gc_11` requires the library to be LexLean source: no Lean file in
+its project, sources exactly the registered modules, a registry that lists only
+the modules, a project that builds with Lean byte for byte what the kernel
+check compiles, a drifted source that generates different Lean, and a foreign
+import, an inexact policy, or a first-schema module carrying second-schema data
+to be refused. `conformance_gc_10` requires the generated files to
 be deterministic and every identity to be recomputed from content. Each
 theorem is a kernel-checked proof about the evaluator and the checker as
 generated; the host transcription and the fixtures are `build` evidence
@@ -5563,24 +5570,49 @@ test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 324 filtered out
 
 Removed: the generator was restored and the module regenerated.
 
-Planted in `compiler/proofs/LexLeanCertification/Soundness.lean`: `exact
-sorry` at the head of `normality_never_certifies`; then the statement
-`check req cert ≠ .certified x` as `= .certified x`. Command: `cargo test -p
-repo-conformance --test conformance -- conformance_gc_09`.
+Planted in the native library `compiler/proofs/src/` (the sources the
+hand-written library's Lean was converted into, `tests/certification-library/
+MIGRATION.md`): (a) the pinned axioms of `LexLeanCertification.schema_cheaper`
+in `Schemas.lex.tex` changed from the three to `propext` alone; (b) the
+statement of `normality_never_certifies` in `Soundness.lex.tex` exchanged for
+the statement of another theorem of the module, its proof kept. Command:
+`cargo test -p repo-conformance --test conformance -- conformance_gc_09`.
 
 ```text
-thread 'conformance_gc_09' panicked at crates/conformance/src/cases/certification.rs:2228:14:
-Soundness: the library's token audit: the forbidden token `sorry`
-thread 'conformance_gc_09' panicked at crates/conformance/src/certification_library.rs:209:9:
+thread 'conformance_gc_09' panicked at crates/conformance/src/cases/certification.rs:2353:9:
+assertion `left == right` failed: LexLeanCertification.schema_cheaper: exactly the registered axioms
+  left: Some(["Classical.choice", "Quot.sound", "propext"])
+ right: Some(["propext"])
+thread 'conformance_gc_09' panicked at crates/conformance/src/certification_library.rs:317:9:
 the module `LexLeanCertification.Soundness` was rejected by Lean:
+<staging>/src/LexLeanCertification/Soundness.lean:516:0: error: native core declaration 'LexLeanCertification.normality_never_certifies':
 ```
 
-Removed: both edits were reverted. A third defect is planted by the case
-itself: a copy of the generated `Certification` whose strict test is weakened
+Removed: both edits were reverted. Then, for `conformance_gc_11`: (c) a Lean file
+`compiler/proofs/Soundness.lean` added; (d) the check in `check_sources`
+(`crates/conformance/src/certification_library.rs`) that a module imports only
+what the library is stated against disabled by prefixing its condition with
+`false &&`; (e) `library_text` made to return the generated text with one
+character appended, a generated module that is not what the project builds.
+
+```text
+thread 'conformance_gc_11' panicked at crates/conformance/src/cases/certification.rs:2653:13:
+<root>/compiler/proofs/Soundness.lean: an independently authored Lean file lies in the library project
+thread 'conformance_gc_11' panicked at crates/conformance/src/cases/certification.rs:2761:6:
+a foreign import is refused: ()
+thread 'conformance_gc_11' panicked at crates/conformance/src/cases/certification.rs:2705:9:
+assertion `left == right` failed: Trials: the project's generated Lean is the Lean the kernel check compiles
+```
+
+Removed: every edit was reverted and the cases pass. Three more defects are
+planted by `gc_09` itself, each against a staged copy and each required to be
+seen: a copy of the generated `Certification` whose strict test is weakened
 (`Nat.ble` for `Nat.blt`) is valid Lean, and the library's proofs of the
-lower-bound route are rejected over it; and a false lemma, `schema_cheaper`
-concluding `c < c'` where it concludes `c' < c`, is planted in a staged copy
-of `Schemas` beside the library's compiled modules, and Lean refuses it. The
+lower-bound route are rejected over it; a false lemma, `schema_cheaper` given
+the statement of `improves_preserves` and keeping its own proof, is planted in
+a staged copy of `Schemas` beside the library's compiled modules, and Lean's
+kernel refuses it; and `schema_cheaper`'s proof replaced by `sorryAx` is
+accepted by the kernel and is seen in what Lean prints of its axioms. The
 GC-02 module of false claims gained a fifth, the preservation of an ineligible
 reduction (`Certification.certificateReductionsPreserve` is `false` for it).
 
@@ -5588,9 +5620,11 @@ reduction (`Certification.certificateReductionsPreserve` is `false` for it).
 
 Measured in the reference container (4 vCPUs) on the final tree, alone unless
 stated. `conformance_gc_01` 16 s, `conformance_gc_02` 414 s, `conformance_gc_09`
-80 s (the library, its instances, `leanchecker`, the weakened checker, and the
-false lemma; the generated environment is compiled once per machine and shared),
-and every other `GC` case under 3 s. Most of `gc_02` is not added work: it
+about 115 s (the library compiled from its generated Lean, its instances,
+`leanchecker`, the weakened checker, the false lemma, and the planted axiom; the
+generated environment is compiled once per machine and shared; the library
+migration of #79 moved this from 80 s), `conformance_gc_11` 55 s (two builds of
+the library project), and every other `GC` case under 3 s. Most of `gc_02` is not added work: it
 awaits the one shared verification of the `compiler` project that every case
 shares, and the adversarial review's accounting of the marginal cost, against
 the same suite at the base, is that shared verification (+37 s),

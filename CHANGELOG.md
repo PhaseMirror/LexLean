@@ -15,6 +15,16 @@ versions, and the entries below say what each tag does and does not claim.
 
 ## Unreleased
 
+- The certification proof library is LexLean source (SPEC.md §17.18, `GC-09`,
+  `GC-11`; stage 2b of #27, #79). Its 13 hand-written Lean modules (Git tree
+  `298c8f97` at `ba52c601`: 97,597 bytes, 107 registered declarations) are now 13
+  native core modules of `lexlean/core-module/2` in an ordinary closed project,
+  `compiler/proofs/`, which holds no file of Lean source. `library.toml` lists
+  only the modules; the declarations (3,957 audited by name of 4,396) and their
+  exact axioms are read from the native data, and `conformance_gc_09` compiles
+  and audits the Lean generated from them. The migration is lossless
+  (`tests/certification-library/MIGRATION.md`); the library is repository
+  evidence, so no compiler-semantics ID changes. The register has 353 IDs.
 - The preservation proof library is LexLean source (SPEC.md §17.10, §17.17,
   `SM-31`, `SP-12`; stage 2a of #27, #79). Its 13 hand-written Lean modules
   (Git tree `50f70bb5` at `ba52c601`: 525,026 bytes, 934 registered
