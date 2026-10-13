@@ -1486,6 +1486,11 @@ fn conformance_gc_10() {
 }
 
 #[test]
+fn conformance_gc_11() {
+    repo_conformance::cases::run("GC-11");
+}
+
+#[test]
 fn conformance_sp_01() {
     repo_conformance::cases::run("SP-01");
 }
