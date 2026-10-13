@@ -5407,7 +5407,8 @@ and when a false lemma (a theorem's statement exchanged for another's, its
 proof kept) is planted in a staged copy of `Schemas`, and the exact axiom audit
 to see an axiom added to a theorem (its proof replaced by `sorryAx`).
 `conformance_gc_11` requires the library to be LexLean source: no Lean file in
-its project, sources exactly the registered modules, a registry that lists only
+its project or declaring its namespace anywhere in the release tree, sources
+exactly the registered modules, a registry that lists only
 the modules, a project that builds with Lean byte for byte what the kernel
 check compiles, a drifted source that generates different Lean, and a foreign
 import, an inexact policy, or a first-schema module carrying second-schema data
@@ -5602,6 +5603,15 @@ thread 'conformance_gc_11' panicked at crates/conformance/src/cases/certificatio
 a foreign import is refused: ()
 thread 'conformance_gc_11' panicked at crates/conformance/src/cases/certification.rs:2705:9:
 assertion `left == right` failed: Trials: the project's generated Lean is the Lean the kernel check compiles
+```
+
+A Lean file `examples/Planted.lean` declaring `namespace LexLeanCertification`,
+outside the library's project, is refused by the same case, the permanent
+condition `VR-19` states of the Atlas held over the whole release tree:
+
+```text
+thread 'conformance_gc_11' panicked at crates/conformance/src/support.rs:63:9:
+<root>/examples/Planted.lean: an independently authored Lean file declares `namespace LexLeanCertification`
 ```
 
 Removed: every edit was reverted and the cases pass. Three more defects are

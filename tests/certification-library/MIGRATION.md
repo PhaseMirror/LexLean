@@ -111,8 +111,10 @@ list of name, module, and axioms is
   fixture, replays the library and the instances through `leanchecker` (the same
   kernel, SPEC.md §22.4), and requires Lean to reject a weakened checker and a
   false lemma and the audit to see an added axiom.
-- `conformance_gc_11` requires the library project to hold no Lean file, its
-  sources to be the listed modules, the registry to list only the modules, the
+- `conformance_gc_11` requires the library project to hold no Lean file and no
+  Lean file in the release tree to declare the library's namespace (the
+  permanent condition `VR-19` states of the Atlas), its sources to be the listed
+  modules, the registry to list only the modules, the
   Lean `lexlean build` writes to equal the Lean `gc_09` compiles, a drifted
   source to generate different Lean, and a foreign import or an inexact policy
   to be refused.

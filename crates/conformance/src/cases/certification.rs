@@ -2637,6 +2637,10 @@ fn gc_11() {
         "the native modules state declarations"
     );
     assert_eq!(modules.len(), library::MODULES.len());
+    support::assert_library_has_no_handwritten_lean(
+        library::PREFIX,
+        "tests/certification-library/oracle",
+    );
     // The library is LexLean source and nothing else: no Lean file lies
     // anywhere in its project, and its sources are the listed modules.
     let project = repo_root().join(library::PROJECT_DIR);
