@@ -36,7 +36,7 @@ each of them:
 
 ## How
 
-The one-time conversion is the oracle of checkpoint commit `c41741dc819ba0aadb72fce7e318fdded42ae5e7`
+The one-time conversion is the oracle of checkpoint commit `d54dbf8551190e4ae77fbf69267fd4328e19db3f`
 (`tests/preservation-library/oracle/`, removed from the release tree by the
 commit that follows it). It is two programs and a script:
 
@@ -47,7 +47,8 @@ commit that follows it). It is two programs and a script:
    parameters, reducibility hints and transparency, the structure, class,
    instance and projection registrations, the simplification-set and
    no-confusion records, the matcher and equation-lemma data, the reducibility
-   tags, and the exact axioms `#print axioms` reports for it, which are what
+   tags, the compiler inlining attributes, the sparse `casesOn` records, the
+   `grind` registrations, and the exact axioms `#print axioms` reports for it, which are what
    `Lean.collectAxioms` answers, which is what the audit module prints. For an
    imported constant that is the data stored in its module's `.olean`, computed
    when the module was written with a cache shared across the module's
@@ -74,20 +75,50 @@ committed native modules (`lexlean build` of the library project), compiles it
 with the pinned Lean, exports the new environment with the same `export.lean`
 and `flags.lean`, and converts it with the same `canon.py`.
 
-Result, at the commit that removed the oracle: the regenerated environment has
-the same 9,247 declarations in the same order and 1,096,101 DAG nodes in the
-same 13 modules; every module's data, declaration by declaration (kind,
-universe parameters, kernel type and value, reducibility hints and
-transparency, tags, structure, class, instance, projection, matcher,
-no-confusion, simplification and equation-record state, compiled and sparse
-`casesOn` flags, exact axioms), is equal. The one difference is the private
-`Lean` import the generic runtime adds to each regenerated module, which
-SPEC.md §17.10 allows and `compare.py` removes before comparing. Two defects of
-the first regeneration were found this way and fixed in the runtime: the
-constructor eliminators that the elaborator compiled before it marked them as
-sparse `casesOn` were left without code, because the runtime marked them first
-(14 rows), and a character literal and a comment in the runtime text were
-refused by the audit of generated Lean.
+Result: the regenerated environment has the same 9,247 declarations in the same
+order, in the same 13 modules, and every module's data, declaration by
+declaration, is equal, as trees of kernel terms (the node tables are numbered in
+the order nodes were met, so rows are compared by the terms they root): kind,
+universe parameters, type, value, reducibility hints and transparency, tags,
+structure, class, instance, projection, matcher, no-confusion, simplification,
+equation-record, inlining, sparse-`casesOn`, and `grind` state, compiled flags,
+and exact axioms. 8,934 rows are equal in every byte of their terms. 313 rows,
+exactly the sparse `casesOn` constants, are equal up to the names of bound
+variables: the elaborator's construction names its binders with fresh hygienic
+names (`else._@...._hyg.#N`), which depend on the session that makes them and
+which no kernel judgment sees. The one other difference is the private `Lean`
+import the generic runtime adds to each regenerated module, which SPEC.md §17.10
+allows. The attribute probe, which asks the pinned Lean for the state of every
+constant of both environments (inlining kind, sparse record with its type, major
+position, arity and constructors, `grind` registration, matcher information,
+specialization, noncomputability), prints two equal outputs.
+
+What the first regenerations got wrong, each found by this comparison or by a
+conformance test, and fixed:
+
+- constructor eliminators the elaborator compiled before it marked them as
+  sparse `casesOn` were left without code, because the runtime marked them first
+  (14 rows);
+- the sparse `casesOn` records that equation-lemma generation reads (313), the
+  compiler inlining attributes (759), and the `grind` registrations (16) were not
+  in the data at all, and `simp [Representable]` failed on the regenerated
+  library (`conformance_sp_08`); they are now data, and the decoder makes a
+  sparse `casesOn` with the elaborator's own construction in a realization of its
+  type, because the record is private to that construction and two constants of
+  one module (51 rows) may be the same construction, which the elaborator's
+  cache would return once;
+- a character literal, a comment, and the word `unsafe` in the runtime's text
+  were refused by the audit of generated Lean;
+- the exporter derived the exact axioms itself and was wrong for 51 rows: the
+  pinned Lean answers from data stored in each `.olean`, so a row pins what Lean
+  prints.
+
+Not carried, by design, because none of it is kernel or elaboration state a
+proof reads: docstrings and module docstrings, declaration source ranges, the
+completion blacklist, import-use tracking, and what the code generator derives
+(its intermediate representations, specialization caches, and auxiliary
+functions). The set of constants the code generator compiled is carried, and
+equal.
 
 The exporter's output over the original environment is itself reproduced byte
 for byte by the final exporter (the sources committed here are its output, and
