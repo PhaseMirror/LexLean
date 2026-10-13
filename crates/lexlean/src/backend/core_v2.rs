@@ -25,7 +25,9 @@
 //! equation-lemma generation reads is private to that construction. The
 //! elaborator numbers the constants of one owner in the order it makes them,
 //! and the rows are in the order of their dependencies, so the construction is
-//! told which number the row bears.
+//! told which number the row bears, and whether the name is a private one,
+//! which the construction makes of a name made outside an exporting context
+//! in a module.
 
 /// The decoder module of core module 2, spliced after the generated module's
 /// header.
@@ -187,7 +189,8 @@ private def addOneUnchecked (nodes : Array Expr) (declarations : Array Json)
     let generator ← getDeclNGen
     setDeclNGen { namePrefix := owner, idx := index }
     let made ← try
-        Lean.Meta.MetaM.run' (Lean.Meta.mkSparseCasesOn indName constructors.toArray)
+        Lean.withExporting (isExporting := !Lean.isPrivateName name)
+          (Lean.Meta.MetaM.run' (Lean.Meta.mkSparseCasesOn indName constructors.toArray))
       finally
         setDeclNGen generator
     unless made == name do
