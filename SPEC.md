@@ -2360,7 +2360,21 @@ are data of the module, not conventions of a backend.
 - A definition may state the extension state of the structure it is a
   projection of, of a `match` it is the matcher of, of a no-confusion
   construction, and of its equational-lemma record; a theorem may state its
-  simplification-set registration.
+  simplification-set registration. A definition may state a compiler inlining
+  attribute (`inline`, `noinline`, `macro_inline`, `inline_if_reduce`,
+  `always_inline`), and a theorem a `grind` attribute of one of the closed
+  kinds `eq_lhs`, `eq_rhs`, `eq_both`, `eq_bwd`, `fwd`, `bwd`, `left_right`,
+  `right_left`, and `default`, which the decoder registers with the pinned
+  Lean's own attribute function and no priorities.
+- A definition may state that it is a sparse `casesOn`, a `casesOn` with arms
+  for only some constructors of a type, by the type, the constructors that
+  have an arm, the position of the major premise, and the arity. The pinned
+  Lean keeps that record in an extension no code outside its own construction
+  can write, and equation-lemma generation for a `match` that uses the
+  constant reads it, so the decoder does not submit such a row: it makes the
+  constant with the elaborator's construction from the type and the
+  constructors, and refuses the module unless the constant, its name, and its
+  record are those the row states.
 
 A version 2 row that states a field of another kind of declaration is
 rejected; the group of a definition names only declarations of the module; an
@@ -8369,7 +8383,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `SM-28` | `semantic-ir` | Language 1.2 finite maps and sets over closed ordered key types, their literals, and their primitive operations are typed, lowered to the fixed ordered-collection runtime, and verified. | §17.12 |
 | `SM-29` | `semantic-ir` | Reordered equivalent map, set, and graph literals link to byte-identical semantic data and generated Lean, LaTeX, and lexicon-closure artifacts, while duplicate keys, non-literal literal keys, and key types without a canonical order are rejected. | §17.12, §21 |
 | `SM-30` | `semantic-ir` | Language 1.2 graph literals reference only declared nodes, a graph's nodes are its keys and every successor, and successor, reachability, and topological-order queries are deterministic, bounded by the node count, and report a cycle as none. | §17.12 |
-| `SM-31` | `semantic-ir` | Language 1.2 accepts a second native core-module schema, and only language 1.2 does, whose annotation nodes, extended names, definition safety and groups, compiled and reducibility state, and matcher, projection, no-confusion, simplification, and equation-record extension state are closed data that the linker validates against the kind of the declaration carrying it and bounds in depth by max_scope_depth, and that both backends render, and that the Lean backend's one fixed decoder submits through Lean's checked declaration API, so that the generated module elaborates under the pinned Lean with exactly its pinned axioms. | §17.10 |
+| `SM-31` | `semantic-ir` | Language 1.2 accepts a second native core-module schema, and only language 1.2 does, whose annotation nodes, extended names, definition safety and groups, compiled and reducibility state, and matcher, projection, no-confusion, simplification, equation-record, inlining, sparse-casesOn, and grind extension state are closed data that the linker validates against the kind of the declaration carrying it and bounds in depth by max_scope_depth, and that both backends render, and that the Lean backend's one fixed decoder submits through Lean's checked declaration API, so that the generated module elaborates under the pinned Lean with exactly its pinned axioms. | §17.10 |
 | `DF-01` | `declarations` | A valid type-definition sentence emits one nonrecursive sort-valued Lean def linked to its document entry. | §15.7, §18.6 |
 | `DF-02` | `declarations` | A valid term-definition sentence emits one nonrecursive explicitly typed Lean def. | §15.7, §18.6 |
 | `DF-03` | `declarations` | A valid predicate-definition sentence emits one nonrecursive Prop-valued Lean def. | §15.7, §18.6 |

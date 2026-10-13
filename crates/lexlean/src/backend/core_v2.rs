@@ -16,9 +16,13 @@
 //! over the rows the source environment compiled in this order: the inductive
 //! types, then the compiler's partial implementation records, then the
 //! remaining definitions by group. The extension state of a row is installed
-//! after the whole module is in the environment, except that a sparse `casesOn`
-//! is marked after its own code is generated, as the elaborator that made it
-//! did: the mark makes the code generator treat the constant as a primitive.
+//! after the whole module is in the environment, except that a sparse
+//! `casesOn` is marked after its own code is generated, as the elaborator that
+//! made it did (the mark makes the code generator treat the constant as a
+//! primitive), and that a definition carrying a sparse record is not submitted
+//! at all: the elaborator's own construction remakes it, and the row is
+//! refused unless it is what the construction makes, since the record that
+//! equation-lemma generation reads is private to that construction.
 
 /// The decoder module of core module 2, spliced after the generated module's
 /// header.
@@ -166,6 +170,28 @@ private def addOneUnchecked (nodes : Array Expr) (declarations : Array Json)
   let all ← match optionalField json "all" with
     | some value => liftString (namesOf value)
     | none => pure [name]
+  if let some sparse := optionalField json "sparse" then
+    let indName := nameOf (← liftString (stringField sparse "ind_name"))
+    let constructors ← liftString (namesOf (← liftString (field sparse "interesting_ctors")))
+    let majorPos ← liftString (natField sparse "major_pos")
+    let arity ← liftString (natField sparse "arity")
+    let owner := match name with
+      | .str parent _ => parent
+      | other => other
+    let made ← Lean.withDeclNameForAuxNaming owner
+      (Lean.Meta.MetaM.run' (Lean.Meta.mkSparseCasesOn indName constructors.toArray))
+    unless made == name do
+      throwError s!"the sparse casesOn the elaborator makes is '{made}', not '{name}'"
+    let some made := (← getEnv).find? made | throwError s!"core declaration '{name}' is absent"
+    let value ← liftString (nodeAt nodes (← liftString (natField json "value")))
+    unless made.type == type && made.value? == some value do
+      throwError s!"core declaration '{name}' is not the sparse casesOn the elaborator makes"
+    let some info := Lean.Meta.getSparseCasesOnInfoCore (← getEnv) name
+      | throwError s!"core declaration '{name}' has no sparse casesOn record"
+    unless info.indName == indName && info.majorPos == majorPos && info.arity == arity
+        && info.insterestingCtors.toList == constructors do
+      throwError s!"core declaration '{name}' states another sparse casesOn record than the elaborator keeps"
+    return
   match kindString with
   | "inductive" =>
       let metadata ← liftString (field json "inductive")
@@ -264,6 +290,17 @@ private def installMetadata (nodes : Array Expr) (declaration : Json) : CoreM Un
     | "implicit-reducible" => pure ReducibilityStatus.implicitReducible
     | other => throwError s!"unknown core transparency '{other}'"
   Lean.setReducibilityStatus name status
+  if let some kind := optionalField declaration "inline" then
+    let kind ← match ← liftString kind.getStr? with
+      | "inline" => pure Lean.Compiler.InlineAttributeKind.inline
+      | "noinline" => pure Lean.Compiler.InlineAttributeKind.noinline
+      | "macro_inline" => pure Lean.Compiler.InlineAttributeKind.macroInline
+      | "inline_if_reduce" => pure Lean.Compiler.InlineAttributeKind.inlineIfReduce
+      | "always_inline" => pure Lean.Compiler.InlineAttributeKind.alwaysInline
+      | other => throwError s!"unknown core inlining attribute '{other}'"
+    match Lean.Compiler.setInlineAttribute (← getEnv) name kind with
+    | .ok env => setEnv env
+    | .error message => throwError message
   if let some tags := optionalField declaration "tags" then
     for tag in ← liftString tags.getArr? do
       match ← liftString tag.getStr? with
@@ -436,6 +473,21 @@ def decodeAndAdd (nodeBatches : Array String) (data : String) : CoreM Unit := do
   for declaration in declarations do
     installMetadata nodes declaration
   compileRows declarations
+  for declaration in declarations do
+    if let some kind := optionalField declaration "grind" then
+      let name := nameOf (← liftString (stringField declaration "name"))
+      let kind ← match ← liftString kind.getStr? with
+        | "eq_lhs" => pure (Lean.Meta.Grind.EMatchTheoremKind.eqLhs false)
+        | "eq_rhs" => pure (Lean.Meta.Grind.EMatchTheoremKind.eqRhs false)
+        | "eq_both" => pure (Lean.Meta.Grind.EMatchTheoremKind.eqBoth false)
+        | "eq_bwd" => pure Lean.Meta.Grind.EMatchTheoremKind.eqBwd
+        | "fwd" => pure Lean.Meta.Grind.EMatchTheoremKind.fwd
+        | "bwd" => pure (Lean.Meta.Grind.EMatchTheoremKind.bwd false)
+        | "left_right" => pure Lean.Meta.Grind.EMatchTheoremKind.leftRight
+        | "right_left" => pure Lean.Meta.Grind.EMatchTheoremKind.rightLeft
+        | "default" => pure (Lean.Meta.Grind.EMatchTheoremKind.default false)
+        | other => throwError s!"unknown core grind attribute '{other}'"
+      Lean.Meta.MetaM.run' (Lean.Meta.Grind.grindExt.addEMatchAttr name AttributeKind.global kind {})
   for declaration in declarations do
     let generated ← liftString (boolField declaration "generated")
     if !generated && (← liftString (boolField declaration "class")) then

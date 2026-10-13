@@ -2287,11 +2287,13 @@ pub(crate) fn run(id: &str) {
                          "policy": {"kind": "exact", "axioms": []}, "type": 0, "value": 2},
                         {"name": "V2Fixture.one", "kind": "definition", "levels": [], "class": false,
                          "generated": false, "transparency": "semireducible", "compiled": true,
-                         "tags": ["protected"], "reducibility": {"kind": "regular", "height": 1},
+                         "tags": ["protected"], "inline": "inline",
+                         "reducibility": {"kind": "regular", "height": 1},
                          "policy": {"kind": "exact", "axioms": []}, "type": 3, "value": 4},
                         {"name": "V2Fixture.one_eq", "kind": "theorem", "levels": [], "class": false,
                          "generated": false, "transparency": "semireducible",
                          "simp": {"attribute": "global", "post": true, "priority": 1000},
+                         "grind": "eq_lhs",
                          "policy": {"kind": "exact", "axioms": []}, "type": 9, "value": 12}
                     ]
                 });
@@ -2361,12 +2363,19 @@ pub(crate) fn run(id: &str) {
                 "the Lean backend submits the rows through its decoder"
             );
             for construct in [
-                "V2Fixture.flag",
-                "annotated",
-                "protected",
+                "Elaborator state",
+                "tags protected",
                 "compiled",
-                "simp",
+                "inline inline",
+                "grind eq\\_lhs",
+                "simp global priority 1000 post",
             ] {
+                assert!(
+                    tex.contains(construct),
+                    "the LaTeX document does not carry `{construct}`"
+                );
+            }
+            for construct in ["V2Fixture.flag", "annotated"] {
                 assert!(
                     tex.contains(construct) || lean.contains(construct),
                     "no backend carries `{construct}`"
@@ -2396,6 +2405,34 @@ pub(crate) fn run(id: &str) {
                         data["declarations"][1]["simp"] = serde_json::json!({"attribute": "global", "post": true, "priority": 1000});
                     },
                     "is not a theorem",
+                ),
+                (
+                    "an inlining attribute on a theorem",
+                    &|data| data["declarations"][0]["inline"] = "inline".into(),
+                    "has an inlining attribute but is not a definition",
+                ),
+                (
+                    "a sparse record on a theorem",
+                    &|data| {
+                        data["declarations"][0]["sparse"] = serde_json::json!({
+                            "ind_name": "Nat", "major_pos": 0, "arity": 3, "interesting_ctors": ["Nat.zero"]
+                        });
+                    },
+                    "is a sparse `casesOn` but is not a definition",
+                ),
+                (
+                    "a sparse record of no constructor",
+                    &|data| {
+                        data["declarations"][1]["sparse"] = serde_json::json!({
+                            "ind_name": "Nat", "major_pos": 0, "arity": 3, "interesting_ctors": []
+                        });
+                    },
+                    "is a sparse `casesOn` of no constructor",
+                ),
+                (
+                    "a grind attribute on a definition",
+                    &|data| data["declarations"][1]["grind"] = "eq_lhs".into(),
+                    "carries a `grind` attribute but is not a theorem",
                 ),
                 (
                     "tags out of order",

@@ -1436,6 +1436,108 @@ fn tex_escape(text: &str) -> String {
     out
 }
 
+/// What a row of core module 2 states beyond its kernel data, as one
+/// canonical line of the LaTeX document: the same fields the Lean backend's
+/// decoder installs, so that the document says everything the environment
+/// receives. A first-schema row states none of it.
+fn elaborator_state(row: &CoreDeclaration) -> Option<String> {
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(safety) = row.safety {
+        parts.push(format!(
+            "safety {}",
+            serde_json::to_string(&safety)
+                .unwrap_or_default()
+                .trim_matches('"')
+        ));
+    }
+    if let Some(all) = row.all.as_ref().filter(|all| all.len() > 1) {
+        parts.push(format!("group {}", all.join(", ")));
+    }
+    if row.compiled {
+        parts.push("compiled".to_owned());
+    }
+    if !row.tags.is_empty() {
+        let tags: Vec<String> = row
+            .tags
+            .iter()
+            .map(|tag| {
+                serde_json::to_string(tag)
+                    .unwrap_or_default()
+                    .trim_matches('"')
+                    .to_owned()
+            })
+            .collect();
+        parts.push(format!("tags {}", tags.join(", ")));
+    }
+    if let Some(inline) = row.inline {
+        parts.push(format!(
+            "inline {}",
+            serde_json::to_string(&inline)
+                .unwrap_or_default()
+                .trim_matches('"')
+        ));
+    }
+    if let Some(sparse) = &row.sparse {
+        parts.push(format!(
+            "sparse casesOn of {} over {} (major premise {}, arity {})",
+            sparse.ind_name,
+            sparse.interesting_ctors.join(", "),
+            sparse.major_pos,
+            sparse.arity
+        ));
+    }
+    if let Some(grind) = row.grind {
+        parts.push(format!(
+            "grind {}",
+            serde_json::to_string(&grind)
+                .unwrap_or_default()
+                .trim_matches('"')
+        ));
+    }
+    if let Some(simp) = &row.simp {
+        parts.push(format!(
+            "simp {} priority {}{}",
+            serde_json::to_string(&simp.attribute)
+                .unwrap_or_default()
+                .trim_matches('"'),
+            simp.priority,
+            if simp.post { " post" } else { " pre" }
+        ));
+    }
+    if let Some(no_confusion) = &row.no_confusion {
+        parts.push(format!(
+            "no-confusion {}",
+            serde_json::to_string(no_confusion).unwrap_or_default()
+        ));
+    }
+    if let Some(matcher) = &row.matcher {
+        parts.push(format!(
+            "matcher of {} parameters, {} discriminants, {} alternatives",
+            matcher.num_params,
+            matcher.num_discrs,
+            matcher.alts.len()
+        ));
+    }
+    if let Some(projection) = &row.projection {
+        parts.push(format!(
+            "projection {} of {} (parameters {}{})",
+            projection.index,
+            projection.constructor,
+            projection.num_params,
+            if projection.from_class { ", class" } else { "" }
+        ));
+    }
+    if let Some(info) = &row.eqn_info {
+        parts.push(format!(
+            "structural equations over {} (recursive argument {}, fixed {})",
+            info.declarations.join(", "),
+            info.rec_arg_pos,
+            info.num_fixed
+        ));
+    }
+    (!parts.is_empty()).then(|| parts.join("; "))
+}
+
 /// Run `work` on a thread whose stack is sized for expressions `depth` deep.
 fn on_stack_for<T: Send>(depth: u64, work: impl FnOnce() -> T + Send) -> Result<T, Diagnostic> {
     let bytes = usize::try_from(depth)
@@ -1511,6 +1613,14 @@ pub fn render_latex(checked: &CheckedModule, core: &CoreModule) -> Result<Emitte
             declaration.policy.kind(),
             tex_escape(&declaration.policy.axioms().join(", ")),
         );
+        if core.version() == 2 {
+            if let Some(state) = elaborator_state(declaration) {
+                text.push_str(&format!(
+                    "\\noindent Elaborator state: \\texttt{{{}}}.\\par\n",
+                    tex_escape(&state)
+                ));
+            }
+        }
         if let Some(value) = value {
             let label = if matches!(declaration.kind, CoreDeclKind::Theorem) {
                 "Proof term"
@@ -1572,6 +1682,9 @@ mod tests {
             projection: None,
             simp: None,
             eqn_info: None,
+            inline: None,
+            sparse: None,
+            grind: None,
         }
     }
 

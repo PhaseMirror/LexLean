@@ -452,6 +452,77 @@ pub struct CoreProjection {
     pub from_class: bool,
 }
 
+/// A compiler inlining attribute of a definition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+pub enum CoreInline {
+    /// `@[inline]`.
+    #[serde(rename = "inline")]
+    Inline,
+    /// `@[noinline]`.
+    #[serde(rename = "noinline")]
+    NoInline,
+    /// `@[macro_inline]`.
+    #[serde(rename = "macro_inline")]
+    MacroInline,
+    /// `@[inline_if_reduce]`.
+    #[serde(rename = "inline_if_reduce")]
+    InlineIfReduce,
+    /// `@[always_inline]`.
+    #[serde(rename = "always_inline")]
+    AlwaysInline,
+}
+
+/// What the elaborator records of a sparse `casesOn`, a `casesOn` with arms
+/// for only some of the constructors of a type. The constant is made by the
+/// elaborator's own construction from the type and its constructors, so the
+/// Lean backend remakes it that way and refuses a row that is not what the
+/// construction makes.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CoreSparse {
+    /// The inductive type.
+    pub ind_name: String,
+    /// The position of the major premise.
+    pub major_pos: usize,
+    /// The number of arguments of the constant.
+    pub arity: usize,
+    /// The constructors that have an arm, in the order of the arms.
+    pub interesting_ctors: Vec<String>,
+}
+
+/// The kind of the `grind` attribute that registers a theorem for
+/// E-matching.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+pub enum CoreGrind {
+    /// `@[grind =]`.
+    #[serde(rename = "eq_lhs")]
+    EqLhs,
+    /// `@[grind =>]` read right to left.
+    #[serde(rename = "eq_rhs")]
+    EqRhs,
+    /// Both sides of an equation.
+    #[serde(rename = "eq_both")]
+    EqBoth,
+    /// The equation read backwards.
+    #[serde(rename = "eq_bwd")]
+    EqBwd,
+    /// `@[grind →]`.
+    #[serde(rename = "fwd")]
+    Fwd,
+    /// `@[grind ←]`.
+    #[serde(rename = "bwd")]
+    Bwd,
+    /// `@[grind ->]` of an equivalence, left to right.
+    #[serde(rename = "left_right")]
+    LeftRight,
+    /// An equivalence, right to left.
+    #[serde(rename = "right_left")]
+    RightLeft,
+    /// `@[grind]`.
+    #[serde(rename = "default")]
+    Default,
+}
+
 /// The registration of a theorem in the default simplification set.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -555,6 +626,15 @@ pub struct CoreDeclaration {
     /// Structural-recursion equation data. Core module 2 only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub eqn_info: Option<CoreEqnInfo>,
+    /// The compiler inlining attribute of a definition. Core module 2 only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inline: Option<CoreInline>,
+    /// The record of a sparse `casesOn` definition. Core module 2 only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sparse: Option<CoreSparse>,
+    /// The `grind` attribute of a theorem. Core module 2 only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grind: Option<CoreGrind>,
 }
 
 impl CoreDeclaration {
@@ -570,6 +650,9 @@ impl CoreDeclaration {
             || self.projection.is_some()
             || self.simp.is_some()
             || self.eqn_info.is_some()
+            || self.inline.is_some()
+            || self.sparse.is_some()
+            || self.grind.is_some()
     }
 }
 
@@ -985,6 +1068,36 @@ impl CoreModule {
                 segment_ok(level)?;
             }
         }
+        if declaration.inline.is_some() && !is_definition {
+            return Err(format!(
+                "core declaration `{}` has an inlining attribute but is not a definition",
+                declaration.name
+            ));
+        }
+        if let Some(sparse) = &declaration.sparse {
+            if !is_definition {
+                return Err(format!(
+                    "core declaration `{}` is a sparse `casesOn` but is not a definition",
+                    declaration.name
+                ));
+            }
+            if sparse.interesting_ctors.is_empty() {
+                return Err(format!(
+                    "core declaration `{}` is a sparse `casesOn` of no constructor",
+                    declaration.name
+                ));
+            }
+            name_ok(&sparse.ind_name)?;
+            for constructor in &sparse.interesting_ctors {
+                name_ok(constructor)?;
+            }
+        }
+        if declaration.grind.is_some() && !matches!(declaration.kind, CoreDeclKind::Theorem) {
+            return Err(format!(
+                "core declaration `{}` carries a `grind` attribute but is not a theorem",
+                declaration.name
+            ));
+        }
         Ok(())
     }
 }
@@ -1318,6 +1431,9 @@ mod version_2_tests {
             projection: None,
             simp: None,
             eqn_info: None,
+            inline: None,
+            sparse: None,
+            grind: None,
         }
     }
 
