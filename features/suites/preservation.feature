@@ -25,10 +25,10 @@ Feature: preservation
     And an interpreter outcome altered in one case is reported as a disagreement
 
   @SP-04 @build
-  Scenario: Every declaration of the preservation library is registered in library.toml and depends on exactly the axioms it registers, the statement vocabulary SPEC.md quotes equals the library's declarations byte for byte, the shipped calculus modules are byte-equal to the compiler project's golden modules, and a library module or certificate with a forbidden token, a disallowed option, or a foreign import is refused.
-    Given the preservation library, its registry, and the shipped calculus modules
-    When the library is compiled and every declaration's axioms printed, and the shipped modules are compared with the compiler golden
-    Then every declaration's axioms equal the registry and every shipped module equals its golden
+  Scenario: Every declaration of the preservation library is a row of a native module that pins its axioms exactly and depends on exactly them under the pinned Lean, the statement vocabulary SPEC.md quotes equals what the pinned Lean prints of the generated library, the shipped calculus modules are byte-equal to the compiler project's golden modules, and a library module or certificate with a forbidden token, a disallowed option, or a foreign import is refused.
+    Given the preservation library, its registry, the generated audit output, and the shipped calculus modules
+    When the library is compiled and every declaration's axioms and the statement vocabulary printed, and the shipped modules are compared with the compiler golden
+    Then every declaration's axioms equal its native row's policy, the quoted vocabulary equals the printed one, and every shipped module equals its golden
     And a library module with a planted forbidden token, option, or import is refused
 
   @SP-05 @build
@@ -77,3 +77,11 @@ Feature: preservation
     Given every certified root's program, its seeded inputs, and the pinned Rust toolchain
     When each root is rendered in each target as a package, built, and run through its root and its entry
     Then every package builds and every printed outcome equals the interpreter's
+
+  @SP-12 @build
+  Scenario: The preservation library is LexLean source: every module of its registry is one language-1.2 native core module and the library project holds no file of Lean source; the registry lists only the modules, and the declarations, their exact axiom policies, the constructors of the correspondence, and the cases of its soundness theorem are read from the native data, which the compiler embeds, hashes into the language-1.2 semantics, and generates the Lean of every verification from.
+    Given the preservation library project, its registry, and the native modules the compiler embeds
+    When the project's files are listed and the registry, the declarations, and the correspondence are read from the native data
+    Then every listed module has exactly one native source and the project holds no Lean file
+    And the registry names no declaration, and the constructors and soundness cases the audit uses are those of the native modules
+    And a native source that is missing, extra, of the first schema, or weakened to an inexact policy is refused

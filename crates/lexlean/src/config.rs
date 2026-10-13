@@ -265,23 +265,22 @@ fn config_error(path: &str, message: impl Into<String>) -> Diagnostic {
 }
 
 /// The Lean roots this compiler ships or generates beside a project's own:
-/// the certificate library (`LexLeanPreservation`), the certificates and
-/// their audit (`LexLeanPreserve`, `LexLeanAudit`), the runtime and the model
-/// and collection helpers its generated modules open (`LexLeanRuntime`,
-/// `LexLeanCollections`, `LexLeanModels`, `LexLeanReasoning`, `LexLeanCore`), and what the
-/// extraction and the probes compile (`LexLeanExtract`, `LexLeanProbe`,
-/// `LexLeanIdentityProbe`, `LexLeanTokenProbe`).
-/// `LexLeanTarget`, the root of the calculus modules the library imports, is
-/// the one a project may take (the compiler's own project does), but not for
-/// a module with a production root: see [`SHIPPED_TARGET_ROOT`].
-pub const SHIPPED_ROOTS: [&str; 12] = [
+/// the certificates and their audit (`LexLeanPreserve`, `LexLeanAudit`), the
+/// runtime and the model and collection helpers its generated modules open
+/// (`LexLeanRuntime`, `LexLeanCollections`, `LexLeanModels`, `LexLeanReasoning`,
+/// `LexLeanCore`), and what the extraction and the probes compile
+/// (`LexLeanExtract`, `LexLeanProbe`, `LexLeanIdentityProbe`,
+/// `LexLeanTokenProbe`). The roots of the certificate library itself,
+/// [`LIBRARY_ROOTS`], are the two a project may take (the compiler's own
+/// project and the library's project do), but not for a module with a
+/// production root.
+pub const SHIPPED_ROOTS: [&str; 11] = [
     "LexLeanAudit",
     "LexLeanCollections",
     "LexLeanCore",
     "LexLeanExtract",
     "LexLeanIdentityProbe",
     "LexLeanModels",
-    "LexLeanPreservation",
     "LexLeanPreserve",
     "LexLeanProbe",
     "LexLeanReasoning",
@@ -289,11 +288,18 @@ pub const SHIPPED_ROOTS: [&str; 12] = [
     "LexLeanTokenProbe",
 ];
 
-/// The root of the calculus modules that the certificate library imports.
-/// A project may name its modules under it, but the certificates of a root
-/// of such a project would import its module as the library's: its modules
-/// have no production root.
-pub const SHIPPED_TARGET_ROOT: &str = "LexLeanTarget";
+/// The roots of the modules the certificates import: the calculus modules
+/// (`LexLeanTarget`) and the proof library (`LexLeanPreservation`). A project
+/// may name its modules under one, since each is itself a LexLean project the
+/// repository ships, but the certificates of a root of such a project would
+/// import its module as the library's: its modules have no production root.
+pub const LIBRARY_ROOTS: [&str; 2] = ["LexLeanPreservation", "LexLeanTarget"];
+
+/// Whether `root` is one of the [`LIBRARY_ROOTS`].
+#[must_use]
+pub fn is_library_root(root: &str) -> bool {
+    LIBRARY_ROOTS.contains(&root)
+}
 
 /// Whether `root` is a module root a project may not take as the first
 /// segment of its `module_prefix`: the roots of the pinned toolchain's
@@ -1076,7 +1082,6 @@ mod reserved_root_tests {
             "LeanIR",
             "IO",
             "LexLeanPreserve",
-            "LexLeanPreservation",
             "LexLeanRuntime",
             "LexLeanAudit",
         ] {
@@ -1086,6 +1091,7 @@ mod reserved_root_tests {
             "Production",
             "LexLeanExample",
             "LexLeanTarget",
+            "LexLeanPreservation",
             "LexLeanExamples",
             "Leanish",
             "Initial",
@@ -1096,7 +1102,8 @@ mod reserved_root_tests {
     }
 
     /// Every root of the shipped library, of the certificates, and of the
-    /// calculus modules is reserved, or is the one documented exception.
+    /// calculus modules is reserved, or is one of the two documented
+    /// exceptions.
     #[test]
     fn every_shipped_root_is_reserved() {
         let library = crate::production::preserve::library().expect("the shipped library");
@@ -1115,7 +1122,7 @@ mod reserved_root_tests {
         roots.insert("LexLeanTarget".to_owned());
         for root in roots {
             assert!(
-                is_reserved_module_root(&root) || root == super::SHIPPED_TARGET_ROOT,
+                is_reserved_module_root(&root) || super::is_library_root(&root),
                 "`{root}` is a root of the shipped library and may be a module prefix"
             );
         }

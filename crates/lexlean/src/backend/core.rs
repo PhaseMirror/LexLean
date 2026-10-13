@@ -8,7 +8,7 @@ use crate::backend::{EmitSource, Emitter};
 use crate::code;
 use crate::diagnostic::Diagnostic;
 use crate::ir::core::{
-    CoreBinderInfo, CoreDeclKind, CoreDeclaration, CoreLevel, CoreModule, CoreNode,
+    CoreBinderInfo, CoreDeclKind, CoreDeclaration, CoreLevel, CoreMetaValue, CoreModule, CoreNode,
 };
 use crate::link::CheckedModule;
 use crate::source::coverage::Origin;
@@ -191,6 +191,25 @@ impl Printer<'_> {
             CoreNode::Projection { n, x, .. } => {
                 format!("({n} {})", self.walk(*x, scope, expanding_helper, locals)?)
             }
+            CoreNode::Mdata { m, x } => {
+                let entries: Vec<String> = m
+                    .iter()
+                    .map(|entry| {
+                        let value = match &entry.v {
+                            CoreMetaValue::Bool { v } => v.to_string(),
+                            CoreMetaValue::Nat { v } | CoreMetaValue::Int { v } => v.clone(),
+                            CoreMetaValue::Str { v } => format!("{v:?}"),
+                            CoreMetaValue::Name { v } => v.clone(),
+                        };
+                        format!("{} := {value}", entry.n)
+                    })
+                    .collect();
+                format!(
+                    "(mdata[{}] {})",
+                    entries.join(", "),
+                    self.walk(*x, scope, expanding_helper, locals)?
+                )
+            }
         })
     }
 
@@ -311,7 +330,7 @@ fn sharing(core: &CoreModule, declarations: &[&CoreDeclaration]) -> Sharing {
                     .max(requirements[*v])
                     .max(requirements[*body].saturating_sub(1))
             }
-            CoreNode::Projection { x, .. } => {
+            CoreNode::Projection { x, .. } | CoreNode::Mdata { x, .. } => {
                 references[*x] = references[*x].saturating_add(1);
                 requirements[*x]
             }
@@ -340,6 +359,7 @@ fn sharing(core: &CoreModule, declarations: &[&CoreDeclaration]) -> Sharing {
                     | CoreNode::Forall { .. }
                     | CoreNode::Let { .. }
                     | CoreNode::Projection { .. }
+                    | CoreNode::Mdata { .. }
             );
             (composite
                 && requirements[index] == 0
@@ -365,6 +385,7 @@ fn sharing(core: &CoreModule, declarations: &[&CoreDeclaration]) -> Sharing {
                     | CoreNode::Forall { .. }
                     | CoreNode::Let { .. }
                     | CoreNode::Projection { .. }
+                    | CoreNode::Mdata { .. }
             );
             (composite
                 && requirements[index] > 0
@@ -397,7 +418,7 @@ fn same_scope_shared(
             same_scope_shared(core, *f, shared, requirements, scope_depth, seen, out);
             same_scope_shared(core, *x, shared, requirements, scope_depth, seen, out);
         }
-        CoreNode::Projection { x, .. } => {
+        CoreNode::Projection { x, .. } | CoreNode::Mdata { x, .. } => {
             same_scope_shared(core, *x, shared, requirements, scope_depth, seen, out);
         }
         // Binder domains and let values are in the present scope; binder
@@ -448,6 +469,7 @@ fn constants_in(core: &CoreModule, roots: impl IntoIterator<Item = usize>) -> BT
                 work.push(*v);
                 work.push(*body);
             }
+            CoreNode::Mdata { x, .. } => work.push(*x),
             CoreNode::BVar { .. }
             | CoreNode::Sort { .. }
             | CoreNode::Nat { .. }
@@ -499,7 +521,7 @@ fn level_parameters_in(core: &CoreModule, root: usize) -> Vec<String> {
                 work.push(*v);
                 work.push(*body);
             }
-            CoreNode::Projection { x, .. } => work.push(*x),
+            CoreNode::Projection { x, .. } | CoreNode::Mdata { x, .. } => work.push(*x),
             CoreNode::BVar { .. } | CoreNode::Nat { .. } | CoreNode::String { .. } => {}
         }
     }
@@ -641,6 +663,25 @@ pub fn environment_declarations(core: &CoreModule) -> Result<Vec<&CoreDeclaratio
     Ok(environment)
 }
 
+/// The representative of each member of a core-module-2 group of unsafe or
+/// partial definitions: the group is one mutual declaration, submitted when
+/// its first member is, so that its members may refer to one another.
+fn group_representatives(core: &CoreModule) -> BTreeMap<&str, &str> {
+    let mut representatives = BTreeMap::new();
+    for declaration in &core.declarations {
+        if declaration.safety.is_none() {
+            continue;
+        }
+        let Some(all) = &declaration.all else {
+            continue;
+        };
+        if let Some(first) = all.iter().min() {
+            representatives.insert(declaration.name.as_str(), first.as_str());
+        }
+    }
+    representatives
+}
+
 fn emission_order(core: &CoreModule) -> Result<Vec<&CoreDeclaration>, Diagnostic> {
     let environment = environment_declarations(core)?;
     let emitted: BTreeMap<&str, &CoreDeclaration> = environment
@@ -650,12 +691,18 @@ fn emission_order(core: &CoreModule) -> Result<Vec<&CoreDeclaration>, Diagnostic
         .map(|row| (row.name.as_str(), row))
         .collect();
     let owners = generated_owners(core);
+    let representatives = group_representatives(core);
+    let representative_of = |name: &str| -> String {
+        representatives
+            .get(name)
+            .map_or_else(|| name.to_owned(), |first| (*first).to_owned())
+    };
     let rows: BTreeMap<&str, &CoreDeclaration> = core
         .declarations
         .iter()
         .map(|row| (row.name.as_str(), row))
         .collect();
-    let mut dependencies: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
+    let mut dependencies: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for (name, declaration) in &emitted {
         let mut roots = vec![declaration.r#type];
         if let Some(value) = declaration.value {
@@ -668,7 +715,8 @@ fn emission_order(core: &CoreModule) -> Result<Vec<&CoreDeclaration>, Diagnostic
                 }
             }
         }
-        let mut deps = BTreeSet::new();
+        let own = representative_of(name);
+        let deps = dependencies.entry(own.clone()).or_default();
         for constant in constants_in(core, roots) {
             let dependency = if emitted.contains_key(constant.as_str()) {
                 Some(constant)
@@ -676,36 +724,52 @@ fn emission_order(core: &CoreModule) -> Result<Vec<&CoreDeclaration>, Diagnostic
                 owners.get(&constant).cloned()
             };
             if let Some(dependency) = dependency {
-                if dependency != *name {
+                let dependency = representative_of(&dependency);
+                if dependency != own {
                     deps.insert(dependency);
                 }
             }
         }
-        dependencies.insert(name, deps);
+        // The code generator compiles a recursive definition through its
+        // partial implementation record, which must therefore come first.
+        if core.version() == 2 {
+            let record = format!("{name}._unsafe_rec");
+            if emitted.contains_key(record.as_str()) {
+                let record = representative_of(&record);
+                if record != own {
+                    deps.insert(record);
+                }
+            }
+        }
     }
     let mut done = BTreeSet::new();
-    let mut order = Vec::with_capacity(emitted.len());
-    while order.len() < emitted.len() {
-        let Some((&name, declaration)) = emitted.iter().find(|(name, _)| {
-            !done.contains(**name)
-                && dependencies.get(**name).is_some_and(|deps| {
-                    deps.iter()
-                        .all(|dependency| done.contains(dependency.as_str()))
-                })
+    let mut order = Vec::with_capacity(dependencies.len());
+    while order.len() < dependencies.len() {
+        let Some((name, _)) = dependencies.iter().find(|(name, deps)| {
+            !done.contains(name.as_str())
+                && deps
+                    .iter()
+                    .all(|dependency| done.contains(dependency.as_str()))
         }) else {
-            let remaining = emitted
+            let remaining = dependencies
                 .keys()
-                .filter(|name| !done.contains(**name))
+                .filter(|name| !done.contains(name.as_str()))
                 .take(8)
-                .copied()
+                .cloned()
                 .collect::<Vec<_>>()
                 .join(", ");
             return Err(internal(format!(
                 "declaration dependency cycle or absent generated owner through: {remaining}"
             )));
         };
-        done.insert(name);
+        let name = name.clone();
+        let Some(declaration) = emitted.get(name.as_str()) else {
+            return Err(internal(format!(
+                "group representative `{name}` is not a row"
+            )));
+        };
         order.push(*declaration);
+        done.insert(name);
     }
     Ok(order)
 }
@@ -1023,6 +1087,10 @@ fn remap_node(node: &CoreNode, mapping: &[usize]) -> Result<CoreNode, Diagnostic
             i: *i,
             x: remapped_root(mapping, *x)?,
         },
+        CoreNode::Mdata { m, x } => CoreNode::Mdata {
+            m: m.clone(),
+            x: remapped_root(mapping, *x)?,
+        },
     })
 }
 
@@ -1047,6 +1115,10 @@ fn remap_declaration(
                 .map(|root| remapped_root(mapping, root))
                 .transpose()?;
         }
+    }
+    if let Some(info) = declaration.eqn_info.as_mut() {
+        info.r#type = remapped_root(mapping, info.r#type)?;
+        info.value = remapped_root(mapping, info.value)?;
     }
     Ok(declaration)
 }
@@ -1082,6 +1154,28 @@ fn core_chunk(
             selected.then_some(index)
         })
         .collect();
+    let representatives = group_representatives(core);
+    let group_members: BTreeSet<&str> = declaration_indices
+        .iter()
+        .filter_map(|index| {
+            let row = &core.declarations[*index];
+            representatives
+                .contains_key(row.name.as_str())
+                .then_some(row.all.as_deref())
+                .flatten()
+        })
+        .flatten()
+        .map(String::as_str)
+        .collect();
+    let declaration_indices: Vec<usize> = {
+        let mut selected: BTreeSet<usize> = declaration_indices.into_iter().collect();
+        for (index, row) in core.declarations.iter().enumerate() {
+            if group_members.contains(row.name.as_str()) {
+                selected.insert(index);
+            }
+        }
+        selected.into_iter().collect()
+    };
     let mut needed = vec![false; core.nodes.len()];
     let mut work = Vec::new();
     for index in &declaration_indices {
@@ -1097,6 +1191,9 @@ fn core_chunk(
         {
             work.extend(structure.fields.iter().filter_map(|field| field.auto_param));
         }
+        if let Some(info) = &declaration.eqn_info {
+            work.extend([info.r#type, info.value]);
+        }
     }
     while let Some(root) = work.pop() {
         if needed[root] {
@@ -1109,7 +1206,7 @@ fn core_chunk(
                 work.extend([*t, *v]);
             }
             CoreNode::Let { t, v, body, .. } => work.extend([*t, *v, *body]),
-            CoreNode::Projection { x, .. } => work.push(*x),
+            CoreNode::Projection { x, .. } | CoreNode::Mdata { x, .. } => work.push(*x),
             CoreNode::BVar { .. }
             | CoreNode::Sort { .. }
             | CoreNode::Const { .. }
@@ -1268,6 +1365,37 @@ fn append_core_command(
     Ok(())
 }
 
+/// The Lean text a native core module renders to: its imports, the decoder
+/// runtime of its schema version, and one command per chunk of declarations.
+/// The text depends on the module alone.
+///
+/// # Errors
+///
+/// Returns an internal diagnostic when the module's rows cannot be ordered
+/// or a chunk omits a node it needs.
+pub fn lean_text(core: &CoreModule) -> Result<String, Diagnostic> {
+    let mut text = String::from("module\n");
+    for import in &core.imports {
+        text.push_str(&format!("public import {import}\n"));
+    }
+    text.push_str(
+        "import Lean\nset_option autoImplicit false\nset_option maxRecDepth 100000\nset_option maxHeartbeats 1000000000\nset_option Elab.async false\n\nopen Lean\n",
+    );
+    text.push_str(if core.version() == 2 {
+        crate::backend::core_v2::LEAN_CORE_DECODER_V2
+    } else {
+        LEAN_CORE_DECODER
+    });
+    let order = emission_order(core)?;
+    let owners = generated_owners(core);
+    let ranges = core_command_ranges(core, &order, &owners)?;
+    for range in &ranges {
+        let chunk = core_chunk(core, &order[range.clone()], &owners)?;
+        append_core_command(&mut text, core, &chunk)?;
+    }
+    Ok(text)
+}
+
 /// Render a native core module as Lean.  The emitted command reconstructs
 /// semantic `Expr` and `Declaration` values, and `Lean.addDecl` submits every
 /// native environment declaration to the kernel checker. Owner-generated
@@ -1276,21 +1404,7 @@ fn append_core_command(
 pub fn render_lean(checked: &CheckedModule, core: &CoreModule) -> Result<Emitter, Diagnostic> {
     let mut emitter = Emitter::new();
     let node = emitter.node("core-lean-kernel-module");
-    let mut text = String::from("module\n");
-    for import in &core.imports {
-        text.push_str(&format!("public import {import}\n"));
-    }
-    text.push_str(
-        "import Lean\nset_option autoImplicit false\nset_option maxRecDepth 100000\nset_option maxHeartbeats 1000000000\nset_option Elab.async false\n\nopen Lean\n",
-    );
-    text.push_str(LEAN_CORE_DECODER);
-    let order = emission_order(core)?;
-    let owners = generated_owners(core);
-    let ranges = core_command_ranges(core, &order, &owners)?;
-    for range in &ranges {
-        let chunk = core_chunk(core, &order[range.clone()], &owners)?;
-        append_core_command(&mut text, core, &chunk)?;
-    }
+    let text = lean_text(core)?;
     emit_chunk(
         &mut emitter,
         checked,
@@ -1406,6 +1520,15 @@ mod tests {
             class: false,
             instance: None,
             generated,
+            all: None,
+            safety: None,
+            compiled: false,
+            tags: Vec::new(),
+            no_confusion: None,
+            matcher: None,
+            projection: None,
+            simp: None,
+            eqn_info: None,
         }
     }
 

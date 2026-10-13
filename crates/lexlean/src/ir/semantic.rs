@@ -2884,7 +2884,7 @@ pub fn is_reserved_module_name(name: &str) -> bool {
     BACKEND_BARE_NAMES.contains(&name)
         || QUALIFIED_NAMESPACES.contains(&name)
         || crate::config::SHIPPED_ROOTS.contains(&name)
-        || name == crate::config::SHIPPED_TARGET_ROOT
+        || crate::config::is_library_root(name)
 }
 
 /// The first segment of a dotted module name that is reserved, when any.
