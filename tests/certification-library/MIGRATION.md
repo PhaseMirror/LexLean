@@ -40,7 +40,7 @@ the data carries them with the declarations that cause them.
 
 ## How
 
-The one-time conversion is the oracle of checkpoint commit `9876471dda271c65f583498094a8c58322e41595`
+The one-time conversion is the oracle of checkpoint commit `0d90ea93e81d6306bc83adead8697ce63343b514`
 (`tests/certification-library/oracle/`, removed from the release tree by the
 commit that follows it). It is the preservation library's exporter
 (`tests/preservation-library/oracle/` of its own checkpoint) with this library's
