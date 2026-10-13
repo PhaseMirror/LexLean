@@ -143,7 +143,32 @@ so they are audited like any other.
 
 ## Verification
 
-@@VERIFICATION@@
+The regenerated library is what every verification now compiles, so the
+evidence is the verifications themselves:
+
+- `lexlean verify` of every language-1.2 example and of the compiler project
+  stages the generated library into the certificate environment, compiles it
+  with the pinned Lean, replays each module through `leanchecker` (the same
+  kernel, SPEC.md §22.4), prints the axioms of the 7,740 declarations audited by
+  name and requires each to equal its row's exact policy, and requires the
+  statement vocabulary SPEC.md quotes to equal what Lean prints. Their records
+  under `expected/verify/` were regenerated and `cargo xtask verify-examples`
+  reproduces them; the certificates of the production examples (certificate A,
+  B, and E for every root) are accepted by the pinned Lean over the regenerated
+  library, with exactly the three axioms.
+- `cargo xtask check-reproducibility` builds the library project twice in two
+  directories and requires its 66 published artifacts to be byte-identical.
+- `conformance_sp_12` requires the Lean generated from the committed sources to
+  equal, byte for byte, the Lean a verification stages, and that the library
+  project holds no Lean file of its own.
+- The planted defects (a hand-written Lean file, a changed axiom policy, a
+  changed term, a changed sparse record, and weakened checks of the format and
+  the registry) are recorded in `VERIFICATION.md`, each with the diagnostic it
+  produces.
+
+The verification of `examples/uor-atlas` (language 1.0, so its records are not
+touched by this change) needs more memory than the development host has and
+runs in CI.
 
 ## Identities
 
@@ -158,7 +183,7 @@ regenerated:
 | --- | --- | --- |
 | 1.0 | `95deb33a8d416d7bf60f02a36e251a71c3ee6f046b7e475d7bae2fc5ddc3767d` | none |
 | 1.1 | `c56e1a234cee7c12f00e4f2f53d6094e2ed51f5bbf5195b60f79d4e8aa5bce53` | none |
-| 1.2 | `a67e431f04b2517000d2599ccf66fbf03e4315347acabb647973e0d0145cf266` → `da743bdaf7060ececa7b6b41ffac8df40529ba7f902ab923bae05242a7871afd` | regenerated |
+| 1.2 | `a67e431f04b2517000d2599ccf66fbf03e4315347acabb647973e0d0145cf266` → `961282f94afc09dbbe84cdae395d5b36b6d57c559e4e5ef73d6a1935cb104e90` | regenerated |
 
 Every language-1.2 lock, golden, fixture expectation, and verified record was
 regenerated; the goldens and locks of languages 1.0 and 1.1 are unchanged.
