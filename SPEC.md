@@ -3989,9 +3989,10 @@ In both, `nat` is `u64` and `int` is `i64`, each operation checked and every
 out-of-range result the explicit `Err(Overflow)` propagated by `?`; the
 fixed widths are the native integer types with `checked_*` operations;
 orderings are `core::cmp::Ordering`; ADTs are enums; function values are
-defunctionalized into one enum per function type; and using a local clones a
-handle or a value of fixed size, never a structure, so ownership never
-changes an observable value and no step does hidden work. Every loop of the
+defunctionalized into one enum per function type; and using a local moves it
+when nothing after the use reads it and otherwise clones a handle or a value
+of fixed size, never a structure, so ownership never changes an observable
+value and no step does hidden work. Every loop of the
 runtime counts its iterations and every bulk copy counts its length in a
 work counter, and on every fixture with an observable outcome the count
 never exceeds the denotation's steps; the release of a list, whose cells were each counted when built, is
@@ -4307,6 +4308,19 @@ writes differently are fixed:
   another bind their (inner) condition first; an empty unit `else` is left
   implicit; a block that binds a value and returns that binding is the
   value; a field of a computed record binds the record first;
+- a read of a binding is a move when nothing after it, on any path, reads
+  the binding, and a clone otherwise; a projection of a pair component
+  (`let (h, _) = v;`) moves the component out of the pair when nothing
+  after it reads the pair whole or that component and every other component
+  read after it is read once (so that each of those reads is a move too),
+  and clones the pair otherwise. `rust::moves` decides this after lowering,
+  backwards through the evaluation order (a block's bindings then its tail,
+  operands left to right, a condition then the branch taken, a scrutinee
+  then the arm taken, and a closure before the operands it is applied to;
+  branches are alternatives). A move, a clone, and a copy all read the
+  binding, so the choice is invisible to the denotation and to every
+  correspondence row; it decides what the machine does, not what it
+  computes;
 - a type no value inhabits (a function type no closure of a live function
   inhabits, or a named type, pair, or result built only from such types):
   a function with a parameter of such a type is never called and its body is
@@ -4335,7 +4349,8 @@ and no call to it propagates. The length of a sequence cannot exceed
 1. *hygiene*: a name used but not bound, or bound twice in one function,
    and an item declared twice;
 2. *ownership*: a value moved twice, or read after it was moved, on any
-   path; branches are alternatives;
+   path; a pair component moved out twice, or a binding read or moved
+   whole after a component was moved out of it; branches are alternatives;
 3. *hidden allocation*: in `rust-core`, any heap type, heap runtime
    function, string or byte string literal, list construction or match, or
    box;
@@ -4427,7 +4442,7 @@ exports, and the SHA-256 of `Cargo.toml` and `src/lib.rs`.
 `language/semantics-1.2.toml` records the SHA-256 of each profile's runtime
 (`rust_runtime_core`, `rust_runtime_std`) and the digest of the renderer's
 sources (`rust_renderer`: one §21.1 frame per file of
-`rust::RENDERER_FILES`, the six files of `calculus/rust/`, labeled by its
+`rust::RENDERER_FILES`, the seven files of `calculus/rust/`, labeled by its
 name, under the domain `lexlean-rust-renderer-v1`). Unit tests of the runtime
 and the renderer and the conformance suite check both records, so neither
 the runtime nor any rendering can change without changing LexLean's
