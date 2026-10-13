@@ -663,8 +663,8 @@ pub fn environment_declarations(core: &CoreModule) -> Result<Vec<&CoreDeclaratio
     Ok(environment)
 }
 
-/// The representative of each member of a core-module-2 group of unsafe or
-/// partial definitions: the group is one mutual declaration, submitted when
+/// The representative of each member of a core-module-2 group of partial or
+/// otherwise non-safe definitions: the group is one mutual declaration, submitted when
 /// its first member is, so that its members may refer to one another.
 fn group_representatives(core: &CoreModule) -> BTreeMap<&str, &str> {
     let mut representatives = BTreeMap::new();

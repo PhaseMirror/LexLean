@@ -10,7 +10,7 @@
 //!
 //! The text is generated Lean and the audit of generated Lean forbids a
 //! comment, a character literal, and the words of §18.2, so what its parts
-//! do is recorded here instead. An unsafe or partial definition may refer to
+//! do is recorded here instead. A partial definition, or one that is not safe, may refer to
 //! itself and to the others of its group, so a group is one mutual
 //! declaration, submitted with its first member. The code generator runs
 //! over the rows the source environment compiled in this order: the inductive

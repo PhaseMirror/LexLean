@@ -6484,7 +6484,7 @@ tree. The language-1.1 ID excludes the files introduced solely for 1.2:
 `language/preservation-1.2/`, `language/core-1.2/`,
 `language/std/{bool,int,nat}-1.2/`, `schemas/attestation-v2.schema.json`,
 `schemas/build-manifest-v2.schema.json`,
-`schemas/compiler-input.schema.json`,
+`schemas/compiler-input.schema.json`, `schemas/core-module-v2.schema.json`,
 `schemas/gnaf-certificate-fixture.schema.json`,
 `schemas/gnaf-certificate.schema.json`, `schemas/gnaf-fixture.schema.json`,
 `schemas/gnaf-request.schema.json`,

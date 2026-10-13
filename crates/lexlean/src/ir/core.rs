@@ -353,7 +353,7 @@ impl CoreAxiomPolicy {
 /// The safety of a definition row; a row that omits it is safe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum CoreSafety {
-    /// An unsafe definition.
+    /// A definition that is not safe.
     #[serde(rename = "unsafe")]
     Unsafe,
     /// A partial definition, the compiler's implementation record of a
