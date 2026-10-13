@@ -1559,9 +1559,14 @@ pub fn run(id: &str) {
                         !name.ends_with(".lean"),
                         "{name}: an independently authored Lean file lies in the library project"
                     );
-                    if let Some(relative) = name
-                        .strip_prefix(&format!("{project}/src/"))
-                        .and_then(|rest| rest.strip_suffix(".lex.tex"))
+                    // Compared as path components: a Windows checkout mixes
+                    // the separators of the repository root and of the
+                    // library's relative directory.
+                    if let Some(relative) = path
+                        .strip_prefix(project.as_std_path().join("src"))
+                        .ok()
+                        .map(|rest| rest.to_string_lossy().replace('\\', "/"))
+                        .and_then(|rest| rest.strip_suffix(".lex.tex").map(str::to_owned))
                     {
                         sources.insert(format!(
                             "{}.{}",
