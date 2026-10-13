@@ -1540,6 +1540,10 @@ pub fn run(id: &str) {
                 !library.declaration.is_empty(),
                 "the native modules state declarations"
             );
+            support::assert_library_has_no_handwritten_lean(
+                preserve::LIBRARY_PREFIX,
+                "tests/preservation-library/oracle",
+            );
             // The library is LexLean source, one native module per listed
             // module, and nothing else: no module without a source, no
             // source without a module, and no Lean file the compiler did

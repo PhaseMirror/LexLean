@@ -24,6 +24,49 @@ pub fn repo_root() -> Utf8PathBuf {
         .to_path_buf()
 }
 
+/// A proof library (SPEC.md §17.17, §17.18) is LexLean source and has no
+/// independently authored Lean implementation anywhere in the release tree, the
+/// permanent condition `VR-19` states of the Atlas: no Lean file lies under a
+/// directory named for the library's module root `prefix`, no Lean file
+/// anywhere declares its namespace, and the one-time migration input `oracle`
+/// is absent.
+///
+/// # Panics
+///
+/// Panics when a hand-written implementation of the library is found.
+pub fn assert_library_has_no_handwritten_lean(prefix: &str, oracle: &str) {
+    let root = repo_root();
+    let namespace = format!("namespace {prefix}");
+    assert!(
+        !root.join(oracle).exists(),
+        "{oracle}: the completed one-time migration input is absent from the release tree"
+    );
+    let walker = walkdir::WalkDir::new(root.as_std_path())
+        .into_iter()
+        .filter_entry(|entry| {
+            let name = entry.file_name().to_string_lossy();
+            !(entry.file_type().is_dir() && matches!(name.as_ref(), "target" | ".git" | ".lexlean"))
+        });
+    for entry in walker.flatten() {
+        let path = entry.path();
+        if !entry.file_type().is_file() || path.extension().is_none_or(|ext| ext != "lean") {
+            continue;
+        }
+        let shown = path.display();
+        assert!(
+            !path
+                .components()
+                .any(|component| component.as_os_str().to_str() == Some(prefix)),
+            "{shown}: a Lean file lies in the module tree of `{prefix}`"
+        );
+        let text = std::fs::read_to_string(path).unwrap_or_default();
+        assert!(
+            !text.contains(&namespace),
+            "{shown}: an independently authored Lean file declares `{namespace}`"
+        );
+    }
+}
+
 /// Compile an independent crate that exhaustively reads the stable snapshot
 /// semantic DTOs. This prevents the repository test crate from accidentally
 /// relying on hidden `lexlean::ir` paths.

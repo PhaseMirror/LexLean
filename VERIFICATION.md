@@ -1066,6 +1066,20 @@ an inexact policy is refused: 7740
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 351 filtered out
 ```
 
+Planted (h): a Lean file `examples/Planted.lean` that declares `namespace
+LexLeanPreservation`, outside the library's project; then the directory
+`tests/preservation-library/oracle`, the completed one-time migration input,
+recreated. Command: `cargo test -p repo-conformance --test conformance --
+conformance_sp_12`. Expected: the permanent condition `VR-19` states of the
+Atlas holds of this library too, over the whole release tree.
+
+```text
+thread 'conformance_sp_12' panicked at crates/conformance/src/support.rs:63:9:
+<root>/examples/Planted.lean: an independently authored Lean file declares `namespace LexLeanPreservation`
+thread 'conformance_sp_12' panicked at crates/conformance/src/support.rs:40:5:
+tests/preservation-library/oracle: the completed one-time migration input is absent from the release tree
+```
+
 Removed: every plant was reverted; `conformance_sm_31`, `conformance_sp_04`, and
 `conformance_sp_12` pass. The negative fixture `tests/negative/preservation-drift`
 pins the other direction: a pinned Lean whose generated `Core` no longer
