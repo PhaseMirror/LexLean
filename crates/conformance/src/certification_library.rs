@@ -137,7 +137,10 @@ pub fn check_sources(
     let text = read(REGISTRY)?;
     let list: ModuleList = toml::from_str(&text).map_err(|error| format!("{REGISTRY}: {error}"))?;
     if list.spec != REGISTRY_SPEC {
-        return Err(format!("{REGISTRY}: spec `{}` is not `{REGISTRY_SPEC}`", list.spec));
+        return Err(format!(
+            "{REGISTRY}: spec `{}` is not `{REGISTRY_SPEC}`",
+            list.spec
+        ));
     }
     let mut seen: BTreeSet<String> = BTreeSet::new();
     let mut names: BTreeSet<String> = BTreeSet::new();

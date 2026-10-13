@@ -2183,16 +2183,24 @@ fn gc_09() {
     // The library is exactly its registered modules, each a native source
     // (`GC-11` holds the rest of what it is: no Lean file, and the generated
     // Lean is the project's build).
-    let on_disk: BTreeSet<String> =
-        std::fs::read_dir(repo_root().join(library::PROJECT_DIR).join("src").as_std_path())
-            .expect("the library's sources")
-            .map(|entry| {
-                let name = entry.expect("entry").file_name().to_string_lossy().into_owned();
-                name.strip_suffix(".lex.tex")
-                    .unwrap_or_else(|| panic!("{name}: a source of the library"))
-                    .to_owned()
-            })
-            .collect();
+    let on_disk: BTreeSet<String> = std::fs::read_dir(
+        repo_root()
+            .join(library::PROJECT_DIR)
+            .join("src")
+            .as_std_path(),
+    )
+    .expect("the library's sources")
+    .map(|entry| {
+        let name = entry
+            .expect("entry")
+            .file_name()
+            .to_string_lossy()
+            .into_owned();
+        name.strip_suffix(".lex.tex")
+            .unwrap_or_else(|| panic!("{name}: a source of the library"))
+            .to_owned()
+    })
+    .collect();
     assert_eq!(
         on_disk,
         library::MODULES
@@ -2509,9 +2517,7 @@ fn planted_axiom() -> BTreeMap<String, Vec<String>> {
         "the kernel accepts a proof by `sorryAx`:\n{}",
         crate::preservation::joined(&output)
     );
-    let audit = format!(
-        "import LexLeanCertification.Schemas\n#print axioms {PLANTED_THEOREM}\n"
-    );
+    let audit = format!("import LexLeanCertification.Schemas\n#print axioms {PLANTED_THEOREM}\n");
     let audited = library::compile(
         root.path(),
         "PlantedAudit",
@@ -2648,11 +2654,16 @@ fn gc_11() {
                 !name.ends_with(".lean"),
                 "{name}: an independently authored Lean file lies in the library project"
             );
-            if let Some(stem) = name
-                .strip_prefix(&format!("{project}/src/"))
-                .and_then(|rest| rest.strip_suffix(".lex.tex"))
+            // Compared as path components: a Windows checkout mixes the
+            // separators of the repository root and of the library's
+            // relative directory.
+            if let Some(stem) = path
+                .strip_prefix(project.as_std_path().join("src"))
+                .ok()
+                .map(|rest| rest.to_string_lossy().replace('\\', "/"))
+                .and_then(|rest| rest.strip_suffix(".lex.tex").map(str::to_owned))
             {
-                sources.insert(stem.to_owned());
+                sources.insert(stem);
             }
         }
     }
@@ -2740,7 +2751,10 @@ fn gc_11() {
     };
     let error = planted(&|_| None).expect_err("a missing source is refused");
     assert!(error.contains("no such file"), "{error}");
-    assert!(original.contains("\"imports\":[\"Init\""), "{original:.200}");
+    assert!(
+        original.contains("\"imports\":[\"Init\""),
+        "{original:.200}"
+    );
     let error = planted(&|text| {
         Some(text.replace("\"imports\":[\"Init\"", "\"imports\":[\"Init\",\"Mathlib\""))
     })

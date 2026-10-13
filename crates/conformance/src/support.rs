@@ -390,7 +390,10 @@ impl P {
             .tempdir()
             .expect("tempdir");
         let source = repo_root().join(crate::certification_library::PROJECT_DIR);
-        assert!(source.is_dir(), "the certification library project is required");
+        assert!(
+            source.is_dir(),
+            "the certification library project is required"
+        );
         copy_tree(
             source.as_std_path(),
             temp.path(),
