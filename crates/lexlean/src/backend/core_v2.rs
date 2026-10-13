@@ -16,7 +16,9 @@
 //! over the rows the source environment compiled in this order: the inductive
 //! types, then the compiler's partial implementation records, then the
 //! remaining definitions by group. The extension state of a row is installed
-//! after the whole module is in the environment.
+//! after the whole module is in the environment, except that a sparse `casesOn`
+//! is marked after its own code is generated, as the elaborator that made it
+//! did: the mark makes the code generator treat the constant as a primitive.
 
 /// The decoder module of core module 2, spliced after the generated module's
 /// header.
@@ -271,7 +273,7 @@ private def installMetadata (nodes : Array Expr) (declaration : Json) : CoreM Un
       | "defeq" => Lean.defeqAttr.setTag name
       | "backward_defeq" => Lean.backwardDefeqAttr.setTag name
       | "recursive" => modifyEnv (Lean.Meta.recExt.tag · name)
-      | "sparse_cases_on" => modifyEnv (Lean.markSparseCasesOn · name)
+      | "sparse_cases_on" => pure ()
       | other => throwError s!"unknown core declaration tag '{other}'"
   if let some info := optionalField declaration "no_confusion" then
     let arity ← liftString (natField info "arity")
@@ -358,15 +360,20 @@ private def compileRows (declarations : Array Json) : CoreM Unit := do
     if (← liftString (stringField declaration "kind")) != "inductive" && (optionalField declaration "safety").isSome then
       Lean.compileDecls #[name]
   let mut done : NameSet := {}
-  for (declaration, name) in compiledRows do
+  for declaration in declarations do
+    let name := nameOf (← liftString (stringField declaration "name"))
     if (← liftString (stringField declaration "kind")) != "inductive" && (optionalField declaration "safety").isNone
-        && !done.contains name then
+        && compiledRows.any (·.2 == name) && !done.contains name then
       let all ← match optionalField declaration "all" with
         | some v => liftString (namesOf v)
         | none => pure [name]
       let group := all.filter fun n => compiledRows.any (·.2 == n)
       for n in group do done := done.insert n
       Lean.compileDecls group.toArray
+    if let some tags := optionalField declaration "tags" then
+      for tag in ← liftString tags.getArr? do
+        if (← liftString tag.getStr?) == "sparse_cases_on" then
+          modifyEnv (Lean.markSparseCasesOn · name)
 
 def decodeAndAdd (nodeBatches : Array String) (data : String) : CoreM Unit := do
   let mut nodes : Array Expr := #[]
