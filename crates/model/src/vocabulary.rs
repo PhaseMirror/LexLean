@@ -60,10 +60,6 @@ pub const REQUIRED: [(&str, &str); 17] = [
         "def LexLeanPreservation.Rust.RCI :",
     ),
     (
-        "LexLeanPreservation.someObs",
-        "def LexLeanPreservation.someObs :",
-    ),
-    (
         "LexLeanPreservation.Rust.Realizes",
         "def LexLeanPreservation.Rust.Realizes :",
     ),
@@ -74,6 +70,10 @@ pub const REQUIRED: [(&str, &str); 17] = [
     (
         "LexLeanPreservation.Rust.FunSem",
         "def LexLeanPreservation.Rust.FunSem :",
+    ),
+    (
+        "LexLeanPreservation.someObs",
+        "def LexLeanPreservation.someObs :",
     ),
     (
         "LexLeanPreservation.Rust.Representable",

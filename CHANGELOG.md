@@ -15,6 +15,31 @@ versions, and the entries below say what each tag does and does not claim.
 
 ## Unreleased
 
+- The preservation proof library is LexLean source (SPEC.md §17.10, §17.17,
+  `SM-31`, `SP-12`; stage 2a of #27, #79). Its 13 hand-written Lean modules
+  (Git tree `50f70bb5` at `ba52c601`: 525,026 bytes, 934 registered
+  declarations) are now 13 native core modules of a second schema,
+  `lexlean/core-module/2` (`schemas/core-module-v2.schema.json`, language 1.2
+  only): annotation nodes, extended names (numeric components and escapes),
+  definition safety and groups, compiled and reducibility state, and the
+  matcher, projection, no-confusion, simplification, and equation-record
+  extension state, decoded by one fixed generic runtime through Lean's checked
+  declaration API. The library is an ordinary closed project
+  (`language/preservation-1.2/library/`, with a title glossary): it locks,
+  checks, and builds, and `LexLeanPreservation`, like `LexLeanTarget`, may be a
+  project's module prefix when the project has no production root. A native
+  core module is exempt from the module-name capture rule, since it writes no
+  name relative to the project. `library.toml` lists the modules only: the 9,247
+  exported declarations carry their exact axioms (what `#print axioms` prints,
+  which for the members of a reference cycle is the pinned Lean's
+  order-dependent answer), 7,740 of them are audited by name where 934 were,
+  all 934 with unchanged axioms. The statement vocabulary SPEC.md quotes is
+  what Lean prints of the generated library in the committed audit output; the
+  certificate-B rule set is read from the native data; `check-reproducibility`
+  builds the library project twice. The exporter is the oracle of a checkpoint
+  commit and is absent from the release tree; `tests/preservation-library/MIGRATION.md`
+  records the equivalence evidence. Languages 1.0 and 1.1 are byte-identical;
+  every language-1.2 identity changed.
 - Compiler-tooling modules (SPEC.md §17.20, `TL-01`..`TL-11`, `LLT4013`,
   `LLT4014`, `LLT4015`; stage 1a of #27): a third module form beside the
   ordinary declaration environments and the native `coremodule` and

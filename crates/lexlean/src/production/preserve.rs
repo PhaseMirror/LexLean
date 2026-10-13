@@ -84,10 +84,10 @@ pub const VOCABULARY: [(&str, Statement); 17] = [
     ("LexLeanPreservation.Rust.fnIdent", Statement::Print),
     ("LexLeanPreservation.Rust.fnFallible", Statement::Print),
     ("LexLeanPreservation.Rust.RCI", Statement::Print),
-    ("LexLeanPreservation.someObs", Statement::Print),
     ("LexLeanPreservation.Rust.Realizes", Statement::Print),
     ("LexLeanPreservation.Rust.RealizesFn", Statement::Print),
     ("LexLeanPreservation.Rust.FunSem", Statement::Print),
+    ("LexLeanPreservation.someObs", Statement::Print),
     ("LexLeanPreservation.Rust.Representable", Statement::Print),
     ("LexLeanPreservation.Rust.RepresentableL", Statement::Print),
     (
@@ -329,12 +329,11 @@ fn build_native(
                     row.name
                 ));
             }
-            // Only a name Lean prints exactly as written can be audited by
+            // Only a name of plain identifier segments, which Lean prints as
+            // written (a projection named `at` is one), can be audited by
             // name; a private or escaped auxiliary is covered by every
             // declaration that uses it.
-            if crate::ir::core::is_closed_lean_name(&row.name)
-                && crate::backend::semantic::identifier(&row.name) == row.name
-            {
+            if crate::ir::core::is_closed_lean_name(&row.name) {
                 let mut axioms = row.policy.axioms().to_vec();
                 axioms.sort();
                 declarations.push(LibraryDeclaration {

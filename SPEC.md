@@ -4806,158 +4806,108 @@ a definition changed in the library but not in the specification, or the
 reverse, fails a gate.
 
 ```lean-library
--- LexLeanPreservation/Core.lean
-inductive Obs where
-  | value (v : Value)
-  | overflow
-  | stuck
-
-def Rel (fits : Bool) (v : Value) : Obs := cond fits (.value v) .overflow
-def RelL (fits : Bool) (vs : List Value) : ObsL := cond fits (.values vs) .overflow
-
-def Conv (p : Program) (env : List (Nat × Value)) (e : Expr) (o : Obs) : Prop :=
-  ∃ n, obs (eval n p env e) = some o
-def ConvL (p : Program) (env : List (Nat × Value)) (es : List Expr) (o : ObsL) : Prop :=
-  ∃ n, obsL (evalList n p env es) = some o
-def ConvA (p : Program) (env : List (Nat × Value)) (v : Value) (arms : List Arm) (o : Obs) : Prop :=
-  ∃ n, obs (evalArms n p env v arms) = some o
-def FunRel (p : Program) (f : Nat) (args : List Value) (o : Obs) : Prop :=
-  ∃ fn : Function, LexLeanRuntime.index p.functions f = some fn ∧
-    ∃ env, bindAll fn.parameters args [] = some env ∧ Conv p env fn.body o
-def RunConv (p : Program) (entry : Nat) (args : List Value) (o : Obs) : Prop :=
-  ∃ n, obs (run n p entry args) = some o
-```
-
-```lean-library
--- LexLeanPreservation/RustBase.lean
-mutual
-/-- Value typing: what the correspondence knows of a value of a type. -/
-def WT (p : Program) (c : RCrate) (A : Flags) : Value → Ty → Prop
-  | .unit, .unit => True
-  | .none, .option _ => True
-  | .some v, .option t => WT p c A v t
-  | .ok v, .result a _ => WT p c A v a
-  | .error v, .result _ b => WT p c A v b
-  | .list vs, .list t => WTAll p c A vs t
-  | .pair a b, .pair s t => WT p c A a s ∧ WT p c A b t
-  | .adt k fs, .adt i => ∃ tys, adtFields p i k = some tys ∧ WTL p c A fs tys
-  | .closure f cs, .fn ps r => ∃ fn capTys af, p.functions[f]? = some fn ∧
-      fn.types = capTys ++ ps ∧ fn.result = r ∧ WTL p c A cs capTys ∧
-      flagOf A ps r = some af ∧
-      ∃ ff, RustSemantics.findDispatch c.items f cs.length = some (af, ff) ∧
-        fnFallible c f = some ff ∧ (!ff || af) = true
-  | v, .fixed w => RustSemantics.hasWidth w v = true
-  | .string _, .string => True
-  | .bytes _, .bytes => True
-  | _, t => inert t = true
-def WTAll (p : Program) (c : RCrate) (A : Flags) : List Value → Ty → Prop
-  | [], _ => True
-  | v :: vs, t => WT p c A v t ∧ WTAll p c A vs t
-def WTL (p : Program) (c : RCrate) (A : Flags) : List Value → List Ty → Prop
-  | [], [] => True
-  | v :: vs, t :: ts => WT p c A v t ∧ WTL p c A vs ts
-  | _, _ => False
-end
-
-def fnIdent (f : Nat) : RIdent := .generated .function f
-
-def fnFallible (c : RCrate) (f : Nat) : Option Bool :=
-  (RustSemantics.findFunction c.items (fnIdent f)).map fun fn => RustSemantics.fallibleType fn.2.1
-
-/-- Rust convergence: some fuel gives the outcome, which is never
-exhaustion. -/
-def RC (c : RCrate) (renv : REnv) (e : RExpr) (o : ROut) : Prop :=
-  o ≠ .exhausted ∧ ∃ n, RustSemantics.eval n c renv e = o
-def RCL (c : RCrate) (renv : REnv) (es : List RExpr) (o : ROutcomes) : Prop :=
-  o ≠ .exhausted ∧ ∃ n, RustSemantics.evalList n c renv es = o
-def RCB (c : RCrate) (renv : REnv) (b : RBlock) (o : ROut) : Prop :=
-  o ≠ .exhausted ∧ ∃ n, RustSemantics.evalBlock n c renv b = o
-def RCA (c : RCrate) (renv : REnv) (w : Value) (arms : List RustSyntax.Arm) (o : ROut) : Prop :=
-  o ≠ .exhausted ∧ ∃ n, RustSemantics.evalArms n c renv w arms = o
-def RCI (c : RCrate) (f : RIdent) (args : List Value) (o : ROut) : Prop :=
-  o ≠ .exhausted ∧ ∃ n, RustSemantics.invoke n c f args = o
-```
+inductive LexLeanPreservation.Obs : Type
+number of parameters: 0
+constructors:
+LexLeanPreservation.Obs.value : LexLeanTarget.TargetSyntax.Value → LexLeanPreservation.Obs
+LexLeanPreservation.Obs.overflow : LexLeanPreservation.Obs
+LexLeanPreservation.Obs.stuck : LexLeanPreservation.Obs
+def LexLeanPreservation.Rel : Bool → LexLeanTarget.TargetSyntax.Value → LexLeanPreservation.Obs :=
+fun fits v => bif fits then LexLeanPreservation.Obs.value v else LexLeanPreservation.Obs.overflow
+def LexLeanPreservation.Conv : LexLeanTarget.TargetSyntax.Program →
+  List (Nat × LexLeanTarget.TargetSyntax.Value) → LexLeanTarget.TargetSyntax.Expr → LexLeanPreservation.Obs → Prop :=
+fun p env e o => ∃ n, LexLeanPreservation.obs (LexLeanTarget.TargetSemantics.eval n p env e) = some o
+def LexLeanPreservation.FunRel : LexLeanTarget.TargetSyntax.Program →
+  Nat → List LexLeanTarget.TargetSyntax.Value → LexLeanPreservation.Obs → Prop :=
+fun p f args o =>
+  ∃ fn,
+    LexLeanTarget.TargetSemantics.LexLeanRuntime.index p.functions f = some fn ∧
+      ∃ env,
+        LexLeanTarget.TargetSemantics.bindAll fn.parameters args [] = some env ∧
+          LexLeanPreservation.Conv p env fn.body o
+def LexLeanPreservation.RunConv : LexLeanTarget.TargetSyntax.Program →
+  Nat → List LexLeanTarget.TargetSyntax.Value → LexLeanPreservation.Obs → Prop :=
+fun p entry args o => ∃ n, LexLeanPreservation.obs (LexLeanTarget.TargetSemantics.run n p entry args) = some o
 
 ```lean-library
--- LexLeanPreservation/RustCorr.lean
-/-- How the rendering realizes an observation in value position: the same
-value; an overflow raised, in a scope that may fail, or the machine's
-abort. -/
-def Realizes (fl : Bool) : Obs → ROut → Prop
-  | .value v, .value w => w = v
-  | .overflow, .raise => fl = true
-  | .overflow, .abort => True
-  | _, _ => False
-
-/-- A function's result: its value, or, for a fallible one, `Ok` of it and
-`Err(Overflow)` for an overflow. -/
-def RealizesFn (fallible : Bool) : Obs → ROut → Prop
-  | .value v, .value w => w = cond fallible (.ok v) v
-  | .overflow, .value w => fallible = true ∧ w = .error .unit
-  | .overflow, .abort => True
-  | _, _ => False
-
-/-- A function of the program, called at fuel `n`, is simulated by its
-rendering. -/
-def FunSem (n : Nat) (f : Nat) : Prop :=
-  ∀ (fn : TargetSyntax.Function) args env F,
-    TargetSemantics.LexLeanRuntime.index p.functions f = some fn → WTL p c A args fn.types →
-    TargetSemantics.bindAll fn.parameters args [] = some env → fnFallible c f = some F →
-    ∀ o, obs (TargetSemantics.eval n p env fn.body) = some o → o ≠ .stuck →
-      (∀ v, o = .value v → WT p c A v fn.result) ∧
-      ∃ ro, RealizesFn F o ro ∧ RCI c (fnIdent f) args ro
-end
-```
+def LexLeanPreservation.Rust.WT : LexLeanTarget.TargetSyntax.Program →
+  LexLeanPreservation.Rust.RCrate →
+    LexLeanPreservation.Rust.Flags → LexLeanTarget.TargetSyntax.Value → LexLeanTarget.TargetSyntax.Ty → Prop :=
+fun p c A x x_1 =>
+  x.brecOn (LexLeanPreservation.Rust.WT._f p c A)
+    (fun t f => ⟨LexLeanPreservation.Rust.WTL._f p c A t f, LexLeanPreservation.Rust.WTAll._f p c A t f⟩) x_1
+def LexLeanPreservation.Rust.WTL : LexLeanTarget.TargetSyntax.Program →
+  LexLeanPreservation.Rust.RCrate →
+    LexLeanPreservation.Rust.Flags →
+      List LexLeanTarget.TargetSyntax.Value → List LexLeanTarget.TargetSyntax.Ty → Prop :=
+fun p c A x x_1 =>
+  (LexLeanTarget.TargetSyntax.Value.brecOn_1 x (LexLeanPreservation.Rust.WT._f p c A) fun t f =>
+        ⟨LexLeanPreservation.Rust.WTL._f p c A t f, LexLeanPreservation.Rust.WTAll._f p c A t f⟩).1
+    x_1
+def LexLeanPreservation.Rust.fnIdent : Nat → LexLeanPreservation.Rust.RIdent :=
+fun f => LexLeanTarget.RustSyntax.Ident.generated LexLeanTarget.RustSyntax.IdentKind.function f
+def LexLeanPreservation.Rust.fnFallible : LexLeanPreservation.Rust.RCrate → Nat → Option Bool :=
+fun c f =>
+  Option.map (fun fn => LexLeanTarget.RustSemantics.fallibleType fn.snd.fst)
+    (LexLeanTarget.RustSemantics.findFunction c.items (LexLeanPreservation.Rust.fnIdent f))
+def LexLeanPreservation.Rust.RCI : LexLeanPreservation.Rust.RCrate →
+  LexLeanPreservation.Rust.RIdent → List LexLeanTarget.TargetSyntax.Value → LexLeanPreservation.Rust.ROut → Prop :=
+fun c f args o =>
+  o ≠ LexLeanTarget.RustSemantics.ROutcome.exhausted ∧ ∃ n, LexLeanTarget.RustSemantics.invoke n c f args = o
 
 ```lean-library
--- LexLeanPreservation/Validate.lean
-/-- A root's observation as its entry returns it when every invariant
-holds: a value as `some`; an overflow stays one. -/
-def someObs : Obs → Obs
-  | .value v => .value (.some v)
-  | .overflow => .overflow
-  | .stuck => .stuck
-```
+def LexLeanPreservation.Rust.Realizes : Bool → LexLeanPreservation.Obs → LexLeanPreservation.Rust.ROut → Prop :=
+fun fl x x_1 =>
+  match x, x_1 with
+  | LexLeanPreservation.Obs.value v, LexLeanTarget.RustSemantics.ROutcome.value w => w = v
+  | LexLeanPreservation.Obs.overflow, LexLeanTarget.RustSemantics.ROutcome.raise => fl = true
+  | LexLeanPreservation.Obs.overflow, LexLeanTarget.RustSemantics.ROutcome.abort => True
+  | x, x_2 => False
+def LexLeanPreservation.Rust.RealizesFn : Bool → LexLeanPreservation.Obs → LexLeanPreservation.Rust.ROut → Prop :=
+fun fallible x x_1 =>
+  match x, x_1 with
+  | LexLeanPreservation.Obs.value v, LexLeanTarget.RustSemantics.ROutcome.value w => w = bif fallible then v.ok else v
+  | LexLeanPreservation.Obs.overflow, LexLeanTarget.RustSemantics.ROutcome.value w =>
+    fallible = true ∧ w = LexLeanTarget.TargetSyntax.Value.unit.error
+  | LexLeanPreservation.Obs.overflow, LexLeanTarget.RustSemantics.ROutcome.abort => True
+  | x, x_2 => False
+def LexLeanPreservation.Rust.FunSem : LexLeanTarget.TargetSyntax.Program →
+  LexLeanPreservation.Rust.RCrate → LexLeanPreservation.Rust.Flags → Nat → Nat → Prop :=
+fun p c A n f =>
+  ∀ (fn : LexLeanTarget.TargetSyntax.Function) (args : List LexLeanTarget.TargetSyntax.Value)
+    (env : List (Nat × LexLeanTarget.TargetSyntax.Value)) (F : Bool),
+    LexLeanTarget.TargetSemantics.LexLeanRuntime.index p.functions f = some fn →
+      LexLeanPreservation.Rust.WTL p c A args fn.types →
+        LexLeanTarget.TargetSemantics.bindAll fn.parameters args [] = some env →
+          LexLeanPreservation.Rust.fnFallible c f = some F →
+            ∀ (o : LexLeanPreservation.Obs),
+              LexLeanPreservation.obs (LexLeanTarget.TargetSemantics.eval n p env fn.body) = some o →
+                o ≠ LexLeanPreservation.Obs.stuck →
+                  (∀ (v : LexLeanTarget.TargetSyntax.Value),
+                      o = LexLeanPreservation.Obs.value v → LexLeanPreservation.Rust.WT p c A v fn.result) ∧
+                    ∃ ro,
+                      LexLeanPreservation.Rust.RealizesFn F o ro ∧
+                        LexLeanPreservation.Rust.RCI c (LexLeanPreservation.Rust.fnIdent f) args ro
 
 ```lean-library
--- LexLeanPreservation/Compose.lean
-mutual
-def Representable : Value → Prop
-  | .nat n => n < 18446744073709551616
-  | .int i => -9223372036854775808 ≤ i ∧ i ≤ 9223372036854775807
-  | .some v => Representable v
-  | .ok v => Representable v
-  | .error v => Representable v
-  | .list vs => RepresentableL vs
-  | .pair a b => Representable a ∧ Representable b
-  | .adt _ vs => RepresentableL vs
-  | .closure _ vs => RepresentableL vs
-  | _ => True
-def RepresentableL : List Value → Prop
-  | [] => True
-  | v :: vs => Representable v ∧ RepresentableL vs
-end
+def LexLeanPreservation.someObs : LexLeanPreservation.Obs → LexLeanPreservation.Obs :=
+fun x =>
+  match x with
+  | LexLeanPreservation.Obs.value v => LexLeanPreservation.Obs.value v.some
+  | LexLeanPreservation.Obs.overflow => LexLeanPreservation.Obs.overflow
+  | LexLeanPreservation.Obs.stuck => LexLeanPreservation.Obs.stuck
 
-/-- The machine aborts only in an item that cannot fail: an item whose Rust
-function returns `R<T>` reports an overflow as `Err(Overflow)`. The suite
-checks that the only item of the table that can overflow while infallible is
-a length (SPEC.md §17.17). -/
-theorem runItem_abort_infallible (profile : LexLeanTarget.RustSyntax.Profile)
-    (item : LexLeanTarget.RustSyntax.Item) (values : List Value)
-    (h : RustSemantics.runItem profile item values = .abort) :
-    RustSemantics.itemFallible item = false := by
-  cases hf : RustSemantics.itemFallible item
-  · rfl
-  · exfalso
-    unfold RustSemantics.runItem at h
-    simp only [hf, if_true] at h
-    repeat split at h
-    all_goals (first | contradiction | simp at h | skip)
-    all_goals
-      generalize TargetSemantics.primitive (RustSemantics.itemPrimitive item)
-        (RustSemantics.itemOperands item values) = r at h
-      cases r <;> simp at h
-```
+```lean-library
+def LexLeanPreservation.Rust.Representable : LexLeanTarget.TargetSyntax.Value → Prop :=
+fun x => x.brecOn LexLeanPreservation.Rust.Representable._f LexLeanPreservation.Rust.RepresentableL._f
+def LexLeanPreservation.Rust.RepresentableL : List LexLeanTarget.TargetSyntax.Value → Prop :=
+fun x =>
+  LexLeanTarget.TargetSyntax.Value.brecOn_1 x LexLeanPreservation.Rust.Representable._f
+    LexLeanPreservation.Rust.RepresentableL._f
+LexLeanPreservation.Rust.runItem_abort_infallible : ∀ (profile : LexLeanTarget.RustSyntax.Profile)
+  (item : LexLeanTarget.RustSyntax.Item) (values : List LexLeanTarget.TargetSyntax.Value),
+  LexLeanTarget.RustSemantics.runItem profile item values = LexLeanTarget.RustSemantics.ROutcome.abort →
+    LexLeanTarget.RustSemantics.itemFallible item = false
 
 `Realizes` allows the machine's *abort* as the realization of an overflow:
 the outcome of an item that cannot fail, at the one overflow no machine can
