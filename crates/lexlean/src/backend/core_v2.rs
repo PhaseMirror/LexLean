@@ -22,7 +22,10 @@
 //! primitive), and that a definition carrying a sparse record is not submitted
 //! at all: the elaborator's own construction remakes it, and the row is
 //! refused unless it is what the construction makes, since the record that
-//! equation-lemma generation reads is private to that construction.
+//! equation-lemma generation reads is private to that construction. The
+//! elaborator numbers the constants of one owner in the order it makes them,
+//! and the rows are in the order of their dependencies, so the construction is
+//! told which number the row bears.
 
 /// The decoder module of core module 2, spliced after the generated module's
 /// header.
@@ -175,11 +178,18 @@ private def addOneUnchecked (nodes : Array Expr) (declarations : Array Json)
     let constructors ← liftString (namesOf (← liftString (field sparse "interesting_ctors")))
     let majorPos ← liftString (natField sparse "major_pos")
     let arity ← liftString (natField sparse "arity")
-    let owner := match name with
-      | .str parent _ => parent
-      | other => other
-    let made ← Lean.withDeclNameForAuxNaming owner
-      (Lean.Meta.MetaM.run' (Lean.Meta.mkSparseCasesOn indName constructors.toArray))
+    let (owner, index) ← match name with
+      | .str parent last =>
+          match (last.dropPrefix? "_sparseCasesOn_").bind (·.toString.toNat?) with
+          | some index => pure (parent, index)
+          | none => throwError s!"core declaration '{name}' is not named like a sparse casesOn"
+      | _ => throwError s!"core declaration '{name}' is not named like a sparse casesOn"
+    let generator ← getDeclNGen
+    setDeclNGen { namePrefix := owner, idx := index }
+    let made ← try
+        Lean.Meta.MetaM.run' (Lean.Meta.mkSparseCasesOn indName constructors.toArray)
+      finally
+        setDeclNGen generator
     unless made == name do
       throwError s!"the sparse casesOn the elaborator makes is '{made}', not '{name}'"
     let some made := (← getEnv).find? made | throwError s!"core declaration '{name}' is absent"
