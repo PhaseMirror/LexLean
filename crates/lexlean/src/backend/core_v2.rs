@@ -164,6 +164,15 @@ private def findDeclaration (declarations : Array Json) (name : String) : CoreM 
     if (← liftString (stringField declaration "name")) == name then return declaration
   throwError s!"core declaration '{name}' is absent"
 
+private def sparseIndices (last : String) : Option (List Nat) :=
+  match last.dropPrefix? "_sparseCasesOn_" with
+  | none => none
+  | some rest =>
+      let numbers := rest.toString.splitOn "_" |>.map String.toNat?
+      if numbers.any Option.isNone then none else
+      let numbers := numbers.filterMap id
+      if numbers.isEmpty then none else some numbers.reverse
+
 private def addOneUnchecked (nodes : Array Expr) (declarations : Array Json)
     (json : Json) : CoreM Unit := do
   if ← liftString (boolField json "generated") then return
@@ -180,22 +189,20 @@ private def addOneUnchecked (nodes : Array Expr) (declarations : Array Json)
     let constructors ← liftString (namesOf (← liftString (field sparse "interesting_ctors")))
     let majorPos ← liftString (natField sparse "major_pos")
     let arity ← liftString (natField sparse "arity")
-    let (owner, index) ← match name with
+    let (owner, idx, parentIdxs) ← match name with
       | .str parent last =>
-          match (last.dropPrefix? "_sparseCasesOn_").bind (·.toString.toNat?) with
-          | some index => pure (parent, index)
-          | none => throwError s!"core declaration '{name}' is not named like a sparse casesOn"
+          match sparseIndices last with
+          | some (idx :: parents) => pure (parent, idx, parents)
+          | _ => throwError s!"core declaration '{name}' is not named like a sparse casesOn"
       | _ => throwError s!"core declaration '{name}' is not named like a sparse casesOn"
-    let generator ← getDeclNGen
-    setDeclNGen { namePrefix := owner, idx := index }
-    let made ← try
-        Lean.withExporting (isExporting := !Lean.isPrivateName name)
-          (Lean.Meta.MetaM.run' (Lean.Meta.mkSparseCasesOn indName constructors.toArray))
-      finally
-        setDeclNGen generator
-    unless made == name do
-      throwError s!"the sparse casesOn the elaborator makes is '{made}', not '{name}'"
-    let some made := (← getEnv).find? made | throwError s!"core declaration '{name}' is absent"
+    Lean.enableRealizationsForConst indName
+    Lean.Meta.MetaM.run' <| Lean.Meta.realizeConst indName name do
+      setDeclNGen { namePrefix := owner, idx, parentIdxs }
+      let made ← Lean.withExporting (isExporting := !Lean.isPrivateName name)
+        (Lean.Meta.mkSparseCasesOn indName constructors.toArray)
+      unless made == name do
+        throwError s!"the sparse casesOn the elaborator makes is '{made}', not '{name}'"
+    let some made := (← getEnv).find? name | throwError s!"core declaration '{name}' is absent"
     let value ← liftString (nodeAt nodes (← liftString (natField json "value")))
     unless made.type == type && made.value? == some value do
       throwError s!"core declaration '{name}' is not the sparse casesOn the elaborator makes"

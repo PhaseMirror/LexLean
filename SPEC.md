@@ -2373,8 +2373,11 @@ are data of the module, not conventions of a backend.
   can write, and equation-lemma generation for a `match` that uses the
   constant reads it, so the decoder does not submit such a row: it makes the
   constant with the elaborator's construction from the type and the
-  constructors, and refuses the module unless the constant, its name, and its
-  record are those the row states.
+  constructors, in a realization of the type as the elaborator makes each one
+  (two constants of one module may be the same construction, which a shared
+  cache would otherwise return once), numbered and visible as the row's name
+  shows, and refuses the module unless the constant, its name, and its record
+  are those the row states.
 
 A version 2 row that states a field of another kind of declaration is
 rejected; the group of a definition names only declarations of the module; an
