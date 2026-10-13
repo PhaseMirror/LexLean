@@ -3980,10 +3980,16 @@ exception:
   allocation (a string, a byte string, a list, or a type that holds itself)
   is refused with the reason, never approximated.
 - `rust-std` uses the standard library. A string and a byte string are
-  immutable shared buffers (`Rc<str>`, `Rc<[u8]>`), a list is a persistent
-  list of shared cells, so building and taking apart a cell is constant
-  work, and an ADT field or a closure capture whose type holds its owner is
-  boxed behind `Rc`, and nothing else is.
+  immutable shared buffers (`Rc<str>`, `Rc<[u8]>`); a list is persistent
+  and laid out as a run of contiguous cells (the newest at the end of a
+  buffer, each list a prefix of the buffer it was built in) with single
+  cells in front of it: a `cons` onto a run whose buffer no other list
+  holds extends the buffer in place, and a `cons` onto any other list is
+  one cell, so building and taking apart a cell is constant work on every
+  list, no buffer is written while another list can see it, and a list
+  built by one consumer occupies one buffer; and an ADT field or a closure
+  capture whose type holds its owner is boxed behind `Rc`, and nothing else
+  is.
 
 In both, `nat` is `u64` and `int` is `i64`, each operation checked and every
 out-of-range result the explicit `Err(Overflow)` propagated by `?`; the
