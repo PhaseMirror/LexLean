@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 
 use lexlean::calculus::Outcome;
 use lexlean::production::lower::{linked_modules, lower_root, roots};
-use lexlean::production::preserve::{self, audit, audit_tokens, module_text};
+use lexlean::production::preserve::{self, audit, audit_tokens};
 
 use crate::preservation::{self, Mutation, Report};
 use crate::support::{self, repo_root, P};
@@ -1434,65 +1434,78 @@ pub fn run(id: &str) {
             );
             crate::calculus::shipped_modules(repo_root().as_std_path(), false)
                 .unwrap_or_else(|reason| panic!("{reason}"));
-            // Every declaration the library states is registered: a theorem
-            // that is not listed is not audited.
-            for module in &library.modules {
-                let text = module_text(module).expect("a shipped module");
-                let stated: BTreeSet<String> = preservation::library_declarations(text)
-                    .into_iter()
-                    .map(|name| format!("{module}\u{0}{name}"))
-                    .collect();
-                let listed: BTreeSet<String> = library
-                    .declaration
-                    .iter()
-                    .filter(|row| &row.module == module)
-                    .map(|row| format!("{module}\u{0}{}", row.name))
-                    .collect();
-                assert_eq!(
-                    stated.difference(&listed).collect::<Vec<_>>(),
-                    Vec::<&String>::new(),
-                    "{module}: declarations the registry does not list"
-                );
-                assert_eq!(
-                    listed.difference(&stated).collect::<Vec<_>>(),
-                    Vec::<&String>::new(),
-                    "{module}: registry rows with no declaration"
-                );
-            }
-            // The vocabulary SPEC.md quotes equals the library's.
+            // Every registered declaration pins its axioms exactly; the
+            // registry is what the native modules state, not a second list.
+            let counted = preserve::check_native_sources(&|path| {
+                std::fs::read_to_string(repo_root().join(path).as_std_path())
+                    .map_err(|error| format!("{path}: {error}"))
+            })
+            .unwrap_or_else(|reason| panic!("{reason}"));
+            assert_eq!(counted, library.declaration.len());
+            // A planted foreign import, a planted second declaration of one
+            // name, and a planted weakening of an exact policy are refused.
+            let first_module = library.modules[0].clone();
+            let first_path = preserve::native_source_path(&first_module).expect("a path");
+            let original = std::fs::read_to_string(repo_root().join(&first_path).as_std_path())
+                .expect("a native source");
+            let planted = |edit: &dyn Fn(&str) -> String| {
+                preserve::check_native_sources(&|path| {
+                    if path == first_path {
+                        Ok(edit(&original))
+                    } else {
+                        std::fs::read_to_string(repo_root().join(path).as_std_path())
+                            .map_err(|error| format!("{path}: {error}"))
+                    }
+                })
+            };
+            let error = planted(&|text| {
+                text.replace("\"imports\":[\"Init\"", "\"imports\":[\"Init\",\"Mathlib\"")
+            })
+            .expect_err("a foreign import is refused");
+            assert!(error.contains("imports `Mathlib`"), "{error}");
+            let error = planted(&|text| text.replace("\"kind\":\"exact\"", "\"kind\":\"allow\""))
+                .expect_err("an inexact policy is refused");
+            assert!(error.contains("does not pin its axioms exactly"), "{error}");
+            // The vocabulary SPEC.md quotes equals what Lean printed of the
+            // generated library in the committed audit output.
             let spec = std::fs::read_to_string(repo_root().join("SPEC.md").as_std_path())
                 .expect("SPEC.md");
-            let quoted = repo_model::vocabulary::audit(&spec, &|file| {
-                std::fs::read_to_string(
-                    repo_root()
-                        .join(repo_model::vocabulary::LIBRARY_DIR)
-                        .join(file)
-                        .as_std_path(),
-                )
-                .ok()
-            })
-            .unwrap_or_else(|report| panic!("{report}"));
-            assert!(quoted >= 8, "{quoted} quoted declarations");
-            let mut environment: BTreeSet<String> = preserve::TARGET_MODULES
+            let printed = std::fs::read_to_string(
+                repo_root()
+                    .join(repo_model::vocabulary::AUDIT_OUTPUT)
+                    .as_std_path(),
+            )
+            .expect("the committed audit output");
+            let quoted = repo_model::vocabulary::audit(&spec, &printed)
+                .unwrap_or_else(|report| panic!("{report}"));
+            assert_eq!(quoted, repo_model::vocabulary::REQUIRED.len());
+            assert_eq!(
+                preserve::VOCABULARY.len(),
+                repo_model::vocabulary::REQUIRED.len()
+            );
+            for ((name, _), (required, _)) in preserve::VOCABULARY
+                .iter()
+                .zip(repo_model::vocabulary::REQUIRED)
+            {
+                assert_eq!(
+                    *name, required,
+                    "the audit module prints the vocabulary in order"
+                );
+            }
+            // Certificates keep the token audit; a planted escape is refused.
+            let environment: BTreeSet<String> = preserve::TARGET_MODULES
                 .iter()
                 .map(|module| (*module).to_owned())
                 .collect();
-            for module in &library.modules {
-                let text = module_text(module).expect("a shipped module");
-                audit_tokens(text, &environment)
-                    .unwrap_or_else(|reason| panic!("{module}: {reason}"));
-                for planted in [
-                    "\ntheorem planted : False := sorry\n",
-                    "\naxiom planted : False\n",
-                    "\ntheorem planted : 1 = 1 := by native_decide\n",
-                    "\nset_option debug.skipKernelTC true\n",
-                    "\nimport Mathlib\n",
-                    "\ntheorem planted : True := Lean.ofReduceBool _ _ rfl\n",
-                ] {
-                    audit_tokens(&format!("{text}{planted}"), &environment)
-                        .expect_err("a planted escape is refused");
-                }
-                environment.insert(module.clone());
+            for planted in [
+                "theorem planted : False := sorry\n",
+                "axiom planted : False\n",
+                "theorem planted : 1 = 1 := by native_decide\n",
+                "set_option debug.skipKernelTC true\n",
+                "import Mathlib\n",
+                "theorem planted : True := Lean.ofReduceBool _ _ rfl\n",
+            ] {
+                audit_tokens(planted, &environment).expect_err("a planted escape is refused");
             }
             if !support::lean_backed("SP-04") {
                 return;
@@ -1519,6 +1532,174 @@ pub fn run(id: &str) {
                     );
                 audit(&drifted, &certificates).expect_err("a drifted declaration is refused");
             }
+        }
+        // §17.17, §17.10: the preservation library is LexLean source.
+        "SP-12" => {
+            let library = preserve::library().expect("the shipped registry");
+            assert!(
+                !library.declaration.is_empty(),
+                "the native modules state declarations"
+            );
+            support::assert_library_has_no_handwritten_lean(
+                preserve::LIBRARY_PREFIX,
+                "tests/preservation-library/oracle",
+            );
+            // The library is LexLean source, one native module per listed
+            // module, and nothing else: no module without a source, no
+            // source without a module, and no Lean file the compiler did
+            // not generate anywhere in the library project.
+            let project = repo_root().join(preserve::LIBRARY_DIR);
+            let mut sources = BTreeSet::new();
+            let mut stack = vec![project.as_std_path().to_path_buf()];
+            while let Some(directory) = stack.pop() {
+                for entry in std::fs::read_dir(&directory).expect("the library project") {
+                    let path = entry.expect("an entry").path();
+                    if path.is_dir() {
+                        stack.push(path);
+                        continue;
+                    }
+                    let name = path.to_string_lossy().into_owned();
+                    assert!(
+                        !name.ends_with(".lean"),
+                        "{name}: an independently authored Lean file lies in the library project"
+                    );
+                    // Compared as path components: a Windows checkout mixes
+                    // the separators of the repository root and of the
+                    // library's relative directory.
+                    if let Some(relative) = path
+                        .strip_prefix(project.as_std_path().join("src"))
+                        .ok()
+                        .map(|rest| rest.to_string_lossy().replace('\\', "/"))
+                        .and_then(|rest| rest.strip_suffix(".lex.tex").map(str::to_owned))
+                    {
+                        sources.insert(format!(
+                            "{}.{}",
+                            preserve::LIBRARY_PREFIX,
+                            relative.replace('/', ".")
+                        ));
+                    }
+                }
+            }
+            let listed: BTreeSet<String> = library.modules.iter().cloned().collect();
+            assert_eq!(sources, listed, "the native sources are the listed modules");
+            // The registry lists the modules and nothing else: every
+            // declaration and its axioms are the native modules' own data.
+            let registry: toml::Table =
+                std::fs::read_to_string(repo_root().join(preserve::LIBRARY_PATH).as_std_path())
+                    .expect("the registry")
+                    .parse()
+                    .expect("the registry is TOML");
+            assert_eq!(
+                registry.keys().map(String::as_str).collect::<Vec<_>>(),
+                ["modules", "spec", "toolchain"],
+                "the registry holds no declaration list"
+            );
+            // Every source is embedded, so it is hashed into the language-1.2
+            // semantics and is what the compiler generates the Lean from.
+            for module in &library.modules {
+                let path = preserve::native_source_path(module).expect("a path");
+                assert!(
+                    lexlean::embedded::FILES
+                        .iter()
+                        .any(|(candidate, _)| *candidate == path),
+                    "{path} is not embedded in the compiler"
+                );
+            }
+            // The audit's closed rule set is read from the native data: the
+            // constructors of the correspondence and the cases of its
+            // soundness theorem are the aligner's rules.
+            let rules = preserve::correspondence_rules().expect("the correspondence");
+            assert_eq!(
+                rules.constructors,
+                lexlean::production::rust_cert::RULES,
+                "the correspondence the audit reads is the aligner's rule set"
+            );
+            assert_eq!(rules.soundness_cases, rules.constructors);
+            // The library is an ordinary closed project: it locks, checks, and
+            // builds, and the Lean it generates is, byte for byte, the Lean a
+            // verification stages, so neither a stale nor an edited generated
+            // module can stand in for the source.
+            let project = P::library_project();
+            project.relock();
+            let built = project.build_ok();
+            let build_root = project.build_dir(&built.build_id.expect("a build id"));
+            for module in &library.modules {
+                let generated = std::fs::read_to_string(
+                    build_root
+                        .join("modules")
+                        .join(preserve::module_path(module))
+                        .as_std_path(),
+                )
+                .unwrap_or_else(|error| panic!("{module}: no generated module: {error}"));
+                assert_eq!(
+                    generated,
+                    preserve::module_text(module).expect("the staged text"),
+                    "{module}: the project's generated Lean is the Lean a verification stages"
+                );
+            }
+            // A planted drift of the source against the embedded library is
+            // visible in what is generated.
+            let drift = P::library_project();
+            drift.edit(
+                "lexlean.toml",
+                "entrypoints = [\"src/Compose.lex.tex\", \"src/Fixed.lex.tex\"]",
+                "entrypoints = [\"src/Values.lex.tex\"]",
+            );
+            let values = drift.read("src/Values.lex.tex");
+            assert!(values.contains("\"transparency\":\"semireducible\""));
+            drift.write(
+                "src/Values.lex.tex",
+                &values.replacen(
+                    "\"transparency\":\"semireducible\"",
+                    "\"transparency\":\"reducible\"",
+                    1,
+                ),
+            );
+            drift.relock();
+            let rebuilt = drift.build_ok();
+            let drifted = std::fs::read_to_string(
+                drift
+                    .build_dir(&rebuilt.build_id.expect("a build id"))
+                    .join("modules")
+                    .join(preserve::module_path("LexLeanPreservation.Values"))
+                    .as_std_path(),
+            )
+            .expect("the generated module");
+            assert_ne!(
+                drifted,
+                preserve::module_text("LexLeanPreservation.Values").expect("the staged text"),
+                "a drifted source generates different Lean"
+            );
+            // A source that is missing, of the first schema, or weakened to an
+            // inexact policy is refused.
+            let first_module = library.modules[0].clone();
+            let first_path = preserve::native_source_path(&first_module).expect("a path");
+            let original = std::fs::read_to_string(repo_root().join(&first_path).as_std_path())
+                .expect("a native source");
+            let planted = |edit: &dyn Fn(&str) -> Option<String>| {
+                preserve::check_native_sources(&|path| {
+                    if path == first_path {
+                        edit(&original).ok_or_else(|| format!("{path}: no such file"))
+                    } else {
+                        std::fs::read_to_string(repo_root().join(path).as_std_path())
+                            .map_err(|error| format!("{path}: {error}"))
+                    }
+                })
+            };
+            let error = planted(&|_| None).expect_err("a missing source is refused");
+            assert!(error.contains("no such file"), "{error}");
+            let error = planted(&|text| {
+                Some(text.replace(
+                    "\"spec\":\"lexlean/core-module/2\"",
+                    "\"spec\":\"lexlean/core-module/1\"",
+                ))
+            })
+            .expect_err("a first-schema module carrying second-schema data is refused");
+            assert!(error.contains("requires"), "{error}");
+            let error =
+                planted(&|text| Some(text.replace("\"kind\":\"exact\"", "\"kind\":\"allow\"")))
+                    .expect_err("an inexact policy is refused");
+            assert!(error.contains("does not pin its axioms exactly"), "{error}");
         }
         // §17.17, §22.8, §22.9: certificate A in verification.
         "SP-05" => {
@@ -1876,34 +2057,64 @@ pub fn run(id: &str) {
                 std::fs::read_to_string(repo_root().join(path).as_std_path()).expect("a source")
             };
             let aligner = read(corr::ALIGNER_SOURCE);
-            let correspondence = read(corr::CORRESPONDENCE_SOURCE);
-            let soundness = read(corr::SOUNDNESS_SOURCE);
             let calculus = read(corr::CALCULUS_SOURCE);
-            corr::audit(&aligner, &correspondence, &soundness, &calculus)
-                .expect("the rule set is closed");
+            let library = lexlean::production::preserve::correspondence_rules()
+                .expect("the library's correspondence and its soundness theorem");
+            assert_eq!(
+                library.soundness_cases, library.constructors,
+                "the soundness theorem is an induction on a derivation: one case per constructor"
+            );
+            corr::audit(
+                &aligner,
+                &library.constructors,
+                &library.soundness_cases,
+                &calculus,
+            )
+            .expect("the rule set is closed");
             let rules: BTreeSet<String> = lexlean::production::rust_cert::RULES
                 .iter()
                 .map(|rule| (*rule).to_owned())
                 .collect();
             assert_eq!(
-                corr::constructors(&correspondence).expect("the constructors"),
+                library.constructors,
                 lexlean::production::rust_cert::RULES,
                 "the aligner's rules are the correspondence's constructors, in order"
             );
             // Each break of the closure, planted in the repository's own
-            // sources, is reported for what it is.
-            for (rust, corr_text, sound, expected) in [
+            // aligner and in the library's own lists, is reported for what
+            // it is.
+            let without = |list: &[String], name: &str| -> Vec<String> {
+                list.iter().filter(|item| *item != name).cloned().collect()
+            };
+            let with_extra = |list: &[String], name: &str| -> Vec<String> {
+                let mut out = list.to_vec();
+                out.push(name.to_owned());
+                out
+            };
+            for (rust, constructors, cases, expected) in [
                 (
                     aligner.replacen("    \"condId\",\n", "", 1),
-                    correspondence.clone(),
-                    soundness.clone(),
+                    library.constructors.clone(),
+                    library.soundness_cases.clone(),
                     "`condId` is not among the aligner's rules",
                 ),
                 (
                     aligner.clone(),
-                    correspondence.clone(),
-                    soundness.replacen("| matchUnit", "| matchUnitX", 1),
+                    library.constructors.clone(),
+                    without(&library.soundness_cases, "matchUnit"),
                     "`matchUnit` is not a case of the soundness theorem",
+                ),
+                (
+                    aligner.clone(),
+                    library.constructors.clone(),
+                    with_extra(&library.soundness_cases, "matchUnitX"),
+                    "`matchUnitX` is no rule of the correspondence",
+                ),
+                (
+                    aligner.clone(),
+                    with_extra(&library.constructors, "extraRule"),
+                    with_extra(&library.soundness_cases, "extraRule"),
+                    "`extraRule` is not among the aligner's rules",
                 ),
                 (
                     aligner.replacen(
@@ -1911,16 +2122,18 @@ pub fn run(id: &str) {
                         "            _ => self.apply(g, fl, false, term, lets, tail),\n",
                         1,
                     ),
-                    correspondence.clone(),
-                    soundness.clone(),
+                    library.constructors.clone(),
+                    library.soundness_cases.clone(),
                     "wildcard arm",
                 ),
             ] {
                 assert!(
-                    rust != aligner || corr_text != correspondence || sound != soundness,
+                    rust != aligner
+                        || constructors != library.constructors
+                        || cases != library.soundness_cases,
                     "{expected}: the plant applies"
                 );
-                let report = corr::audit(&rust, &corr_text, &sound, &calculus)
+                let report = corr::audit(&rust, &constructors, &cases, &calculus)
                     .expect_err("a broken closure is reported");
                 assert!(report.contains(expected), "{expected}: {report}");
             }

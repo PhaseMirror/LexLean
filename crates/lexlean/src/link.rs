@@ -515,8 +515,11 @@ fn check_project_inline(
         // Language 1.2: a module is a namespace of the project, which Lean
         // searches before the root from every module of it, so one named
         // like a namespace the generated code writes qualified would capture
-        // those names (§17.12 rule 10).
-        if project.config.language == crate::LANGUAGE_1_2 {
+        // those names (§17.12 rule 10). A native core module writes no name
+        // relative to the project: its declarations carry their global names
+        // as data, so it captures none, and the proof library's modules are
+        // named for what they state (`Fixed`, `Keys`).
+        if project.config.language == crate::LANGUAGE_1_2 && load.ast.core.is_none() {
             if let Some(segment) = crate::ir::semantic::reserved_module_segment(module_name) {
                 return Err(err(vec![Diagnostic::new(
                     code!("LLT4001"),
@@ -655,17 +658,33 @@ fn check_project_inline(
         scopes.pop_frame();
 
         let core = if let Some(ast) = &load.ast.core {
-            Some(CoreModule::parse(&ast.data.text).map_err(|reason| {
-                err(vec![Diagnostic::new(
-                    code!("LLI9001"),
-                    format!("phase link: {reason}"),
-                )
-                .with_span(span_of_range(
+            let core =
+                CoreModule::parse(&ast.data.text, &project.config.language).map_err(|reason| {
+                    err(vec![Diagnostic::new(
+                        code!("LLI9001"),
+                        format!("phase link: {reason}"),
+                    )
+                    .with_span(span_of_range(
+                        &load.path,
+                        &load.atoms,
+                        ast.data.range,
+                    ))])
+                })?;
+            // Rendering walks an expression by recursion, so the depth of a
+            // native module is bounded like any other nesting (§25.5).
+            crate::grammar::chart::depth_check(
+                core.expression_depth(),
+                limits.max_scope_depth,
+                "link (native core module)",
+            )
+            .map_err(|diagnostic| {
+                err(vec![diagnostic.with_span(span_of_range(
                     &load.path,
                     &load.atoms,
                     ast.data.range,
                 ))])
-            })?)
+            })?;
+            Some(core)
         } else {
             None
         };
@@ -800,10 +819,14 @@ fn check_project_inline(
             }
             Some(_) | None => None,
         };
-        if production.is_some()
-            && project.config.module_prefix.split('.').next()
-                == Some(crate::config::SHIPPED_TARGET_ROOT)
-        {
+        if let Some(root) = production.as_ref().and_then(|_| {
+            project
+                .config
+                .module_prefix
+                .split('.')
+                .next()
+                .filter(|root| crate::config::is_library_root(root))
+        }) {
             let range = load
                 .ast
                 .semantic
@@ -812,9 +835,8 @@ fn check_project_inline(
             return Err(err(vec![Diagnostic::new(
                 code!("LLT4005"),
                 format!(
-                    "phase production: module `{module_name}` has a production root, and the module prefix `{}` begins with `{}`, the root of the calculus modules that the certificate library imports: its certificates would import the library's module for the project's",
+                    "phase production: module `{module_name}` has a production root, and the module prefix `{}` begins with `{root}`, the root of the calculus modules or of the proof library that the certificates import: its certificates would import the library's module for the project's",
                     project.config.module_prefix,
-                    crate::config::SHIPPED_TARGET_ROOT
                 ),
             )
             .with_span(span_of_range(&load.path, &load.atoms, range))]));

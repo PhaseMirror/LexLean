@@ -960,22 +960,135 @@ Lean, the machine, and rustc.
 ### the statement vocabulary quoted in SPEC.md can fail
 
 Planted, first in `SPEC.md`, `Rel`'s quoted definition ending in `.stuck`
-instead of `.overflow`, then in
-`language/preservation-1.2/library/LexLeanPreservation/Core.lean`, a comment
-appended to the definition of `Rel`. Command: `cargo xtask
-validate-spec-links`. Expected: a definition changed on one side only is
-refused.
+instead of `.overflow`, then in the committed audit output
+`examples/production/expected/verify/preserve/audit.txt`, which is what the
+pinned Lean prints of the generated library, the same word changed on `Rel`'s
+line. Command: `cargo xtask validate-spec-links`. Expected: a statement changed
+on one side only is refused.
 
 ```text
-gate failed: §17.17 (SP-04): SPEC.md quotes a declaration of `LexLeanPreservation/Core.lean` that the file does not state byte for byte: `def Rel (fits : Bool) (v : Value) : Obs := cond fits (.value v) .stuck`
-gate failed: §17.17 (SP-04): SPEC.md quotes a declaration of `LexLeanPreservation/Core.lean` that the file does not state byte for byte: `def Rel (fits : Bool) (v : Value) : Obs := cond fits (.value v) .overflow`
+gate failed: §17.17 (SP-04): SPEC.md does not quote the statement of `LexLeanPreservation.Rel` as Lean prints it
 ```
 
-Removed: both edits were reverted; the gate reports the quoted
-declarations equal the library's. The unit test of
-`repo_model::vocabulary` plants a changed definition, a missing quotation,
-a missing file, and no quotation at all; `conformance_sp_04` also requires
-every declaration the library states to be registered in `library.toml`.
+Both plants print this line. Removed: both edits were reverted; the gate
+reports 352 table rows bijective with the register. The unit tests of
+`repo_model::vocabulary` plant a changed statement, a missing quotation, a
+quotation out of order, no block, no vocabulary section, and a statement the
+audit module no longer prints, and require each to be named;
+`conformance_sp_04` requires every declaration the library states, by name, to
+be printed by the audit module under its native row's exact policy.
+
+### the preservation library is LexLean source and a defect in it is refused
+
+The library (`language/preservation-1.2/library/src/`, 13 native
+`lexlean/core-module/2` modules) is the only source of the Lean every
+verification compiles, so a defect is planted in the source and must be seen
+where the Lean the compiler generates from it is checked. The plants below
+that change a native module were run with `lexlean verify` against the pinned
+Lean 4.32.1 in the project of `tests/negative/preservation-drift` (two modules,
+one production root); the rest were run through their conformance tests. After
+each, the file was restored with `git checkout` and the compiler rebuilt.
+
+Planted (a): a hand-written Lean file `LexLeanPreservation/Core.lean` placed in
+`language/preservation-1.2/library/`. Command: `cargo test -p repo-conformance
+--test conformance -- conformance_sp_12`. Expected: the library project holds no
+Lean file of its own.
+
+```text
+thread 'conformance_sp_12' panicked at crates/conformance/src/cases/preservation.rs:
+<root>/language/preservation-1.2/library/LexLeanPreservation/Core.lean: an independently authored Lean file lies in the library project
+```
+
+Planted (b): the policy of `LexLeanPreservation.ListEnc.items_cons` in
+`src/Values.lex.tex` changed from `{"axioms":[],"kind":"exact"}` to
+`{"axioms":["propext"],"kind":"exact"}`. Command: `lexlean lock && lexlean
+verify`. Expected: the audit module prints what Lean computes, which is no
+axiom, and the registered set is refused. (The first attempt changed the policy
+of a generated constructor row, `ListEnc.mk`, and verified: a row the
+elaborator generates with its inductive is covered by the inductive's own
+audit and is not printed by name. The plant was moved to an audited row.)
+
+```text
+error[LLV7014]: preservation environment: the library declaration `LexLeanPreservation.ListEnc.items_cons` depends on [], registered ["propext"]
+```
+
+Planted (c): the first numeral node of `src/Values.lex.tex`
+(`{"k":"n","v":"1"}`) changed to `8`. Command: `lexlean lock && lexlean
+verify`. Expected: the kernel refuses the first declaration whose term uses it
+when the decoder submits it.
+
+```text
+error[LLV7014]: preservation environment: `LexLeanPreservation.Values` does not compile silently under the pinned Lean: error: native core declaration 'LexLeanPreservation.construct_succ': (kernel) application type mismatch
+```
+
+Planted (d): the `arity` of a sparse `casesOn` record in `src/Keys.lex.tex`
+changed from 4 to 5. Command: `lexlean lock && lexlean verify`. Expected: the
+record the decoder gets from the elaborator's own construction differs from the
+one the row states, and the module is refused.
+
+```text
+error[LLV7014]: preservation environment: `LexLeanPreservation.Keys` does not compile silently under the pinned Lean: error: native core declaration '_private.LexLeanPreservation.Keys.#0.LexLeanTarget.TargetSemantics.LexLeanCollections.compareCodes.match_1.splitter._sparseCasesOn_2':
+  core declaration '_private.LexLeanPreservation.Keys.0.LexLeanTarget.TargetSemantics.LexLeanCollections.compareCodes.match_1.splitter._sparseCasesOn_2' states another sparse casesOn record than the elaborator keeps
+```
+
+Planted (e): the check that a `grind` attribute belongs to a theorem removed
+from `validate_version_2_row` (`crates/lexlean/src/ir/core.rs`) by prefixing its
+condition with `false &&`. Command: `cargo test -p repo-conformance --test
+conformance -- conformance_sm_31`. Expected: the fixture whose definition row
+carries a `grind` registration is no longer refused.
+
+```text
+thread 'conformance_sm_31' panicked at crates/conformance/src/support.rs:514:14:
+check fails
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 351 filtered out
+```
+
+Planted (f): the depth bound of a native module in `crates/lexlean/src/link.rs`
+replaced by `0` (`core.expression_depth()` no longer measured). Same command.
+Expected: the module nested beyond `max_scope_depth` is accepted instead of
+refused with `LLS8002`.
+
+```text
+thread 'conformance_sm_31' panicked at crates/conformance/src/support.rs:514:14:
+check fails
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 351 filtered out
+```
+
+Planted (g): the check in `build_native`
+(`crates/lexlean/src/production/preserve.rs`) that a row pins its axioms
+exactly disabled. Command: `cargo test -p repo-conformance --test conformance
+-- conformance_sp_12`. Expected: the source weakened to an inexact policy is
+no longer refused.
+
+```text
+thread 'conformance_sp_12' panicked at crates/conformance/src/cases/preservation.rs:1692:22:
+an inexact policy is refused: 7740
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 351 filtered out
+```
+
+Planted (h): a Lean file `examples/Planted.lean` that declares `namespace
+LexLeanPreservation`, outside the library's project; then the directory
+`tests/preservation-library/oracle`, the completed one-time migration input,
+recreated. Command: `cargo test -p repo-conformance --test conformance --
+conformance_sp_12`. Expected: the permanent condition `VR-19` states of the
+Atlas holds of this library too, over the whole release tree.
+
+```text
+thread 'conformance_sp_12' panicked at crates/conformance/src/support.rs:63:9:
+<root>/examples/Planted.lean: an independently authored Lean file declares `namespace LexLeanPreservation`
+thread 'conformance_sp_12' panicked at crates/conformance/src/support.rs:40:5:
+tests/preservation-library/oracle: the completed one-time migration input is absent from the release tree
+```
+
+Removed: every plant was reverted; `conformance_sm_31`, `conformance_sp_04`, and
+`conformance_sp_12` pass. The negative fixture `tests/negative/preservation-drift`
+pins the other direction: a pinned Lean whose generated `Core` no longer
+elaborates is `LLV7014`, its message naming the generated module and line.
+
+What was not run on the development host: the verification of
+`examples/uor-atlas` (about 11.5 GB of memory, beyond the host; language 1.0, so
+its records do not depend on this change and CI reverifies them) and
+`conformance_vr_19`. The CI legs run both.
 
 ### certificate generation is bounded
 
@@ -5186,9 +5299,11 @@ requires Lean to reject all five. `conformance_sp_03` runs six seeded inputs
 per root through the calculus interpreter and through Lean's evaluation of
 each certificate's `denote`, requires every pair to agree (234 cases), and
 requires one altered outcome to be reported. `conformance_sp_04` compares
-every library declaration's printed axioms with
-`language/preservation-1.2/library.toml` (406 declarations), the shipped
-calculus modules with the compiler golden, and refuses planted `sorry`,
+every library declaration's printed axioms with its native row's exact policy
+(7,740 declarations audited by name; `library.toml` lists only the modules),
+the statement vocabulary SPEC.md quotes with what the pinned Lean prints of the
+generated library, the shipped calculus modules with the compiler golden, and
+refuses planted `sorry`,
 `axiom`, `native_decide`, `ofReduceBool`, a disallowed option, and a foreign
 import. Each theorem is a kernel-checked proof about the root it names; the
 generator, the library's coverage of constructs, and the coverage example are `build`

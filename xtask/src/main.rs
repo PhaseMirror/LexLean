@@ -421,12 +421,22 @@ fn compare_tree(
 /// Copy an example into a fresh temporary directory, run a real `build`,
 /// and return the published `.lexlean/build/<id>/` tree as
 /// `(relative, bytes)` plus the temporary root (kept alive by the caller).
-fn published_build(dir: &Path) -> Result<(tempfile::TempDir, Files), Fail> {
+fn published_build(dir: &Path, relock: bool) -> Result<(tempfile::TempDir, Files), Fail> {
     let temp = tempfile::Builder::new()
         .prefix("lexlean-build-")
         .tempdir()?;
     copy_example(dir, temp.path())?;
     let engine = engine_for(temp.path())?;
+    if relock {
+        // The preservation library's project is language data, so its lock
+        // would have to contain the digest of the tree that holds the lock.
+        engine
+            .lock(lexlean::LockRequest {
+                check_only: false,
+                allow_network: false,
+            })
+            .map_err(|error| format!("{}: lock: {error}", dir.display()))?;
+    }
     let built = engine
         .build(lexlean::BuildRequest {
             selection: lexlean::Selection::Entrypoints,
@@ -483,7 +493,7 @@ fn check_golden(root: &Path, write: bool) -> Result<(), Fail> {
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-        let (_temp, files) = published_build(&dir)?;
+        let (_temp, files) = published_build(&dir, false)?;
         let expected_root = dir.join("expected").join("build");
         if write {
             if expected_root.exists() {
@@ -584,8 +594,8 @@ fn check_reproducibility(root: &Path) -> Result<(), Fail> {
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-        let (temp_a, files_a) = published_build(&dir)?;
-        let (temp_b, files_b) = published_build(&dir)?;
+        let (temp_a, files_a) = published_build(&dir, false)?;
+        let (temp_b, files_b) = published_build(&dir, false)?;
         if temp_a.path() == temp_b.path() {
             return Err("the two build directories must be distinct".into());
         }
@@ -612,6 +622,31 @@ fn check_reproducibility(root: &Path) -> Result<(), Fail> {
             temp_b.path().display()
         );
     }
+    // The proof library's own project (§17.17) is built twice as well; it is
+    // not an example, and its lock is made in each copy.
+    let library = root.join(lexlean::production::preserve::LIBRARY_DIR);
+    let (temp_a, files_a) = published_build(&library, true)?;
+    let (temp_b, files_b) = published_build(&library, true)?;
+    if temp_a.path() == temp_b.path() {
+        return Err("the two build directories must be distinct".into());
+    }
+    if files_a != files_b {
+        let differing = files_a
+            .iter()
+            .zip(&files_b)
+            .find(|(a, b)| a != b)
+            .map_or_else(|| "the file sets".to_owned(), |(a, _)| a.0.clone());
+        return Err(format!(
+            "R10: the preservation library: {differing} differs between two clean builds in distinct directories"
+        )
+        .into());
+    }
+    println!(
+        "check-reproducibility: the preservation library: {} published artifacts byte-identical across {} and {} (R10)",
+        files_a.len(),
+        temp_a.path().display(),
+        temp_b.path().display()
+    );
     let tooling = repo_conformance::tooling::check_reproducibility(root)?;
     println!(
         "check-reproducibility: {tooling} tooling artifacts byte-identical across two directories (R10)"

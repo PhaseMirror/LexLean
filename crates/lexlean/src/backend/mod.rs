@@ -3,6 +3,7 @@
 //! (I13). Neither backend accepts an opaque bypass (I6).
 
 pub mod core;
+pub mod core_v2;
 pub mod latex;
 pub mod lean;
 pub mod lean_tokens;

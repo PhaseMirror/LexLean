@@ -24,6 +24,49 @@ pub fn repo_root() -> Utf8PathBuf {
         .to_path_buf()
 }
 
+/// A proof library (SPEC.md §17.17, §17.18) is LexLean source and has no
+/// independently authored Lean implementation anywhere in the release tree, the
+/// permanent condition `VR-19` states of the Atlas: no Lean file lies under a
+/// directory named for the library's module root `prefix`, no Lean file
+/// anywhere declares its namespace, and the one-time migration input `oracle`
+/// is absent.
+///
+/// # Panics
+///
+/// Panics when a hand-written implementation of the library is found.
+pub fn assert_library_has_no_handwritten_lean(prefix: &str, oracle: &str) {
+    let root = repo_root();
+    let namespace = format!("namespace {prefix}");
+    assert!(
+        !root.join(oracle).exists(),
+        "{oracle}: the completed one-time migration input is absent from the release tree"
+    );
+    let walker = walkdir::WalkDir::new(root.as_std_path())
+        .into_iter()
+        .filter_entry(|entry| {
+            let name = entry.file_name().to_string_lossy();
+            !(entry.file_type().is_dir() && matches!(name.as_ref(), "target" | ".git" | ".lexlean"))
+        });
+    for entry in walker.flatten() {
+        let path = entry.path();
+        if !entry.file_type().is_file() || path.extension().is_none_or(|ext| ext != "lean") {
+            continue;
+        }
+        let shown = path.display();
+        assert!(
+            !path
+                .components()
+                .any(|component| component.as_os_str().to_str() == Some(prefix)),
+            "{shown}: a Lean file lies in the module tree of `{prefix}`"
+        );
+        let text = std::fs::read_to_string(path).unwrap_or_default();
+        assert!(
+            !text.contains(&namespace),
+            "{shown}: an independently authored Lean file declares `{namespace}`"
+        );
+    }
+}
+
 /// Compile an independent crate that exhaustively reads the stable snapshot
 /// semantic DTOs. This prevents the repository test crate from accidentally
 /// relying on hidden `lexlean::ir` paths.
@@ -315,6 +358,25 @@ impl P {
         let source = repo_root().join("examples").join(name);
         assert!(source.is_dir(), "committed example `{name}` is required");
         copy_tree(source.as_std_path(), temp.path(), &[".lexlean", "expected"]);
+        let root = Utf8PathBuf::from_path_buf(temp.path().to_path_buf()).expect("utf8 tempdir");
+        Self { temp, root }
+    }
+
+    /// A fresh copy of the preservation library's own project (SPEC.md
+    /// §17.17), without build output or a lock.
+    #[must_use]
+    pub fn library_project() -> Self {
+        let temp = tempfile::Builder::new()
+            .prefix("lexlean-library-case-")
+            .tempdir()
+            .expect("tempdir");
+        let source = repo_root().join(lexlean::production::preserve::LIBRARY_DIR);
+        assert!(source.is_dir(), "the library project is required");
+        copy_tree(
+            source.as_std_path(),
+            temp.path(),
+            &[".lexlean", "lexlean.lock"],
+        );
         let root = Utf8PathBuf::from_path_buf(temp.path().to_path_buf()).expect("utf8 tempdir");
         Self { temp, root }
     }
