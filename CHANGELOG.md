@@ -15,19 +15,32 @@ versions, and the entries below say what each tag does and does not claim.
 
 ## Unreleased
 
+- The authoring API (`lexlean::sdk`, SPEC.md §24.8, `AU-08`; stage 3e of #93):
+  `read_module`, `write_module`, `to_data_form`, `to_notation`,
+  `declaration_spans`, and `assemble` read, rewrite, convert, and assemble the
+  `.lex.tex` source of a semantic or tooling module without a project, with the
+  data as canonical JSON and the offset of an error in the source. The
+  formatter, the identity of the embedded tree, and the conformance suite's own
+  editing of committed sources are written over the same table of module kinds.
+  `AU-07` is the permanent gate that no writer of the repository emits a
+  product source but five named records (the four fixture modules of
+  `compiler/` and the extraction adapter's module, each generated from an input
+  that is not a source); it is shown to fail on a planted writer output.
 - The calculus and the Rust machine are source (SPEC.md §17.14; stage 3e of #93).
   `compiler/src/{TargetSyntax,TargetSemantics,TargetOracle,RustSyntax,RustSemantics,Main}`,
   the reasoning oracles, and the project configuration are written and edited as
   `.lex.tex`: the Rust builders that rendered them (`calculus_source`,
   `rust_source`, 5,300 lines) and the check that compared them with their own
-  output are removed. `check-calculus` still compares the generated files (the
+  output are removed; so are the builders of the GNAF model and the
+  certification model (`gnaf_model`, `certification_model`, 7,000 lines), whose
+  committed `Gnaf` and `Certification` are source too. `check-calculus` still compares the generated files (the
   fixtures and the modules that state them, the Rust packages, the shipped
   copies of the calculus modules), and `conformance_sp_07` now reads the
   machine's runtime items and their failure and heap classes from the committed
   `RustSyntax` and `RustSemantics`, and the compiler project's configuration
   from the production example. No file of the repository changes by this: it
   is a change of who owns them.
-- The language-1.2 authoring notation (SPEC.md §17.21, `AU-01`..`AU-06`; stage 3
+- The language-1.2 authoring notation (SPEC.md §17.21, `AU-01`..`AU-08`; stage 3
   of #27, #93). A `semanticmodule` can be written as readable text instead of
   `\semanticdata{…}` JSON: declarations in a fixed grammar, read from the
   schema, with readable forms for types (`(List Nat)`, `(A * B)`), terms

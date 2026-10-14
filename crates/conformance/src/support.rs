@@ -2173,77 +2173,14 @@ pub fn tex_body(tex: &str) -> &str {
         .map_or(tex, |(_, body)| body)
 }
 
-/// A kind of module with an authoring notation (SPEC.md §17.21): where it is
-/// written, how its data form is spelled, and the reader and printer of its
-/// notation.
-struct Kind {
-    environment: &'static str,
-    control: &'static str,
-    spec: &'static str,
-    parse: fn(&str, &str) -> Result<Json, lexlean::surface::SurfaceError>,
-    print: fn(&Json) -> Result<String, lexlean::surface::SurfaceError>,
-}
-
-use lexlean::artifact::canonical_json::Json;
-
-const SEMANTIC: Kind = Kind {
-    environment: "semanticmodule",
-    control: "\\semanticdata{",
-    spec: "lexlean/semantic-module/2",
-    parse: lexlean::surface::semantic::parse_module,
-    print: lexlean::surface::semantic::print_module,
-};
-
-const TOOLING: Kind = Kind {
-    environment: "toolingmodule",
-    control: "\\toolingdata{",
-    spec: "lexlean/tooling-module/1",
-    parse: lexlean::surface::tooling::parse_module,
-    print: lexlean::surface::tooling::print_module,
-};
-
-/// The kind of the module of `text` and the byte range of its body: between
-/// `\begin{…}` and the last `\end{…}` of its environment.
-fn module_body(text: &str) -> Result<(&'static Kind, (usize, usize)), String> {
-    for kind in [&SEMANTIC, &TOOLING] {
-        let begin = format!("\\begin{{{}}}", kind.environment);
-        if let Some(at) = text.find(&begin) {
-            let end = text
-                .rfind(&format!("\\end{{{}}}", kind.environment))
-                .ok_or("the module is not closed")?;
-            return Ok((kind, (at + begin.len(), end)));
-        }
-    }
-    Err("the source states no semantic or tooling module".to_owned())
-}
-
-/// The range of the JSON payload of a module written as `\semanticdata{…}`
-/// (`\toolingdata{…}`) within `text`, or `None` for a module written in the
-/// authoring notation.
-fn data_payload(text: &str, kind: &Kind, body: (usize, usize)) -> Option<(usize, usize)> {
-    let at = text[body.0..body.1].find(kind.control)? + body.0;
-    let start = at + kind.control.len();
-    let end = text[start..body.1].rfind('}')? + start;
-    Some((start, end))
-}
-
 /// The module data of a committed or generated language-1.2 source as JSON,
-/// whichever form the source writes it in: the canonical `\semanticdata`
-/// (`\toolingdata`) payload, or the authoring notation (SPEC.md §17.21) read
-/// the way the compiler reads it.
+/// whichever form the source writes it in (`lexlean::sdk::read_module`).
 ///
 /// # Errors
 ///
 /// A source with no module, or one that is not well formed.
 pub fn try_module_json(text: &str) -> Result<serde_json::Value, String> {
-    let (kind, body) = module_body(text)?;
-    if let Some((start, end)) = data_payload(text, kind, body) {
-        return serde_json::from_str(&text[start..end])
-            .map_err(|error| format!("the module data is not JSON: {error}"));
-    }
-    let module = (kind.parse)(&text[body.0..body.1], kind.spec)
-        .map_err(|error| format!("the notation is not well formed: {error}"))?;
-    serde_json::from_str(&module.to_canonical_string()).map_err(|error| error.to_string())
+    lexlean::sdk::read_module(text).map_err(|error| error.to_string())
 }
 
 /// [`try_module_json`] for a source that is known to be well formed.
@@ -2266,24 +2203,7 @@ pub fn module_json(text: &str) -> serde_json::Value {
 /// When the source has no semantic module, or `data` is not a module.
 #[must_use]
 pub fn with_module_json(text: &str, data: &serde_json::Value) -> String {
-    let (kind, body) = module_body(text).unwrap_or_else(|error| panic!("{error}"));
-    let canonical = Json::parse(
-        serde_json::to_string(data)
-            .expect("module data serializes")
-            .as_bytes(),
-    )
-    .expect("module JSON");
-    if let Some((start, end)) = data_payload(text, kind, body) {
-        return format!(
-            "{}{}{}",
-            &text[..start],
-            canonical.to_canonical_string(),
-            &text[end..]
-        );
-    }
-    let printed = (kind.print)(&canonical)
-        .unwrap_or_else(|error| panic!("the module has a notation: {error}"));
-    format!("{}\n{printed}{}", &text[..body.0], &text[body.1..])
+    lexlean::sdk::write_module(text, data).unwrap_or_else(|error| panic!("{error}"))
 }
 
 /// Whether the semantic module of `text` declares `name`.
@@ -2322,8 +2242,7 @@ pub fn identity_tree_digest(rows: &[(&str, &[u8])]) -> lexlean::artifact::conten
 /// notation that is well formed.
 #[must_use]
 pub fn is_notation_module(text: &str) -> bool {
-    module_body(text).is_ok_and(|(kind, body)| data_payload(text, kind, body).is_none())
-        && try_module_json(text).is_ok()
+    lexlean::sdk::is_notation(text)
 }
 
 /// `text` with a semantic or tooling module written in the notation written as
@@ -2347,20 +2266,7 @@ pub fn as_data_text(text: &str) -> String {
 /// When the source has no well-formed semantic module.
 #[must_use]
 pub fn module_as_data(text: &str) -> String {
-    let (kind, body) = module_body(text).unwrap_or_else(|error| panic!("{error}"));
-    let canonical = Json::parse(
-        serde_json::to_string(&module_json(text))
-            .expect("module data serializes")
-            .as_bytes(),
-    )
-    .expect("module JSON");
-    format!(
-        "{}\n{}{}}}\n{}",
-        &text[..body.0],
-        kind.control,
-        canonical.to_canonical_string(),
-        &text[body.1..]
-    )
+    lexlean::sdk::to_data_form(text).unwrap_or_else(|error| panic!("{error}"))
 }
 
 /// `text` with the layout of its notation collapsed to single spaces outside
@@ -2372,7 +2278,9 @@ pub fn module_as_data(text: &str) -> String {
 /// When the source has no semantic module.
 #[must_use]
 pub fn squeezed_notation(text: &str) -> String {
-    let (_, body) = module_body(text).unwrap_or_else(|error| panic!("{error}"));
+    let body = lexlean::surface::module::locate(text)
+        .expect("the source states a module")
+        .body;
     let mut squeezed = String::new();
     let (mut quoted, mut escaped, mut space) = (false, false, false);
     for scalar in text[body.0..body.1].chars() {

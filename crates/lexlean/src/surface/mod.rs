@@ -13,6 +13,7 @@ pub mod doc;
 pub mod generic;
 pub mod identity;
 pub mod lex;
+pub mod module;
 pub mod semantic;
 pub mod tooling;
 

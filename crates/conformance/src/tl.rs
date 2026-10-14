@@ -259,12 +259,15 @@ pub fn module(authority: &str, imports: Vec<String>, declarations: Vec<Json>) ->
 ///
 /// When `data` is not a tooling module.
 pub fn module_tex(module: &str, title: &str, glossary: &str, data: &Json) -> String {
-    let canonical = lexlean::artifact::canonical_json::Json::parse(
-        serde_json::to_string(data).expect("serializes").as_bytes(),
+    lexlean::sdk::assemble(
+        &lexlean::sdk::SourceHeader {
+            name: module,
+            glossaries: &[glossary],
+            imports: &[],
+            title,
+        },
+        lexlean::sdk::ModuleKind::Tooling,
+        data,
     )
-    .expect("module JSON");
-    format!(
-        "\\begin{{lexlean}}{{{module}}}\n\\useglossary{{{glossary}}}\n\\title{{{title}}}\n\\begin{{toolingmodule}}\n{}\\end{{toolingmodule}}\n\\end{{lexlean}}\n",
-        lexlean::surface::tooling::print_module(&canonical).expect("the module has a notation")
-    )
+    .unwrap_or_else(|error| panic!("{module}: {error}"))
 }

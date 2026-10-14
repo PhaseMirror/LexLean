@@ -35,3 +35,15 @@ Feature: authoring
     Given the embedded tree, and the same tree with every module written in the notation written as data
     When the tree digest of each is taken, and a declaration of a module is removed in either form
     Then the two trees have the compiler-semantics ID, and the changed tree has another in both forms
+
+  @AU-07 @build
+  Scenario: No product source is the output of a generator: every `.lex.tex` source of `compiler/`, `language/`, and `examples/` is written and edited as source, and no writer of the repository (the generators `cargo xtask check-calculus` compares and rewrites) emits one of them except the four fixture modules of `compiler/` (`TargetFixtures`, `ReasoningFixtures`, `GnafFixtures`, `GnafCertificates`), generated from committed fixtures, requests, and certificates, and the extraction adapter's module, generated from the registry the pinned Lean answers; a source emitted by any other writer is a defect.
+    Given every file the writers of the repository emit, and every committed source of compiler, language, and examples
+    When the emitted sources of those trees are listed
+    Then they are exactly the four fixture modules and the extraction adapter's module
+
+  @AU-08 @build
+  Scenario: The authoring API reads, writes, converts, and assembles the source of a module without a project: for every committed semantic and tooling source it reads the module it links to, writes it back in the form it has and in the other form, assembles the source from its header and data to the canonical notation, and is idempotent in each; and a source that is not a module, or whose notation is malformed, is an error with a position in the source and never a panic.
+    Given every committed semantic and tooling source and some that are not modules
+    When each is read, written back in its form, converted to the other form and back, and assembled, and the malformed are read
+    Then each is its module, the conversions are idempotent, the assembly is the canonical source, and the rest are errors with a position and no panic

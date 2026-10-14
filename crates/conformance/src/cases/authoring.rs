@@ -1,18 +1,21 @@
-//! The `authoring` suite: AU-01..AU-06, the language-1.2 authoring notation
+//! The `authoring` suite: AU-01..AU-08, the language-1.2 authoring notation
 //! (SPEC.md §17.21).
 //!
 //! The notation is in bijection with the canonical JSON of the closed schema,
 //! so the cases state that bijection (AU-01), what it buys (a module in the
 //! notation is the module its data form is, AU-02), what it refuses (AU-03),
 //! that it is the only way the product writes a module (AU-04), that the same
-//! holds for tooling modules (AU-05), and that no identity depends on which
-//! form a module is written in (AU-06). Every committed module is a case's
-//! input, not a sample of them.
+//! holds for tooling modules (AU-05), that no identity depends on which
+//! form a module is written in (AU-06), that no writer of the repository owns
+//! a product source (AU-07), and that the authoring API is how a program reads
+//! and writes one (AU-08). Every committed module is a case's input, not a
+//! sample of them.
 
 use std::collections::BTreeSet;
 
 use lexlean::artifact::canonical_json::Json;
 use lexlean::surface::lex::lex;
+use lexlean::surface::module::Kind;
 use lexlean::surface::semantic::{
     parse_at, parse_module, print_at, print_module, schema_samples, Position,
 };
@@ -33,11 +36,16 @@ pub fn run(id: &str) {
         "AU-04" => one_surface(),
         "AU-05" => tooling_notation(),
         "AU-06" => identity_is_form_independent(),
+        "AU-07" => no_other_authoring_path(),
+        "AU-08" => authoring_api(),
         other => panic!("no authoring case is wired for {other}"),
     }
 }
 
 const SPEC: &str = "lexlean/semantic-module/2";
+
+/// The schema tag of a tooling module.
+const TOOLING_SPEC: &str = "lexlean/tooling-module/1";
 
 // ---------------------------------------------------------------------------
 // The committed corpus.
@@ -554,75 +562,37 @@ fn project_language(source: &std::path::Path) -> Option<String> {
     None
 }
 
-/// A kind of module with a notation: where it is written, the control of its
-/// data form, the schema tag its language implies, and its reader and printer.
-struct Surface {
-    environment: &'static str,
-    control: &'static str,
-    spec: &'static str,
-    parse: fn(&str, &str) -> Result<Json, lexlean::surface::SurfaceError>,
-    print: fn(&Json) -> Result<String, lexlean::surface::SurfaceError>,
-}
-
-const SEMANTIC: Surface = Surface {
-    environment: "semanticmodule",
-    control: "\\semanticdata",
-    spec: SPEC,
-    parse: parse_module,
-    print: print_module,
-};
-
-const TOOLING: Surface = Surface {
-    environment: "toolingmodule",
-    control: "\\toolingdata",
-    spec: TOOLING_SPEC,
-    parse: lexlean::surface::tooling::parse_module,
-    print: lexlean::surface::tooling::print_module,
-};
-
-const TOOLING_SPEC: &str = "lexlean/tooling-module/1";
-
-/// The payload of a module written as `\semanticdata{…}` and the body of one
+/// The payload of a module written as `\\semanticdata{…}` and the body of one
 /// written in the notation, as the text between the module's markers.
 enum Form<'a> {
     Data(&'a str),
     Notation(&'a str),
 }
 
-fn form(text: &str) -> Option<(&'static Surface, Form<'_>)> {
-    for surface in [&SEMANTIC, &TOOLING] {
-        let begin = format!("\\begin{{{}}}", surface.environment);
-        let Some(start) = text.find(&begin).map(|at| at + begin.len()) else {
-            continue;
-        };
-        let end = text.rfind(&format!("\\end{{{}}}", surface.environment))?;
-        let body = text.get(start..end)?;
-        let Some(rest) = body.trim_start().strip_prefix(surface.control) else {
-            return Some((surface, Form::Notation(body)));
-        };
-        let payload = rest
-            .trim_start()
-            .strip_prefix('{')?
-            .trim_end()
-            .strip_suffix('}')?;
-        return Some((surface, Form::Data(payload)));
-    }
-    None
+fn form(text: &str) -> Option<(&'static Kind, Form<'_>)> {
+    let found = lexlean::surface::module::locate(text)?;
+    Some(match found.data {
+        Some((start, end)) => (found.kind, Form::Data(&text[start..end])),
+        None => (
+            found.kind,
+            Form::Notation(&text[found.body.0..found.body.1]),
+        ),
+    })
 }
 
 /// Whether a payload written as data can be written in the notation: it is a
 /// module of the schema the notation names, and reads back equal.
-fn spellable(surface: &Surface, payload: &str) -> bool {
-    let Ok(json) = Json::parse(payload.as_bytes()) else {
+fn spellable(kind: &Kind, payload: &str) -> bool {
+    let (Ok(json), Some(spec)) = (Json::parse(payload.as_bytes()), (kind.spec)()) else {
         return false;
     };
     let Json::Obj(members) = &json else {
         return false;
     };
-    members.get("spec") == Some(&Json::Str(surface.spec.to_owned()))
-        && (surface.print)(&json)
+    members.get("spec") == Some(&Json::Str(spec.to_owned()))
+        && (kind.print)(&json)
             .ok()
-            .and_then(|text| (surface.parse)(&text, surface.spec).ok())
+            .and_then(|text| (kind.parse)(&text, spec).ok())
             .is_some_and(|back| back == json)
 }
 
@@ -645,7 +615,7 @@ fn one_surface() {
         let Ok(text) = std::fs::read_to_string(path) else {
             continue;
         };
-        let Some((surface, form)) = form(&text) else {
+        let Some((kind, form)) = form(&text) else {
             continue;
         };
         // `/`-separated on every host, as the repository states paths.
@@ -664,7 +634,7 @@ fn one_surface() {
         }
         let refused = shown.starts_with("tests/negative/");
         match form {
-            Form::Data(payload) if refused && !spellable(surface, payload) => exempt_refused += 1,
+            Form::Data(payload) if refused && !spellable(kind, payload) => exempt_refused += 1,
             Form::Data(_) => defects.push(format!(
                 "{shown}: written as data, which the notation can say{}",
                 if refused { " (a refused fixture)" } else { "" }
@@ -673,9 +643,9 @@ fn one_surface() {
                 notation += 1;
                 // A refused fixture may be refused for its text; a source of
                 // the product is its own canonical source.
-                let printed = (surface.parse)(body, surface.spec)
-                    .ok()
-                    .and_then(|module| (surface.print)(&module).ok());
+                let printed = (kind.spec)()
+                    .and_then(|spec| (kind.parse)(body, spec).ok())
+                    .and_then(|module| (kind.print)(&module).ok());
                 if body
                     .strip_prefix('\n')
                     .is_some_and(|rest| printed.as_deref() == Some(rest))
@@ -1029,4 +999,307 @@ fn identity_is_form_independent() {
         digest(&planted_data),
         "the changed module has one identity in either form"
     );
+}
+
+// ---------------------------------------------------------------------------
+// AU-07.
+// ---------------------------------------------------------------------------
+
+/// The sources a writer of the repository emits from an input that is not a
+/// source: the fixture modules of the `compiler` project, from the committed
+/// fixtures, requests, and certificates, and the extraction adapter's module,
+/// from the registry the pinned Lean answers. No other source is emitted.
+const GENERATED_RECORDS: [&str; 5] = [
+    "compiler/src/TargetFixtures.lex.tex",
+    "compiler/src/ReasoningFixtures.lex.tex",
+    "compiler/src/GnafFixtures.lex.tex",
+    "compiler/src/GnafCertificates.lex.tex",
+    "language/lcnf-1.2/tooling/src/Extract.lex.tex",
+];
+
+/// The trees whose sources are the product's.
+const PRODUCT_TREES: [&str; 3] = ["compiler/", "language/", "examples/"];
+
+fn no_other_authoring_path() {
+    let root = repo_root();
+    // Every file any writer of the repository emits: the generators that
+    // `cargo xtask check-calculus` compares and rewrites.
+    let mut emitted: BTreeSet<String> = BTreeSet::new();
+    emitted.extend(crate::calculus::files().into_keys());
+    emitted.extend(crate::gnaf::files().into_keys());
+    emitted.extend(crate::certification::files().into_keys());
+    emitted.extend(
+        crate::lcnf_registry::generated(root.as_std_path())
+            .expect("the committed registry")
+            .into_keys(),
+    );
+    let sources: BTreeSet<&str> = emitted
+        .iter()
+        .map(String::as_str)
+        .filter(|path| {
+            path.ends_with(".lex.tex") && PRODUCT_TREES.iter().any(|tree| path.starts_with(tree))
+        })
+        .collect();
+    let records: BTreeSet<&str> = GENERATED_RECORDS.into_iter().collect();
+    assert_eq!(
+        sources, records,
+        "the writers of the repository emit exactly the named records and no other product source"
+    );
+    // Anti-vacuity: the writers emit the files they are known to emit, and
+    // the product trees hold sources that no writer emits.
+    assert!(
+        emitted.len() > 500
+            && emitted.contains("compiler/fixtures/sum-to.json")
+            && emitted
+                .iter()
+                .any(|path| path.starts_with("compiler/rust/")),
+        "{} files: the writers were not enumerated",
+        emitted.len()
+    );
+    let mut owned = 0usize;
+    for entry in walkdir::WalkDir::new(root.as_std_path())
+        .into_iter()
+        .filter_entry(|entry| {
+            let name = entry.file_name().to_string_lossy();
+            name != "target" && name != ".git" && name != ".lexlean"
+        })
+        .flatten()
+    {
+        let relative = entry
+            .path()
+            .strip_prefix(root.as_std_path())
+            .unwrap_or(entry.path())
+            .to_string_lossy()
+            .replace('\\', "/");
+        if relative.ends_with(".lex.tex")
+            && PRODUCT_TREES.iter().any(|tree| relative.starts_with(tree))
+        {
+            if records.contains(relative.as_str()) {
+                continue;
+            }
+            owned += 1;
+        }
+    }
+    assert!(
+        owned >= 150,
+        "{owned} product sources are owned by no writer: the walk did not read the product"
+    );
+    for record in GENERATED_RECORDS {
+        assert!(
+            root.join(record).as_std_path().is_file(),
+            "{record} is a committed source"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AU-08.
+// ---------------------------------------------------------------------------
+
+fn authoring_api() {
+    use lexlean::sdk::{
+        assemble, declaration_spans, is_notation, module_kind, read_module, to_data_form,
+        to_notation, write_module, ModuleKind, SourceHeader,
+    };
+
+    let root = repo_root();
+    let (mut semantic, mut tooling) = (0usize, 0usize);
+    for entry in walkdir::WalkDir::new(root.as_std_path())
+        .into_iter()
+        .filter_entry(|entry| {
+            let name = entry.file_name().to_string_lossy();
+            name != "target" && name != ".git" && name != ".lexlean"
+        })
+        .flatten()
+    {
+        let path = entry.path();
+        if !path.to_string_lossy().ends_with(".lex.tex") {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        let Some(kind) = module_kind(&text) else {
+            // Not a module of these kinds: the API says so, and reads nothing.
+            assert!(read_module(&text).is_err(), "{}", path.display());
+            continue;
+        };
+        // A refused fixture may not be a module; the rest are.
+        let Ok(data) = read_module(&text) else {
+            assert!(
+                path.to_string_lossy()
+                    .replace('\\', "/")
+                    .contains("/negative/"),
+                "{}: a committed module the API cannot read",
+                path.display()
+            );
+            continue;
+        };
+        let shown = path.display();
+        // A module under a tag the notation does not name (language 1.1) has
+        // no notation: the API refuses to write one, and reads it as data.
+        if data["spec"] != SPEC && data["spec"] != TOOLING_SPEC {
+            assert!(
+                to_notation(&text).is_err(),
+                "{shown}: a notation was written"
+            );
+            assert_eq!(
+                read_module(&to_data_form(&text).expect("the data form")).expect("reads"),
+                data,
+                "{shown}"
+            );
+            continue;
+        }
+        // The module is what the notation module reads to, in either form, and
+        // the conversions are the identity on a canonical source.
+        let notation = to_notation(&text).unwrap_or_else(|error| panic!("{shown}: {error}"));
+        let as_data = to_data_form(&text).unwrap_or_else(|error| panic!("{shown}: {error}"));
+        assert_eq!(read_module(&notation).expect("reads"), data, "{shown}");
+        assert_eq!(read_module(&as_data).expect("reads"), data, "{shown}");
+        assert!(is_notation(&notation), "{shown}");
+        assert!(
+            !is_notation(&as_data),
+            "{shown}: the data form is not the notation"
+        );
+        assert_eq!(
+            to_notation(&notation).expect("idempotent"),
+            notation,
+            "{shown}"
+        );
+        assert_eq!(
+            to_notation(&as_data).expect("converts"),
+            notation,
+            "{shown}"
+        );
+        assert_eq!(
+            to_data_form(&notation).expect("converts"),
+            as_data,
+            "{shown}"
+        );
+        // A rewrite with the same data is a canonical source in the form the
+        // source has.
+        assert_eq!(
+            write_module(&notation, &data).expect("rewrites"),
+            notation,
+            "{shown}"
+        );
+        assert_eq!(
+            write_module(&as_data, &data).expect("rewrites"),
+            as_data,
+            "{shown}"
+        );
+        // A source of the notation has a span for each declaration.
+        let spans = declaration_spans(&notation)
+            .unwrap_or_else(|error| panic!("{shown}: {error}"))
+            .expect("a notation has spans");
+        assert_eq!(
+            spans.len(),
+            data["declarations"].as_array().map_or(0, Vec::len),
+            "{shown}"
+        );
+        assert_eq!(declaration_spans(&as_data).expect("spans"), None, "{shown}");
+        match kind {
+            ModuleKind::Semantic => semantic += 1,
+            ModuleKind::Tooling => tooling += 1,
+        }
+        // Assembled from its header and data, a source of the standard shape is
+        // the canonical source: the header is what the source already says.
+        let lines: Vec<&str> = notation.lines().collect();
+        let name = lines
+            .first()
+            .and_then(|line| line.strip_prefix("\\begin{lexlean}{"))
+            .and_then(|rest| rest.strip_suffix('}'));
+        let glossaries: Vec<&str> = lines
+            .iter()
+            .filter_map(|line| line.strip_prefix("\\useglossary{")?.strip_suffix('}'))
+            .collect();
+        let imports: Vec<&str> = lines
+            .iter()
+            .filter_map(|line| line.strip_prefix("\\importmodule{")?.strip_suffix('}'))
+            .collect();
+        let title = lines
+            .iter()
+            .find_map(|line| line.strip_prefix("\\title{")?.strip_suffix('}'));
+        if let (Some(name), Some(title)) = (name, title) {
+            let header = SourceHeader {
+                name,
+                glossaries: &glossaries,
+                imports: &imports,
+                title,
+            };
+            let assembled =
+                assemble(&header, kind, &data).unwrap_or_else(|error| panic!("{shown}: {error}"));
+            // The header lines of the standard shape come in this order.
+            let head_end = notation
+                .find(&format!(
+                    "\\begin{{{}}}",
+                    match kind {
+                        ModuleKind::Semantic => "semanticmodule",
+                        ModuleKind::Tooling => "toolingmodule",
+                    }
+                ))
+                .expect("the environment");
+            let standard = notation[..head_end].lines().all(|line| {
+                line.starts_with("\\begin{lexlean}")
+                    || line.starts_with("\\useglossary{")
+                    || line.starts_with("\\importmodule{")
+                    || line.starts_with("\\title{")
+            }) && notation.ends_with("\\end{lexlean}\n");
+            if standard && glossaries_precede_imports(&notation) {
+                assert_eq!(
+                    assembled, notation,
+                    "{shown}: assembled from its header and data"
+                );
+            }
+        }
+    }
+    assert!(
+        semantic >= 250 && tooling >= 4,
+        "{semantic} semantic and {tooling} tooling sources: the API was not exercised on the product"
+    );
+
+    // What is not a module, and what is malformed, is an error with a
+    // position in the source, never a panic.
+    for text in [
+        "",
+        "\\begin{lexlean}{M}\n\\end{lexlean}\n",
+        "\\begin{semanticmodule}",
+        "\\begin{semanticmodule}\n\\end{semanticmodule}\n",
+        "\\begin{semanticmodule}\ntheorem{\n\\end{semanticmodule}\n",
+        "\\begin{toolingmodule}\n{spec: x}\n\\end{toolingmodule}\n",
+        "\\begin{semanticmodule}\n\\semanticdata{not json}\n\\end{semanticmodule}\n",
+    ] {
+        match read_module(text) {
+            Err(error) => assert!(
+                error.offset.is_none_or(|offset| offset <= text.len()),
+                "{text:?}: {error}"
+            ),
+            Ok(value) => assert!(
+                text.contains("\\begin{semanticmodule}\n\\end{semanticmodule}"),
+                "{text:?} read as {value}"
+            ),
+        }
+    }
+    assert!(assemble(
+        &SourceHeader {
+            name: "M",
+            glossaries: &[],
+            imports: &[],
+            title: "T"
+        },
+        ModuleKind::Semantic,
+        &serde_json::json!(3)
+    )
+    .is_err());
+}
+
+/// Whether every `\useglossary` line of a source precedes its first
+/// `\importmodule`, the order [`lexlean::sdk::assemble`] writes them in.
+fn glossaries_precede_imports(text: &str) -> bool {
+    let first_import = text.find("\\importmodule{");
+    let last_glossary = text.rfind("\\useglossary{");
+    match (first_import, last_glossary) {
+        (Some(import), Some(glossary)) => glossary < import,
+        _ => true,
+    }
 }

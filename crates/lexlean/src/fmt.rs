@@ -16,6 +16,7 @@ use crate::lexicon::entry::{Associativity, Category, Channel, Entry, Frame};
 use crate::lexicon::lse::QualifiedId;
 use crate::lexicon::resolve::Closure;
 use crate::link::CheckedModule;
+use crate::surface::module::{locate, Kind, SEMANTIC, TOOLING};
 
 struct Fmt<'a> {
     closure: &'a Closure,
@@ -1023,80 +1024,15 @@ impl Fmt<'_> {
     }
 }
 
-/// Which kind of module whose body is data or the authoring notation
-/// (SPEC.md §17.21) a source is.
-#[derive(Clone, Copy)]
-enum Surface {
-    Semantic,
-    Tooling,
-}
-
-impl Surface {
-    /// The environment the module is written in.
-    fn environment(self) -> &'static str {
-        match self {
-            Self::Semantic => "semanticmodule",
-            Self::Tooling => "toolingmodule",
-        }
-    }
-
-    /// The control of the data form.
-    fn control(self) -> &'static str {
-        match self {
-            Self::Semantic => "\\semanticdata",
-            Self::Tooling => "\\toolingdata",
-        }
-    }
-
-    /// The schema tag the language implies for a module in the notation.
-    fn spec(self) -> Option<&'static str> {
-        match self {
-            Self::Semantic => crate::ir::semantic::semantic_module_spec(crate::LANGUAGE_1_2),
-            Self::Tooling => Some(crate::ir::tooling::TOOLING_SPEC),
-        }
-    }
-
-    fn print(
-        self,
-        module: &crate::artifact::canonical_json::Json,
-    ) -> Result<String, crate::surface::SurfaceError> {
-        match self {
-            Self::Semantic => crate::surface::semantic::print_module(module),
-            Self::Tooling => crate::surface::tooling::print_module(module),
-        }
-    }
-
-    fn parse(
-        self,
-        body: &str,
-        spec: &str,
-    ) -> Result<crate::artifact::canonical_json::Json, crate::surface::SurfaceError> {
-        match self {
-            Self::Semantic => crate::surface::semantic::parse_module(body, spec),
-            Self::Tooling => crate::surface::tooling::parse_module(body, spec),
-        }
-    }
-}
-
-/// The body of the module of kind `surface` in `normalized` and the byte range
-/// it occupies: the text between `\begin{…}` and `\end{…}` of its environment.
-fn module_body(normalized: &str, surface: Surface) -> Option<(usize, usize)> {
-    let begin = format!("\\begin{{{}}}", surface.environment());
-    let end = format!("\\end{{{}}}", surface.environment());
-    let start = normalized.find(&begin)? + begin.len();
-    let end = normalized.rfind(&end)?;
-    (start <= end).then_some((start, end))
-}
-
 /// `normalized` with the body of its module replaced by the notation of
 /// `module`.
 fn with_notation(
     normalized: &str,
     range: (usize, usize),
-    surface: Surface,
+    kind: &Kind,
     module: &crate::artifact::canonical_json::Json,
 ) -> Result<String, Diagnostic> {
-    let printed = surface.print(module).map_err(|error| {
+    let printed = (kind.print)(module).map_err(|error| {
         Diagnostic::new(
             code!("LLP2001"),
             format!("phase fmt: module notation: {}", error.message),
@@ -1113,64 +1049,57 @@ fn with_notation(
 /// (SPEC.md §17.21): the module as it is, with the text between its
 /// environment's markers replaced by the notation of what it says. `None` for
 /// a module written as data, whose payload is already the canonical JSON
-/// linking required.
-fn canonical_notation(normalized: &str, surface: Surface) -> Option<Result<String, Diagnostic>> {
-    let range = module_body(normalized, surface)?;
-    let body = &normalized[range.0..range.1];
-    if body.trim_start().starts_with(surface.control()) {
+/// linking required, and for a source with no module of this kind.
+fn canonical_notation(normalized: &str, kind: &Kind) -> Option<Result<String, Diagnostic>> {
+    let found = locate(normalized).filter(|found| found.kind.is(kind))?;
+    if found.data.is_some()
+        || normalized[found.body.0..found.body.1]
+            .trim_start()
+            .starts_with(kind.control)
+    {
         return None;
     }
-    let spec = surface.spec()?;
+    let spec = (kind.spec)()?;
     Some(
-        surface
-            .parse(body, spec)
+        (kind.parse)(&normalized[found.body.0..found.body.1], spec)
             .map_err(|error| {
                 Diagnostic::new(
                     code!("LLP2001"),
                     format!("phase fmt: module notation: {}", error.message),
                 )
             })
-            .and_then(|module| with_notation(normalized, range, surface, &module)),
+            .and_then(|module| with_notation(normalized, found.body, kind, &module)),
     )
 }
 
 /// A language-1.2 module written as `\semanticdata{…}` (`\toolingdata{…}`),
 /// written in the notation instead; `None` for any other source. `fmt` writes
 /// a module this way, so it is also how a module leaves the data form.
-fn data_module_as_notation(
-    normalized: &str,
-    surface: Surface,
-) -> Option<Result<String, Diagnostic>> {
-    let range = module_body(normalized, surface)?;
-    let data = normalized[range.0..range.1]
-        .trim_start()
-        .strip_prefix(surface.control())?;
-    let payload = data
-        .trim_start()
-        .strip_prefix('{')?
-        .trim_end()
-        .strip_suffix('}')?;
-    let spec = surface.spec()?;
-    let json = crate::artifact::canonical_json::Json::parse(payload.as_bytes()).ok()?;
+fn data_module_as_notation(normalized: &str, kind: &Kind) -> Option<Result<String, Diagnostic>> {
+    let found = locate(normalized).filter(|found| found.kind.is(kind))?;
+    let (from, to) = found.data?;
+    let spec = (kind.spec)()?;
+    let json =
+        crate::artifact::canonical_json::Json::parse(&normalized.as_bytes()[from..to]).ok()?;
     match &json {
         crate::artifact::canonical_json::Json::Obj(object)
             if object.get("spec")
                 == Some(&crate::artifact::canonical_json::Json::Str(spec.to_owned())) => {}
         _ => return None,
     }
-    Some(with_notation(normalized, range, surface, &json))
+    Some(with_notation(normalized, found.body, kind, &json))
 }
 
 /// Render the canonical source of one checked module (§23.5).
 pub fn canonical_source(checked: &CheckedModule, closure: &Closure) -> Result<String, Diagnostic> {
     let document: &DocumentModule = &checked.document;
-    for (present, surface) in [
-        (document.semantic.is_some(), Surface::Semantic),
-        (document.tooling.is_some(), Surface::Tooling),
+    for (present, kind) in [
+        (document.semantic.is_some(), &SEMANTIC),
+        (document.tooling.is_some(), &TOOLING),
     ] {
         if present {
-            if let Some(rewritten) = canonical_notation(&checked.normalized, surface)
-                .or_else(|| data_module_as_notation(&checked.normalized, surface))
+            if let Some(rewritten) = canonical_notation(&checked.normalized, kind)
+                .or_else(|| data_module_as_notation(&checked.normalized, kind))
             {
                 return rewritten;
             }

@@ -50,6 +50,7 @@ pub mod lock;
 pub mod production;
 #[doc(hidden)]
 pub mod project;
+pub mod sdk;
 #[doc(hidden)]
 pub mod source;
 #[doc(hidden)]

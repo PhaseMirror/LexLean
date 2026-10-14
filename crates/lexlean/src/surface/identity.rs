@@ -7,6 +7,8 @@
 //! form a person writes it in, so moving a source to the notation changes no
 //! identity and moving it back changes none either.
 
+use super::module::{locate, KINDS};
+
 /// How far into a source its module environment begins; a source whose
 /// environment is not within it holds no module of the kinds below, and is not
 /// read further (the embedded tree holds sources of tens of megabytes).
@@ -26,61 +28,27 @@ pub fn data_form(path: &str, bytes: &[u8]) -> Option<Vec<u8>> {
         Ok(text) => text,
         Err(error) => std::str::from_utf8(&head[..error.valid_up_to()]).ok()?,
     };
-    for kind in KINDS {
-        let begin = format!("\\begin{{{}}}", kind.environment);
-        let Some(at) = head.find(&begin) else {
-            continue;
-        };
-        let text = std::str::from_utf8(bytes).ok()?;
-        let start = at + begin.len();
-        let end = text.rfind(&format!("\\end{{{}}}", kind.environment))?;
-        let body = text.get(start..end)?;
-        if body.trim_start().starts_with(kind.control) {
-            return None;
-        }
-        let spec = (kind.spec)()?;
-        let module = (kind.parse)(body, spec).ok()?;
-        return Some(
-            format!(
-                "{}\n{}{{{}}}\n{}",
-                &text[..start],
-                kind.control,
-                module.to_canonical_string(),
-                &text[end..]
-            )
-            .into_bytes(),
-        );
+    if !KINDS.iter().any(|kind| head.contains(&kind.begin())) {
+        return None;
     }
-    None
+    let text = std::str::from_utf8(bytes).ok()?;
+    let found = locate(text)?;
+    if found.data.is_some() {
+        return None;
+    }
+    let spec = (found.kind.spec)()?;
+    let module = (found.kind.parse)(&text[found.body.0..found.body.1], spec).ok()?;
+    Some(
+        format!(
+            "{}\n{}{{{}}}\n{}",
+            &text[..found.body.0],
+            found.kind.control,
+            module.to_canonical_string(),
+            &text[found.body.1..]
+        )
+        .into_bytes(),
+    )
 }
-
-type Parse = fn(&str, &str) -> Result<crate::artifact::canonical_json::Json, super::SurfaceError>;
-
-/// A kind of module with a notation: the environment it is written in, the
-/// control of its data form, the schema tag the language implies, and the
-/// reader of its notation.
-struct Kind {
-    environment: &'static str,
-    control: &'static str,
-    spec: fn() -> Option<&'static str>,
-    parse: Parse,
-}
-
-/// The kinds of module with a notation.
-const KINDS: [Kind; 2] = [
-    Kind {
-        environment: "semanticmodule",
-        control: "\\semanticdata",
-        spec: || crate::ir::semantic::semantic_module_spec(crate::LANGUAGE_1_2),
-        parse: super::semantic::parse_module,
-    },
-    Kind {
-        environment: "toolingmodule",
-        control: "\\toolingdata",
-        spec: || Some(crate::ir::tooling::TOOLING_SPEC),
-        parse: super::tooling::parse_module,
-    },
-];
 
 #[cfg(test)]
 mod tests {
