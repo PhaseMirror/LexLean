@@ -1,11 +1,13 @@
-//! The `authoring` suite: AU-01..AU-04, the language-1.2 authoring notation
+//! The `authoring` suite: AU-01..AU-06, the language-1.2 authoring notation
 //! (SPEC.md §17.21).
 //!
 //! The notation is in bijection with the canonical JSON of the closed schema,
 //! so the cases state that bijection (AU-01), what it buys (a module in the
 //! notation is the module its data form is, AU-02), what it refuses (AU-03),
-//! and that it is the only way the product writes a module (AU-04). Every
-//! committed semantic module is a case's input, not a sample of them.
+//! that it is the only way the product writes a module (AU-04), that the same
+//! holds for tooling modules (AU-05), and that no identity depends on which
+//! form a module is written in (AU-06). Every committed module is a case's
+//! input, not a sample of them.
 
 use std::collections::BTreeSet;
 
@@ -29,6 +31,8 @@ pub fn run(id: &str) {
         "AU-02" => equivalence(),
         "AU-03" => fails_closed(),
         "AU-04" => one_surface(),
+        "AU-05" => tooling_notation(),
+        "AU-06" => identity_is_form_independent(),
         other => panic!("no authoring case is wired for {other}"),
     }
 }
@@ -550,6 +554,34 @@ fn project_language(source: &std::path::Path) -> Option<String> {
     None
 }
 
+/// A kind of module with a notation: where it is written, the control of its
+/// data form, the schema tag its language implies, and its reader and printer.
+struct Surface {
+    environment: &'static str,
+    control: &'static str,
+    spec: &'static str,
+    parse: fn(&str, &str) -> Result<Json, lexlean::surface::SurfaceError>,
+    print: fn(&Json) -> Result<String, lexlean::surface::SurfaceError>,
+}
+
+const SEMANTIC: Surface = Surface {
+    environment: "semanticmodule",
+    control: "\\semanticdata",
+    spec: SPEC,
+    parse: parse_module,
+    print: print_module,
+};
+
+const TOOLING: Surface = Surface {
+    environment: "toolingmodule",
+    control: "\\toolingdata",
+    spec: TOOLING_SPEC,
+    parse: lexlean::surface::tooling::parse_module,
+    print: lexlean::surface::tooling::print_module,
+};
+
+const TOOLING_SPEC: &str = "lexlean/tooling-module/1";
+
 /// The payload of a module written as `\semanticdata{…}` and the body of one
 /// written in the notation, as the text between the module's markers.
 enum Form<'a> {
@@ -557,34 +589,40 @@ enum Form<'a> {
     Notation(&'a str),
 }
 
-fn form(text: &str) -> Option<Form<'_>> {
-    let start = text.find("\\begin{semanticmodule}")? + "\\begin{semanticmodule}".len();
-    let end = text.rfind("\\end{semanticmodule}")?;
-    let body = text.get(start..end)?;
-    let Some(rest) = body.trim_start().strip_prefix("\\semanticdata") else {
-        return Some(Form::Notation(body));
-    };
-    let payload = rest
-        .trim_start()
-        .strip_prefix('{')?
-        .trim_end()
-        .strip_suffix('}')?;
-    Some(Form::Data(payload))
+fn form(text: &str) -> Option<(&'static Surface, Form<'_>)> {
+    for surface in [&SEMANTIC, &TOOLING] {
+        let begin = format!("\\begin{{{}}}", surface.environment);
+        let Some(start) = text.find(&begin).map(|at| at + begin.len()) else {
+            continue;
+        };
+        let end = text.rfind(&format!("\\end{{{}}}", surface.environment))?;
+        let body = text.get(start..end)?;
+        let Some(rest) = body.trim_start().strip_prefix(surface.control) else {
+            return Some((surface, Form::Notation(body)));
+        };
+        let payload = rest
+            .trim_start()
+            .strip_prefix('{')?
+            .trim_end()
+            .strip_suffix('}')?;
+        return Some((surface, Form::Data(payload)));
+    }
+    None
 }
 
 /// Whether a payload written as data can be written in the notation: it is a
 /// module of the schema the notation names, and reads back equal.
-fn spellable(payload: &str) -> bool {
+fn spellable(surface: &Surface, payload: &str) -> bool {
     let Ok(json) = Json::parse(payload.as_bytes()) else {
         return false;
     };
     let Json::Obj(members) = &json else {
         return false;
     };
-    members.get("spec") == Some(&Json::Str(SPEC.to_owned()))
-        && print_module(&json)
+    members.get("spec") == Some(&Json::Str(surface.spec.to_owned()))
+        && (surface.print)(&json)
             .ok()
-            .and_then(|text| parse_module(&text, SPEC).ok())
+            .and_then(|text| (surface.parse)(&text, surface.spec).ok())
             .is_some_and(|back| back == json)
 }
 
@@ -607,7 +645,9 @@ fn one_surface() {
         let Ok(text) = std::fs::read_to_string(path) else {
             continue;
         };
-        let Some(form) = form(&text) else { continue };
+        let Some((surface, form)) = form(&text) else {
+            continue;
+        };
         // `/`-separated on every host, as the repository states paths.
         let shown = path
             .strip_prefix(root.as_std_path())
@@ -624,7 +664,7 @@ fn one_surface() {
         }
         let refused = shown.starts_with("tests/negative/");
         match form {
-            Form::Data(payload) if refused && !spellable(payload) => exempt_refused += 1,
+            Form::Data(payload) if refused && !spellable(surface, payload) => exempt_refused += 1,
             Form::Data(_) => defects.push(format!(
                 "{shown}: written as data, which the notation can say{}",
                 if refused { " (a refused fixture)" } else { "" }
@@ -633,9 +673,9 @@ fn one_surface() {
                 notation += 1;
                 // A refused fixture may be refused for its text; a source of
                 // the product is its own canonical source.
-                let printed = parse_module(body, SPEC)
+                let printed = (surface.parse)(body, surface.spec)
                     .ok()
-                    .and_then(|module| print_module(&module).ok());
+                    .and_then(|module| (surface.print)(&module).ok());
                 if body
                     .strip_prefix('\n')
                     .is_some_and(|rest| printed.as_deref() == Some(rest))
@@ -662,5 +702,331 @@ fn one_surface() {
     assert!(
         exempt_old > 0 && exempt_refused > 0,
         "{exempt_old} sources under language 1.0 and 1.1, {exempt_refused} refused fixtures written as data: the exemptions are not exercised"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// AU-05.
+// ---------------------------------------------------------------------------
+
+/// The committed tooling fixtures, and the embedded adapter project, whose
+/// modules are written in the notation.
+const TOOLING_FIXTURES: [&str; 3] = ["commands", "core", "traversal"];
+
+/// The linked project of a tooling fixture copy, as the compiler embeds it.
+fn tooling_checked(project: &P) -> lexlean::link::CheckedProject {
+    let inner = lexlean::project::Project::load(&project.root.join("lexlean.toml"))
+        .expect("the project loads")
+        .with_tooling();
+    let (lock, packages) = lexlean::lock::compute_lock(&inner, false).expect("the lock computes");
+    lexlean::link::check_project(
+        &inner,
+        &lexlean::project::Selection::Entrypoints,
+        &lock,
+        packages,
+    )
+    .expect("the tooling project links")
+}
+
+/// Every tooling module of a committed source, as canonical JSON, with the
+/// file it is in.
+fn tooling_corpus() -> Vec<(String, Json)> {
+    let root = repo_root();
+    let mut modules = Vec::new();
+    for entry in walkdir::WalkDir::new(root.as_std_path())
+        .into_iter()
+        .filter_entry(|entry| {
+            let name = entry.file_name().to_string_lossy();
+            name != "target" && name != ".git" && name != ".lexlean"
+        })
+        .flatten()
+    {
+        let path = entry.path();
+        if !path.to_string_lossy().ends_with(".lex.tex") {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        if !text.contains("\\begin{toolingmodule}") {
+            continue;
+        }
+        let value = support::try_module_json(&text)
+            .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+        modules.push((
+            path.display().to_string(),
+            Json::parse(value.to_string().as_bytes()).expect("canonical JSON"),
+        ));
+    }
+    modules
+}
+
+fn tooling_notation() {
+    use lexlean::surface::tooling::{declaration_spans, parse_module, print_module};
+
+    // The notation and the canonical JSON are in bijection for every
+    // committed tooling module, and each declaration has the span of its own
+    // text.
+    let (mut modules, mut declarations) = (0usize, 0usize);
+    for (path, json) in tooling_corpus() {
+        let text = print_module(&json).unwrap_or_else(|error| panic!("{path}: {error}"));
+        let back = parse_module(&text, TOOLING_SPEC)
+            .unwrap_or_else(|error| panic!("{path}: {error}\n{}", &text[..text.len().min(400)]));
+        assert_eq!(back, json, "{path}: read back differently");
+        assert_eq!(
+            print_module(&back).expect("prints"),
+            text,
+            "{path}: the notation is not its own canonical form"
+        );
+        let spans = declaration_spans(&text).unwrap_or_else(|error| panic!("{path}: {error}"));
+        let Json::Obj(members) = &json else {
+            panic!("{path}: a module is an object");
+        };
+        let Some(Json::Arr(items)) = members.get("declarations") else {
+            panic!("{path}: a module has declarations");
+        };
+        assert_eq!(
+            spans.len(),
+            items.len(),
+            "{path}: a span for each declaration"
+        );
+        for ((start, end), item) in spans.iter().zip(items) {
+            let one = lexlean::surface::generic::parse(&text[*start..*end])
+                .unwrap_or_else(|error| panic!("{path}: a span is not a declaration: {error}"));
+            assert_eq!(&one, item, "{path}: a span is not its own declaration");
+        }
+        modules += 1;
+        declarations += items.len();
+    }
+    assert!(
+        modules >= 4 && declarations >= 380,
+        "{modules} modules, {declarations} declarations: the tooling corpus has shrunk"
+    );
+
+    for name in TOOLING_FIXTURES {
+        let notation = P::tooling(name);
+        let data = P::tooling(name);
+        let committed = notation.read_raw("src/Main.lex.tex");
+        assert!(
+            !committed.contains("\\toolingdata"),
+            "{name}: a committed tooling module is written as data"
+        );
+        data.write("src/Main.lex.tex", &support::module_as_data(&committed));
+
+        // `fmt` writes the data form as exactly the committed notation, and
+        // the notation as itself.
+        let from_data = tooling_checked(&data);
+        let from_notation = tooling_checked(&notation);
+        assert_eq!(
+            lexlean::fmt::canonical_source(&from_data.modules["Main"], &from_data.closure)
+                .expect("fmt writes the data form"),
+            committed,
+            "{name}: fmt did not write the data form as the committed notation"
+        );
+        assert_eq!(
+            lexlean::fmt::canonical_source(&from_notation.modules["Main"], &from_notation.closure)
+                .expect("fmt writes the notation"),
+            committed,
+            "{name}: fmt changed the notation"
+        );
+
+        // The same module: the same semantic ID, Lean, and LaTeX, and the
+        // source map relates each declaration to its text in the notation.
+        assert_eq!(
+            from_data.semantic_id, from_notation.semantic_id,
+            "{name}: the notation does not link to its data form's module"
+        );
+        assert_ne!(
+            from_data.source_id, from_notation.source_id,
+            "{name}: the source did not change"
+        );
+        let rendered_data = crate::tooling::render(&data.root.join("lexlean.toml"))
+            .unwrap_or_else(|error| panic!("{name}: {error}"));
+        let rendered_notation = crate::tooling::render(&notation.root.join("lexlean.toml"))
+            .unwrap_or_else(|error| panic!("{name}: {error}"));
+        assert_eq!(rendered_data.modules.len(), rendered_notation.modules.len());
+        let mut mapped = 0usize;
+        for (left, right) in rendered_data.modules.iter().zip(&rendered_notation.modules) {
+            assert_eq!(
+                left.lean_text, right.lean_text,
+                "{name}: the generated Lean differs"
+            );
+            assert_eq!(
+                left.tex_text, right.tex_text,
+                "{name}: the generated LaTeX differs"
+            );
+            for mapping in &right.map.mappings {
+                let is_declaration = right
+                    .map
+                    .nodes
+                    .iter()
+                    .any(|node| node.id == mapping.node && node.kind == "tooling-declaration");
+                let Some((start, end)) = mapping.src_range else {
+                    continue;
+                };
+                if !is_declaration || mapping.artifact != 0 {
+                    continue;
+                }
+                let text = &committed[start..end];
+                lexlean::surface::generic::parse(text).unwrap_or_else(|error| {
+                    panic!("{name}: a mapped piece is not a declaration of the notation: {error}")
+                });
+                mapped += 1;
+            }
+        }
+        assert!(
+            mapped > 0,
+            "{name}: no declaration is mapped to the notation"
+        );
+    }
+
+    // Malformed notation, and every single-token deletion and duplication of
+    // a committed module, fails with a position or decodes: nothing panics.
+    let committed = P::tooling("core").read_raw("src/Main.lex.tex");
+    let begin = committed.find("\\begin{toolingmodule}\n").expect("begin")
+        + "\\begin{toolingmodule}\n".len();
+    let end = committed.rfind("\\end{toolingmodule}").expect("end");
+    let body = &committed[begin..end];
+    for text in [
+        "",
+        "[]",
+        "{",
+        "{spec: x, declarations: []}",
+        "{declarations: [type{]}",
+    ] {
+        let error = parse_module(text, TOOLING_SPEC).expect_err("malformed");
+        assert!(
+            error.offset <= text.len(),
+            "{text:?}: the position is in the text"
+        );
+    }
+    let pin = lexlean::ir::tooling::AuthorityPin {
+        lean_version: lexlean::LEAN_VERSION,
+        lean_githash: lexlean::LEAN_GITHASH,
+    };
+    let tokens = lex(body).expect("the committed notation lexes");
+    let (mut refused, mut decoded) = (0usize, 0usize);
+    for token in &tokens {
+        let (start, stop) = (token.start, token.end);
+        for mutated in [
+            format!("{}{}", &body[..start], &body[stop..]),
+            format!("{}{}", &body[..stop], &body[start..]),
+        ] {
+            match parse_module(&mutated, TOOLING_SPEC) {
+                Err(error) => {
+                    assert!(error.offset <= mutated.len(), "the position is in the text");
+                    refused += 1;
+                }
+                Ok(json) => {
+                    // What reads is decoded by the decoder the link stage
+                    // uses: it refuses with a registered code or accepts.
+                    match lexlean::ir::tooling::ToolingModule::parse(
+                        &json.to_canonical_string(),
+                        lexlean::LANGUAGE_1_2,
+                        pin,
+                    ) {
+                        Ok(_) => decoded += 1,
+                        Err(failure) => {
+                            assert!(!failure.reason.is_empty());
+                            refused += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        refused > 1_000 && decoded > 0,
+        "{refused} refused, {decoded} decoded: the sweep did not exercise both outcomes"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// AU-06.
+// ---------------------------------------------------------------------------
+
+fn identity_is_form_independent() {
+    // The embedded tree holds modules written in the notation (the adapter's
+    // tooling module), and what each contributes to an identity is its data
+    // form.
+    let mut in_notation = 0usize;
+    let mut rows: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut as_data: Vec<(String, Vec<u8>)> = Vec::new();
+    for (path, bytes) in lexlean::embedded::FILES {
+        rows.push(((*path).to_owned(), bytes.to_vec()));
+        let contributed = lexlean::identity_bytes(path, bytes);
+        let text = std::str::from_utf8(bytes)
+            .ok()
+            .filter(|_| path.ends_with(".lex.tex"));
+        match text.filter(|text| support::is_notation_module(text)) {
+            Some(text) => {
+                assert_eq!(
+                    contributed.as_ref(),
+                    support::module_as_data(text).as_bytes(),
+                    "{path}: a notation module contributes its data form"
+                );
+                in_notation += 1;
+                as_data.push((
+                    (*path).to_owned(),
+                    support::module_as_data(text).into_bytes(),
+                ));
+            }
+            None => {
+                assert_eq!(
+                    contributed.as_ref(),
+                    *bytes,
+                    "{path}: any other file, as it is"
+                );
+                as_data.push(((*path).to_owned(), bytes.to_vec()));
+            }
+        }
+    }
+    assert!(
+        in_notation > 0,
+        "no embedded module is written in the notation: the case would pass vacuously"
+    );
+    let digest = |rows: &[(String, Vec<u8>)]| {
+        let borrowed: Vec<(&str, &[u8])> = rows
+            .iter()
+            .map(|(path, bytes)| (path.as_str(), bytes.as_slice()))
+            .collect();
+        support::identity_tree_digest(&borrowed)
+    };
+    let id = lexlean::compiler_semantics_id_for(lexlean::LATEST_LANGUAGE_VERSION);
+    // The tree as committed, and the same tree with every such module
+    // written as data, have the one identity.
+    assert_eq!(digest(&rows), id, "the committed tree is the identity");
+    assert_eq!(
+        digest(&as_data),
+        id,
+        "the tree with every module written as data is the same identity"
+    );
+    // A change to a module's meaning is a change of identity, in either form.
+    let adapter = "language/lcnf-1.2/tooling/src/Extract.lex.tex";
+    let at = rows
+        .iter()
+        .position(|(path, _)| path == adapter)
+        .expect("the embedded adapter source");
+    let text = std::str::from_utf8(&rows[at].1).expect("UTF-8");
+    let mut module = support::module_json(text);
+    module["declarations"]
+        .as_array_mut()
+        .expect("declarations")
+        .pop()
+        .expect("a declaration");
+    let mut planted = rows.clone();
+    planted[at].1 = support::with_module_json(text, &module).into_bytes();
+    assert_ne!(
+        digest(&planted),
+        id,
+        "a removed declaration changes the identity"
+    );
+    let mut planted_data = as_data.clone();
+    planted_data[at].1 =
+        support::module_as_data(std::str::from_utf8(&planted[at].1).expect("UTF-8")).into_bytes();
+    assert_eq!(
+        digest(&planted),
+        digest(&planted_data),
+        "the changed module has one identity in either form"
     );
 }
