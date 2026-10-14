@@ -622,31 +622,42 @@ fn check_reproducibility(root: &Path) -> Result<(), Fail> {
             temp_b.path().display()
         );
     }
-    // The proof library's own project (§17.17) is built twice as well; it is
-    // not an example, and its lock is made in each copy.
-    let library = root.join(lexlean::production::preserve::LIBRARY_DIR);
-    let (temp_a, files_a) = published_build(&library, true)?;
-    let (temp_b, files_b) = published_build(&library, true)?;
-    if temp_a.path() == temp_b.path() {
-        return Err("the two build directories must be distinct".into());
+    // The proof libraries' own projects (§17.17, §17.18) are built twice as
+    // well; they are not examples, and a lock is made in each copy.
+    for (label, directory) in [
+        (
+            "the preservation library",
+            lexlean::production::preserve::LIBRARY_DIR,
+        ),
+        (
+            "the certification library",
+            repo_conformance::certification_library::PROJECT_DIR,
+        ),
+    ] {
+        let library = root.join(directory);
+        let (temp_a, files_a) = published_build(&library, true)?;
+        let (temp_b, files_b) = published_build(&library, true)?;
+        if temp_a.path() == temp_b.path() {
+            return Err("the two build directories must be distinct".into());
+        }
+        if files_a != files_b {
+            let differing = files_a
+                .iter()
+                .zip(&files_b)
+                .find(|(a, b)| a != b)
+                .map_or_else(|| "the file sets".to_owned(), |(a, _)| a.0.clone());
+            return Err(format!(
+                "R10: {label}: {differing} differs between two clean builds in distinct directories"
+            )
+            .into());
+        }
+        println!(
+            "check-reproducibility: {label}: {} published artifacts byte-identical across {} and {} (R10)",
+            files_a.len(),
+            temp_a.path().display(),
+            temp_b.path().display()
+        );
     }
-    if files_a != files_b {
-        let differing = files_a
-            .iter()
-            .zip(&files_b)
-            .find(|(a, b)| a != b)
-            .map_or_else(|| "the file sets".to_owned(), |(a, _)| a.0.clone());
-        return Err(format!(
-            "R10: the preservation library: {differing} differs between two clean builds in distinct directories"
-        )
-        .into());
-    }
-    println!(
-        "check-reproducibility: the preservation library: {} published artifacts byte-identical across {} and {} (R10)",
-        files_a.len(),
-        temp_a.path().display(),
-        temp_b.path().display()
-    );
     let tooling = repo_conformance::tooling::check_reproducibility(root)?;
     println!(
         "check-reproducibility: {tooling} tooling artifacts byte-identical across two directories (R10)"

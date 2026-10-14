@@ -5299,8 +5299,9 @@ covers every system, not because every system was run. The module
 `Certification` of `compiler/` is the normative model of that certification:
 a LexLean definition that Lean elaborates, replays, and axiom-audits, over
 the request model `Gnaf` of §17.15 and the calculus denotation of §17.14. A
-hand-written Lean library, `compiler/proofs/LexLeanCertification/`, proves the
-model sound against `Gnaf`'s own definitions. GNAF-normality is a status of
+library of proofs, `compiler/proofs/`, written as native core modules
+(§17.10) from which the compiler generates the Lean, proves the model sound
+against `Gnaf`'s own definitions. GNAF-normality is a status of
 its own and is never optimality: no definition and no theorem here makes the
 one the other (UOR-GNAF §1.3, §6.4, Theorem 11.7).
 
@@ -5441,10 +5442,23 @@ statements are about `U_sys` and not about the certificate's own list:
   entry-irrelevance of evaluation (`eval_tail`) and the factoring of a
   dispatch (`dispatch_cheaper`).
 
-The library is repository evidence: it is not shipped, it does not enter the
-semantics ID, and its declarations' axioms are pinned in `compiler/proofs/
-library.toml`. It is verified by `GC-09` against the compiler's generated
-modules and the shipped preservation library (§17.17). The model and its
+The library is repository evidence: it is not shipped and it does not enter the
+semantics ID. It is LexLean source (`GC-11`): `compiler/proofs/` is an ordinary
+closed project of thirteen language-1.2 native `lexlean/core-module/2` modules
+(`src/`, with the title glossary `certification.titles`) whose module prefix is
+`LexLeanCertification`, and it holds no file of Lean source. `compiler/proofs/
+library.toml` lists the modules, in dependency order, and nothing else: every
+declaration and its exact axioms are read from the native data, where each row
+pins its axiom policy exactly, and a module may import only `Init`, an earlier
+module of the library, the preservation core, and the calculus and generated
+modules it is stated against (`LexLeanTarget.TargetSyntax`,
+`TargetSemantics`, `Gnaf`, `GnafFixtures`, `Certification`,
+`GnafCertificates`). The Lean the library is checked as is the Lean the
+compiler generates from those modules, byte for byte what building the project
+writes. It is verified by `GC-09` against the compiler's generated modules and
+the shipped preservation library (§17.17). The library was a hand-written Lean
+project of the same thirteen modules, converted once and without loss; the
+evidence is `tests/certification-library/MIGRATION.md`. The model and its
 fixtures are verified by `verify` with the project.
 
 **What is closed semantics and what is library.** In the `Certification`
@@ -8625,8 +8639,9 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `GC-06` | `gnaf-certification` | Local normality is never optimality: no theorem defines optimal as GNAF-normal, the normality route's verdict is never certified, a GNAF-normal system that is not the argmin is locally normalized only, claiming it as the attainer of the bound it cannot meet is refused, a system a schema improves is not normal, and a certified optimum is GNAF-normal while the converse is false. | §17.18 |
 | `GC-07` | `gnaf-certification` | A representation metric supports an execution-optimality claim only through a bridge: the system of least size is representation-minimal without one, an affine bridge from size to cost holding for every system certifies the least-size system as a global optimum when it attains the bound, and a missing, violated, unattained, non-minimal, or out-of-range bridge leaves a representation-minimal or correct-only status. | §17.18 |
 | `GC-08` | `gnaf-certification` | Every verdict is a closed, explicit claim status: refused for a certificate that does not bind its request's verifier, universe, objective, claim, and scope or does not cover its universe, a certified optimum, argmin, or frontier, or incomplete with the first open obligation and the strongest status it establishes, correct-only, locally normalized, or representation-minimal, never a fallback claim; a certificate for another universe, including the same problem on an enlarged machine, is refused. | §17.18 |
-| `GC-09` | `gnaf-certification` | The certification library is kernel-checked under the pinned Lean with exactly its registered axioms and none of the forbidden forms: it proves that a certified verdict bounds the cost of every well-formed system of the request's grammar universe at the request's fuel and every larger one and that a bound is attained, that a certified frontier is exactly the Pareto frontier of the admitted systems, that normality never certifies, that every certified optimum is GNAF-normal, and that every improving schema application satisfies the module's own `Certification.preserves`, its rewriting keeping the system's observations over the request's domain at strictly lower cost, and its soundness theorem holds of every certified committed certificate. | §17.18 |
+| `GC-09` | `gnaf-certification` | The certification library, as the Lean its native modules generate, is kernel-checked under the pinned Lean with exactly the axioms its rows pin and none of the forbidden forms, a planted added axiom, false lemma, or weakened checker each being refused: it proves that a certified verdict bounds the cost of every well-formed system of the request's grammar universe at the request's fuel and every larger one and that a bound is attained, that a certified frontier is exactly the Pareto frontier of the admitted systems, that normality never certifies, that every certified optimum is GNAF-normal, and that every improving schema application satisfies the module's own `Certification.preserves`, its rewriting keeping the system's observations over the request's domain at strictly lower cost, and its soundness theorem holds of every certified committed certificate. | §17.18 |
 | `GC-10` | `gnaf-certification` | The certification model, certificate fixtures, certificate module, and schemas are generated, deterministic, and content-addressed: they equal their generators, the compiler project reaches them from its entrypoint, certificate identities are recomputed from content, and a planted change to a premise, a bound, or a route changes the verdict or the identity. | §17.18 |
+| `GC-11` | `gnaf-certification` | The certification library is LexLean source: every module of its registry is one language-1.2 native core module of the library's own project, which holds no file of Lean source, no Lean file anywhere in the release tree declares the library's namespace or lies under its module root, and the registry lists only the modules; the declarations and their exact axiom policies are read from the native data, a module that imports anything but `Init`, an earlier module, the preservation core, or the generated and calculus modules it is stated against, or that does not pin its axioms exactly, is refused, and the Lean the compiler generates from the sources is, byte for byte, the Lean the certification library's kernel check compiles, so that neither a stale nor an edited generated module can stand in for the source and a planted drift of the source is visible in what is generated. | §17.18 |
 | `SP-01` | `preservation` | Every production root of the committed examples lowers to a valid realization program in first-binding order, byte-identical across two lowerings, with an origin for every function and document type and exactly the root's eligibility closure; the lowering and certificate sources match no construct by default; a planted closure disagreement fails with LLI9001 and a planted default arm is refused. | §17.17 |
 | `SP-02` | `preservation` | Every production root of examples/production, examples/production-coverage, examples/models, and examples/reasoning has a certificate whose root theorem, that the lowered program converges on the encoded arguments to the encoded source value or to overflow exactly where the width predicate fails, compiles under the pinned Lean, replays through leanchecker, and depends on exactly Classical.choice, Quot.sound, and propext; a certificate generated against a program with a planted branch, arithmetic, constructor, recursion, or literal mutation is rejected, and each such rejection lies in the declaration of the function mutated; and a root whose lowered program or certificates would exceed max_ir_nodes or max_file_bytes is refused with LLS8002 before the toolchain is touched: early, by a lower bound on each certificate from what the program states, the greatest of which is compared with the limit and none of which is above its certificate on the corpora, on families of programs that grow one dimension at a time, and on programs that grow several at once, so that a program whose certificates fit, a match on 420 constructors, a string of 450 000 characters, or both a wide match and a long string, is not refused by it, and by a floor on certificate B from the entries its field reads print, which the lowering refuses before the Rust crate is built; and in every case by generating each certificate under the limit, which stops it at the limit; the programs, crates, and certificates of all the roots of a project count together toward max_total_source_bytes, which a chain of roots calling one another passes before memory is exhausted; and a match on 180 constructors verifies through the whole pipeline. | §17.17 |
 | `SP-03` | `preservation` | On seeded inputs to every production root of examples/production, examples/production-coverage, examples/models, and examples/reasoning, the calculus interpreter's outcome on the lowered program equals the certificate's observation evaluated by Lean, and a planted disagreement is detected. | §17.17 |
@@ -8698,7 +8713,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `TL-10` | `tooling` | Both backends traverse the one linked module: the Lean text begins with the fixed header, holds one rendering per function, command, invocation, and evaluation, and contains no comment, every declaration with output has one source-mapped piece, coverage is complete, the LaTeX document has one entry per declaration, and the pinned Lean elaborates every committed fixture without a message while refusing a registry that misstates an arity or a constructor list that the tool is consistent with. | §17.20, §18, §19.6, §20.5 |
 | `TL-11` | `tooling` | Tooling modules are deterministic and content-addressed: each committed fixture's published build tree equals its golden byte for byte and across two clean builds in different directories, changing any declaration, registry row, source pin, or term changes the semantic ID, and the schema lies outside `schemas/` and so outside the compiler-semantics ID, which the committed locks of the three languages still record. | §17.20, §21.2, §28.3, §28.4 |
 
-**Total required capability IDs:** 365.
+**Total required capability IDs:** 366.
 
 No row may be downgraded to `some-true` or `open`. Upstream Lean facts are ledger/authority rows, not substitutions for these build behaviors.
 

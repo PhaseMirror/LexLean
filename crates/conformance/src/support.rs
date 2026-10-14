@@ -381,6 +381,28 @@ impl P {
         Self { temp, root }
     }
 
+    /// A fresh copy of the certification library's own project (SPEC.md
+    /// §17.18), without build output or a lock.
+    #[must_use]
+    pub fn certification_project() -> Self {
+        let temp = tempfile::Builder::new()
+            .prefix("lexlean-certification-library-case-")
+            .tempdir()
+            .expect("tempdir");
+        let source = repo_root().join(crate::certification_library::PROJECT_DIR);
+        assert!(
+            source.is_dir(),
+            "the certification library project is required"
+        );
+        copy_tree(
+            source.as_std_path(),
+            temp.path(),
+            &[".lexlean", "lexlean.lock"],
+        );
+        let root = Utf8PathBuf::from_path_buf(temp.path().to_path_buf()).expect("utf8 tempdir");
+        Self { temp, root }
+    }
+
     /// A fresh copy of a committed tooling fixture (SPEC.md §17.20), without
     /// build output or goldens. A tooling module is accepted only in a
     /// project the compiler embeds, so a case checks it through
