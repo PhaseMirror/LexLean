@@ -27,8 +27,15 @@ versions, and the entries below say what each tag does and does not claim.
   the literal. The bound that remains is the wall clock, `child_timeout_ms`,
   as the specification already said. Every certificate text changes by its
   header, so the committed certificate records of the examples and the
-  compiler project, and the fixture expectations that quote certificate
-  line numbers, are regenerated.
+  fixture expectations that quote certificate sizes are regenerated. The
+  fixtures `certificate-heartbeat-rejected` and
+  `certificate-resource-exhausted` model an exhausted Lean by a substituted
+  `lake` that set a budget of one heartbeat after `autoImplicit`; it now
+  overrides the lifted budget instead. With the budget lifted, their
+  100-parameter project reaches certificate B for the first time, which
+  refuses it for a reason of its own (#97): Lean elaborates a list literal
+  of more than 32 elements under `let` binders, and a certificate witness
+  with postponed holes in such a list does not unify.
 
 - `rust-std` rendering: ownership and lists (SPEC.md §17.14, §17.16, `RB-08`,
   no new diagnostic code). A read of a binding that nothing after it reads
