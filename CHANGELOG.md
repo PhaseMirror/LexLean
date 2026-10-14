@@ -27,7 +27,8 @@ versions, and the entries below say what each tag does and does not claim.
   writes for a short one beyond that. The 100-parameter project of
   `tests/negative/certificate-heartbeat-rejected` verifies without its
   shim. The certificates of `examples/models` and `examples/reasoning` that
-  hold such a list change, and their verification records are regenerated.
+  hold such a list change, and their verification records are regenerated,
+  as is the size `certificate-resource-exhausted` quotes.
   `SP-13` brings the register to 371 IDs.
 - The language-1.2 authoring notation (SPEC.md §17.21, `AU-01`..`AU-03`; stage 3
 - Core modules in the authoring notation (SPEC.md §17.21.8, `AU-09`..`AU-12`;
