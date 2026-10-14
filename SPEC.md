@@ -4673,11 +4673,15 @@ constructors 200, and one on 440 constructors does not finish in 15 minutes),
 and a certificate A of 23 bytes for each pair of arms takes 59 seconds at 200
 constructors. Its default budgets are exhausted well before: 100 constructors
 are checked within `maxHeartbeats` 200 000 and `synthInstance.maxHeartbeats`
-20 000, 160 exhaust the second, 200 the first, and exhausting either in the
-middle of a proof ends as `Application type mismatch`, an error that blames a
-valid certificate. The certificates of a program whose widest match has more
-than 100 arms therefore set both budgets to 0, and the limit that remains is
-the wall clock: `child_timeout_ms` (300 seconds by default) bounds every Lean
+20 000, 160 exhaust the second, 200 the first, a function returning a
+large literal (a program carrying its parameters as data) costs `isDefEq` as
+much again, and exhausting either in the middle of a proof ends as
+`Application type mismatch`, an error that blames a valid certificate. Every
+certificate therefore sets both budgets to 0, and certificate B declares its
+program and crate terms `noncomputable`, since they are the statement's data,
+unfolded by the proofs and run by nothing, and compiling a large crate term
+alone exhausted the code generator's budget. The limit that remains is the
+wall clock: `child_timeout_ms` (300 seconds by default) bounds every Lean
 process, and its exhaustion is `LLS8002`. Each child process (`lake`, which
 starts `lean`, and the PDF provider: every child of `verify` is started the
 same way) leads a process group of its own, and on a

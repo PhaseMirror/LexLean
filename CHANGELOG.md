@@ -15,6 +15,21 @@ versions, and the entries below say what each tag does and does not claim.
 
 ## Unreleased
 
+- Certificate budgets (SPEC.md §22.6, `SP-02`, no new diagnostic code).
+  Every certificate now lifts both of the pinned Lean's heartbeat budgets, as
+  only the certificates of a program with a match of more than 100 arms did,
+  and certificate B declares its `program` and `krate` terms `noncomputable`.
+  A root whose program carries its parameters as data (`UOR-Foundation/MNIST`
+  at its model root: 243 KB of crate, int_tensor artifacts decoded into
+  literals) was refused twice by a valid certificate: the code generator
+  exhausted its 200 000 heartbeats compiling the crate term, which nothing
+  runs, and then `isDefEq` exhausted the same budget on the function holding
+  the literal. The bound that remains is the wall clock, `child_timeout_ms`,
+  as the specification already said. Every certificate text changes by its
+  header, so the committed certificate records of the examples and the
+  compiler project, and the fixture expectations that quote certificate
+  line numbers, are regenerated.
+
 - `rust-std` rendering: ownership and lists (SPEC.md §17.14, §17.16, `RB-08`,
   no new diagnostic code). A read of a binding that nothing after it reads
   is a move and a projection of a pair component that nothing after it
