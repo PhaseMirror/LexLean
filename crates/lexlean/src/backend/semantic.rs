@@ -1918,6 +1918,26 @@ pub(crate) fn declaration_spans_in(source: &str, control: &str) -> Option<Vec<(u
     }
 }
 
+/// The byte range in the normalized source of every declaration of a semantic
+/// module written in the authoring notation, in order; `None` for a module
+/// written as data.
+pub(crate) fn notation_declaration_spans(normalized: &str) -> Option<Vec<(usize, usize)>> {
+    const BEGIN: &str = "\\begin{semanticmodule}";
+    const END: &str = "\\end{semanticmodule}";
+    let body_start = normalized.find(BEGIN)? + BEGIN.len();
+    let body = normalized.get(body_start..normalized.rfind(END)?)?;
+    if body.trim_start().starts_with("\\semanticdata") {
+        return None;
+    }
+    let spans = crate::surface::semantic::declaration_spans(body).ok()?;
+    Some(
+        spans
+            .into_iter()
+            .map(|(start, end)| (body_start + start, body_start + end))
+            .collect(),
+    )
+}
+
 /// Language 1.2: one mapping node per declaration, relating its generated
 /// text to its own object in the source, inside the module node that
 /// relates the preamble and closing to the whole module.
@@ -1970,7 +1990,19 @@ pub(crate) fn emit_declarations_for(
     end: usize,
     source: &DeclarationSource<'_>,
 ) -> Result<Emitter, Diagnostic> {
-    let spans = declaration_spans_in(&checked.normalized, source.control)
+    // A semantic module written in the authoring notation (§17.21) maps each
+    // declaration to its own text there, as one written as data maps it to
+    // its object.
+    let notation = (source.control == "\\semanticdata{")
+        .then(|| notation_declaration_spans(&checked.normalized))
+        .flatten();
+    let owner = if notation.is_some() {
+        "lexlean.core::semanticsource"
+    } else {
+        source.owner
+    };
+    let spans = notation
+        .or_else(|| declaration_spans_in(&checked.normalized, source.control))
         .filter(|spans| spans.len() == starts.len())
         .ok_or_else(|| {
             Diagnostic::new(
@@ -1979,7 +2011,7 @@ pub(crate) fn emit_declarations_for(
             )
         })?;
     let origin = || Origin::Metadata {
-        owner: source.owner.to_owned(),
+        owner: owner.to_owned(),
     };
     let whole = EmitSource::File(0, checked.normalized.len());
     let mut emitter = Emitter::new();

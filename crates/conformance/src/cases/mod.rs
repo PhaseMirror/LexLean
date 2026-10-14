@@ -5,6 +5,7 @@
 //! pass before its case exists.
 
 mod artifacts;
+mod authoring;
 mod calculus;
 mod certification;
 mod cli_api;
@@ -109,6 +110,7 @@ pub fn run(id: &str) {
         "MD" => models::run(id),
         "RS" => reasoning::run(id),
         "TL" => tooling::run(id),
+        "AU" => authoring::run(id),
         _ => panic!("no conformance case is wired for {id}"),
     }
 }

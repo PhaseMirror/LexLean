@@ -15,6 +15,17 @@ versions, and the entries below say what each tag does and does not claim.
 
 ## Unreleased
 
+- The language-1.2 authoring notation (SPEC.md §17.21, `AU-01`..`AU-03`; stage 3
+  of #27, #93). A `semanticmodule` can be written as readable text instead of
+  `\semanticdata{…}` JSON: declarations in a fixed grammar, read from the
+  schema, with readable forms for types (`(List Nat)`, `(A * B)`), terms
+  (`(let x : Nat := 1; (x + x))`, `(match s | C x => …)`) and members
+  (`Module::name`), and a generic form `kind{…}` for every other value. The
+  notation and the canonical JSON are in bijection, so a module in the notation
+  has the semantic ID and the generated Lean and LaTeX of its data form, and
+  `fmt` writes the notation canonically (a module written as data stays as it
+  is). No diagnostic code is new: a malformed text is `LLP2001`, and nothing
+  embedded in the compiler-semantics ID changes.
 - `rust-std` rendering: ownership and lists (SPEC.md §17.14, §17.16, `RB-08`,
   no new diagnostic code). A read of a binding that nothing after it reads
   is a move and a projection of a pair component that nothing after it

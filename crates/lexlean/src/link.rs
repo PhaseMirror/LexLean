@@ -248,6 +248,50 @@ fn span_of_range(path: &str, atoms: &[Atom], range: AtomRange) -> crate::diagnos
     }
 }
 
+/// The span of the byte `offset` into a verbatim body (the atoms of `range`),
+/// one scalar wide; the `\begin` atom when the body is empty.
+fn notation_span(
+    path: &str,
+    atoms: &[Atom],
+    range: AtomRange,
+    begin: usize,
+    offset: usize,
+) -> crate::diagnostic::Span {
+    let Some(first) = atoms.get(range.0).filter(|_| range.0 < range.1) else {
+        return span_of_range(path, atoms, (begin, begin + 1));
+    };
+    let target = first.byte_start + offset;
+    for atom in &atoms[range.0..range.1.min(atoms.len())] {
+        if target >= atom.byte_end {
+            continue;
+        }
+        let (mut line, mut column) = (atom.line_start, atom.column_start);
+        let mut width = 1;
+        for (at, scalar) in atom.text.char_indices() {
+            if atom.byte_start + at >= target {
+                width = scalar.len_utf8();
+                break;
+            }
+            if scalar == '\n' {
+                line += 1;
+                column = 1;
+            } else {
+                column += 1;
+            }
+        }
+        return crate::diagnostic::Span {
+            path: path.to_owned(),
+            byte_start: target,
+            byte_end: target + width,
+            line_start: line,
+            column_start: column,
+            line_end: line,
+            column_end: column + 1,
+        };
+    }
+    span_of_range(path, atoms, range)
+}
+
 fn bytes_of(atoms: &[Atom], range: AtomRange) -> (usize, usize) {
     if range.0 >= atoms.len() {
         return (0, 0);
@@ -708,9 +752,40 @@ fn check_project_inline(
             // Artifact declarations are charged before they decode, against
             // the nodes every earlier module linked (§17.12 rule 2).
             artifacts.begin_module(ir_node_count, total_bytes);
+            // The notation is read to the canonical JSON the decoder reads, so
+            // that what a module means is decided in one place (§17.21).
+            let data: std::borrow::Cow<'_, str> = if ast.surface {
+                if project.config.language != crate::LANGUAGE_1_2 {
+                    return Err(err(vec![Diagnostic::new(
+                        code!("LLP2003"),
+                        "phase link: the authoring notation of a semanticmodule is language 1.2; write `\\semanticdata` under language 1.1",
+                    )
+                    .with_span(span_of_range(&load.path, &load.atoms, ast.data.range))]));
+                }
+                let spec = crate::ir::semantic::semantic_module_spec(&project.config.language)
+                    .expect("language 1.2 has a semantic-module schema");
+                match crate::surface::semantic::parse_module(&ast.data.text, spec) {
+                    Ok(json) => std::borrow::Cow::Owned(json.to_canonical_string()),
+                    Err(error) => {
+                        return Err(err(vec![Diagnostic::new(
+                            code!("LLP2001"),
+                            format!("phase link: semantic notation: {}", error.message),
+                        )
+                        .with_span(notation_span(
+                            &load.path,
+                            &load.atoms,
+                            ast.data.range,
+                            ast.begin,
+                            error.offset,
+                        ))]));
+                    }
+                }
+            } else {
+                std::borrow::Cow::Borrowed(ast.data.text.as_str())
+            };
             Some(
                 SemanticModule::parse(
-                    &ast.data.text,
+                    &data,
                     &project.config.language,
                     &project.config.module_prefix,
                     &imports,
