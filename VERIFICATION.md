@@ -3224,6 +3224,65 @@ boolean-shapes (rust-core): a negated zero test or predecessor: a zero test is n
 
 Removed: `negate` was restored; both tests pass.
 
+### rust last-use moves can fail
+
+Planted: the lowering no longer ran `rust::moves::apply` on a function body
+(the call in `crates/lexlean/src/calculus/rust/lower.rs` commented out), so
+every read was a clone again. Command: `cargo test -p repo-conformance --test
+conformance -- conformance_rb_08`. Expected: a clone the rendering keeps is
+one the ownership check does not require, so making it a move is accepted.
+
+```text
+thread 'conformance_rb_08' (13002) panicked at crates/conformance/src/cases/rust_backend.rs:1269:29:
+adt-evaluation/rust-std: clone 0 is kept but a move of it is accepted
+```
+
+Removed: the call was restored; `conformance_rb_08` passes, with more moves
+than clones over every fixture in every profile.
+
+### rust component moves are tracked
+
+Planted: `consume_parts` in `crates/lexlean/src/calculus/rust/validate.rs`
+recorded the moved components in a set of its own instead of the checker's
+`parted`, so a binding stayed readable whole after a component left it.
+Command: `cargo test -p repo-conformance --test conformance --
+conformance_rb_08`. Expected: a projection clone the rendering keeps because
+the pair is read afterwards is, made a move, no longer refused.
+
+```text
+thread 'conformance_rb_08' (13579) panicked at crates/conformance/src/cases/rust_backend.rs:1269:29:
+binding-and-shapes/rust-std: clone 0 is kept but a move of it is accepted
+```
+
+Removed: the record was restored; `conformance_rb_08` passes, and the three
+planted crates of the case (a read, a move, and a second component move after
+a component left the pair) are refused naming ownership.
+
+### rust list runs respect sharing
+
+Planted: `cons` in the `rust-std` runtime extended a run's buffer at its
+end rather than at the run's own length (`cells.truncate(len)` removed), so
+a list whose only holder had taken cells off it was built on top of the
+cells it no longer had; the packages were regenerated. Command: `cargo test
+-p repo-conformance --test conformance -- conformance_rb_08`. Expected: the
+list harness sees the stale cell instead of the one it built.
+
+```text
+thread 'conformance_rb_08' (21836) panicked at crates/conformance/src/cases/rust_backend.rs:1490:13:
+the list runtime:
+thread 'main' (21955) panicked at h/run_lists_std/src/main.rs:23:5:
+assertion `left == right` failed: a run extended by its only holder keeps only its own cells
+  left: [3, 2, 1]
+ right: [99, 2, 1]
+```
+
+A first version of the harness built on a tail two other lists still held,
+which is the cell path and not the in-place one, and did not reach the
+plant; the harness now takes a cell off a list it holds alone. Removed: the
+truncation was restored and the packages regenerated; `conformance_rb_08`
+passes, and `conformance_tc_07` holds every fixture's counted work within
+the denotation's steps with the new runtime.
+
 ### GNAF kernel oracle can fail
 
 Planted: the host's `lexlean::gnaf::expand` dispatched only from a plan to

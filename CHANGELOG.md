@@ -15,6 +15,28 @@ versions, and the entries below say what each tag does and does not claim.
 
 ## Unreleased
 
+- `rust-std` rendering: ownership and lists (SPEC.md §17.14, §17.16, `RB-08`,
+  no new diagnostic code). A read of a binding that nothing after it reads
+  is a move and a projection of a pair component that nothing after it
+  reads moves the component out of the pair (`rust::moves`, run after
+  lowering and before validation); every other read clones, as before. The
+  ownership check refuses a component moved out twice and a binding read or
+  moved whole after a component left it. A list is a run of contiguous
+  cells, extended in place when no other list holds its buffer and
+  fronted by a single cell otherwise, so `cons` and `uncons` stay constant
+  work on every list, no buffer is written while another list can see it,
+  and a list built by one consumer is one buffer; every runtime loop still counts what it
+  walks and the counted work of every fixture is unchanged. `RB-08` shows
+  every clone a rendering keeps is one the ownership check requires (each
+  one, made a move, is refused), that the pass makes a last read a move
+  again when it is put back, the three refusals, and the runtime on two
+  hundred thousand cells and two lists on one tail. The renderer and
+  `rust-std` runtime records of `language/semantics-1.2.toml` change
+  (`rust_backend` 3), so the language-1.2 compiler-semantics ID changes,
+  every committed package is re-rendered, and every verified example's
+  records are regenerated. Measured on `UOR-Foundation/MNIST` (LexLean #81),
+  the certified `rust-std` root goes from 28.7 ms to 7.7 ms per image
+  with the same predictions and the same counted work.
 - The certification proof library is LexLean source (SPEC.md §17.18, `GC-09`,
   `GC-11`; stage 2b of #27, #79). Its 13 hand-written Lean modules (Git tree
   `298c8f97` at `ba52c601`: 97,597 bytes, 107 registered declarations) are now 13
@@ -24,7 +46,7 @@ versions, and the entries below say what each tag does and does not claim.
   exact axioms are read from the native data, and `conformance_gc_09` compiles
   and audits the Lean generated from them. The migration is lossless
   (`tests/certification-library/MIGRATION.md`); the library is repository
-  evidence, so no compiler-semantics ID changes. The register has 366 IDs.
+  evidence, so no compiler-semantics ID changes. `GC-11` brings the register to 366 IDs.
 - The preservation proof library is LexLean source (SPEC.md §17.10, §17.17,
   `SM-31`, `SP-12`; stage 2a of #27, #79). Its 13 hand-written Lean modules
   (Git tree `50f70bb5` at `ba52c601`: 525,026 bytes, 934 registered

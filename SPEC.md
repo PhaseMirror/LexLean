@@ -3980,18 +3980,25 @@ exception:
   allocation (a string, a byte string, a list, or a type that holds itself)
   is refused with the reason, never approximated.
 - `rust-std` uses the standard library. A string and a byte string are
-  immutable shared buffers (`Rc<str>`, `Rc<[u8]>`), a list is a persistent
-  list of shared cells, so building and taking apart a cell is constant
-  work, and an ADT field or a closure capture whose type holds its owner is
-  boxed behind `Rc`, and nothing else is.
+  immutable shared buffers (`Rc<str>`, `Rc<[u8]>`); a list is persistent
+  and laid out as a run of contiguous cells (the newest at the end of a
+  buffer, each list a prefix of the buffer it was built in) with single
+  cells in front of it: a `cons` onto a run whose buffer no other list
+  holds extends the buffer in place, and a `cons` onto any other list is
+  one cell, so building and taking apart a cell is constant work on every
+  list, no buffer is written while another list can see it, and a list
+  built by one consumer occupies one buffer; and an ADT field or a closure
+  capture whose type holds its owner is boxed behind `Rc`, and nothing else
+  is.
 
 In both, `nat` is `u64` and `int` is `i64`, each operation checked and every
 out-of-range result the explicit `Err(Overflow)` propagated by `?`; the
 fixed widths are the native integer types with `checked_*` operations;
 orderings are `core::cmp::Ordering`; ADTs are enums; function values are
-defunctionalized into one enum per function type; and using a local clones a
-handle or a value of fixed size, never a structure, so ownership never
-changes an observable value and no step does hidden work. Every loop of the
+defunctionalized into one enum per function type; and using a local moves it
+when nothing after the use reads it and otherwise clones a handle or a value
+of fixed size, never a structure, so ownership never changes an observable
+value and no step does hidden work. Every loop of the
 runtime counts its iterations and every bulk copy counts its length in a
 work counter, and on every fixture with an observable outcome the count
 never exceeds the denotation's steps; the release of a list, whose cells were each counted when built, is
@@ -4307,6 +4314,19 @@ writes differently are fixed:
   another bind their (inner) condition first; an empty unit `else` is left
   implicit; a block that binds a value and returns that binding is the
   value; a field of a computed record binds the record first;
+- a read of a binding is a move when nothing after it, on any path, reads
+  the binding, and a clone otherwise; a projection of a pair component
+  (`let (h, _) = v;`) moves the component out of the pair when nothing
+  after it reads the pair whole or that component and every other component
+  read after it is read once (so that each of those reads is a move too),
+  and clones the pair otherwise. `rust::moves` decides this after lowering,
+  backwards through the evaluation order (a block's bindings then its tail,
+  operands left to right, a condition then the branch taken, a scrutinee
+  then the arm taken, and a closure before the operands it is applied to;
+  branches are alternatives). A move, a clone, and a copy all read the
+  binding, so the choice is invisible to the denotation and to every
+  correspondence row; it decides what the machine does, not what it
+  computes;
 - a type no value inhabits (a function type no closure of a live function
   inhabits, or a named type, pair, or result built only from such types):
   a function with a parameter of such a type is never called and its body is
@@ -4335,7 +4355,8 @@ and no call to it propagates. The length of a sequence cannot exceed
 1. *hygiene*: a name used but not bound, or bound twice in one function,
    and an item declared twice;
 2. *ownership*: a value moved twice, or read after it was moved, on any
-   path; branches are alternatives;
+   path; a pair component moved out twice, or a binding read or moved
+   whole after a component was moved out of it; branches are alternatives;
 3. *hidden allocation*: in `rust-core`, any heap type, heap runtime
    function, string or byte string literal, list construction or match, or
    box;
@@ -4427,7 +4448,7 @@ exports, and the SHA-256 of `Cargo.toml` and `src/lib.rs`.
 `language/semantics-1.2.toml` records the SHA-256 of each profile's runtime
 (`rust_runtime_core`, `rust_runtime_std`) and the digest of the renderer's
 sources (`rust_renderer`: one §21.1 frame per file of
-`rust::RENDERER_FILES`, the six files of `calculus/rust/`, labeled by its
+`rust::RENDERER_FILES`, the seven files of `calculus/rust/`, labeled by its
 name, under the domain `lexlean-rust-renderer-v1`). Unit tests of the runtime
 and the renderer and the conformance suite check both records, so neither
 the runtime nor any rendering can change without changing LexLean's
@@ -8623,6 +8644,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `RB-05` | `rust-backend` | A function that can overflow returns R<T> and every call to it propagates, any other returns its value, an export whose declared errors differ from its function's fails with LLB6005, and a crate that drops, invents, or misreturns a failure is refused. | §17.16 |
 | `RB-06` | `rust-backend` | Every committed package builds offline under its declared gates, rustc warnings and Clippy's default lints denied with ten documented exceptions, the export of each one with an observable outcome, called from a separate crate, prints exactly the denotation's observable outcome, and so does every primitive instance on its boundary and seeded inputs; a planted lint and a planted semantic mutation are detected. | §17.16 |
 | `RB-07` | `rust-backend` | Packages are deterministic and content-addressed: renderings by two separate processes under different roots and environments are byte-identical to each other and to the committed package, every manifest and provenance validates against its schema, the provenance binds the SHA-256 of each file, the program identity, the runtime LexLean's semantics records, the sources, and the language-1.2 compiler-semantics ID, and every committed package's sources are the semantic ID of the verified build stating its program. | §17.16, §21.7 |
+| `RB-08` | `rust-backend` | A read of a binding that nothing after it reads is a move and a projection of a pair component that nothing after it reads moves the component out of the pair, every other read clones, and every clone a rendering keeps is one the ownership check requires; a list is a run of contiguous cells, and building or taking apart a cell is constant work on any list; a crate that reads or moves a binding after a component was moved out of it, or moves a component twice, is refused. | §17.16 |
 | `GN-01` | `gnaf` | Every committed GNAF request and fixture is canonical, validates against the GNAF schemas whose calculus definitions are the target program schema's, and states its components' universe identity; a malformed request, an invalid reference, plan, or realized program, a reference without a value on a domain argument, or a wrong universe identity fails closed with LLB6006, and a machine or request beyond the host's capacity fails closed with LLS8002. | §17.15, §26.3 |
 | `GN-02` | `gnaf` | The GNAF model is a kernel-checked LexLean definition, Lean's kernel reduces the universe, the system statuses, and the answer of every committed request to what the host transcription computes, and a wrong answer, an answer computed from a universe with a system omitted, a tie with a member dropped, and a universe with a system omitted are rejected by Lean. | §17.15 |
 | `GN-03` | `gnaf` | Candidate membership is the grammar's expansion, which a kernel-checked theorem proves equal to the grammar's well-formed selectors for every grammar, independent of evaluation and fixed by a universe identity before any optimizer, and optimizer-defined, discovered, cached, and internal-plan universes and missing, self-referential, or optimizer-citing completeness evidence are rejected. | §17.15 |
@@ -8713,7 +8735,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `TL-10` | `tooling` | Both backends traverse the one linked module: the Lean text begins with the fixed header, holds one rendering per function, command, invocation, and evaluation, and contains no comment, every declaration with output has one source-mapped piece, coverage is complete, the LaTeX document has one entry per declaration, and the pinned Lean elaborates every committed fixture without a message while refusing a registry that misstates an arity or a constructor list that the tool is consistent with. | §17.20, §18, §19.6, §20.5 |
 | `TL-11` | `tooling` | Tooling modules are deterministic and content-addressed: each committed fixture's published build tree equals its golden byte for byte and across two clean builds in different directories, changing any declaration, registry row, source pin, or term changes the semantic ID, and the schema lies outside `schemas/` and so outside the compiler-semantics ID, which the committed locks of the three languages still record. | §17.20, §21.2, §28.3, §28.4 |
 
-**Total required capability IDs:** 366.
+**Total required capability IDs:** 367.
 
 No row may be downgraded to `some-true` or `open`. Upstream Lean facts are ledger/authority rows, not substitutions for these build behaviors.
 
