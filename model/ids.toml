@@ -2209,3 +2209,21 @@ id = "TL-11"
 level = "build"
 suite = "tooling"
 statement = "Tooling modules are deterministic and content-addressed: each committed fixture's published build tree equals its golden byte for byte and across two clean builds in different directories, changing any declaration, registry row, source pin, or term changes the semantic ID, and the schema lies outside `schemas/` and so outside the compiler-semantics ID, which the committed locks of the three languages still record."
+
+[[id]]
+id = "AU-01"
+level = "build"
+suite = "authoring"
+statement = "Every value of the closed semantic-module schema has one notation and the notation reads back to the value: every alternative of the declaration, term, type, and proof unions, with and without its optional members, is written and read back equal, a node that no readable form carries exactly is written generically, the notation is its own canonical form, and every committed semantic module is written and read back equal to its data."
+
+[[id]]
+id = "AU-02"
+level = "build"
+suite = "authoring"
+statement = "A language-1.2 semantic module written in the authoring notation links to exactly the module its data form links to, with the same semantic ID and the same generated Lean and LaTeX byte for byte and source maps that relate each declaration to its text in the notation; the conversion of a module written as data yields the notation, fmt leaves the notation unchanged, and the notation under language 1.1 is refused with LLP2003."
+
+[[id]]
+id = "AU-03"
+level = "build"
+suite = "authoring"
+statement = "Malformed notation fails closed and never panics: an unclosed delimiter, a keyword used as a name, a literal that is not canonical, an unknown kind, and every single-token deletion, duplication, and replacement of a committed module fail with a registered code at a position in the notation or link to a module that decodes, and a numeral with a redundant leading zero is LLL1003 outside a string and is not one inside it."
