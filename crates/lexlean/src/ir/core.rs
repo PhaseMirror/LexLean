@@ -1380,7 +1380,8 @@ fn validate_name_v2(name: &str) -> Result<(), String> {
 
 /// Whether `name` belongs to the closed ASCII Lean-name grammar used by
 /// native core declarations, references, and axiom policies.
-pub(crate) fn is_closed_lean_name(name: &str) -> bool {
+#[must_use]
+pub fn is_closed_lean_name(name: &str) -> bool {
     validate_name(name).is_ok()
 }
 
