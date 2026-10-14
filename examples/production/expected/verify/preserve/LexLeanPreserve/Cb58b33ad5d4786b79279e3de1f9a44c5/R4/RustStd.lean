@@ -1,17 +1,19 @@
 import LexLeanPreservation.RustSound
 set_option autoImplicit false
 set_option maxRecDepth 100000
+set_option maxHeartbeats 0
+set_option synthInstance.maxHeartbeats 0
 namespace LexLeanPreserve.Cb58b33ad5d4786b79279e3de1f9a44c5.R4.RustStd
 open LexLeanTarget LexLeanPreservation.Rust
 
-def program : TargetSyntax.Program :=
+noncomputable def program : TargetSyntax.Program :=
   { adts := [], functions := [
     { parameters := [0], types := [(.list .nat)], result := .nat,
       body := (.call 1 [(.var 0)]) },
     { parameters := [0], types := [(.list .nat)], result := .nat,
       body := (.«match» .nat (.var 0) [(.arm .nil [] (.value .nat (.nat 0))), (.arm .cons [1, 2] (.prim .natAdd [(.var 1), (.call 1 [(.var 2)])]))]) }] }
 
-def krate : RustSyntax.Crate :=
+noncomputable def krate : RustSyntax.Crate :=
   ({ profile := .std, items := [
     (.function (.generated .function 0) [{ pattern := (.bind (.generated .binding 0)), type := (.list .nat) }] (.fallible .nat) (.mk [] (.call (.function 1) [(.move (.generated .binding 0))] false))),
     (.function (.generated .function 1) [{ pattern := (.bind (.generated .binding 0)), type := (.list .nat) }] (.fallible .nat) (.mk [(.mk (.bind (.generated .holder 1)) none (.move (.generated .binding 0)))] (.matchOn (.uncons (.generated .holder 1)) [(.mk .none (.mk [] (.succeed (.lit (.nat 0))))), (.mk (.some (.tuple [(.bind (.generated .binding 1)), (.bind (.generated .binding 2))])) (.mk [(.mk (.bind (.generated .operand 2)) none (.copy (.generated .binding 1))), (.mk (.bind (.generated .operand 3)) none (.call (.function 1) [(.move (.generated .binding 2))] true))] (.call (.runtime .natAdd) [(.move (.generated .operand 2)), (.move (.generated .operand 3))] false)))])))] } : LexLeanTarget.RustSyntax.Crate)

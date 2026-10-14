@@ -1,15 +1,17 @@
 import LexLeanPreservation.RustSound
 set_option autoImplicit false
 set_option maxRecDepth 100000
+set_option maxHeartbeats 0
+set_option synthInstance.maxHeartbeats 0
 namespace LexLeanPreserve.Cbab9228a4943f83c0c32ec307e60b9e6.R9.RustStd
 open LexLeanTarget LexLeanPreservation.Rust
 
-def program : TargetSyntax.Program :=
+noncomputable def program : TargetSyntax.Program :=
   { adts := [], functions := [
     { parameters := [0, 1], types := [.nat, .string], result := (.pair (.list (.pair .string .nat)) (.pair (.list .nat) (.list (.pair .nat (.list .nat))))),
       body := (.build .pair (.pair (.list (.pair .string .nat)) (.pair (.list .nat) (.list (.pair .nat (.list .nat))))) [(.build .cons (.list (.pair .string .nat)) [(.build .pair (.pair .string .nat) [(.value .string (.string "a")), (.var 0)]), (.build .cons (.list (.pair .string .nat)) [(.build .pair (.pair .string .nat) [(.value .string (.string "b")), (.value .nat (.nat 2))]), (.build .nil (.list (.pair .string .nat)) [])])]), (.build .pair (.pair (.list .nat) (.list (.pair .nat (.list .nat)))) [(.build .cons (.list .nat) [(.value .nat (.nat 1)), (.build .cons (.list .nat) [(.value .nat (.nat 3)), (.build .nil (.list .nat) [])])]), (.build .cons (.list (.pair .nat (.list .nat))) [(.build .pair (.pair .nat (.list .nat)) [(.value .nat (.nat 1)), (.build .cons (.list .nat) [(.value .nat (.nat 2)), (.build .nil (.list .nat) [])])]), (.build .cons (.list (.pair .nat (.list .nat))) [(.build .pair (.pair .nat (.list .nat)) [(.value .nat (.nat 2)), (.build .cons (.list .nat) [(.value .nat (.nat 1)), (.build .nil (.list .nat) [])])]), (.build .nil (.list (.pair .nat (.list .nat))) [])])])])]) }] }
 
-def krate : RustSyntax.Crate :=
+noncomputable def krate : RustSyntax.Crate :=
   ({ profile := .std, items := [
     (.function (.generated .function 0) [{ pattern := (.bind (.generated .binding 0)), type := .nat }, { pattern := .wild, type := .str }] (.pair (.list (.pair .str .nat)) (.pair (.list .nat) (.list (.pair .nat (.list .nat))))) (.mk [] (.pair (.construct .cons [(.pair (.lit (.str "a")) (.copy (.generated .binding 0))), (.construct .cons [(.pair (.lit (.str "b")) (.lit (.nat 2))), (.construct (.nil (.pair .str .nat)) [])])]) (.pair (.construct .cons [(.lit (.nat 1)), (.construct .cons [(.lit (.nat 3)), (.construct (.nil .nat) [])])]) (.construct .cons [(.pair (.lit (.nat 1)) (.construct .cons [(.lit (.nat 2)), (.construct (.nil .nat) [])])), (.construct .cons [(.pair (.lit (.nat 2)) (.construct .cons [(.lit (.nat 1)), (.construct (.nil .nat) [])])), (.construct (.nil (.pair .nat (.list .nat))) [])])])))))] } : LexLeanTarget.RustSyntax.Crate)
 

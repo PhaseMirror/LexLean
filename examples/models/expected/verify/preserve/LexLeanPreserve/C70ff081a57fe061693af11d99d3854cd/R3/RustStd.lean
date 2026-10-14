@@ -1,10 +1,12 @@
 import LexLeanPreservation.RustSound
 set_option autoImplicit false
 set_option maxRecDepth 100000
+set_option maxHeartbeats 0
+set_option synthInstance.maxHeartbeats 0
 namespace LexLeanPreserve.C70ff081a57fe061693af11d99d3854cd.R3.RustStd
 open LexLeanTarget LexLeanPreservation.Rust
 
-def program : TargetSyntax.Program :=
+noncomputable def program : TargetSyntax.Program :=
   { adts := [{ constructors := [[.nat, .nat]] }], functions := [
     { parameters := [0], types := [(.list .nat)], result := (.result (.result (.list .nat) (.pair .bool .bool)) (.pair .bool .bool)),
       body := (.«let» 1 (.list .nat) (.var 0) (.cond (.call 1 [(.var 1)]) (.«let» 2 (.result (.list .nat) (.pair .bool .bool)) (.call 2 [(.var 1)]) (.build .ok (.result (.result (.list .nat) (.pair .bool .bool)) (.pair .bool .bool)) [(.var 2)])) (.build .error (.result (.result (.list .nat) (.pair .bool .bool)) (.pair .bool .bool)) [(.build .pair (.pair .bool .bool) [(.build .false .bool []), (.build .false .bool [])])]))) },
@@ -31,7 +33,7 @@ def program : TargetSyntax.Program :=
     { parameters := [0, 1], types := [(.adt 0), .nat], result := (.pair (.adt 0) .nat),
       body := (.«let» 2 .nat (.prim .natAdd [(.field (.var 0) 0), (.var 1)]) (.build .pair (.pair (.adt 0) .nat) [(.build (.adt 0) (.adt 0) [(.prim .natSub [(.var 2), (.prim .natSub [(.var 2), (.value .nat (.nat 64))])]), (.prim .natAdd [(.field (.var 0) 1), (.value .nat (.nat 1))])]), (.prim .natSub [(.var 2), (.value .nat (.nat 64))])])) }] }
 
-def krate : RustSyntax.Crate :=
+noncomputable def krate : RustSyntax.Crate :=
   ({ profile := .std, items := [
     (.enum (.adt 0) [{ number := 0, fields := [.nat, .nat] }]),
     (.enum (.fn 0) [{ number := 5, fields := [] }]),

@@ -1,15 +1,17 @@
 import LexLeanPreservation.RustSound
 set_option autoImplicit false
 set_option maxRecDepth 100000
+set_option maxHeartbeats 0
+set_option synthInstance.maxHeartbeats 0
 namespace LexLeanPreserve.Cbab9228a4943f83c0c32ec307e60b9e6.R21.RustStd
 open LexLeanTarget LexLeanPreservation.Rust
 
-def program : TargetSyntax.Program :=
+noncomputable def program : TargetSyntax.Program :=
   { adts := [], functions := [
     { parameters := [0, 1], types := [(.fixed .i8), (.fixed .i8)], result := (.pair (.option (.fixed .i8)) (.pair (.option (.fixed .i8)) (.pair (.option (.fixed .i8)) (.pair (.option (.fixed .i8)) (.option (.fixed .i8)))))),
       body := (.build .pair (.pair (.option (.fixed .i8)) (.pair (.option (.fixed .i8)) (.pair (.option (.fixed .i8)) (.pair (.option (.fixed .i8)) (.option (.fixed .i8)))))) [(.prim .checkedAdd [(.var 0), (.var 1)]), (.build .pair (.pair (.option (.fixed .i8)) (.pair (.option (.fixed .i8)) (.pair (.option (.fixed .i8)) (.option (.fixed .i8))))) [(.prim .checkedSub [(.var 0), (.var 1)]), (.build .pair (.pair (.option (.fixed .i8)) (.pair (.option (.fixed .i8)) (.option (.fixed .i8)))) [(.prim .checkedMul [(.var 0), (.var 1)]), (.build .pair (.pair (.option (.fixed .i8)) (.option (.fixed .i8))) [(.prim .checkedQuot [(.var 0), (.var 1)]), (.prim .checkedNeg [(.var 0)])])])])]) }] }
 
-def krate : RustSyntax.Crate :=
+noncomputable def krate : RustSyntax.Crate :=
   ({ profile := .std, items := [
     (.function (.generated .function 0) [{ pattern := (.bind (.generated .binding 0)), type := (.fixed .i8) }, { pattern := (.bind (.generated .binding 1)), type := (.fixed .i8) }] (.pair (.option (.fixed .i8)) (.pair (.option (.fixed .i8)) (.pair (.option (.fixed .i8)) (.pair (.option (.fixed .i8)) (.option (.fixed .i8)))))) (.mk [] (.pair (.block (.mk [(.mk (.bind (.generated .operand 1)) none (.copy (.generated .binding 0))), (.mk (.bind (.generated .operand 2)) none (.copy (.generated .binding 1)))] (.call (.runtime (.checkedAdd .i8)) [(.move (.generated .operand 1)), (.move (.generated .operand 2))] false))) (.pair (.block (.mk [(.mk (.bind (.generated .operand 3)) none (.copy (.generated .binding 0))), (.mk (.bind (.generated .operand 4)) none (.copy (.generated .binding 1)))] (.call (.runtime (.checkedSub .i8)) [(.move (.generated .operand 3)), (.move (.generated .operand 4))] false))) (.pair (.block (.mk [(.mk (.bind (.generated .operand 5)) none (.copy (.generated .binding 0))), (.mk (.bind (.generated .operand 6)) none (.copy (.generated .binding 1)))] (.call (.runtime (.checkedMul .i8)) [(.move (.generated .operand 5)), (.move (.generated .operand 6))] false))) (.pair (.block (.mk [(.mk (.bind (.generated .operand 7)) none (.copy (.generated .binding 0))), (.mk (.bind (.generated .operand 8)) none (.copy (.generated .binding 1)))] (.call (.runtime (.checkedQuot .i8)) [(.move (.generated .operand 7)), (.move (.generated .operand 8))] false))) (.block (.mk [(.mk (.bind (.generated .operand 9)) none (.copy (.generated .binding 0)))] (.call (.runtime (.checkedNeg .i8)) [(.move (.generated .operand 9))] false)))))))))] } : LexLeanTarget.RustSyntax.Crate)
 

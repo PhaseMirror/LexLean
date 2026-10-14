@@ -1,10 +1,12 @@
 import LexLeanPreservation.RustSound
 set_option autoImplicit false
 set_option maxRecDepth 100000
+set_option maxHeartbeats 0
+set_option synthInstance.maxHeartbeats 0
 namespace LexLeanPreserve.C70ff081a57fe061693af11d99d3854cd.R4.RustStd
 open LexLeanTarget LexLeanPreservation.Rust
 
-def program : TargetSyntax.Program :=
+noncomputable def program : TargetSyntax.Program :=
   { adts := [{ constructors := [[.nat, .nat]] }], functions := [
     { parameters := [0, 1], types := [(.adt 0), .nat], result := (.result (.pair (.adt 0) .nat) (.pair .bool .bool)),
       body := (.«let» 2 (.adt 0) (.var 0) (.«let» 3 .nat (.var 1) (.cond (.call 1 [(.var 2)]) (.cond (.call 2 [(.var 2), (.var 3)]) (.«let» 4 (.pair (.adt 0) .nat) (.call 3 [(.var 2), (.var 3)]) (.build .ok (.result (.pair (.adt 0) .nat) (.pair .bool .bool)) [(.var 4)])) (.build .error (.result (.pair (.adt 0) .nat) (.pair .bool .bool)) [(.build .pair (.pair .bool .bool) [(.build .false .bool []), (.build .false .bool [])])])) (.build .error (.result (.pair (.adt 0) .nat) (.pair .bool .bool)) [(.build .pair (.pair .bool .bool) [(.build .false .bool []), (.build .true .bool [])])])))) },
@@ -17,7 +19,7 @@ def program : TargetSyntax.Program :=
     { parameters := [0, 1], types := [(.adt 0), .nat], result := (.pair (.adt 0) .nat),
       body := (.«let» 2 .nat (.prim .natAdd [(.field (.var 0) 0), (.var 1)]) (.build .pair (.pair (.adt 0) .nat) [(.build (.adt 0) (.adt 0) [(.prim .natSub [(.var 2), (.prim .natSub [(.var 2), (.value .nat (.nat 64))])]), (.prim .natAdd [(.field (.var 0) 1), (.value .nat (.nat 1))])]), (.prim .natSub [(.var 2), (.value .nat (.nat 64))])])) }] }
 
-def krate : RustSyntax.Crate :=
+noncomputable def krate : RustSyntax.Crate :=
   ({ profile := .std, items := [
     (.enum (.adt 0) [{ number := 0, fields := [.nat, .nat] }]),
     (.function (.generated .function 0) [{ pattern := (.bind (.generated .binding 0)), type := (.adt 0) }, { pattern := (.bind (.generated .binding 1)), type := .nat }] (.fallible (.result (.pair (.adt 0) .nat) (.pair .bool .bool))) (.mk [(.mk (.bind (.generated .binding 2)) (some (.adt 0)) (.move (.generated .binding 0))), (.mk (.bind (.generated .binding 3)) (some .nat) (.copy (.generated .binding 1)))] (.cond (.call (.function 1) [(.clone (.generated .binding 2))] false) (.mk [] (.cond (.call (.function 2) [(.clone (.generated .binding 2)), (.copy (.generated .binding 3))] false) (.mk [(.mk (.bind (.generated .binding 4)) (some (.pair (.adt 0) .nat)) (.call (.function 3) [(.move (.generated .binding 2)), (.copy (.generated .binding 3))] true))] (.succeed (.construct (.ok (.pair (.adt 0) .nat) (.pair .bool .bool)) [(.move (.generated .binding 4))]))) (.mk [] (.succeed (.construct (.err (.pair (.adt 0) .nat) (.pair .bool .bool)) [(.pair (.lit (.bool false)) (.lit (.bool false)))]))))) (.mk [] (.succeed (.construct (.err (.pair (.adt 0) .nat) (.pair .bool .bool)) [(.pair (.lit (.bool false)) (.lit (.bool true)))])))))),

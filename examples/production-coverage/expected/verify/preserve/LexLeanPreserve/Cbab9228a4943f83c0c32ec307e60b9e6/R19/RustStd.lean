@@ -1,10 +1,12 @@
 import LexLeanPreservation.RustSound
 set_option autoImplicit false
 set_option maxRecDepth 100000
+set_option maxHeartbeats 0
+set_option synthInstance.maxHeartbeats 0
 namespace LexLeanPreserve.Cbab9228a4943f83c0c32ec307e60b9e6.R19.RustStd
 open LexLeanTarget LexLeanPreservation.Rust
 
-def program : TargetSyntax.Program :=
+noncomputable def program : TargetSyntax.Program :=
   { adts := [], functions := [
     { parameters := [0], types := [(.list .nat)], result := (.list .bool),
       body := (.call 1 [(.closure 2 []), (.var 0)]) },
@@ -15,7 +17,7 @@ def program : TargetSyntax.Program :=
     { parameters := [0], types := [.nat], result := .bool,
       body := (.«match» .bool (.var 0) [(.arm .zero [] (.build .false .bool [])), (.arm .succ [1] (.call 2 [(.var 1)]))]) }] }
 
-def krate : RustSyntax.Crate :=
+noncomputable def krate : RustSyntax.Crate :=
   ({ profile := .std, items := [
     (.enum (.fn 0) [{ number := 2, fields := [] }]),
     (.apply 0 [.nat] .bool false [{ function := 2, captures := [], functionFallible := false }]),

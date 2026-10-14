@@ -1,10 +1,12 @@
 import LexLeanPreservation.RustSound
 set_option autoImplicit false
 set_option maxRecDepth 100000
+set_option maxHeartbeats 0
+set_option synthInstance.maxHeartbeats 0
 namespace LexLeanPreserve.Cbab9228a4943f83c0c32ec307e60b9e6.R18.RustStd
 open LexLeanTarget LexLeanPreservation.Rust
 
-def program : TargetSyntax.Program :=
+noncomputable def program : TargetSyntax.Program :=
   { adts := [], functions := [
     { parameters := [0, 1], types := [.nat, .nat], result := .nat,
       body := (.«let» 2 .nat (.prim .natAdd [(.var 0), (.value .nat (.nat 1))]) (.prim .natAdd [(.call 1 [(.closure 2 [(.var 2), (.var 1)]), (.var 0)]), (.prim .natAdd [(.apply (.closure 3 [(.var 2)]) [(.var 0)]), (.call 1 [(.closure 4 []), (.var 1)])])])) },
@@ -17,7 +19,7 @@ def program : TargetSyntax.Program :=
     { parameters := [0], types := [.nat], result := .nat,
       body := (.prim .natAdd [(.var 0), (.var 0)]) }] }
 
-def krate : RustSyntax.Crate :=
+noncomputable def krate : RustSyntax.Crate :=
   ({ profile := .std, items := [
     (.enum (.fn 0) [{ number := 2, fields := [.nat, .nat] }, { number := 3, fields := [.nat] }, { number := 4, fields := [] }]),
     (.apply 0 [.nat] .nat true [{ function := 2, captures := [.copy, .copy], functionFallible := true }, { function := 3, captures := [.copy], functionFallible := false }, { function := 4, captures := [], functionFallible := true }]),

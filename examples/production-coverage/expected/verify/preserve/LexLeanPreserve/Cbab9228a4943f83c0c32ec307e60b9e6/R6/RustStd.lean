@@ -1,10 +1,12 @@
 import LexLeanPreservation.RustSound
 set_option autoImplicit false
 set_option maxRecDepth 100000
+set_option maxHeartbeats 0
+set_option synthInstance.maxHeartbeats 0
 namespace LexLeanPreserve.Cbab9228a4943f83c0c32ec307e60b9e6.R6.RustStd
 open LexLeanTarget LexLeanPreservation.Rust
 
-def program : TargetSyntax.Program :=
+noncomputable def program : TargetSyntax.Program :=
   { adts := [], functions := [
     { parameters := [0, 1], types := [(.list (.pair .nat (.list .nat))), .nat], result := (.pair (.list .nat) (.pair (.list .nat) (.option (.list .nat)))),
       body := (.build .pair (.pair (.list .nat) (.pair (.list .nat) (.option (.list .nat)))) [(.call 1 [(.var 0), (.var 1)]), (.build .pair (.pair (.list .nat) (.option (.list .nat))) [(.call 3 [(.var 0), (.var 1)]), (.call 16 [(.var 0)])])]) },
@@ -69,7 +71,7 @@ def program : TargetSyntax.Program :=
     { parameters := [0, 1], types := [(.list (.pair .nat (.list .nat))), .nat], result := (.option (.pair (.list .nat) (.pair (.list .nat) (.option (.list .nat))))),
       body := (.cond (.call 28 [(.var 0)]) (.build .some (.option (.pair (.list .nat) (.pair (.list .nat) (.option (.list .nat))))) [(.call 0 [(.var 0), (.var 1)])]) (.build .none (.option (.pair (.list .nat) (.pair (.list .nat) (.option (.list .nat))))) [])) }] }
 
-def krate : RustSyntax.Crate :=
+noncomputable def krate : RustSyntax.Crate :=
   ({ profile := .std, items := [
     (.function (.generated .function 0) [{ pattern := (.bind (.generated .binding 0)), type := (.list (.pair .nat (.list .nat))) }, { pattern := (.bind (.generated .binding 1)), type := .nat }] (.fallible (.pair (.list .nat) (.pair (.list .nat) (.option (.list .nat))))) (.mk [] (.succeed (.pair (.call (.function 1) [(.clone (.generated .binding 0)), (.copy (.generated .binding 1))] false) (.pair (.call (.function 3) [(.clone (.generated .binding 0)), (.copy (.generated .binding 1))] true) (.call (.function 16) [(.move (.generated .binding 0))] true)))))),
     (.function (.generated .function 1) [{ pattern := (.bind (.generated .binding 0)), type := (.list (.pair .nat (.list .nat))) }, { pattern := (.bind (.generated .binding 1)), type := .nat }] (.list .nat) (.mk [(.mk (.bind (.generated .holder 1)) none (.call (.function 2) [(.move (.generated .binding 0)), (.copy (.generated .binding 1))] false))] (.matchOn (.move (.generated .holder 1)) [(.mk .none (.mk [] (.construct (.nil .nat) []))), (.mk (.some (.bind (.generated .binding 2))) (.mk [] (.move (.generated .binding 2))))]))),

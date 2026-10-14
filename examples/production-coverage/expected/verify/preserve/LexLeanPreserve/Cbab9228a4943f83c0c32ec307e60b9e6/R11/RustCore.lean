@@ -1,15 +1,17 @@
 import LexLeanPreservation.RustSound
 set_option autoImplicit false
 set_option maxRecDepth 100000
+set_option maxHeartbeats 0
+set_option synthInstance.maxHeartbeats 0
 namespace LexLeanPreserve.Cbab9228a4943f83c0c32ec307e60b9e6.R11.RustCore
 open LexLeanTarget LexLeanPreservation.Rust
 
-def program : TargetSyntax.Program :=
+noncomputable def program : TargetSyntax.Program :=
   { adts := [], functions := [
     { parameters := [0, 1], types := [.int, .int], result := .int,
       body := (.prim .intSub [(.prim .intMul [(.var 0), (.value .int (.int (-3)))]), (.prim .intNeg [(.prim .intRem [(.prim .intQuot [(.var 0), (.var 1), (.value .int (.int 1))]), (.var 1), (.value .int (.int 0))])])]) }] }
 
-def krate : RustSyntax.Crate :=
+noncomputable def krate : RustSyntax.Crate :=
   ({ profile := .core, items := [
     (.function (.generated .function 0) [{ pattern := (.bind (.generated .binding 0)), type := .int }, { pattern := (.bind (.generated .binding 1)), type := .int }] (.fallible .int) (.mk [(.mk (.bind (.generated .operand 10)) none (.block (.mk [(.mk (.bind (.generated .operand 1)) none (.copy (.generated .binding 0))), (.mk (.bind (.generated .operand 2)) none (.lit (.int (-3))))] (.call (.runtime .intMul) [(.move (.generated .operand 1)), (.move (.generated .operand 2))] true)))), (.mk (.bind (.generated .operand 11)) none (.block (.mk [(.mk (.bind (.generated .operand 9)) none (.block (.mk [(.mk (.bind (.generated .operand 6)) none (.block (.mk [(.mk (.bind (.generated .operand 3)) none (.copy (.generated .binding 0))), (.mk (.bind (.generated .operand 4)) none (.copy (.generated .binding 1))), (.mk (.bind (.generated .operand 5)) none (.lit (.int 1)))] (.call (.runtime .intQuot) [(.move (.generated .operand 3)), (.move (.generated .operand 4)), (.move (.generated .operand 5))] true)))), (.mk (.bind (.generated .operand 7)) none (.copy (.generated .binding 1))), (.mk (.bind (.generated .operand 8)) none (.lit (.int 0)))] (.call (.runtime .intRem) [(.move (.generated .operand 6)), (.move (.generated .operand 7)), (.move (.generated .operand 8))] false))))] (.call (.runtime .intNeg) [(.move (.generated .operand 9))] true))))] (.call (.runtime .intSub) [(.move (.generated .operand 10)), (.move (.generated .operand 11))] false)))] } : LexLeanTarget.RustSyntax.Crate)
 

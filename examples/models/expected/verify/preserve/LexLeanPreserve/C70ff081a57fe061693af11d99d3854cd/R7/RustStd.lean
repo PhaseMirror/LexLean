@@ -1,10 +1,12 @@
 import LexLeanPreservation.RustSound
 set_option autoImplicit false
 set_option maxRecDepth 100000
+set_option maxHeartbeats 0
+set_option synthInstance.maxHeartbeats 0
 namespace LexLeanPreserve.C70ff081a57fe061693af11d99d3854cd.R7.RustStd
 open LexLeanTarget LexLeanPreservation.Rust
 
-def program : TargetSyntax.Program :=
+noncomputable def program : TargetSyntax.Program :=
   { adts := [], functions := [
     { parameters := [0], types := [.nat], result := (.result .nat (.pair .bool .bool)),
       body := (.«let» 1 .nat (.var 0) (.cond (.call 1 [(.var 1)]) (.«let» 2 .nat (.call 2 [(.var 1)]) (.cond (.call 3 [(.var 1), (.var 2)]) (.build .ok (.result .nat (.pair .bool .bool)) [(.var 2)]) (.build .error (.result .nat (.pair .bool .bool)) [(.build .pair (.pair .bool .bool) [(.build .true .bool []), (.build .false .bool [])])]))) (.build .error (.result .nat (.pair .bool .bool)) [(.build .pair (.pair .bool .bool) [(.build .false .bool []), (.build .false .bool [])])]))) },
@@ -17,7 +19,7 @@ def program : TargetSyntax.Program :=
     { parameters := [0], types := [.nat], result := .nat,
       body := (.prim .natSub [(.var 0), (.value .nat (.nat 1))]) }] }
 
-def krate : RustSyntax.Crate :=
+noncomputable def krate : RustSyntax.Crate :=
   ({ profile := .std, items := [
     (.function (.generated .function 0) [{ pattern := (.bind (.generated .binding 0)), type := .nat }] (.result .nat (.pair .bool .bool)) (.mk [(.mk (.bind (.generated .binding 1)) (some .nat) (.copy (.generated .binding 0)))] (.cond (.call (.function 1) [(.copy (.generated .binding 1))] false) (.mk [(.mk (.bind (.generated .binding 2)) (some .nat) (.call (.function 2) [(.copy (.generated .binding 1))] false))] (.cond (.call (.function 3) [(.copy (.generated .binding 1)), (.copy (.generated .binding 2))] false) (.mk [] (.construct (.ok .nat (.pair .bool .bool)) [(.copy (.generated .binding 2))])) (.mk [] (.construct (.err .nat (.pair .bool .bool)) [(.pair (.lit (.bool true)) (.lit (.bool false)))])))) (.mk [] (.construct (.err .nat (.pair .bool .bool)) [(.pair (.lit (.bool false)) (.lit (.bool false)))]))))),
     (.function (.generated .function 1) [{ pattern := (.bind (.generated .binding 0)), type := .nat }] .bool (.mk [(.mk (.bind (.generated .operand 1)) none (.copy (.generated .binding 0))), (.mk (.bind (.generated .operand 2)) none (.lit (.nat 10)))] (.call (.runtime .natLe) [(.move (.generated .operand 1)), (.move (.generated .operand 2))] false))),

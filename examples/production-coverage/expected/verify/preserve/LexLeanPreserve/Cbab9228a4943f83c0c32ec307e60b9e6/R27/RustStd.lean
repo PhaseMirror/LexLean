@@ -1,15 +1,17 @@
 import LexLeanPreservation.RustSound
 set_option autoImplicit false
 set_option maxRecDepth 100000
+set_option maxHeartbeats 0
+set_option synthInstance.maxHeartbeats 0
 namespace LexLeanPreserve.Cbab9228a4943f83c0c32ec307e60b9e6.R27.RustStd
 open LexLeanTarget LexLeanPreservation.Rust
 
-def program : TargetSyntax.Program :=
+noncomputable def program : TargetSyntax.Program :=
   { adts := [], functions := [
     { parameters := [0], types := [.string], result := (.pair (.option .int) (.option (.fixed .u32))),
       body := (.build .pair (.pair (.option .int) (.option (.fixed .u32))) [(.prim (.parseDecimal .int) [(.var 0)]), (.prim (.parseDecimal (.fixed .u32)) [(.var 0)])]) }] }
 
-def krate : RustSyntax.Crate :=
+noncomputable def krate : RustSyntax.Crate :=
   ({ profile := .std, items := [
     (.function (.generated .function 0) [{ pattern := (.bind (.generated .binding 0)), type := .str }] (.fallible (.pair (.option .int) (.option (.fixed .u32)))) (.mk [] (.succeed (.pair (.block (.mk [(.mk (.bind (.generated .operand 1)) none (.clone (.generated .binding 0)))] (.call (.runtime .parseInt) [(.move (.generated .operand 1))] true))) (.block (.mk [(.mk (.bind (.generated .operand 2)) none (.move (.generated .binding 0)))] (.call (.runtime (.parseFixed .u32)) [(.move (.generated .operand 2))] false)))))))] } : LexLeanTarget.RustSyntax.Crate)
 
