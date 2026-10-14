@@ -2157,6 +2157,158 @@ pub fn tex_body(tex: &str) -> &str {
         .map_or(tex, |(_, body)| body)
 }
 
+/// The byte range of the body of the one semantic module of `text`: between
+/// `\begin{semanticmodule}` and the last `\end{semanticmodule}`.
+fn module_body(text: &str) -> Result<(usize, usize), String> {
+    const BEGIN: &str = "\\begin{semanticmodule}";
+    let start = text
+        .find(BEGIN)
+        .map(|at| at + BEGIN.len())
+        .ok_or("the source states no semantic module")?;
+    let end = text
+        .rfind("\\end{semanticmodule}")
+        .ok_or("the semantic module is not closed")?;
+    Ok((start, end))
+}
+
+/// The range of the JSON payload of a module written as `\semanticdata{…}`
+/// within `text`, or `None` for a module written in the authoring notation.
+fn data_payload(text: &str, body: (usize, usize)) -> Option<(usize, usize)> {
+    let control = "\\semanticdata{";
+    let at = text[body.0..body.1].find(control)? + body.0;
+    let start = at + control.len();
+    let end = text[start..body.1].rfind('}')? + start;
+    Some((start, end))
+}
+
+/// The module data of a committed or generated language-1.2 source as JSON,
+/// whichever form the source writes it in: the canonical `\semanticdata`
+/// payload, or the authoring notation (SPEC.md §17.21) read through the same
+/// schema the compiler reads it with.
+///
+/// # Errors
+///
+/// A source with no semantic module, or one that is not well formed.
+pub fn try_module_json(text: &str) -> Result<serde_json::Value, String> {
+    let body = module_body(text)?;
+    if let Some((start, end)) = data_payload(text, body) {
+        return serde_json::from_str(&text[start..end])
+            .map_err(|error| format!("the semantic data is not JSON: {error}"));
+    }
+    let module = lexlean::surface::semantic::parse_module(
+        &text[body.0..body.1],
+        "lexlean/semantic-module/2",
+    )
+    .map_err(|error| format!("the semantic notation is not well formed: {error}"))?;
+    serde_json::from_str(&module.to_canonical_string()).map_err(|error| error.to_string())
+}
+
+/// [`try_module_json`] for a source that is known to be well formed.
+///
+/// # Panics
+///
+/// When the source has no semantic module or the module is not well formed.
+#[must_use]
+pub fn module_json(text: &str) -> serde_json::Value {
+    try_module_json(text).unwrap_or_else(|error| panic!("{error}"))
+}
+
+/// `text` with its semantic module's data replaced by `data`, written in the
+/// form the module already uses: `data` is canonicalised for the data form,
+/// and printed in the notation for the notation, so a rewrite never changes
+/// which authoring form a source is in.
+///
+/// # Panics
+///
+/// When the source has no semantic module, or `data` is not a module.
+#[must_use]
+pub fn with_module_json(text: &str, data: &serde_json::Value) -> String {
+    let body = module_body(text).unwrap_or_else(|error| panic!("{error}"));
+    let canonical = lexlean::artifact::canonical_json::Json::parse(
+        serde_json::to_string(data)
+            .expect("module data serializes")
+            .as_bytes(),
+    )
+    .expect("module JSON");
+    if let Some((start, end)) = data_payload(text, body) {
+        return format!(
+            "{}{}{}",
+            &text[..start],
+            canonical.to_canonical_string(),
+            &text[end..]
+        );
+    }
+    let printed = lexlean::surface::semantic::print_module(&canonical)
+        .unwrap_or_else(|error| panic!("the module has a notation: {error}"));
+    format!("{}\n{printed}{}", &text[..body.0], &text[body.1..])
+}
+
+/// `text` with its semantic module written as `\semanticdata{…}`, the
+/// canonical JSON the compiler links, instead of the authoring notation: the
+/// form a module had before it was written in the notation, and the one
+/// `fmt` migrates away from (SPEC.md §17.21).
+///
+/// # Panics
+///
+/// When the source has no well-formed semantic module.
+#[must_use]
+pub fn module_as_data(text: &str) -> String {
+    let body = module_body(text).unwrap_or_else(|error| panic!("{error}"));
+    let canonical = lexlean::artifact::canonical_json::Json::parse(
+        serde_json::to_string(&module_json(text))
+            .expect("module data serializes")
+            .as_bytes(),
+    )
+    .expect("module JSON");
+    format!(
+        "{}\n\\semanticdata{{{}}}\n{}",
+        &text[..body.0],
+        canonical.to_canonical_string(),
+        &text[body.1..]
+    )
+}
+
+/// `text` with the layout of its notation collapsed to single spaces outside
+/// strings: the same module, in a layout no formatter would write. A string's
+/// text is untouched, because it is the module's meaning.
+///
+/// # Panics
+///
+/// When the source has no semantic module.
+#[must_use]
+pub fn squeezed_notation(text: &str) -> String {
+    let body = module_body(text).unwrap_or_else(|error| panic!("{error}"));
+    let mut squeezed = String::new();
+    let (mut quoted, mut escaped, mut space) = (false, false, false);
+    for scalar in text[body.0..body.1].chars() {
+        if quoted {
+            squeezed.push(scalar);
+            if escaped {
+                escaped = false;
+            } else if scalar == '\\' {
+                escaped = true;
+            } else if scalar == '"' {
+                quoted = false;
+            }
+        } else if scalar == ' ' || scalar == '\n' {
+            if !space {
+                squeezed.push(' ');
+            }
+            space = true;
+        } else {
+            space = false;
+            quoted = scalar == '"';
+            squeezed.push(scalar);
+        }
+    }
+    format!(
+        "{}\n{}\n{}",
+        &text[..body.0],
+        squeezed.trim(),
+        &text[body.1..]
+    )
+}
+
 /// Generate the §18.8 probe module for the named `package::entry` external
 /// entries of a project's closure and elaborate it with the pinned Lean
 /// through `lake env` in the project's workspace. Returns the probe and the

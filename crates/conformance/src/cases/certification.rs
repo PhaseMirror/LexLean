@@ -152,11 +152,7 @@ fn certificate_json(name: &str) -> Json {
 
 /// The semantic data of a committed `compiler/src` module.
 fn module_data(text: &str) -> Json {
-    let start = text.find("\\semanticdata{").expect("semantic data") + "\\semanticdata{".len();
-    let end = text
-        .rfind("}\n\\end{semanticmodule}")
-        .expect("end of semantic data");
-    serde_json::from_str(&text[start..end]).expect("the semantic data is JSON")
+    crate::support::module_json(text)
 }
 
 /// Every declaration of a committed module by name.

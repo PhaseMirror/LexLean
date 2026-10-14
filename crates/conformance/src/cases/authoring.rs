@@ -1,11 +1,11 @@
-//! The `authoring` suite: AU-01..AU-03, the language-1.2 authoring notation
+//! The `authoring` suite: AU-01..AU-04, the language-1.2 authoring notation
 //! (SPEC.md §17.21).
 //!
 //! The notation is in bijection with the canonical JSON of the closed schema,
 //! so the cases state that bijection (AU-01), what it buys (a module in the
-//! notation is the module its data form is, AU-02), and what it refuses
-//! (AU-03). Every committed semantic module is a case's input, not a sample
-//! of them.
+//! notation is the module its data form is, AU-02), what it refuses (AU-03),
+//! and that it is the only way the product writes a module (AU-04). Every
+//! committed semantic module is a case's input, not a sample of them.
 
 use std::collections::BTreeSet;
 
@@ -28,6 +28,7 @@ pub fn run(id: &str) {
         "AU-01" => round_trip(),
         "AU-02" => equivalence(),
         "AU-03" => fails_closed(),
+        "AU-04" => one_surface(),
         other => panic!("no authoring case is wired for {other}"),
     }
 }
@@ -38,9 +39,9 @@ const SPEC: &str = "lexlean/semantic-module/2";
 // The committed corpus.
 // ---------------------------------------------------------------------------
 
-/// Every `\semanticdata{…}` payload of a committed source, as canonical JSON,
-/// with the file it is in. Payloads that are not JSON are the negative
-/// fixtures' business and are left out.
+/// Every semantic module of a committed source, as canonical JSON, with the
+/// file it is in. A module that is not well formed is a negative fixture's
+/// business and is left out.
 fn corpus() -> Vec<(String, Json)> {
     let root = repo_root();
     let mut modules = Vec::new();
@@ -59,49 +60,13 @@ fn corpus() -> Vec<(String, Json)> {
         let Ok(text) = std::fs::read_to_string(path) else {
             continue;
         };
-        for payload in payloads(&text) {
-            if let Ok(json) = Json::parse(payload.as_bytes()) {
+        if let Ok(value) = support::try_module_json(&text) {
+            if let Ok(json) = Json::parse(value.to_string().as_bytes()) {
                 modules.push((path.display().to_string(), json));
             }
         }
     }
     modules
-}
-
-/// The arguments of every `\semanticdata` in a text: the balanced braces after
-/// the control, JSON strings (and their escapes) skipped.
-fn payloads(text: &str) -> Vec<String> {
-    const CONTROL: &str = "\\semanticdata";
-    let bytes = text.as_bytes();
-    let mut out = Vec::new();
-    let mut from = 0;
-    while let Some(at) = text[from..].find(CONTROL) {
-        let start = from + at + CONTROL.len();
-        if bytes.get(start) != Some(&b'{') {
-            from = start;
-            continue;
-        }
-        let (mut depth, mut index, mut quoted) = (0i32, start, false);
-        while index < bytes.len() {
-            match (quoted, bytes[index]) {
-                (true, b'\\') => index += 1,
-                (true, b'"') => quoted = false,
-                (false, b'"') => quoted = true,
-                (false, b'{') => depth += 1,
-                (false, b'}') => {
-                    depth -= 1;
-                    if depth == 0 {
-                        break;
-                    }
-                }
-                _ => {}
-            }
-            index += 1;
-        }
-        out.push(text[start + 1..index.min(text.len())].to_owned());
-        from = index;
-    }
-    out
 }
 
 // ---------------------------------------------------------------------------
@@ -201,7 +166,7 @@ fn round_trip() {
 // AU-02.
 // ---------------------------------------------------------------------------
 
-/// The committed language-1.2 examples whose modules are written as data.
+/// Committed language-1.2 examples, which are written in the notation.
 const EXAMPLES: [&str; 6] = [
     "language-1.2",
     "collections",
@@ -231,8 +196,9 @@ fn files(directory: &camino::Utf8Path) -> std::collections::BTreeMap<String, Vec
     out
 }
 
-/// Write every module of a project that is written as data in the notation.
-fn convert_to_notation(project: &P) {
+/// Write every module of a project as `\semanticdata{…}`: the form a module
+/// had before it was written in the notation.
+fn convert_to_data(project: &P) {
     for entry in walkdir::WalkDir::new(project.root.join("src").as_std_path())
         .into_iter()
         .flatten()
@@ -242,8 +208,8 @@ fn convert_to_notation(project: &P) {
             continue;
         }
         let text = std::fs::read_to_string(path).expect("read");
-        if let Some(converted) = lexlean::fmt::data_module_as_notation(&text) {
-            std::fs::write(path, converted.expect("the module converts")).expect("write");
+        if text.contains("\\begin{semanticmodule}") {
+            std::fs::write(path, support::module_as_data(&text)).expect("write");
         }
     }
 }
@@ -281,12 +247,9 @@ fn equivalence() {
     for name in EXAMPLES {
         let data = P::copy_example(name);
         let notation = P::copy_example(name);
-        // A module written as data is canonical as it is, and `fmt` leaves it
-        // so.
-        format_all(&data, true).expect("a module written as data is canonical");
-        convert_to_notation(&notation);
-        // And the notation is: `fmt` leaves it unchanged, in the file and in
-        // the check.
+        convert_to_data(&data);
+        // A committed module is written in the notation, and it is canonical
+        // as it is: `fmt` leaves it unchanged, in the file and in the check.
         let sources: Vec<String> = walkdir::WalkDir::new(notation.root.join("src").as_std_path())
             .into_iter()
             .flatten()
@@ -300,10 +263,33 @@ fn equivalence() {
         for text in &before {
             assert!(
                 !text.contains("\\semanticdata"),
-                "{name}: a module is still written as data after the conversion"
+                "{name}: a committed module is written as data"
             );
         }
         notation.fmt_check_ok();
+        // The data form is the same module in text `fmt` does not write: it
+        // is not canonical, and `fmt` migrates it to the notation, to exactly
+        // the committed bytes.
+        support::expect_code(
+            &format_all(&data, true)
+                .err()
+                .expect("a module written as data is not canonical"),
+            "LLL1003",
+        );
+        let migrated = P::copy_example(name);
+        convert_to_data(&migrated);
+        format_all(&migrated, false).expect("fmt migrates the data form");
+        for (path, committed) in sources.iter().zip(&before) {
+            let relative = path
+                .strip_prefix(notation.root.as_str())
+                .expect("under the project")
+                .trim_start_matches('/');
+            assert_eq!(
+                &migrated.read(relative),
+                committed,
+                "{name}: fmt did not migrate {relative} to the committed notation"
+            );
+        }
         // The notation is canonical because `fmt` writes the same text from
         // any layout of it: collapse the layout of one module, and `fmt` is
         // what restores it.
@@ -312,41 +298,7 @@ fn equivalence() {
             .zip(&before)
             .find(|(_, text)| text.contains("\\begin{semanticmodule}"))
             .expect("a semantic module");
-        let squeezed = {
-            let start = canonical.find("\\begin{semanticmodule}\n").expect("begin") + 23;
-            let end = canonical.rfind("\\end{semanticmodule}").expect("end");
-            // Collapse layout outside strings only, so a string's text is
-            // untouched.
-            let mut body = String::new();
-            let (mut quoted, mut escaped, mut space) = (false, false, false);
-            for scalar in canonical[start..end].chars() {
-                if quoted {
-                    body.push(scalar);
-                    if escaped {
-                        escaped = false;
-                    } else if scalar == '\\' {
-                        escaped = true;
-                    } else if scalar == '"' {
-                        quoted = false;
-                    }
-                } else if scalar == ' ' || scalar == '\n' {
-                    if !space {
-                        body.push(' ');
-                    }
-                    space = true;
-                } else {
-                    space = false;
-                    quoted = scalar == '"';
-                    body.push(scalar);
-                }
-            }
-            format!(
-                "{}\n{}\n{}",
-                &canonical[..start - 1],
-                body.trim(),
-                &canonical[end..]
-            )
-        };
+        let squeezed = support::squeezed_notation(canonical);
         assert_ne!(&squeezed, canonical, "{name}: the layout did not change");
         std::fs::write(path, &squeezed).expect("write");
         support::expect_code(
@@ -475,7 +427,6 @@ fn put_body(project: &P, body: &str) {
 
 fn fails_closed() {
     let project = P::copy_example("language-1.2");
-    convert_to_notation(&project);
     let original = body(&project);
     project.check_ok();
 
@@ -576,4 +527,137 @@ fn fails_closed() {
         ),
     );
     project.check_ok();
+}
+
+// ---------------------------------------------------------------------------
+// AU-04.
+// ---------------------------------------------------------------------------
+
+/// The `language` of the project a source belongs to: that of the nearest
+/// ancestor directory with a `lexlean.toml`.
+fn project_language(source: &std::path::Path) -> Option<String> {
+    for directory in source.ancestors().skip(1) {
+        let manifest = directory.join("lexlean.toml");
+        if let Ok(text) = std::fs::read_to_string(&manifest) {
+            return text
+                .lines()
+                .find_map(|line| line.strip_prefix("language = "))
+                .map(|value| value.trim().trim_matches('"').to_owned());
+        }
+    }
+    None
+}
+
+/// The payload of a module written as `\semanticdata{…}` and the body of one
+/// written in the notation, as the text between the module's markers.
+enum Form<'a> {
+    Data(&'a str),
+    Notation(&'a str),
+}
+
+fn form(text: &str) -> Option<Form<'_>> {
+    let start = text.find("\\begin{semanticmodule}")? + "\\begin{semanticmodule}".len();
+    let end = text.rfind("\\end{semanticmodule}")?;
+    let body = text.get(start..end)?;
+    let Some(rest) = body.trim_start().strip_prefix("\\semanticdata") else {
+        return Some(Form::Notation(body));
+    };
+    let payload = rest
+        .trim_start()
+        .strip_prefix('{')?
+        .trim_end()
+        .strip_suffix('}')?;
+    Some(Form::Data(payload))
+}
+
+/// Whether a payload written as data can be written in the notation: it is a
+/// module of the schema the notation names, and reads back equal.
+fn spellable(payload: &str) -> bool {
+    let Ok(json) = Json::parse(payload.as_bytes()) else {
+        return false;
+    };
+    let Json::Obj(members) = &json else {
+        return false;
+    };
+    members.get("spec") == Some(&Json::Str(SPEC.to_owned()))
+        && print_module(&json)
+            .ok()
+            .and_then(|text| parse_module(&text, SPEC).ok())
+            .is_some_and(|back| back == json)
+}
+
+fn one_surface() {
+    let root = repo_root();
+    let (mut notation, mut canonical, mut exempt_old, mut exempt_refused) = (0usize, 0usize, 0, 0);
+    let mut defects = Vec::new();
+    for entry in walkdir::WalkDir::new(root.as_std_path())
+        .into_iter()
+        .filter_entry(|entry| {
+            let name = entry.file_name().to_string_lossy();
+            name != "target" && name != ".git" && name != ".lexlean"
+        })
+        .flatten()
+    {
+        let path = entry.path();
+        if !path.to_string_lossy().ends_with(".lex.tex") {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        let Some(form) = form(&text) else { continue };
+        let shown = path
+            .strip_prefix(root.as_std_path())
+            .unwrap_or(path)
+            .display()
+            .to_string();
+        // Only language 1.2 has the notation; 1.0 and 1.1 sources keep the
+        // bytes they were released with.
+        if project_language(path).as_deref() != Some("1.2") {
+            if matches!(form, Form::Data(_)) {
+                exempt_old += 1;
+            }
+            continue;
+        }
+        let refused = shown.starts_with("tests/negative/");
+        match form {
+            Form::Data(payload) if refused && !spellable(payload) => exempt_refused += 1,
+            Form::Data(_) => defects.push(format!(
+                "{shown}: written as data, which the notation can say{}",
+                if refused { " (a refused fixture)" } else { "" }
+            )),
+            Form::Notation(body) => {
+                notation += 1;
+                // A refused fixture may be refused for its text; a source of
+                // the product is its own canonical source.
+                let printed = parse_module(body, SPEC)
+                    .ok()
+                    .and_then(|module| print_module(&module).ok());
+                if body
+                    .strip_prefix('\n')
+                    .is_some_and(|rest| printed.as_deref() == Some(rest))
+                {
+                    canonical += 1;
+                } else if !refused {
+                    defects.push(format!("{shown}: not its own canonical source"));
+                }
+            }
+        }
+    }
+    assert!(
+        defects.is_empty(),
+        "{} source(s) are not written in the authoring notation:\n{}",
+        defects.len(),
+        defects.join("\n")
+    );
+    // Anti-vacuity: the walk reads the product's sources, and the data form
+    // it exempts is really there to be exempted.
+    assert!(
+        notation >= 250 && canonical >= 250,
+        "{notation} sources in the notation, {canonical} canonical: the walk did not read the product"
+    );
+    assert!(
+        exempt_old > 0 && exempt_refused > 0,
+        "{exempt_old} sources under language 1.0 and 1.1, {exempt_refused} refused fixtures written as data: the exemptions are not exercised"
+    );
 }

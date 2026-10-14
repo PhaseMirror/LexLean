@@ -125,24 +125,11 @@ fn bytes(json: &Json) -> Vec<u8> {
 
 /// The semantic data of a committed `compiler/src` module.
 fn module_data(text: &str) -> Json {
-    let start = text.find("\\semanticdata{").expect("semantic data") + "\\semanticdata{".len();
-    let end = text
-        .rfind("}\n\\end{semanticmodule}")
-        .expect("end of semantic data");
-    serde_json::from_str(&text[start..end]).expect("module data")
+    crate::support::module_json(text)
 }
 
 fn with_module_data(text: &str, data: &Json) -> String {
-    let start = text.find("\\semanticdata{").expect("semantic data") + "\\semanticdata{".len();
-    let end = text
-        .rfind("}\n\\end{semanticmodule}")
-        .expect("end of semantic data");
-    format!(
-        "{}{}{}",
-        &text[..start],
-        serde_json::to_string(data).expect("serializes"),
-        &text[end..]
-    )
+    crate::support::with_module_json(text, data)
 }
 
 fn model_text() -> String {
