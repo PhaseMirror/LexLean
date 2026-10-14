@@ -15,6 +15,18 @@ versions, and the entries below say what each tag does and does not claim.
 
 ## Unreleased
 
+- The calculus and the Rust machine are source (SPEC.md §17.14; stage 3e of #93).
+  `compiler/src/{TargetSyntax,TargetSemantics,TargetOracle,RustSyntax,RustSemantics,Main}`,
+  the reasoning oracles, and the project configuration are written and edited as
+  `.lex.tex`: the Rust builders that rendered them (`calculus_source`,
+  `rust_source`, 5,300 lines) and the check that compared them with their own
+  output are removed. `check-calculus` still compares the generated files (the
+  fixtures and the modules that state them, the Rust packages, the shipped
+  copies of the calculus modules), and `conformance_sp_07` now reads the
+  machine's runtime items and their failure and heap classes from the committed
+  `RustSyntax` and `RustSemantics`, and the compiler project's configuration
+  from the production example. No file of the repository changes by this: it
+  is a change of who owns them.
 - The language-1.2 authoring notation (SPEC.md §17.21, `AU-01`..`AU-06`; stage 3
   of #27, #93). A `semanticmodule` can be written as readable text instead of
   `\semanticdata{…}` JSON: declarations in a fixed grammar, read from the

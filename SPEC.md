@@ -3840,6 +3840,19 @@ elaborates, replays, and axiom-audits these modules like any other
 LexLean program, and `compiler/` passes the verify, golden, and
 reproducibility gates of §28.6. No meaning is read from rendered Rust text.
 
+**Source.** The calculus and the machine of §17.16 are source: the committed
+`.lex.tex` modules `TargetSyntax`, `TargetSemantics`, `TargetOracle`,
+`RustSyntax`, `RustSemantics`, the reasoning oracles, and `Main`, and the
+project's configuration (which is the production example's under its own name,
+checked against it), are written and edited as `.lex.tex` (§17.21). No program
+generates or compares them with its own output. What is generated from them,
+and compared byte for byte by `cargo xtask check-calculus`, are the fixtures and
+the modules that state them, the Rust packages, and the shipped copies of the
+calculus modules; and what is checked against them are the renderer's own
+tables: `conformance_sp_07` reads the runtime items and their failure and heap
+classes from the committed `RustSyntax` and `RustSemantics` and equates them
+with `lexlean::calculus::rust::runtime::Item`.
+
 **Programs.** A program (`lexlean/target-program/1`,
 `schemas/target-program.schema.json`) is a list of algebraic data types, each
 a non-empty list of constructors given by their field types, and a list of

@@ -757,20 +757,50 @@ gate failed: compiler/fixtures/sum-to.json differs from its generator; run `carg
 Removed: the fixture was restored; `cargo xtask check-calculus` reports 208
 generated files equal to their generator.
 
-### check-calculus covers the calculus modules
+### the calculus and the machine are sources (SPEC.md §17.14)
 
-Planted: in the committed `compiler/src/TargetSemantics.lex.tex`, the bound
-test of `natResult` was edited from `blt` to `ble`, admitting `2^64` as a
-`nat` result. Command: `cargo xtask check-calculus`. Expected: the committed
-module no longer equals what `crates/conformance/src/calculus_source.rs`
-renders.
+`compiler/src/{TargetSyntax,TargetSemantics,TargetOracle,RustSyntax,RustSemantics,Main}.lex.tex`,
+the reasoning oracles, and the project configuration were rendered from Rust
+builders (`calculus_source.rs`, `rust_source.rs`) and compared with them by
+`check-calculus`; the builders are removed, so the committed files are written
+and edited as `.lex.tex`, and the plant that used to be here (an edit of
+`TargetSemantics` that no longer equalled its builder) has no builder to be
+unequal to. What guards them now is what was always independent of the
+builder: the shipped copies of the calculus modules equal the compiler
+project's golden (next section), `compiler/` is elaborated, replayed, and
+audited by `just examples`, and `conformance_sp_07` reads the machine from the
+committed modules and equates it with the renderer. Three plants, each an edit
+of a committed file, show the last:
 
-```text
-gate failed: compiler/src/TargetSemantics.lex.tex differs from its generator; run `cargo xtask check-calculus --write`
-```
+- **a class the machine states wrongly.** `itemFallible` in
+  `compiler/src/RustSemantics.lex.tex` says `natAdd` cannot fail.
+  `-- conformance_sp_07`:
 
-Removed: the committed module was restored; the gate reports 208 generated
-files equal to their generator.
+  ```text
+  panicked at crates/conformance/src/cases/preservation.rs:2026:17:
+  assertion `left == right` failed: natAdd: the machine's classes equal the renderer's
+    left: Some((false, false))
+   right: Some((true, false))
+  ```
+
+- **an item the machine does not declare.** The `natSub` constructor is
+  removed from `Item` in `compiler/src/RustSyntax.lex.tex`.
+  `-- conformance_sp_07`:
+
+  ```text
+  panicked at crates/conformance/src/cases/preservation.rs:2024:40:
+  NatSub (`.natSub`) is declared
+  ```
+
+- **a configuration that is not the production example's.** The name in
+  `compiler/lexlean.toml` is changed. `-- conformance_sp_07`:
+
+  ```text
+  panicked at crates/conformance/src/cases/preservation.rs:1935:13:
+  assertion `left == right` failed: compiler/lexlean.toml is the production example's under its own name
+  ```
+
+Removed: each file was restored; `conformance_sp_07` passes.
 
 ### check-calculus covers the shipped calculus modules
 

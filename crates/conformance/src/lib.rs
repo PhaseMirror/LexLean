@@ -9,7 +9,6 @@
 #![deny(missing_docs)]
 
 pub mod calculus;
-pub mod calculus_source;
 pub mod cases;
 pub mod certification;
 pub mod certification_library;
@@ -38,7 +37,6 @@ pub mod rust_build;
 pub mod rust_differential;
 pub mod rust_harness;
 pub mod rust_packages;
-pub mod rust_source;
 pub mod schema;
 pub mod stress;
 pub mod tl;
