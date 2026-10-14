@@ -26,6 +26,21 @@ versions, and the entries below say what each tag does and does not claim.
   `fmt` writes the notation canonically (a module written as data stays as it
   is). No diagnostic code is new: a malformed text is `LLP2001`, and nothing
   embedded in the compiler-semantics ID changes.
+- The verifier's resource profile gains scheduling hints and a memory budget,
+  and the gate's `examples` leg uses it (SPEC.md §9.4, §22.11, `RP-14`, no new
+  ID or code; LexLean #83). `LEXLEAN_VERIFY_HINTS` names a JSON object of
+  per-module `wall_ms` and `peak_rss_kib`, which start the heaviest processes
+  of a stage first; `LEXLEAN_VERIFY_MEMORY_KIB` stops a worker from starting a
+  process whose expected peak would push the running total past the budget, and
+  a process whose expected peak alone passes it runs alone. Neither enters an
+  artifact or an identity; the published directory is byte for byte that of
+  width 1 (`VR-21`). `cargo xtask ci-hints` derives the hints from a run's
+  telemetry. In `ci.yml`, the `examples` leg verifies at width 2 with
+  `.github/verify-hints.json` and a 12 GiB budget, read from its matrix row,
+  and the other leg names no profile; `release.yml` still runs `just vv` at
+  width 1. On the standard runner's 16 GB, 22 of Atlas's 66 modules peak above
+  8 GiB, so the modelled gain is small: about 13 min of Atlas's 169, from main's
+  telemetry. The CI run of this change is the measurement.
 - `rust-std` rendering: ownership and lists (SPEC.md §17.14, §17.16, `RB-08`,
   no new diagnostic code). A read of a binding that nothing after it reads
   is a move and a projection of a pair component that nothing after it

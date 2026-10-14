@@ -215,9 +215,8 @@ impl Operational {
     /// labels of the items of a stage (this verifier: full Lean module names,
     /// and audit-member names) and whose values carry `wall_ms` with an
     /// optional `peak_rss_kib`, like the `process` events the telemetry
-    /// appends (§22.12) — or a telemetry file itself, one JSON object per
-    /// line, whose `process` events are collected into the same map
-    /// (heaviest observation of a repeated label wins).
+    /// appends (§22.12). `cargo xtask ci-hints` derives such a file from a
+    /// telemetry file (the heaviest observation of a repeated label wins).
     ///
     /// # Errors
     ///

@@ -90,7 +90,7 @@ statement = "The ordinary workspace test phase excludes repo-conformance, the bd
 id = "RP-14"
 level = "build"
 suite = "repository"
-statement = "The normative CI job runs every recipe of just vv exactly once, in two parallel legs that each start from a clean checkout on the standard ubuntu-24.04 runner at the default verifier width 1, with no cache, path filter, or skipped recipe, and each leg uploads its CI evidence."
+statement = "The normative CI job runs every recipe of just vv exactly once, in two parallel legs that each start from a clean checkout on the standard ubuntu-24.04 runner, the examples leg at the verification resource profile its matrix row names and the other at the default, with no cache, path filter, or skipped recipe, and each leg uploads its CI evidence."
 
 [[id]]
 id = "CF-01"

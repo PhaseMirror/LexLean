@@ -6665,6 +6665,94 @@ branch of `recipe_spans` is added for it and none could be planted;
 `a_leg_of_the_gate_ends_its_last_recipe_at_the_leg_s_own_line` fixes how a leg's
 log is timed.
 
+## The examples leg at a resource profile (Issue #83)
+
+Issue #83 asks for a shorter gate without weaker proof obligations. On the
+runner the gate's wall time is the `examples` leg: 3 h 14 min on `main` at
+`d284b165` (CI run 38520744224), 10,188 s of it the verification of UOR Atlas
+at width 1 (elaboration 5,102 s, replay 5,029 s, audit 15 s).
+
+### What the runner allows
+
+From that run's telemetry (`verify-telemetry.jsonl` of
+`acceptance-gate-evidence-examples`) and Atlas's import graph, a schedule
+model gives Atlas's verification time at each profile. Its inputs are
+measurements; its outputs are estimates.
+
+| profile | Atlas, minutes |
+| --- | --- |
+| width 1 (the run) | 169 |
+| width 2, hints, 12 GiB budget, frontier barriers (§22.11 as written) | 156 |
+| width 3, the same | 154 |
+| width 2, no budget (a host with memory to spare) | 104 |
+| width 4, no budget, no frontier barriers, replay of a module right after its elaboration | 66 |
+
+Memory, not processors, bounds the standard runner. 22 of the 66 modules peak
+above 8 GiB of resident set and 4 above 12 GiB (`CensusCert4` 14.9 GiB and 1,308
+s of elaboration, `ClosureOrbit` 14.9 GiB, `CensusCert10` 14.3 GiB, `Closure`
+14.3 GiB), and three of them went into swap at width 1. On 16 GB no two of
+those can run together, so a profile on this runner buys about 8 % of Atlas.
+The larger gains need a host with more memory (§9.4 rules a larger runner out)
+or lighter Census proofs: `CensusCert4` is one `of_decide_eq_true` over
+`gramRange 4000 1000`, native core data whose authoring surface is #93. The
+conformance suite is already run about four wide by the test harness (on the
+same run, 370 cases took 12,536 s in a `bdd` of 3,200 s), and it is on the
+shorter leg.
+
+### What changed
+
+`ci.yml`'s matrix row for `examples` names `width: "2"`,
+`memory_kib: "12582912"`, and `hints: ".github/verify-hints.json"`, and the
+job reads `LEXLEAN_VERIFY_WIDTH`, `LEXLEAN_VERIFY_MEMORY_KIB`, and
+`LEXLEAN_VERIFY_HINTS` from the row; the other row names three empty values,
+the default. The hints are those of run 38520744224, derived by `cargo xtask
+ci-hints --from verify-telemetry.jsonl --out .github/verify-hints.json`: 136
+modules of the sixteen examples, each with the largest `wall_ms` and
+`peak_rss_kib` observed for its name. A module two examples share is scheduled
+as the heavier one, and a module the hints do not name is expected at no
+memory, which is a schedule, never a verdict.
+
+Nothing the leg proves moves. Every elaboration, replay, and audit member runs
+as before; the leg still requires each example's normalized verification
+records to equal `expected/verify`, which width 1 wrote, so a profile that
+changed one byte would fail the gate. `release.yml` runs `just vv` with no
+profile, which verifies Atlas at width 1. The sentence of the #48 section above,
+that no width above 1 has been run on UOR Atlas, describes the tree before this
+change.
+
+`RP-14` reads the profile out of the matrix. The examples leg must name
+exactly that width, budget, and hints file; the width and the hints must parse
+with the verifier's own functions (`Operational::parse_width`,
+`Operational::parse_hints`), and the hints must name `CensusCert4`; any other
+leg must name none; each variable is set once, from the row; and no profile may
+come from `vars.` or `inputs.`.
+
+### the profile pins can fail
+
+Each record is a defect planted in `ci.yml` or the hints, then
+`cargo test -p repo-conformance --test conformance -- --exact
+conformance_rp_14`, and the failure, after which the file was restored.
+
+- **the examples leg at width 3**: `§9.4: the examples leg's profile`.
+- **the rest leg at width 2**: `§9.4: a leg that does not run examples names no
+  profile`.
+- **the budget dropped from the examples row**: `§9.4: the row … names
+  `memory_kib``.
+- **the width written on the job** (`LEXLEAN_VERIFY_WIDTH: "2"`): `§9.4:
+  `LEXLEAN_VERIFY_WIDTH` is read from the matrix row`.
+- **the width set again on the gate step**: `§9.4: `LEXLEAN_VERIFY_WIDTH` is set
+  once`.
+- **the width from a repository variable** (`${{ vars.W }}`): `the gate selects
+  no runner and no profile from outside the file: `vars.``.
+- **the hints file cut in half**: `the committed hints are a hints file the
+  verifier reads` (`LLV7017`, EOF while parsing).
+- **the hints file empty** (`{}`): `the hints cover the Atlas module that
+  dominates the leg`.
+
+`ci::tests::hints_keep_the_heaviest_observation_of_each_module` fixes the
+derivation: only elaboration and replay processes, the largest of each field
+per name, and the same bytes for the same telemetry.
+
 ## Production export contract (Issue #28)
 
 SPEC.md §24.7; `PX-01`..`PX-12` and `CL-23`. The Lean-backed cases share three exports in one process (the consumer's exports of `examples/production` and `examples/production-coverage`, and a second, offline CLI export of `examples/production` from another directory): 4 min 08 s and 2.2 GB peak RSS for all thirteen cases together on the development host (`cargo test -p repo-conformance --test conformance -- conformance_px_ conformance_cl_23`). The committed packages under `tests/production-export/` are regenerated only by `just production-export-write`.
