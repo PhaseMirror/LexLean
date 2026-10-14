@@ -53,6 +53,8 @@ pub mod project;
 #[doc(hidden)]
 pub mod source;
 #[doc(hidden)]
+pub mod surface;
+#[doc(hidden)]
 pub mod verify;
 
 pub use api::{
