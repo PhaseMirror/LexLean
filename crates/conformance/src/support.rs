@@ -505,9 +505,25 @@ impl P {
         Engine::load(&self.root.join("lexlean.toml")).expect("project loads")
     }
 
-    /// Read a project file.
+    /// Read a project file. A language-1.2 semantic module written in the
+    /// authoring notation is presented in its data form, the canonical JSON
+    /// the cases quote and edit by fragment: the notation reads to exactly
+    /// that module (`AU-02`), and a case that writes the text back leaves a
+    /// module the compiler reads just the same. [`Self::read_raw`] is the
+    /// file's own bytes.
     #[must_use]
     pub fn read(&self, relative: &str) -> String {
+        let text = self.read_raw(relative);
+        if relative.ends_with(".lex.tex") {
+            as_data_text(&text)
+        } else {
+            text
+        }
+    }
+
+    /// Read a project file's own bytes.
+    #[must_use]
+    pub fn read_raw(&self, relative: &str) -> String {
         std::fs::read_to_string(self.root.join(relative).as_std_path()).expect("read")
     }
 
@@ -2241,6 +2257,41 @@ pub fn with_module_json(text: &str, data: &serde_json::Value) -> String {
     let printed = lexlean::surface::semantic::print_module(&canonical)
         .unwrap_or_else(|error| panic!("the module has a notation: {error}"));
     format!("{}\n{printed}{}", &text[..body.0], &text[body.1..])
+}
+
+/// Whether the semantic module of `text` declares `name`.
+///
+/// # Panics
+///
+/// When the source has no well-formed semantic module.
+#[must_use]
+pub fn declares(text: &str, name: &str) -> bool {
+    module_json(text)["declarations"]
+        .as_array()
+        .is_some_and(|declarations| {
+            declarations
+                .iter()
+                .any(|declaration| declaration["name"] == name)
+        })
+}
+
+/// Whether `text` has a semantic module written in the authoring notation
+/// that is well formed.
+#[must_use]
+pub fn is_notation_module(text: &str) -> bool {
+    module_body(text).is_ok_and(|body| data_payload(text, body).is_none())
+        && try_module_json(text).is_ok()
+}
+
+/// `text` with a semantic module written in the notation written as data
+/// instead (see [`P::read`]); any other text as it is.
+#[must_use]
+pub fn as_data_text(text: &str) -> String {
+    if is_notation_module(text) {
+        module_as_data(text)
+    } else {
+        text.to_owned()
+    }
 }
 
 /// `text` with its semantic module written as `\semanticdata{…}`, the

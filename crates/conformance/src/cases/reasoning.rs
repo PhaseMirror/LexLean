@@ -2923,7 +2923,7 @@ fn rs_12() {
         );
         let id = crate::calculus::identifier(&case.fixture.name);
         assert!(
-            fixtures_text.contains(&format!("\"name\":\"{id}Agrees\"")),
+            support::declares(&fixtures_text, &format!("{id}Agrees")),
             "{id}Agrees is stated"
         );
         let Outcome::Value {
@@ -3240,7 +3240,7 @@ fn rs_13() {
         );
         let id = crate::calculus::identifier(name);
         assert!(
-            fixtures_text.contains(&format!("\"name\":\"{id}Agrees\"")),
+            support::declares(&fixtures_text, &format!("{id}Agrees")),
             "{id}Agrees is stated"
         );
         let Outcome::Value { value, .. } = &case.fixture.expected else {

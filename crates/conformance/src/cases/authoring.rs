@@ -285,7 +285,7 @@ fn equivalence() {
                 .expect("under the project")
                 .trim_start_matches('/');
             assert_eq!(
-                &migrated.read(relative),
+                &migrated.read_raw(relative),
                 committed,
                 "{name}: fmt did not migrate {relative} to the committed notation"
             );
@@ -412,14 +412,14 @@ const END: &str = "\\end{semanticmodule}";
 
 /// The body of the notation of a project's `Main`.
 fn body(project: &P) -> String {
-    let text = project.read(MAIN);
+    let text = project.read_raw(MAIN);
     let start = text.find(BEGIN).expect("begin") + BEGIN.len();
     let end = text.rfind(END).expect("end");
     text[start..end].to_owned()
 }
 
 fn put_body(project: &P, body: &str) {
-    let text = project.read(MAIN);
+    let text = project.read_raw(MAIN);
     let start = text.find(BEGIN).expect("begin") + BEGIN.len();
     let end = text.rfind(END).expect("end");
     project.write(MAIN, &format!("{}{body}{}", &text[..start], &text[end..]));

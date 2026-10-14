@@ -378,7 +378,7 @@ fn gc_02() {
         let id = crate::calculus::identifier(&fixture.name);
         for theorem in ["Certificate", "Verdict"] {
             assert!(
-                module.contains(&format!("\"name\":\"{id}{theorem}\"")),
+                crate::support::declares(&module, &format!("{id}{theorem}")),
                 "{id}{theorem}"
             );
         }
@@ -2910,9 +2910,12 @@ fn gc_10() {
         }
     }
     // A planted change to the model changes what it generates.
-    let planted = crate::certification_model::module()
+    let planted = crate::support::module_as_data(&crate::certification_model::module())
         .replace("\"name\":\"lowerPosition\"", "\"name\":\"lowerPlaced\"");
-    assert_ne!(planted, read(crate::certification_model::PATH));
+    assert_ne!(
+        planted,
+        crate::support::module_as_data(&read(crate::certification_model::PATH))
+    );
     // The negative: nothing in a certificate names an optimizer, a cache, or
     // a discovered candidate; the closed forms are exactly the schemas'.
     let certificate_schema = schema("gnaf-certificate.schema.json");

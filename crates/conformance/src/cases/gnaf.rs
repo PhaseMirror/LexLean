@@ -713,12 +713,12 @@ fn gn_02() {
         let id = crate::calculus::identifier(&fixture.name);
         for theorem in ["Request", "Universe", "Answer"] {
             assert!(
-                module.contains(&format!("\"name\":\"{id}{theorem}\"")),
+                crate::support::declares(&module, &format!("{id}{theorem}")),
                 "{id}{theorem}"
             );
         }
         assert_eq!(
-            module.contains(&format!("\"name\":\"{id}Statuses\"")),
+            crate::support::declares(&module, &format!("{id}Statuses")),
             !matches!(fixture.expected, Answer::Rejected { .. }),
             "{id}: every answered request states its systems' statuses"
         );
