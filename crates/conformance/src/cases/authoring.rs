@@ -280,10 +280,12 @@ fn equivalence() {
         convert_to_data(&migrated);
         format_all(&migrated, false).expect("fmt migrates the data form");
         for (path, committed) in sources.iter().zip(&before) {
-            let relative = path
-                .strip_prefix(notation.root.as_str())
+            let relative = std::path::Path::new(path)
+                .strip_prefix(notation.root.as_std_path())
                 .expect("under the project")
-                .trim_start_matches('/');
+                .to_string_lossy()
+                .replace('\\', "/");
+            let relative = relative.as_str();
             assert_eq!(
                 &migrated.read_raw(relative),
                 committed,
@@ -606,11 +608,12 @@ fn one_surface() {
             continue;
         };
         let Some(form) = form(&text) else { continue };
+        // `/`-separated on every host, as the repository states paths.
         let shown = path
             .strip_prefix(root.as_std_path())
             .unwrap_or(path)
-            .display()
-            .to_string();
+            .to_string_lossy()
+            .replace('\\', "/");
         // Only language 1.2 has the notation; 1.0 and 1.1 sources keep the
         // bytes they were released with.
         if project_language(path).as_deref() != Some("1.2") {
