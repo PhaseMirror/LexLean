@@ -192,7 +192,7 @@ fn round_trip() {
     }
     // Anti-vacuity: the committed corpus is large, and says so.
     assert!(
-        modules >= 250 && declarations >= 1_000,
+        modules >= 250 && declarations >= 4_000,
         "{modules} modules, {declarations} declarations: the corpus the notation is checked on has shrunk"
     );
 }

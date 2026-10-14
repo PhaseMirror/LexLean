@@ -6756,8 +6756,8 @@ shortened), after which the defect was removed.
 `AU-01`..`AU-03` (SPEC.md §17.21) state that the notation and the canonical
 JSON of the closed schema are in bijection, that a module in the notation is
 the module its data form is, and that malformed notation fails closed. The
-corpus of `AU-01` is every committed semantic module (321 of language 1.2, 1,000
-declarations or more), and its samples are read from the schema, one for each
+corpus of `AU-01` is every committed semantic module of language 1.2 (290 modules
+with 4,949 declarations at this writing), and its samples are read from the schema, one for each
 alternative of the declaration, term, type, and proof unions with and without
 its optional members. Each plant below is one edit of the compiler, started from
 the passing cases, and must turn the named case red for the reason it names.
