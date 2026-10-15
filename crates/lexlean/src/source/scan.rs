@@ -228,10 +228,11 @@ pub fn reject_forbidden_atoms(
 /// actual controls prevents a control-shaped string or escaped backslash from
 /// reopening a payload; processing each byte once keeps large digests linear.
 ///
-/// A `semanticmodule` or `toolingmodule` environment is a payload too: its
-/// body is either one `\semanticdata{…}` (`\toolingdata{…}`) argument or the
-/// authoring notation (SPEC.md §17.21), which runs to the closing `\end`.
-/// Digit runs inside a string of either are exact string bytes, not numerals.
+/// A `semanticmodule`, `toolingmodule`, or `coremodule` environment is a
+/// payload too: its body is either one `\semanticdata{…}` (`\toolingdata{…}`,
+/// `\coredata{…}`) argument or the authoring notation (SPEC.md §17.21), which
+/// runs to the closing `\end`. Digit runs inside a string of either are exact
+/// string bytes, not numerals.
 #[derive(Default)]
 struct SemanticDataContext {
     awaiting_open: bool,
@@ -280,7 +281,10 @@ impl SemanticDataContext {
                 return;
             }
             if atom.class == AtomClass::Control
-                && matches!(atom.text.as_str(), "\\semanticdata" | "\\toolingdata")
+                && matches!(
+                    atom.text.as_str(),
+                    "\\semanticdata" | "\\toolingdata" | "\\coredata"
+                )
             {
                 self.body = Body::Outside;
                 self.awaiting_open = true;
@@ -305,7 +309,7 @@ impl SemanticDataContext {
             self.environment = match (self.environment, atom.class, atom.text.as_str()) {
                 (0, AtomClass::Control, "\\begin") => 1,
                 (1, _, "{") => 2,
-                (2, AtomClass::Word, "semanticmodule" | "toolingmodule") => 3,
+                (2, AtomClass::Word, "semanticmodule" | "toolingmodule" | "coremodule") => 3,
                 (3, _, "}") => {
                     self.body = Body::Start;
                     0
@@ -320,7 +324,10 @@ impl SemanticDataContext {
                 self.awaiting_open = false;
             } else {
                 self.awaiting_open = atom.class == AtomClass::Control
-                    && matches!(atom.text.as_str(), "\\semanticdata" | "\\toolingdata");
+                    && matches!(
+                        atom.text.as_str(),
+                        "\\semanticdata" | "\\toolingdata" | "\\coredata"
+                    );
             }
             return;
         }

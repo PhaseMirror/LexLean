@@ -6728,6 +6728,94 @@ branch of `recipe_spans` is added for it and none could be planted;
 `a_leg_of_the_gate_ends_its_last_recipe_at_the_leg_s_own_line` fixes how a leg's
 log is timed.
 
+## The examples leg at a resource profile (Issue #83)
+
+Issue #83 asks for a shorter gate without weaker proof obligations. On the
+runner the gate's wall time is the `examples` leg: 3 h 14 min on `main` at
+`d284b165` (CI run 38520744224), 10,188 s of it the verification of UOR Atlas
+at width 1 (elaboration 5,102 s, replay 5,029 s, audit 15 s).
+
+### What the runner allows
+
+From that run's telemetry (`verify-telemetry.jsonl` of
+`acceptance-gate-evidence-examples`) and Atlas's import graph, a schedule
+model gives Atlas's verification time at each profile. Its inputs are
+measurements; its outputs are estimates.
+
+| profile | Atlas, minutes |
+| --- | --- |
+| width 1 (the run) | 169 |
+| width 2, hints, 12 GiB budget, frontier barriers (§22.11 as written) | 156 |
+| width 3, the same | 154 |
+| width 2, no budget (a host with memory to spare) | 104 |
+| width 4, no budget, no frontier barriers, replay of a module right after its elaboration | 66 |
+
+Memory, not processors, bounds the standard runner. 22 of the 66 modules peak
+above 8 GiB of resident set and 4 above 12 GiB (`CensusCert4` 14.9 GiB and 1,308
+s of elaboration, `ClosureOrbit` 14.9 GiB, `CensusCert10` 14.3 GiB, `Closure`
+14.3 GiB), and three of them went into swap at width 1. On 16 GB no two of
+those can run together, so a profile on this runner buys about 8 % of Atlas.
+The larger gains need a host with more memory (§9.4 rules a larger runner out)
+or lighter Census proofs: `CensusCert4` is one `of_decide_eq_true` over
+`gramRange 4000 1000`, native core data whose authoring surface is #93. The
+conformance suite is already run about four wide by the test harness (on the
+same run, 370 cases took 12,536 s in a `bdd` of 3,200 s), and it is on the
+shorter leg.
+
+### What changed
+
+`ci.yml`'s matrix row for `examples` names `width: "2"`,
+`memory_kib: "12582912"`, and `hints: ".github/verify-hints.json"`, and the
+job reads `LEXLEAN_VERIFY_WIDTH`, `LEXLEAN_VERIFY_MEMORY_KIB`, and
+`LEXLEAN_VERIFY_HINTS` from the row; the other row names three empty values,
+the default. The hints are those of run 38520744224, derived by `cargo xtask
+ci-hints --from verify-telemetry.jsonl --out .github/verify-hints.json`: 136
+modules of the sixteen examples, each with the largest `wall_ms` and
+`peak_rss_kib` observed for its name. A module two examples share is scheduled
+as the heavier one, and a module the hints do not name is expected at no
+memory, which is a schedule, never a verdict.
+
+Nothing the leg proves moves. Every elaboration, replay, and audit member runs
+as before; the leg still requires each example's normalized verification
+records to equal `expected/verify`, which width 1 wrote, so a profile that
+changed one byte would fail the gate. `release.yml` runs `just vv` with no
+profile, which verifies Atlas at width 1. The sentence of the #48 section above,
+that no width above 1 has been run on UOR Atlas, describes the tree before this
+change.
+
+`RP-14` reads the profile out of the matrix. The examples leg must name
+exactly that width, budget, and hints file; the width and the hints must parse
+with the verifier's own functions (`Operational::parse_width`,
+`Operational::parse_hints`), and the hints must name `CensusCert4`; any other
+leg must name none; each variable is set once, from the row; and no profile may
+come from `vars.` or `inputs.`.
+
+### the profile pins can fail
+
+Each record is a defect planted in `ci.yml` or the hints, then
+`cargo test -p repo-conformance --test conformance -- --exact
+conformance_rp_14`, and the failure, after which the file was restored.
+
+- **the examples leg at width 3**: `§9.4: the examples leg's profile`.
+- **the rest leg at width 2**: `§9.4: a leg that does not run examples names no
+  profile`.
+- **the budget dropped from the examples row**: `§9.4: the row … names
+  `memory_kib``.
+- **the width written on the job** (`LEXLEAN_VERIFY_WIDTH: "2"`): `§9.4:
+  `LEXLEAN_VERIFY_WIDTH` is read from the matrix row`.
+- **the width set again on the gate step**: `§9.4: `LEXLEAN_VERIFY_WIDTH` is set
+  once`.
+- **the width from a repository variable** (`${{ vars.W }}`): `the gate selects
+  no runner and no profile from outside the file: `vars.``.
+- **the hints file cut in half**: `the committed hints are a hints file the
+  verifier reads` (`LLV7017`, EOF while parsing).
+- **the hints file empty** (`{}`): `the hints cover the Atlas module that
+  dominates the leg`.
+
+`ci::tests::hints_keep_the_heaviest_observation_of_each_module` fixes the
+derivation: only elaboration and replay processes, the largest of each field
+per name, and the same bytes for the same telemetry.
+
 ## Production export contract (Issue #28)
 
 SPEC.md §24.7; `PX-01`..`PX-12` and `CL-23`. The Lean-backed cases share three exports in one process (the consumer's exports of `examples/production` and `examples/production-coverage`, and a second, offline CLI export of `examples/production` from another directory): 4 min 08 s and 2.2 GB peak RSS for all thirteen cases together on the development host (`cargo test -p repo-conformance --test conformance -- conformance_px_ conformance_cl_23`). The committed packages under `tests/production-export/` are regenerated only by `just production-export-write`.
@@ -6881,7 +6969,7 @@ projects change, and `examples/uor-atlas` (language 1.0) is untouched.
 
 ## The authoring notation (Issue #93, stage 3 of #27)
 
-`AU-01`..`AU-08` (SPEC.md §17.21, §24.8) state that the notation and the canonical
+`AU-01`..`AU-12` (SPEC.md §17.21, §24.8) state that the notation and the canonical
 JSON of the closed schema are in bijection, that a module in the notation is
 the module its data form is, that malformed notation fails closed, that
 every language-1.2 source of the repository is written in it, that the same
@@ -7101,7 +7189,174 @@ equates the registry with a fresh derivation). The writers' own files
 calculus, the machine, and the two models were removed) are compared by
 `cargo xtask check-calculus` as before.
 
-Removed: each edit was restored; `conformance_au_01`..`conformance_au_08` pass. The generic notation has its own property test over
+Core modules in the notation (`AU-09`, `AU-10`, `AU-11`; SPEC.md §17.21.8) add
+nine plants, each one edit of the compiler, started from the passing cases:
+
+- **a rule for what is written inside its user that is not the specified
+  one.** The printer writes a node inside its user only when the nodes under it
+  are fewer than two deep, not 48. `-- conformance_au_09`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring_core.rs:322:5:
+  assertion `left == right` failed: the module that carries every kind: the statements are not the nodes the rule gives one
+    left: {0, 1, 2, …, 10, 12, 13, …, 31, 33, 34, 35}
+   right: {0, 1, 2, …, 10, 13, 14, …, 31, 33, 34, 35}
+  ```
+
+- **a canonical writer that is not the canonical JSON.** The data form of an
+  application writes its keys as `k`, `f`, `x`. `-- conformance_au_09`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring_core.rs:420:46:
+  compiler/proofs/src/Check.lex.tex: the compiler refuses it: core-module JSON is not in canonical byte form: object key `f` is not strictly ordered
+  ```
+
+- **a level written as another.** A universe parameter is written `u`
+  whatever its name. `-- conformance_au_09`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring_core.rs:313:5:
+  the module that carries every kind: the notation reads to another module
+  ```
+
+- **a source map that names the data.** The core backend's coverage names
+  `lexlean.core::coredata` for a module written in the notation.
+  `-- conformance_au_10`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring_core.rs:650:5:
+  the small module: the coverage of the notation does not name the notation
+  ```
+
+- **a formatter that leaves a core module alone.** `canonical_source` no longer
+  rewrites a core module, so one written as `\coredata` is canonical.
+  `-- conformance_au_10`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring_core.rs:575:14:
+  a module written as data is not canonical
+  ```
+
+- **a statement that need not be its node.** The reader no longer checks that
+  a label is the number of the node its statement defines, so a module whose
+  labels are wrong links. `-- conformance_au_11`:
+
+  ```text
+  panicked at crates/conformance/src/support.rs:595:14:
+  check fails
+  ```
+
+- **a nesting without a bound.** The reader's bound on nesting is raised past
+  what the case writes, so 300 parentheses read. `-- conformance_au_11`: the
+  same `check fails` from `support.rs:595:14`.
+
+- **an identity that does not read a core module's meaning.** The data form of
+  the embedded tree leaves a core module as its bytes. `-- conformance_au_06`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:934:17:
+  assertion `left == right` failed: language/preservation-1.2/library/src/Compose.lex.tex: a notation module contributes its data form
+  ```
+
+- **a library written as data again.** One module of the preservation library
+  is restored to its `\coredata` form. `-- conformance_au_04`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:661:5:
+  1 source(s) are not written in the authoring notation:
+  language/preservation-1.2/library/src/Values.lex.tex: written as data, which the notation can say
+  ```
+
+- **an API that takes a core module for another kind.** `sdk::module_kind`
+  names a core module a tooling module. `-- conformance_au_08`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:1242:71:
+  …/compiler/proofs/src/Frontier.lex.tex: the module is not a `lexlean/tooling-module/1` module, the schema its notation names
+  ```
+
+Names and statement names (`AU-12`; stage 3d of #93) add four more:
+
+- **a variable named when a nearer binder has the name.** The printer writes a
+  variable by its binder's name whether or not a nearer binder has it, so the
+  text reads to another variable. `-- conformance_au_09`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring_core.rs:340:5:
+  the module that carries every kind: the notation reads to another module
+  ```
+
+- **a constant that a binder shadows.** The printer writes a constant bare
+  even when a binder in scope is named like it, so the text reads to the
+  variable. The same failure from `conformance_au_09`.
+
+- **an arrow whose body is not under a binder.** The reader does not put the
+  anonymous binder of `A -> B` in scope, so every name in the body is one index
+  off. `-- conformance_au_12`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring_core.rs:963:9:
+  assertion `left == right` failed: compiler/proofs/src/Soundness.lex.tex: fmt does not write the numbers
+  ```
+
+- **a repeated statement name.** The reader takes the later of two statements
+  of one name. `-- conformance_au_12`:
+
+  ```text
+  panicked at crates/conformance/src/support.rs:595:14:
+  check fails
+  ```
+
+The first theorem written that way is in the certification library:
+`LexLeanCertification.authored_eq_symm` (symmetry of `Eq` by `Eq.rec`, with every
+argument and level explicit), a declaration and two statements appended to
+`Soundness`. `AU-12` writes it from its authored text on the library without
+it and finds the committed module and the committed bytes; the family `GC`
+compiles the library with the pinned Lean (the kernel checks the theorem with
+the rest), replays it with `leanchecker`, and audits its axioms (it pins none,
+and Lean prints none). The committed libraries are otherwise unchanged by names:
+a shared body is a node of its own, so a variable in it is free in its
+statement and stays `#i` (twenty-five of the twenty-six modules are the same
+bytes; one differs by two).
+
+A first plant found a defect in the rule and not in the code: the printer and
+the case both excluded the nodes a declaration states from being written
+inside their user, which counting a declaration's use of its roots already
+does, so that condition could not be exercised and was removed from both.
+
+The 26 committed language-1.2 core modules are migrated with the same printer
+`fmt` uses, after the reading of each was checked against the data it came from:
+the canonical JSON of the notation of every one of them is the committed JSON
+byte for byte, the compiler's own decoder (`CoreModule::parse`, with its check
+of the canonical byte form and its validation) accepts it, and the 66 Atlas
+modules (language 1.0, written as data) are written back byte for byte by the
+same canonical writer and read back equal as modules of the schema the notation
+names. What must not change did not: the compiler-semantics ID of language 1.2
+is still `464235ad…`, the locks of every example are current, `check-golden`
+finds every published artifact equal to its oracle, and `check-production-export`
+finds every exported package equal to its committed package (16 minutes). The
+migrated sources are 0.61 to 0.85 of the size of the data they were (24.4 MB
+against 28.8 MB for the largest module), and reading the identity of language 1.2
+takes 0.8 s on four cores in a release build.
+
+A second defect was found by CI and not by any case: `library_identity` (the
+`library.registry_sha256` of every `preservation.json`) hashed the embedded
+native library as text, so writing the 26 modules in the notation changed the
+record of `examples/models` (`verify-examples`, R10) although no module's
+meaning changed, which is what `AU-06` says cannot happen. The identity is now
+over each source's data form, `AU-06` states it and compares it with the
+committed record, and the record of `models` verified again is byte for byte the
+committed one.
+
+- **a library identity over the text of a source.** `library_identity_of` hashes
+  `source.as_bytes()` and not its `identity_bytes`. `-- conformance_au_06`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:1018:5:
+  assertion `left == right` failed: the library identity of a record depends on the form its sources are written in
+  ```
+
+Removed: each edit was restored; `conformance_au_01`..`conformance_au_12` pass. The generic notation has its own property test over
 arbitrary canonical JSON values (`surface::generic`), and every alternative of
 the schema its own sample (`surface::semantic`), as unit tests of the
 `lexlean` crate.

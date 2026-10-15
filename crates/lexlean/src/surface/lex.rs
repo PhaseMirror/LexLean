@@ -119,7 +119,7 @@ pub fn lex(text: &str) -> Result<Vec<Spanned>, SurfaceError> {
 
 /// Read the string literal at the start of `rest`; its decoded value and the
 /// byte length of the literal.
-fn string(rest: &str, offset: usize) -> Result<(String, usize), SurfaceError> {
+pub(crate) fn string(rest: &str, offset: usize) -> Result<(String, usize), SurfaceError> {
     let mut value = String::new();
     let mut chars = rest.char_indices();
     chars.next();

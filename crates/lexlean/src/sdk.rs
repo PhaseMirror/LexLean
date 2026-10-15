@@ -12,7 +12,7 @@
 use serde_json::Value;
 
 use crate::artifact::canonical_json::Json;
-use crate::surface::module::{locate, Kind, Located, SEMANTIC, TOOLING};
+use crate::surface::module::{locate, Kind, Located, CORE, SEMANTIC, TOOLING};
 
 /// The kinds of module that have an authoring notation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,6 +21,8 @@ pub enum ModuleKind {
     Semantic,
     /// A compiler-tooling module (SPEC.md §17.20).
     Tooling,
+    /// A native core module (SPEC.md §17.10), a library of kernel terms.
+    Core,
 }
 
 impl ModuleKind {
@@ -28,6 +30,7 @@ impl ModuleKind {
         match self {
             Self::Semantic => &SEMANTIC,
             Self::Tooling => &TOOLING,
+            Self::Core => &CORE,
         }
     }
 }
@@ -60,7 +63,12 @@ fn error(message: impl Into<String>, offset: Option<usize>) -> AuthoringError {
 }
 
 fn found(text: &str) -> Result<Located, AuthoringError> {
-    locate(text).ok_or_else(|| error("the source states no semantic or tooling module", None))
+    locate(text).ok_or_else(|| {
+        error(
+            "the source states no semantic, tooling, or core module",
+            None,
+        )
+    })
 }
 
 /// The canonical JSON of `data`.
@@ -98,8 +106,10 @@ pub fn module_kind(text: &str) -> Option<ModuleKind> {
     locate(text).map(|located| {
         if located.kind.is(&SEMANTIC) {
             ModuleKind::Semantic
-        } else {
+        } else if located.kind.is(&TOOLING) {
             ModuleKind::Tooling
+        } else {
+            ModuleKind::Core
         }
     })
 }
@@ -108,7 +118,15 @@ pub fn module_kind(text: &str) -> Option<ModuleKind> {
 /// reads (it is not the `\semanticdata` form, and it is well formed).
 #[must_use]
 pub fn is_notation(text: &str) -> bool {
-    locate(text).is_some_and(|located| located.data.is_none()) && read_module(text).is_ok()
+    locate(text).is_some_and(|located| {
+        located.data.is_none()
+            && (located.kind.spec)().is_some_and(|spec| {
+                located
+                    .kind
+                    .data_text(&text[located.body.0..located.body.1], spec)
+                    .is_ok()
+            })
+    })
 }
 
 /// The module of `text` as JSON, whichever form it is written in. A module in
@@ -131,15 +149,16 @@ pub fn read_module(text: &str) -> Result<Value, AuthoringError> {
     }
     let spec =
         (located.kind.spec)().ok_or_else(|| error("the notation is a language-1.2 form", None))?;
-    let module =
-        (located.kind.parse)(&text[located.body.0..located.body.1], spec).map_err(|failure| {
+    let module = located
+        .kind
+        .data_text(&text[located.body.0..located.body.1], spec)
+        .map_err(|failure| {
             error(
                 format!("the notation is not well formed: {}", failure.message),
                 Some(located.body.0 + failure.offset),
             )
         })?;
-    serde_json::from_str(&module.to_canonical_string())
-        .map_err(|failure| error(failure.to_string(), None))
+    serde_json::from_str(&module).map_err(|failure| error(failure.to_string(), None))
 }
 
 /// `text` with its module's data replaced by `data`, written in the form the
@@ -180,12 +199,28 @@ pub fn write_module(text: &str, data: &Value) -> Result<String, AuthoringError> 
 /// A source with no well-formed module.
 pub fn to_data_form(text: &str) -> Result<String, AuthoringError> {
     let located = found(text)?;
-    let json = canonical(&read_module(text)?)?;
+    // A module in the notation is read to its canonical JSON text directly: a
+    // library of kernel terms is tens of megabytes, which a value of the whole
+    // module would hold several times over.
+    let data = if located.data.is_none() {
+        let spec = (located.kind.spec)()
+            .ok_or_else(|| error("the notation is a language-1.2 form", None))?;
+        located
+            .kind
+            .data_text(&text[located.body.0..located.body.1], spec)
+            .map_err(|failure| {
+                error(
+                    format!("the notation is not well formed: {}", failure.message),
+                    Some(located.body.0 + failure.offset),
+                )
+            })?
+    } else {
+        canonical(&read_module(text)?)?.to_canonical_string()
+    };
     Ok(format!(
-        "{}\n{}{{{}}}\n{}",
+        "{}\n{}{{{data}}}\n{}",
         &text[..located.body.0],
         located.kind.control,
-        json.to_canonical_string(),
         &text[located.body.1..]
     ))
 }
@@ -225,6 +260,8 @@ pub fn declaration_spans(text: &str) -> Result<Option<Vec<(usize, usize)>>, Auth
     let body = &text[located.body.0..located.body.1];
     let spans = if located.kind.is(&TOOLING) {
         crate::surface::tooling::declaration_spans(body)
+    } else if located.kind.is(&CORE) {
+        crate::surface::core::declaration_spans(body)
     } else {
         crate::surface::semantic::declaration_spans(body)
     }
