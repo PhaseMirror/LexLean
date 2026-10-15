@@ -14,6 +14,10 @@
 pub mod api;
 pub mod diagnostic;
 pub mod error;
+// The authoring API (§24.8): the programmatic form of the authoring
+// surface, versioned with the engine because a program that writes a
+// module's source depends on it exactly as a program that checks one does.
+pub mod sdk;
 
 // Unstable internals. They are `pub` because the repository's conformance
 // runner and `xtask` drive the compiler stage by stage, but they are

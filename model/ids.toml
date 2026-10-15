@@ -2246,3 +2246,16 @@ id = "AU-06"
 level = "build"
 suite = "authoring"
 statement = "The compiler-semantics ID does not depend on the form a module of the embedded tree is written in: a semantic or tooling module in the authoring notation contributes its data form, so the committed tree and the same tree with every such module written as data have one ID, a change to a module's meaning changes the ID in either form, and the embedded tree holds at least one module written in the notation."
+
+[[id]]
+id = "AU-07"
+level = "build"
+suite = "authoring"
+statement = "No product source is the output of a generator: every `.lex.tex` source of `compiler/`, `language/`, and `examples/` is written and edited as source, and no writer of the repository (the generators `cargo xtask check-calculus` compares and rewrites) emits one of them except the four fixture modules of `compiler/` (`TargetFixtures`, `ReasoningFixtures`, `GnafFixtures`, `GnafCertificates`), generated from committed fixtures, requests, and certificates, and the extraction adapter's module, generated from the registry the pinned Lean answers; a source emitted by any other writer is a defect."
+
+
+[[id]]
+id = "AU-08"
+level = "build"
+suite = "authoring"
+statement = "The authoring API reads, writes, converts, and assembles the source of a module without a project: for every committed semantic and tooling source it reads the module it links to, writes it back in the form it has and in the other form, assembles the source from its header and data to the canonical notation, and is idempotent in each; and a source that is not a module, or whose notation is malformed, is an error with a position in the source and never a panic."

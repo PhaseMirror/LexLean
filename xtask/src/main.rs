@@ -80,14 +80,14 @@ fn main() -> ExitCode {
     }
 }
 
-/// §17.14-§17.16: the committed `compiler` project (the calculus modules,
-/// the target and GNAF fixtures, their `TargetFixtures` and `GnafFixtures`
+/// §17.14-§17.16: the generated files of the committed `compiler` project (the
+/// target and GNAF fixtures, their `TargetFixtures` and `GnafFixtures`
 /// modules, the `Gnaf` model, the Rust packages and negative package
-/// manifests under `compiler/rust/`, and the project configuration) is
-/// exactly what its generator renders, and so is the extraction adapter's
-/// tooling project `language/lcnf-1.2/tooling/` over the registry
-/// `tests/lcnf/registry.json`, which `--write` first regenerates from the
-/// pinned Lean (§22.10).
+/// manifests under `compiler/rust/`) are exactly what their generator
+/// renders, and so is the extraction adapter's tooling project
+/// `language/lcnf-1.2/tooling/` over the registry `tests/lcnf/registry.json`,
+/// which `--write` first regenerates from the pinned Lean (§22.10). The
+/// calculus and the Rust machine are sources, not generated files.
 fn check_calculus(root: &Path, write: bool) -> Result<(), Fail> {
     let count = repo_conformance::calculus::check(root, write)?;
     if write {
