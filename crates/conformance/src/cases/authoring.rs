@@ -1000,6 +1000,39 @@ fn identity_is_form_independent() {
         digest(&planted_data),
         "the changed module has one identity in either form"
     );
+
+    // The identity a preservation record states for the native library is
+    // over the same data forms: the library's modules are written in the
+    // notation, and the record is the one committed before they were.
+    let source_of = |rows: &[(String, Vec<u8>)], path: &str| -> String {
+        let (_, bytes) = rows
+            .iter()
+            .find(|(candidate, _)| candidate == path)
+            .unwrap_or_else(|| panic!("{path}: not in the embedded tree"));
+        String::from_utf8(bytes.clone()).expect("UTF-8")
+    };
+    let as_committed =
+        lexlean::production::preserve::library_identity_of(&|path| source_of(&rows, path));
+    let as_written_as_data =
+        lexlean::production::preserve::library_identity_of(&|path| source_of(&as_data, path));
+    assert_eq!(
+        as_committed, as_written_as_data,
+        "the library identity of a record depends on the form its sources are written in"
+    );
+    let record: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            repo_root()
+                .join("examples/models/expected/verify/preserve/preservation.json")
+                .as_std_path(),
+        )
+        .expect("the committed preservation record of models"),
+    )
+    .expect("a JSON record");
+    assert_eq!(
+        record["library"]["registry_sha256"].as_str(),
+        Some(as_committed.as_str()),
+        "the committed record states the library identity of the committed library"
+    );
 }
 
 // ---------------------------------------------------------------------------

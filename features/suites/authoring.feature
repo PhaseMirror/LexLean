@@ -31,10 +31,10 @@ Feature: authoring
     Then each is read back equal, fmt writes the data form as the committed notation, the semantic IDs, Lean and LaTeX are equal, the source maps name the notation, and each mutation is refused with a position or decodes
 
   @AU-06 @build
-  Scenario: The compiler-semantics ID does not depend on the form a module of the embedded tree is written in: a semantic, tooling, or core module in the authoring notation contributes its data form, so the committed tree and the same tree with every such module written as data have one ID, a change to a module's meaning changes the ID in either form, and the embedded tree holds at least one module written in the notation.
+  Scenario: The compiler-semantics ID does not depend on the form a module of the embedded tree is written in: a semantic, tooling, or core module in the authoring notation contributes its data form, so the committed tree and the same tree with every such module written as data have one ID, a change to a module's meaning changes the ID in either form, the identity a preservation record states for the native library is over the same data forms, so it is the committed one, and the embedded tree holds at least one module written in the notation.
     Given the embedded tree, and the same tree with every module written in the notation written as data
-    When the tree digest of each is taken, and a declaration of a module is removed in either form
-    Then the two trees have the compiler-semantics ID, and the changed tree has another in both forms
+    When the tree digest of each is taken, a declaration of a module is removed in either form, and the library identity of a preservation record is taken over each
+    Then the two trees have the compiler-semantics ID, the changed tree has another in both forms, and the two library identities are equal and are the one the committed record states
 
   @AU-07 @build
   Scenario: No product source is the output of a generator: every `.lex.tex` source of `compiler/`, `language/`, and `examples/` is written and edited as source, and no writer of the repository (the generators `cargo xtask check-calculus` compares and rewrites) emits one of them except the four fixture modules of `compiler/` (`TargetFixtures`, `ReasoningFixtures`, `GnafFixtures`, `GnafCertificates`), generated from committed fixtures, requests, and certificates, and the extraction adapter's module, generated from the registry the pinned Lean answers; a source emitted by any other writer is a defect.

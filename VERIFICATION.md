@@ -7153,6 +7153,23 @@ migrated sources are 0.61 to 0.85 of the size of the data they were (24.4 MB
 against 28.8 MB for the largest module), and reading the identity of language 1.2
 takes 0.8 s on four cores in a release build.
 
+A second defect was found by CI and not by any case: `library_identity` (the
+`library.registry_sha256` of every `preservation.json`) hashed the embedded
+native library as text, so writing the 26 modules in the notation changed the
+record of `examples/models` (`verify-examples`, R10) although no module's
+meaning changed, which is what `AU-06` says cannot happen. The identity is now
+over each source's data form, `AU-06` states it and compares it with the
+committed record, and the record of `models` verified again is byte for byte the
+committed one.
+
+- **a library identity over the text of a source.** `library_identity_of` hashes
+  `source.as_bytes()` and not its `identity_bytes`. `-- conformance_au_06`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:1018:5:
+  assertion `left == right` failed: the library identity of a record depends on the form its sources are written in
+  ```
+
 Removed: each edit was restored; `conformance_au_01`..`conformance_au_12` pass. The generic notation has its own property test over
 arbitrary canonical JSON values (`surface::generic`), and every alternative of
 the schema its own sample (`surface::semantic`), as unit tests of the

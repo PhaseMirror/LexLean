@@ -2245,7 +2245,7 @@ statement = "A language-1.2 tooling module written in the authoring notation lin
 id = "AU-06"
 level = "build"
 suite = "authoring"
-statement = "The compiler-semantics ID does not depend on the form a module of the embedded tree is written in: a semantic, tooling, or core module in the authoring notation contributes its data form, so the committed tree and the same tree with every such module written as data have one ID, a change to a module's meaning changes the ID in either form, and the embedded tree holds at least one module written in the notation."
+statement = "The compiler-semantics ID does not depend on the form a module of the embedded tree is written in: a semantic, tooling, or core module in the authoring notation contributes its data form, so the committed tree and the same tree with every such module written as data have one ID, a change to a module's meaning changes the ID in either form, the identity a preservation record states for the native library is over the same data forms, so it is the committed one, and the embedded tree holds at least one module written in the notation."
 
 [[id]]
 id = "AU-07"
