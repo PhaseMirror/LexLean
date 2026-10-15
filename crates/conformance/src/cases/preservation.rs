@@ -775,7 +775,7 @@ fn user_names(project: &P) -> BTreeSet<String> {
         if !entry.file_type().is_file() {
             continue;
         }
-        let text = std::fs::read_to_string(entry.path()).expect("a source");
+        let text = support::as_data_text(&std::fs::read_to_string(entry.path()).expect("a source"));
         let parts: Vec<&str> = text.split('"').collect();
         // Odd parts are the strings of the JSON; one followed by a colon is a
         // key.

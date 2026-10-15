@@ -275,8 +275,12 @@ pub struct SemanticModuleAst {
 /// The structurally parsed `toolingmodule` environment.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolingModuleAst {
-    /// Canonical `lexlean/tooling-module/1` JSON.
+    /// Canonical `lexlean/tooling-module/1` JSON, or the verbatim body of the
+    /// authoring notation (SPEC.md §17.21) when `surface`.
     pub data: BraceArg,
+    /// Whether `data` is the authoring notation rather than the JSON argument
+    /// of `\toolingdata`.
+    pub surface: bool,
     /// The `\begin{toolingmodule}` atom.
     pub begin: usize,
 }
@@ -1179,16 +1183,29 @@ pub fn parse_module(
     } else if parser.at_begin_of("toolingmodule") {
         let (begin, name) = parser.begin_env()?;
         debug_assert_eq!(name, "toolingmodule");
-        parser.expect_control("\\toolingdata")?;
-        let data = parser.brace_arg_verbatim()?;
-        parser.cover_payload(data.range, "toolingdata");
+        // As a semantic module: `\toolingdata{…}`, or the notation, which runs
+        // verbatim to the closing `\end{toolingmodule}`.
+        let (data, surface) = if parser.at_control("\\toolingdata") {
+            parser.expect_control("\\toolingdata")?;
+            let data = parser.brace_arg_verbatim()?;
+            parser.cover_payload(data.range, "toolingdata");
+            (data, false)
+        } else {
+            let data = parser.verbatim_body()?;
+            parser.cover_payload(data.range, "toolingsource");
+            (data, true)
+        };
         parser.expect_end("toolingmodule")?;
         parser.expect_end("lexlean")?;
         (
             Vec::new(),
             None,
             None,
-            Some(ToolingModuleAst { data, begin }),
+            Some(ToolingModuleAst {
+                data,
+                surface,
+                begin,
+            }),
         )
     } else {
         (parser.blocks("lexlean", 0)?, None, None, None)

@@ -15,7 +15,7 @@ versions, and the entries below say what each tag does and does not claim.
 
 ## Unreleased
 
-- The language-1.2 authoring notation (SPEC.md §17.21, `AU-01`..`AU-03`; stage 3
+- The language-1.2 authoring notation (SPEC.md §17.21, `AU-01`..`AU-06`; stage 3
   of #27, #93). A `semanticmodule` can be written as readable text instead of
   `\semanticdata{…}` JSON: declarations in a fixed grammar, read from the
   schema, with readable forms for types (`(List Nat)`, `(A * B)`), terms
@@ -23,9 +23,27 @@ versions, and the entries below say what each tag does and does not claim.
   (`Module::name`), and a generic form `kind{…}` for every other value. The
   notation and the canonical JSON are in bijection, so a module in the notation
   has the semantic ID and the generated Lean and LaTeX of its data form, and
-  `fmt` writes the notation canonically (a module written as data stays as it
-  is). No diagnostic code is new: a malformed text is `LLP2001`, and nothing
-  embedded in the compiler-semantics ID changes.
+  `fmt` writes the notation canonically and writes a module out of its data
+  form (`fmt --check` reports a language-1.2 module still written as data as
+  `LLL1003`). Every language-1.2 source of the repository is written in the
+  notation: the compiler project, the language libraries, the examples, the
+  fixtures, and every refused fixture the notation can spell (287 sources;
+  `AU-04` keeps the data form to language 1.0 and 1.1 and to refused fixtures
+  that test the data form's own refusal, and the conformance helpers that edit
+  a module's data read and write it in whichever form the source has). No
+  diagnostic code is new: a malformed text is `LLP2001`. Compiler-tooling
+  modules (`toolingmodule`, §17.20) are written in the generic notation of the
+  same family (one object without its `spec`, declarations as `type{…}`,
+  `call{…}`, `function{…}`), `fmt` writes them out of `\toolingdata`, their
+  four committed sources (the embedded extraction adapter and three fixtures)
+  are migrated, and a source map names each declaration's text (`AU-05`). A
+  source of the embedded tree written in the notation contributes its data form
+  to the compiler-semantics ID (§21.2, `AU-06`), so moving the adapter's source
+  to the notation changes no identity. Nothing a build or a
+  verification derives from a module changes, so no compiler-semantics ID, no
+  generated Lean or LaTeX byte, and no verified record changes; the source IDs,
+  the source maps, the coverage records, and the spans of the fixtures'
+  diagnostics, which name the source's own bytes, are regenerated.
 - The verifier's resource profile gains scheduling hints and a memory budget,
   and the gate's `examples` leg uses it (SPEC.md §9.4, §22.11, `RP-14`, no new
   ID or code; LexLean #83). `LEXLEAN_VERIFY_HINTS` names a JSON object of
