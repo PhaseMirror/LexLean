@@ -77,6 +77,36 @@ hid the path-refusal test on other hosts. The test now always runs its portable
 inventory assertions; its Unix-specific assertions use the repository's
 explicit host-reporting convention. No test or release-gate exemption was added.
 
+### configured paths reject Windows drive prefixes (Issue #138)
+
+The project-relative path validator previously accepted `C:`, `C:/outside`,
+`c:../outside`, and a drive prefix inside a slash-separated path. On Windows,
+such a segment can replace the project root when pushed onto a host path
+([`PathBuf::push`](https://doc.rust-lang.org/std/path/struct.PathBuf.html#method.push)).
+Every segment now rejects an ASCII letter followed by a colon before any
+path join, on every host. Other colon names keep their existing policy.
+
+Before the fix, `cargo test --offline --locked -p lexlean --test unit
+path_rules_are_strict -- --exact --nocapture` ran one test and failed in
+0.00 seconds at `crates/lexlean/tests/unit.rs:146`:
+
+```text
+"C:" escapes the project
+```
+
+The unit regression covers bare, absolute, drive-relative, lower-case and
+nested prefixes, and retains ordinary relative paths and non-prefix colon
+names. The existing `SE-01` case also checks configuration rejection for
+`build_root`, `lockfile`, and `lean_workspace` by calling `parse_project`
+alone. These checks exercise the shared policy before host path handling
+and never access an outside path or run cleanup on one. No Windows execution
+is established by the Linux failure above.
+
+After the fix, all thirteen unit tests pass in 0.80 seconds, including the
+expanded path matrix; `conformance_se_01` passes in 0.40 seconds. Formatting,
+workspace/all-target Clippy with warnings denied, and the model/spec-link
+audits pass (380 IDs and 80 registered codes).
+
 ### release workflow validation can fail
 
 GitHub run `35777451352` rejected the release workflow before starting any job:

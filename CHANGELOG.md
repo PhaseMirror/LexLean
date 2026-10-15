@@ -439,6 +439,11 @@ versions, and the entries below say what each tag does and does not claim.
   supported-host job drops the `cargo build` its `cargo test` repeated (SPEC.md
   §8.3). Pinned by `conformance_rp_14` and the unit tests of
   `repo_conformance::evidence`; no register ID or code is added.
+- Filesystem confinement rejects Windows drive prefixes in every segment of
+  a configured project-relative path before joining it (#138, SPEC.md §10.1,
+  §25.1, `CF-03`, `SE-01`). Both absolute and drive-relative forms are refused
+  on every host; colon names without a drive prefix retain their existing
+  path policy.
 - A host that embeds the library can end the children the library started
   (SPEC.md §17.17, §24.6, `CL-22`): `lexlean::verify::end_live_children` ends
   every child process group the library started in this process and has not
