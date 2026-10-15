@@ -15,6 +15,32 @@ versions, and the entries below say what each tag does and does not claim.
 
 ## Unreleased
 
+- The authoring API (`lexlean::sdk`, SPEC.md §24.8, `AU-08`; stage 3e of #93):
+  `read_module`, `write_module`, `to_data_form`, `to_notation`,
+  `declaration_spans`, and `assemble` read, rewrite, convert, and assemble the
+  `.lex.tex` source of a semantic or tooling module without a project, with the
+  data as canonical JSON and the offset of an error in the source. The
+  formatter, the identity of the embedded tree, and the conformance suite's own
+  editing of committed sources are written over the same table of module kinds.
+  `AU-07` is the permanent gate that no writer of the repository emits a
+  product source but five named records (the four fixture modules of
+  `compiler/` and the extraction adapter's module, each generated from an input
+  that is not a source); it is shown to fail on a planted writer output.
+- The calculus and the Rust machine are source (SPEC.md §17.14; stage 3e of #93).
+  `compiler/src/{TargetSyntax,TargetSemantics,TargetOracle,RustSyntax,RustSemantics,Main}`,
+  the reasoning oracles, and the project configuration are written and edited as
+  `.lex.tex`: the Rust builders that rendered them (`calculus_source`,
+  `rust_source`, 5,300 lines) and the check that compared them with their own
+  output are removed; so are the builders of the GNAF model and the
+  certification model (`gnaf_model`, `certification_model`, 7,000 lines), whose
+  committed `Gnaf` and `Certification` are source too. `check-calculus` still compares the generated files (the
+  fixtures and the modules that state them, the Rust packages, the shipped
+  copies of the calculus modules), and `conformance_sp_07` now reads the
+  machine's runtime items and their failure and heap classes from the committed
+  `RustSyntax` and `RustSemantics`, and the compiler project's configuration
+  from the production example. No file of the repository changes by this: it
+  is a change of who owns them.
+- The language-1.2 authoring notation (SPEC.md §17.21, `AU-01`..`AU-08`; stage 3
 - Certificate budgets (SPEC.md §22.6, `SP-02`, no new diagnostic code).
   Every certificate now lifts both of the pinned Lean's heartbeat budgets, as
   only the certificates of a program with a match of more than 100 arms did,
@@ -45,9 +71,27 @@ versions, and the entries below say what each tag does and does not claim.
   (`Module::name`), and a generic form `kind{…}` for every other value. The
   notation and the canonical JSON are in bijection, so a module in the notation
   has the semantic ID and the generated Lean and LaTeX of its data form, and
-  `fmt` writes the notation canonically (a module written as data stays as it
-  is). No diagnostic code is new: a malformed text is `LLP2001`, and nothing
-  embedded in the compiler-semantics ID changes.
+  `fmt` writes the notation canonically and writes a module out of its data
+  form (`fmt --check` reports a language-1.2 module still written as data as
+  `LLL1003`). Every language-1.2 source of the repository is written in the
+  notation: the compiler project, the language libraries, the examples, the
+  fixtures, and every refused fixture the notation can spell (287 sources;
+  `AU-04` keeps the data form to language 1.0 and 1.1 and to refused fixtures
+  that test the data form's own refusal, and the conformance helpers that edit
+  a module's data read and write it in whichever form the source has). No
+  diagnostic code is new: a malformed text is `LLP2001`. Compiler-tooling
+  modules (`toolingmodule`, §17.20) are written in the generic notation of the
+  same family (one object without its `spec`, declarations as `type{…}`,
+  `call{…}`, `function{…}`), `fmt` writes them out of `\toolingdata`, their
+  four committed sources (the embedded extraction adapter and three fixtures)
+  are migrated, and a source map names each declaration's text (`AU-05`). A
+  source of the embedded tree written in the notation contributes its data form
+  to the compiler-semantics ID (§21.2, `AU-06`), so moving the adapter's source
+  to the notation changes no identity. Nothing a build or a
+  verification derives from a module changes, so no compiler-semantics ID, no
+  generated Lean or LaTeX byte, and no verified record changes; the source IDs,
+  the source maps, the coverage records, and the spans of the fixtures'
+  diagnostics, which name the source's own bytes, are regenerated.
 - `rust-std` rendering: ownership and lists (SPEC.md §17.14, §17.16, `RB-08`,
   no new diagnostic code). A read of a binding that nothing after it reads
   is a move and a projection of a pair component that nothing after it

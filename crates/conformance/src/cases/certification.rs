@@ -39,6 +39,9 @@ fn committed() -> Vec<(PathBuf, Vec<u8>, CertificateFixture)> {
     out
 }
 
+/// The certification model, a source.
+const MODEL: &str = "compiler/src/Certification.lex.tex";
+
 fn read(relative: &str) -> String {
     std::fs::read_to_string(repo_root().join(relative).as_std_path())
         .unwrap_or_else(|error| panic!("{relative}: {error}"))
@@ -152,11 +155,7 @@ fn certificate_json(name: &str) -> Json {
 
 /// The semantic data of a committed `compiler/src` module.
 fn module_data(text: &str) -> Json {
-    let start = text.find("\\semanticdata{").expect("semantic data") + "\\semanticdata{".len();
-    let end = text
-        .rfind("}\n\\end{semanticmodule}")
-        .expect("end of semantic data");
-    serde_json::from_str(&text[start..end]).expect("the semantic data is JSON")
+    crate::support::module_json(text)
 }
 
 /// Every declaration of a committed module by name.
@@ -382,7 +381,7 @@ fn gc_02() {
         let id = crate::calculus::identifier(&fixture.name);
         for theorem in ["Certificate", "Verdict"] {
             assert!(
-                module.contains(&format!("\"name\":\"{id}{theorem}\"")),
+                crate::support::declares(&module, &format!("{id}{theorem}")),
                 "{id}{theorem}"
             );
         }
@@ -391,11 +390,6 @@ fn gc_02() {
         read(generated::PATH),
         module,
         "the committed module equals its generator"
-    );
-    assert_eq!(
-        read(crate::certification_model::PATH),
-        crate::certification_model::module(),
-        "the committed model equals its generator"
     );
     let main = read("compiler/src/Main.lex.tex");
     for import in ["Certification", "GnafCertificates"] {
@@ -1711,7 +1705,7 @@ fn gc_06() {
     // Nothing in the model decides optimality by normality: `isNormal` is
     // read by `normalityVerdict`, which cannot build a certified result, and
     // by no definition that can.
-    let model = declarations(crate::certification_model::PATH);
+    let model = declarations(MODEL);
     let builds_certified = |declaration: &Json| {
         let mut names = BTreeSet::new();
         references(declaration, &mut names);
@@ -2792,7 +2786,6 @@ fn gc_10() {
     assert_eq!(generated::files(), files, "generation is deterministic");
     for expected in [
         generated::PATH,
-        crate::certification_model::PATH,
         "schemas/gnaf-certificate.schema.json",
         "schemas/gnaf-certificate-fixture.schema.json",
     ] {
@@ -2913,10 +2906,6 @@ fn gc_10() {
             );
         }
     }
-    // A planted change to the model changes what it generates.
-    let planted = crate::certification_model::module()
-        .replace("\"name\":\"lowerPosition\"", "\"name\":\"lowerPlaced\"");
-    assert_ne!(planted, read(crate::certification_model::PATH));
     // The negative: nothing in a certificate names an optimizer, a cache, or
     // a discovered candidate; the closed forms are exactly the schemas'.
     let certificate_schema = schema("gnaf-certificate.schema.json");

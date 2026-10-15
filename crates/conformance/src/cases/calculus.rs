@@ -977,13 +977,20 @@ pub fn run(id: &str) {
         // states every fixture's outcome.
         "TC-03" => {
             let cases = fixtures::cases();
-            let module =
-                fixtures::fixtures_module(&cases) + &fixtures::reasoning_fixtures_module(&cases);
+            let modules = [
+                fixtures::fixtures_module(&cases),
+                fixtures::reasoning_fixtures_module(&cases),
+            ];
+            let stated = |name: &str| {
+                modules
+                    .iter()
+                    .any(|module| crate::support::declares(module, name))
+            };
             let mut opaque = 0;
             for case in &cases {
                 let id = fixtures::identifier(&case.fixture.name);
-                assert!(module.contains(&format!("\"name\":\"{id}Run\"")), "{id}Run");
-                let theorem = module.contains(&format!("\"name\":\"{id}Outcome\""));
+                assert!(stated(&format!("{id}Run")), "{id}Run");
+                let theorem = stated(&format!("{id}Outcome"));
                 assert_eq!(
                     theorem,
                     fixtures::kernel_reducible(&case.fixture),
@@ -1123,9 +1130,12 @@ pub fn run(id: &str) {
                     case.fixture.name
                 );
                 let id = fixtures::identifier(&case.fixture.name);
-                assert!((fixtures::fixtures_module(&cases)
-                    + &fixtures::reasoning_fixtures_module(&cases))
-                    .contains(&format!("\"name\":\"{id}Agrees\"")));
+                assert!([
+                    fixtures::fixtures_module(&cases),
+                    fixtures::reasoning_fixtures_module(&cases)
+                ]
+                .iter()
+                .any(|module| crate::support::declares(module, &format!("{id}Agrees"))));
             }
             assert_eq!(
                 covered.len(),

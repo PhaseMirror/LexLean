@@ -3840,6 +3840,19 @@ elaborates, replays, and axiom-audits these modules like any other
 LexLean program, and `compiler/` passes the verify, golden, and
 reproducibility gates of §28.6. No meaning is read from rendered Rust text.
 
+**Source.** The calculus and the machine of §17.16 are source: the committed
+`.lex.tex` modules `TargetSyntax`, `TargetSemantics`, `TargetOracle`,
+`RustSyntax`, `RustSemantics`, the reasoning oracles, and `Main`, and the
+project's configuration (which is the production example's under its own name,
+checked against it), are written and edited as `.lex.tex` (§17.21). No program
+generates or compares them with its own output. What is generated from them,
+and compared byte for byte by `cargo xtask check-calculus`, are the fixtures and
+the modules that state them, the Rust packages, and the shipped copies of the
+calculus modules; and what is checked against them are the renderer's own
+tables: `conformance_sp_07` reads the runtime items and their failure and heap
+classes from the committed `RustSyntax` and `RustSemantics` and equates them
+with `lexlean::calculus::rust::runtime::Item`.
+
 **Programs.** A program (`lexlean/target-program/1`,
 `schemas/target-program.schema.json`) is a list of algebraic data types, each
 a non-empty list of constructors given by their field types, and a list of
@@ -4034,7 +4047,10 @@ axiom-audits. It defines the request, its fail-closed validation, the
 universe and the theorem that it is complete, and the answer the request's
 universe has under the calculus denotation of §17.14. It imports only
 `TargetSyntax` and `TargetSemantics`, and nothing in it calls, cites, or is
-computed from an optimizer.
+computed from an optimizer. The model is source, written and edited as
+`.lex.tex` (§17.21); no program generates it, and what `cargo xtask
+check-calculus` generates are the requests, the manifest, and the module that
+states their answers.
 
 **Request.** A request (`lexlean/gnaf-request/1`,
 `schemas/gnaf-request.schema.json`) names:
@@ -5325,7 +5341,9 @@ offered for each system of `U_sys`, and a claim holds because the evidence
 covers every system, not because every system was run. The module
 `Certification` of `compiler/` is the normative model of that certification:
 a LexLean definition that Lean elaborates, replays, and axiom-audits, over
-the request model `Gnaf` of §17.15 and the calculus denotation of §17.14. A
+the request model `Gnaf` of §17.15 and the calculus denotation of §17.14; like
+`Gnaf` it is source, written and edited as `.lex.tex`, and the certificates,
+their module, and the schemas are what `cargo xtask check-calculus` generates. A
 library of proofs, `compiler/proofs/`, written as native core modules
 (§17.10) from which the compiler generates the Lean, proves the model sound
 against `Gnaf`'s own definitions. GNAF-normality is a status of
@@ -5882,8 +5900,9 @@ the ordinary declaration environments (§15), the native `coremodule` (§17.10),
 and the `semanticmodule` (§17.11, §17.12): after the module header and title it
 is exactly one `\begin{toolingmodule}` environment containing exactly one
 `\toolingdata{...}` argument, canonical JSON of the closed schema
-`lexlean/tooling-module/1` (`tooling/schemas/tooling-module.schema.json`). A module
-never mixes two forms.
+`lexlean/tooling-module/1` (`tooling/schemas/tooling-module.schema.json`), or the
+authoring notation of the same module (§17.21.7). A module never mixes two
+forms.
 
 **Context.** A tooling module requires language 1.2 and a project the compiler
 itself embeds (§22.10). A user project, a language-1.1 project, and every
@@ -6065,11 +6084,13 @@ other tool's output is a source (§17.21.6).
 #### 17.21.1 Where it is written
 
 Under language 1.2, the body of `\begin{semanticmodule}` … `\end{semanticmodule}`
-is either one `\semanticdata{…}` argument (the data form of §17.11, canonical
-as it is) or the notation: the
-verbatim text of its declarations, one after the other, to the closing
-`\end{semanticmodule}`. Language 1.1 has the data form only; the notation
-under language 1.1 is refused with `LLP2003`. The text is the module's source
+is either one `\semanticdata{…}` argument (the data form of §17.11) or the
+notation: the verbatim text of its declarations, one after the other, to the
+closing `\end{semanticmodule}`. Language 1.1 has the data form only; the
+notation under language 1.1 is refused with `LLP2003`. Every language-1.2 source
+of this repository that has a semantic or tooling module is written in the
+notation (`AU-04`); the data form is the wire format the notation is read to,
+and `fmt` is how a source leaves it. The text is the module's source
 bytes between the two markers: it is not scanned for prose, glossary entries,
 or comments, every atom of it is covered as metadata owned by
 `lexlean.core::semanticsource` (§20), and it writes a backslash only inside a
@@ -6184,10 +6205,10 @@ group that fits is on one line, and one that does not has each member on its
 own line, indented two further spaces. The canonical source of a module is the
 module with its body replaced by that text, and `fmt` writes it (§23.5); it is
 a function of the module alone, so no layout of the source survives it and
-`fmt` is idempotent. A module written as `\semanticdata{…}` is canonical as it
-is, and so is a module of language 1.1: `fmt` leaves them unchanged. The
-conversion of a language-1.2 module out of the data form is the formatter's
-`data_module_as_notation`, which writes the same module as the notation.
+`fmt` is idempotent. A language-1.2 module written as `\semanticdata{…}` has the
+same canonical source, the notation of its module, so `fmt` rewrites it and
+`fmt --check` reports it as `LLL1003`; a module of language 1.1, which has the
+data form only, is canonical as it is.
 
 The notation has no comment form: the canonical document (§19) is where a
 module explains itself, and a comment would have to be data of the module to
@@ -6208,10 +6229,59 @@ survive `fmt`.
 - **Equivalence (`AU-02`).** A module in the notation links to the module its data
   form links to, with the same semantic ID, generated Lean and LaTeX; source maps
   relate each declaration to its text in the notation; `fmt` is the identity on
-  the notation and on the data form.
+  the notation and writes the data form as exactly the committed notation.
 - **Failing closed (`AU-03`).** Every single-token deletion, duplication, and
   replacement of a committed module either fails with a registered code or links
   to a module that decodes.
+- **Tooling modules (`AU-05`).** The same four laws for a tooling module:
+  read and written back equal for every committed one, linking to the semantic
+  ID, Lean, and LaTeX of its data form with a source map that names the
+  notation, `fmt` writing the data form as the committed notation, and every
+  single-token deletion and duplication refused with a position or decoded.
+- **One identity (`AU-06`).** The compiler-semantics ID is the same for the
+  embedded tree whether its modules are written in the notation or as data
+  (§21.2), and changes with a module's meaning in either form.
+- **No other authoring path (`AU-07`).** The writers of the repository (the
+  generators `cargo xtask check-calculus` compares and rewrites) emit no
+  `.lex.tex` source of `compiler/`, `language/`, or `examples/` but the five
+  named records: the fixture modules `TargetFixtures`, `ReasoningFixtures`,
+  `GnafFixtures`, and `GnafCertificates`, whose input is committed data (the
+  fixtures, requests, and certificates, under `compiler/`), and the extraction
+  adapter's module, whose input is the registry the pinned Lean answers
+  (§22.10). Every other source is written and edited as source: the calculus
+  and the machine (§17.14), the GNAF and certification models (§17.15, §17.18),
+  the examples, and the libraries.
+- **The authoring API (`AU-08`).** §24.8.
+- **One authoring surface (`AU-04`).** Every committed source of the repository
+  that has a semantic or tooling module is read for its language and its form. A
+  language-1.2 source of the product (the compiler, the language libraries, the
+  examples, the positive fixtures) is written in the notation and is its own
+  canonical source. The data form remains under language 1.0 and 1.1, which
+  have it only, and in the refused fixtures of `tests/negative` whose payload
+  the notation cannot spell, because they test the data form's own refusal; a
+  refused fixture whose payload the notation can spell, written and read back
+  equal, is a defect, so the data form cannot become a second way to write a
+  module unnoticed.
+
+#### 17.21.7 Tooling modules
+
+A tooling module (§17.20) is a typed registry and typed functions over it, so
+its notation has no readable forms of its own: it is the generic notation
+(§17.21.3), which is exact for every value, of the one object the module is,
+without its `spec` member, which the language implies (`lexlean/tooling-module/1`
+under language 1.2; the notation under any other language is `LLT4013`, like
+the module). The body of `\begin{toolingmodule}` is that object laid out as in
+§17.21.5 and ended by a line feed, or one `\toolingdata{…}` argument. A
+declaration is a `kind`-tagged object (`type{…}`, `call{…}`, `function{…}`,
+`command{…}`, `invoke{…}`, `evaluate{…}`, `plumbing{…}`), and what each member
+means is decided by the decoder that reads the canonical JSON the notation is
+read to, so a member the schema does not state is refused with `LLT4013` exactly
+as in the data form. A malformed text is `LLP2001` at its position; the notation
+is scanned as the semantic notation is (§17.21.1), and its metadata rows are
+owned by `lexlean.core::toolingsource`. The source map of a module in the
+notation relates each declaration to its own text, as the semantic map does.
+`fmt` writes a language-1.2 tooling module in the notation, so a tooling module
+written as `\toolingdata` leaves the data form by being formatted.
 
 ## 18. Lean backend
 
@@ -6684,7 +6754,11 @@ canonical_json = "1"
 semantic IR, snapshot, proof forms, and fixed backends. A 1.1-only change
 updates that file and therefore the 1.1 compiler-semantics ID without changing
 the historical 1.0 ID. `language/semantics-1.2.toml` versions language 1.2 in
-the same way.
+the same way. The authoring notation of §17.21 is not part of any
+compiler-semantics ID: a module in the notation and in its data form have the
+same semantic ID and the same generated bytes (`AU-02`), so which of them a
+source is written in changes its source ID and source maps and nothing a build
+or a verification derives from the module.
 
 Each language's compiler-semantics ID is the §11.5 tree digest of a fixed,
 nested partition of the embedded tree. The language-1.2 ID covers the whole
@@ -6721,6 +6795,16 @@ The full (language-1.2) tree is the §11.5 tree digest of:
 - committed canonical-JSON fixtures under `tests/golden/canonical-json/`.
 
 The specification-link gate ensures these version declarations agree with this document. The digest excludes README prose, CI YAML, host binaries, timestamps, and generated build output.
+
+A file of the tree contributes its bytes, except that a `.lex.tex` source whose
+semantic or tooling module is written in the authoring notation (§17.21)
+contributes the same source with that module written as its data form, the
+`\semanticdata{…}` or `\toolingdata{…}` argument of canonical JSON that the
+source had before the notation existed. The two forms read to one module, so
+the form a normative source is written in is not part of what the compiler
+means: moving a source of the tree to the notation, or back, changes no
+compiler-semantics ID, and changing the module it holds changes the ID in
+either form (`AU-06`).
 
 The released binary embeds all three closed language IDs. Repository tests
 recompute the complete current input tree and, from the exclusion lists of
@@ -7669,6 +7753,57 @@ pub fn verify_artifact(bundle: &Utf8Path) -> Result<ReplayReport, LexLeanError>;
 **Schemas and versions.** The five schemas are `api/schemas/production-request`, `production-result`, `target-descriptor`, `target-descriptors`, and `production-replay`. They are outside `schemas/` and outside the compiler-semantics ID (§21.2): the envelope changes nothing the compiler computes from a source. `api/schemas/versions.toml` records each schema's SHA-256 under its exact spec; a released row is never edited, and a changed schema raises its spec version and adds a row.
 
 **Boundary.** No application semantics of a consumer enter the compiler: the consumer's own record of which roots it ships, under which names, is its own.
+
+
+### 24.8 Authoring API
+
+`lexlean::sdk` is the programmatic form of the authoring surface (§17.21): what
+a program that produces or edits a module's source may do, and nothing it may
+do in place of the notation. It reads, writes, and converts the `.lex.tex`
+source of a module without a project and without linking it (linking is the
+engine's, §24.1). The data it handles is the module as canonical JSON
+(`serde_json::Value`), the value every form of the module reads to.
+
+```rust
+pub enum ModuleKind { Semantic, Tooling }
+
+pub struct AuthoringError { pub message: String, pub offset: Option<usize> }
+
+pub struct SourceHeader<'a> {
+    pub name: &'a str,
+    pub glossaries: &'a [&'a str],
+    pub imports: &'a [&'a str],
+    pub title: &'a str,
+}
+
+pub fn module_kind(text: &str) -> Option<ModuleKind>;
+pub fn is_notation(text: &str) -> bool;
+pub fn read_module(text: &str) -> Result<Value, AuthoringError>;
+pub fn write_module(text: &str, data: &Value) -> Result<String, AuthoringError>;
+pub fn to_data_form(text: &str) -> Result<String, AuthoringError>;
+pub fn to_notation(text: &str) -> Result<String, AuthoringError>;
+pub fn declaration_spans(text: &str)
+    -> Result<Option<Vec<(usize, usize)>>, AuthoringError>;
+pub fn assemble(header: &SourceHeader<'_>, kind: ModuleKind, data: &Value)
+    -> Result<String, AuthoringError>;
+```
+
+`read_module` returns the data of the module of `text`, written as
+`\semanticdata{…}` (`\toolingdata{…}`) or in the notation, which it reads as the
+compiler does (language 1.2). `write_module` replaces the data and keeps the form
+the module has: canonical JSON for the data form, the canonical notation for the
+notation, so a rewrite never changes which form a source is in. `to_data_form`
+and `to_notation` write the module in one form or the other (`to_notation` is
+what `fmt` writes for a language-1.2 module); `declaration_spans` is what a
+source map relates a declaration to; `assemble` writes the whole source of a
+module (header, the module in the canonical notation, closing). A source that
+states no module, a module whose data is not JSON or not a module of its kind,
+and notation that is not well formed are an `AuthoringError`, with the byte
+offset in the source when there is one, and never a panic. Every function is a
+function of its arguments alone. The formatter (§23.5), the identity of the
+embedded tree (§21.2), and the conformance suite's own editing of committed
+sources are written over these functions, so a program is held to the same text
+a person writes (`AU-08`).
 
 ---
 
@@ -8901,10 +9036,15 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `TL-10` | `tooling` | Both backends traverse the one linked module: the Lean text begins with the fixed header, holds one rendering per function, command, invocation, and evaluation, and contains no comment, every declaration with output has one source-mapped piece, coverage is complete, the LaTeX document has one entry per declaration, and the pinned Lean elaborates every committed fixture without a message while refusing a registry that misstates an arity or a constructor list that the tool is consistent with. | §17.20, §18, §19.6, §20.5 |
 | `TL-11` | `tooling` | Tooling modules are deterministic and content-addressed: each committed fixture's published build tree equals its golden byte for byte and across two clean builds in different directories, changing any declaration, registry row, source pin, or term changes the semantic ID, and the schema lies outside `schemas/` and so outside the compiler-semantics ID, which the committed locks of the three languages still record. | §17.20, §21.2, §28.3, §28.4 |
 | `AU-01` | `authoring` | Every value of the closed semantic-module schema has one notation and the notation reads back to the value: every alternative of the declaration, term, type, and proof unions, with and without its optional members, is written and read back equal, a node that no readable form carries exactly is written generically, the notation is its own canonical form, and every committed semantic module is written and read back equal to its data. | §17.21 |
-| `AU-02` | `authoring` | A language-1.2 semantic module written in the authoring notation links to exactly the module its data form links to, with the same semantic ID and the same generated Lean and LaTeX byte for byte and source maps that relate each declaration to its text in the notation; the conversion of a module written as data yields the notation, fmt leaves the notation unchanged, and the notation under language 1.1 is refused with LLP2003. | §17.21 |
+| `AU-02` | `authoring` | A language-1.2 semantic module written in the authoring notation links to exactly the module its data form links to, with the same semantic ID and the same generated Lean and LaTeX byte for byte and source maps that relate each declaration to its text in the notation; fmt writes a module written as data in the notation, to the committed bytes, and leaves the notation unchanged, and the notation under language 1.1 is refused with LLP2003. | §17.21 |
 | `AU-03` | `authoring` | Malformed notation fails closed and never panics: an unclosed delimiter, a keyword used as a name, a literal that is not canonical, an unknown kind, and every single-token deletion, duplication, and replacement of a committed module fail with a registered code at a position in the notation or link to a module that decodes, and a numeral with a redundant leading zero is LLL1003 outside a string and is not one inside it. | §17.21 |
+| `AU-04` | `authoring` | No language-1.2 source of the product is written as data: every committed language-1.2 source with a semantic or tooling module, in the compiler, the language libraries, the examples, and the positive fixtures, is written in the authoring notation and is canonical, the data form remains only under language 1.0 and 1.1 and in refused fixtures whose payload the notation cannot spell, and a refused fixture whose payload the notation can spell is a defect. | §17.21 |
+| `AU-05` | `authoring` | A language-1.2 tooling module written in the authoring notation links to exactly the module its data form links to, with the same semantic ID and the same generated Lean and LaTeX byte for byte and source maps that relate each declaration to its text in the notation; the notation and the canonical JSON of every committed tooling module are in bijection and the notation is its own canonical form; fmt writes a tooling module written as data as exactly the committed notation and leaves the notation unchanged; and malformed notation, and every single-token deletion and duplication of a committed tooling module, fails with a position or decodes, and nothing panics. | §17.20, §17.21 |
+| `AU-06` | `authoring` | The compiler-semantics ID does not depend on the form a module of the embedded tree is written in: a semantic or tooling module in the authoring notation contributes its data form, so the committed tree and the same tree with every such module written as data have one ID, a change to a module's meaning changes the ID in either form, and the embedded tree holds at least one module written in the notation. | §17.21, §21.2 |
+| `AU-07` | `authoring` | No product source is the output of a generator: every `.lex.tex` source of `compiler/`, `language/`, and `examples/` is written and edited as source, and no writer of the repository (the generators `cargo xtask check-calculus` compares and rewrites) emits one of them except the four fixture modules of `compiler/` (`TargetFixtures`, `ReasoningFixtures`, `GnafFixtures`, `GnafCertificates`), generated from committed fixtures, requests, and certificates, and the extraction adapter's module, generated from the registry the pinned Lean answers; a source emitted by any other writer is a defect. | §17.14, §17.21 |
+| `AU-08` | `authoring` | The authoring API reads, writes, converts, and assembles the source of a module without a project: for every committed semantic and tooling source it reads the module it links to, writes it back in the form it has and in the other form, assembles the source from its header and data to the canonical notation, and is idempotent in each; and a source that is not a module, or whose notation is malformed, is an error with a position in the source and never a panic. | §24.8 |
 
-**Total required capability IDs:** 370.
+**Total required capability IDs:** 375.
 
 No row may be downgraded to `some-true` or `open`. Upstream Lean facts are ledger/authority rows, not substitutions for these build behaviors.
 

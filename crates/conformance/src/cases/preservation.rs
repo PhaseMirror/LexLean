@@ -6,6 +6,7 @@ use std::sync::OnceLock;
 use lexlean::calculus::Outcome;
 use lexlean::production::lower::{linked_modules, lower_root, roots};
 use lexlean::production::preserve::{self, audit, audit_tokens};
+use serde_json::Value as Json;
 
 use crate::preservation::{self, Mutation, Report};
 use crate::support::{self, repo_root, P};
@@ -775,7 +776,7 @@ fn user_names(project: &P) -> BTreeSet<String> {
         if !entry.file_type().is_file() {
             continue;
         }
-        let text = std::fs::read_to_string(entry.path()).expect("a source");
+        let text = support::as_data_text(&std::fs::read_to_string(entry.path()).expect("a source"));
         let parts: Vec<&str> = text.split('"').collect();
         // Odd parts are the strings of the JSON; one followed by a colon is a
         // key.
@@ -1927,11 +1928,40 @@ pub fn run(id: &str) {
         }
         // §17.16, §17.17: the declared Rust machine.
         "SP-07" => {
-            for (path, bytes) in crate::rust_source::files() {
-                let committed =
-                    std::fs::read(repo_root().join(&path).as_std_path()).expect("a source");
-                assert_eq!(committed, bytes, "{path} equals its generator");
+            // The compiler project is configured as the production example,
+            // under its own name (§17.14): the same toolchain, lexicon
+            // source, and limits.
+            let production = |file: &str| {
+                std::fs::read_to_string(
+                    repo_root()
+                        .join("examples/production")
+                        .join(file)
+                        .as_std_path(),
+                )
+                .unwrap_or_else(|error| panic!("examples/production/{file}: {error}"))
+            };
+            let compiler = |file: &str| {
+                std::fs::read_to_string(repo_root().join("compiler").join(file).as_std_path())
+                    .unwrap_or_else(|error| panic!("compiler/{file}: {error}"))
+            };
+            assert_eq!(
+                compiler("lexlean.toml"),
+                production("lexlean.toml")
+                    .replace("name = \"production\"", "name = \"compiler\"")
+                    .replace(
+                        "module_prefix = \"Production\"",
+                        "module_prefix = \"LexLeanTarget\""
+                    ),
+                "compiler/lexlean.toml is the production example's under its own name"
+            );
+            for file in ["lakefile.toml", "lake-manifest.json"] {
+                assert_eq!(
+                    compiler(file),
+                    production(file).replace("production_host", "compiler_host"),
+                    "compiler/{file} is the production example's under its own name"
+                );
             }
+            assert_eq!(compiler("lean-toolchain"), production("lean-toolchain"));
             assert_eq!(
                 crate::calculus::shipped_modules(repo_root().as_std_path(), false)
                     .expect("the shipped modules equal the compiler golden"),
@@ -1941,8 +1971,57 @@ pub fn run(id: &str) {
             // The machine declares exactly the renderer's runtime items, with
             // the renderer's failure and heap classes; a width is the
             // constructor's argument.
-            let declared = crate::rust_source::item_constructors();
-            let mut named: Vec<&str> = Vec::new();
+            // The machine is read from the committed modules, which are its
+            // source: `RustSyntax` declares the items, and `RustSemantics`
+            // states the class of each.
+            let syntax = support::module_json(
+                &std::fs::read_to_string(
+                    repo_root()
+                        .join("compiler/src/RustSyntax.lex.tex")
+                        .as_std_path(),
+                )
+                .expect("the closed Rust AST"),
+            );
+            let semantics = support::module_json(
+                &std::fs::read_to_string(
+                    repo_root()
+                        .join("compiler/src/RustSemantics.lex.tex")
+                        .as_std_path(),
+                )
+                .expect("the declared Rust machine"),
+            );
+            let declaration = |module: &Json, name: &str| -> Json {
+                module["declarations"]
+                    .as_array()
+                    .and_then(|all| all.iter().find(|declaration| declaration["name"] == name))
+                    .unwrap_or_else(|| panic!("`{name}` is declared"))
+                    .clone()
+            };
+            let declared: Vec<(String, usize)> = declaration(&syntax, "Item")["constructors"]
+                .as_array()
+                .expect("the constructors of Item")
+                .iter()
+                .map(|constructor| {
+                    (
+                        constructor["name"].as_str().expect("a name").to_owned(),
+                        constructor["fields"].as_array().expect("fields").len(),
+                    )
+                })
+                .collect();
+            // The class a table of the machine states for an item: the body
+            // of the branch that names the constructor.
+            let class = |table: &str, item: &str| -> Option<bool> {
+                let body = &declaration(&semantics, table)["body"];
+                body["branches"].as_array()?.iter().find_map(|branch| {
+                    (branch["constructor"]["name"] == format!("Item.{item}"))
+                        .then(|| branch["body"]["value"].as_bool())
+                        .flatten()
+                })
+            };
+            let classes = |item: &str| -> Option<(bool, bool)> {
+                Some((class("itemFallible", item)?, class("itemHeap", item)?))
+            };
+            let mut named: Vec<String> = Vec::new();
             for item in lexlean::calculus::rust::runtime::Item::all() {
                 let term = lexlean::production::rust_term::item(item);
                 let spelled = term
@@ -1953,19 +2032,19 @@ pub fn run(id: &str) {
                     .expect("a constructor");
                 let (name, fields) = declared
                     .iter()
-                    .find(|(name, _)| *name == spelled)
+                    .find(|(name, _)| name == spelled)
                     .unwrap_or_else(|| panic!("{item:?} (`{term}`) is declared"));
-                assert_eq!(fields.len(), usize::from(term.starts_with('(')), "{name}");
+                assert_eq!(*fields, usize::from(term.starts_with('(')), "{name}");
                 assert_eq!(
-                    crate::rust_source::item_classes(name),
+                    classes(name),
                     Some((item.fallible(), item.heap())),
                     "{name}: the machine's classes equal the renderer's"
                 );
                 if !named.contains(name) {
-                    named.push(name);
+                    named.push(name.clone());
                 }
             }
-            let mut order: Vec<&str> = declared.iter().map(|(name, _)| *name).collect();
+            let mut order: Vec<String> = declared.iter().map(|(name, _)| name.clone()).collect();
             named.sort_unstable();
             order.sort_unstable();
             assert_eq!(
@@ -2010,11 +2089,7 @@ pub fn run(id: &str) {
                 );
             }
             // A drifted class is reported.
-            assert_ne!(
-                crate::rust_source::item_classes("natSub"),
-                Some((true, false)),
-                "natSub cannot fail"
-            );
+            assert_ne!(classes("natSub"), Some((true, false)), "natSub cannot fail");
             if !support::lean_backed("SP-07") {
                 return;
             }

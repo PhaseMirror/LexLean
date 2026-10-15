@@ -757,20 +757,50 @@ gate failed: compiler/fixtures/sum-to.json differs from its generator; run `carg
 Removed: the fixture was restored; `cargo xtask check-calculus` reports 208
 generated files equal to their generator.
 
-### check-calculus covers the calculus modules
+### the calculus and the machine are sources (SPEC.md §17.14)
 
-Planted: in the committed `compiler/src/TargetSemantics.lex.tex`, the bound
-test of `natResult` was edited from `blt` to `ble`, admitting `2^64` as a
-`nat` result. Command: `cargo xtask check-calculus`. Expected: the committed
-module no longer equals what `crates/conformance/src/calculus_source.rs`
-renders.
+`compiler/src/{TargetSyntax,TargetSemantics,TargetOracle,RustSyntax,RustSemantics,Main}.lex.tex`,
+the reasoning oracles, and the project configuration were rendered from Rust
+builders (`calculus_source.rs`, `rust_source.rs`) and compared with them by
+`check-calculus`; the builders are removed, so the committed files are written
+and edited as `.lex.tex`, and the plant that used to be here (an edit of
+`TargetSemantics` that no longer equalled its builder) has no builder to be
+unequal to. What guards them now is what was always independent of the
+builder: the shipped copies of the calculus modules equal the compiler
+project's golden (next section), `compiler/` is elaborated, replayed, and
+audited by `just examples`, and `conformance_sp_07` reads the machine from the
+committed modules and equates it with the renderer. Three plants, each an edit
+of a committed file, show the last:
 
-```text
-gate failed: compiler/src/TargetSemantics.lex.tex differs from its generator; run `cargo xtask check-calculus --write`
-```
+- **a class the machine states wrongly.** `itemFallible` in
+  `compiler/src/RustSemantics.lex.tex` says `natAdd` cannot fail.
+  `-- conformance_sp_07`:
 
-Removed: the committed module was restored; the gate reports 208 generated
-files equal to their generator.
+  ```text
+  panicked at crates/conformance/src/cases/preservation.rs:2026:17:
+  assertion `left == right` failed: natAdd: the machine's classes equal the renderer's
+    left: Some((false, false))
+   right: Some((true, false))
+  ```
+
+- **an item the machine does not declare.** The `natSub` constructor is
+  removed from `Item` in `compiler/src/RustSyntax.lex.tex`.
+  `-- conformance_sp_07`:
+
+  ```text
+  panicked at crates/conformance/src/cases/preservation.rs:2024:40:
+  NatSub (`.natSub`) is declared
+  ```
+
+- **a configuration that is not the production example's.** The name in
+  `compiler/lexlean.toml` is changed. `-- conformance_sp_07`:
+
+  ```text
+  panicked at crates/conformance/src/cases/preservation.rs:1935:13:
+  assertion `left == right` failed: compiler/lexlean.toml is the production example's under its own name
+  ```
+
+Removed: each file was restored; `conformance_sp_07` passes.
 
 ### check-calculus covers the shipped calculus modules
 
@@ -6786,9 +6816,13 @@ shortened), after which the defect was removed.
 
 ## The authoring notation (Issue #93, stage 3 of #27)
 
-`AU-01`..`AU-03` (SPEC.md §17.21) state that the notation and the canonical
+`AU-01`..`AU-08` (SPEC.md §17.21, §24.8) state that the notation and the canonical
 JSON of the closed schema are in bijection, that a module in the notation is
-the module its data form is, and that malformed notation fails closed. The
+the module its data form is, that malformed notation fails closed, that
+every language-1.2 source of the repository is written in it, that the same
+holds for tooling modules, that no identity depends on the form, that no
+writer owns a product source but five named records, and that programs read
+and write a source through the authoring API. The
 corpus of `AU-01` is every committed semantic module of language 1.2 (290 modules
 with 4,949 declarations at this writing), and its samples are read from the schema, one for each
 alternative of the declaration, term, type, and proof unions with and without
@@ -6850,8 +6884,159 @@ the passing cases, and must turn the named case red for the reason it names.
   another layout is not canonical
   ```
 
-Removed: each edit was restored; `conformance_au_01`, `conformance_au_02`, and
-`conformance_au_03` pass. The generic notation has its own property test over
+Moving the committed sources to the notation (`AU-04`, 287 sources) adds the
+plants of the gate that keeps them there; each is a change to a committed
+source or to one line of the compiler or the gate, and each turns the named
+case red for the reason it names.
+
+- **a product source written as data.** `examples/language-1.2/src/Main.lex.tex`
+  is written as `\semanticdata{…}`. `-- conformance_au_04`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:647:5:
+  1 source(s) are not written in the authoring notation:
+  examples/language-1.2/src/Main.lex.tex: written as data, which the notation can say
+  ```
+
+- **a refused fixture that the notation can spell, written as data.**
+  `tests/negative/application-arity/project/src/Main.lex.tex` is written as
+  `\semanticdata{…}` with a module of the schema the notation names.
+  `-- conformance_au_04`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:647:5:
+  1 source(s) are not written in the authoring notation:
+  tests/negative/application-arity/project/src/Main.lex.tex: written as data, which the notation can say (a refused fixture)
+  ```
+
+- **a source that is not its own canonical source.** One empty line is
+  removed from `compiler/src/Gnaf.lex.tex`. `-- conformance_au_04`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:647:5:
+  1 source(s) are not written in the authoring notation:
+  compiler/src/Gnaf.lex.tex: not its own canonical source
+  ```
+
+- **a gate that reads no source.** The language of every project is read as
+  1.1, so every source is exempt as one that predates the notation.
+  `-- conformance_au_04`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:656:5:
+  0 sources in the notation, 0 canonical: the walk did not read the product
+  ```
+
+- **a formatter that leaves the data form alone.** `canonical_source` no longer
+  writes a language-1.2 module out of its data form, so a module written as
+  data is canonical and `fmt` never migrates it. `-- conformance_au_02`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:276:18:
+  a module written as data is not canonical
+  ```
+
+The migration itself is checked by what it must not change. The calculus
+generator, which writes the compiler project's generated modules with
+`lx::module_tex` in the notation, writes exactly the migrated bytes of those
+modules (`check-calculus`: 994 generated files equal their generator). The
+exported production packages are equal to the committed ones
+(`check-production-export`). The regenerated goldens (112 files) are source
+IDs, source maps, and coverage records only, and the regenerated fixture
+expectations (392 files) differ from the committed ones only in the byte,
+line, and column of a diagnostic, never in its code or message. The
+verified records are not regenerated, because nothing they bind changes: the
+semantic ID of `examples/language-1.2` before and after the migration is
+`e8cdfbdf…`.
+
+The one macOS failure of the first run of this stage (`end_children`, the
+concurrent-start case, `EAGAIN` from `fork` and `ps`) was the case's own: the
+four spawner threads held every child they started, so the children the host
+ended stayed in the process table as zombies until the runner's limit was
+reached. They now reap the children that have exited. The planted removal of
+the registration lock, which the case exists to catch, still fails it in cycle
+0: `a child started concurrently with the call survived it`.
+
+Tooling modules in the notation (`AU-05`) and the identity that does not depend
+on the form (`AU-06`) add three more, each one edit of the compiler:
+
+- **a declaration span one byte late.** The span of each declaration of a
+  tooling module is shifted one byte, so the source map names text that is
+  not the declaration. `-- conformance_au_05`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:793:13:
+  assertion `left == right` failed: …/tests/tooling/traversal/src/Main.lex.tex: a span is not its own declaration
+    left: Obj({"constructors": …, "kind": Str("ype"), "name": Str("Lean.Compiler.LCNF.Purity"), …
+  ```
+
+- **a formatter that leaves a tooling module alone.** `canonical_source` no
+  longer rewrites a tooling module, so one written as `\toolingdata` is
+  canonical. `-- conformance_au_05`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:817:9:
+  assertion `left == right` failed: commands: fmt did not write the data form as the committed notation
+  ```
+
+- **an identity of the bytes of a file.** The compiler-semantics ID hashes the
+  file as it is, so the form the adapter's source is written in is part of
+  what the compiler means. `-- conformance_au_06`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:960:17:
+  assertion `left == right` failed: language/lcnf-1.2/tooling/src/Extract.lex.tex: a notation module contributes its data form
+  ```
+
+The four committed tooling sources are migrated with the same printer `fmt`
+uses, and that is checked by what must not change: `check-calculus` finds the
+994 generated files, among them the adapter's tooling module and the three
+fixtures, equal to their generator, which now writes the notation; the locks
+of every example are current under the unchanged language-1.2 ID, which
+`AU-06` recomputes from the tree with the adapter's source in the notation and
+as data; the regenerated goldens of the three fixtures are source IDs, source
+maps, and coverage records only.
+
+The gate that no writer owns a product source (`AU-07`) and the authoring API
+(`AU-08`) add three:
+
+- **a writer that emits a product source.** `calculus::files()`, the generator
+  `cargo xtask check-calculus` compares and rewrites, is made to emit
+  `compiler/src/Main.lex.tex`. `-- conformance_au_07`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:1044:5:
+  assertion `left == right` failed: the writers of the repository emit exactly the named records and no other product source
+    left: {"compiler/src/GnafCertificates.lex.tex", …, "compiler/src/Main.lex.tex", …}
+   right: {"compiler/src/GnafCertificates.lex.tex", …, "compiler/src/TargetFixtures.lex.tex", "language/lcnf-1.2/tooling/src/Extract.lex.tex"}
+  ```
+
+- **an assembly that drops what the source says.** `sdk::assemble` writes no
+  `\importmodule` line. `-- conformance_au_08`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:1249:17:
+  assertion `left == right` failed: …/examples/reasoning/src/Main.lex.tex: assembled from its header and data
+  ```
+
+- **a rewrite that changes the form of a source.** `sdk::write_module` writes a
+  source in the notation back as data. `-- conformance_au_08`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:1181:9:
+  assertion `left == right` failed: …/examples/reasoning/src/Main.lex.tex
+  ```
+
+The generated records of `AU-07` are named, not exempted by a pattern: the four
+fixture modules of `compiler/` are written from the committed fixtures,
+requests, and certificates (which are data, not sources), and the extraction
+adapter's module from the registry the pinned Lean answers (`conformance_ne_04`
+equates the registry with a fresh derivation). The writers' own files
+(`check-calculus`: 977 of them, where it was 994 before the builders of the
+calculus, the machine, and the two models were removed) are compared by
+`cargo xtask check-calculus` as before.
+
+Removed: each edit was restored; `conformance_au_01`..`conformance_au_08` pass. The generic notation has its own property test over
 arbitrary canonical JSON values (`surface::generic`), and every alternative of
 the schema its own sample (`surface::semantic`), as unit tests of the
 `lexlean` crate.

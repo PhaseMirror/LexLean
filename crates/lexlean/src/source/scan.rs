@@ -228,24 +228,24 @@ pub fn reject_forbidden_atoms(
 /// actual controls prevents a control-shaped string or escaped backslash from
 /// reopening a payload; processing each byte once keeps large digests linear.
 ///
-/// A `semanticmodule` environment is a payload too: its body is either one
-/// `\semanticdata{…}` argument or the authoring notation (SPEC.md §17.21),
-/// which runs to the closing `\end`. Digit runs inside a string of either are
-/// exact string bytes, not numerals.
+/// A `semanticmodule` or `toolingmodule` environment is a payload too: its
+/// body is either one `\semanticdata{…}` (`\toolingdata{…}`) argument or the
+/// authoring notation (SPEC.md §17.21), which runs to the closing `\end`.
+/// Digit runs inside a string of either are exact string bytes, not numerals.
 #[derive(Default)]
 struct SemanticDataContext {
     awaiting_open: bool,
     depth: usize,
     quoted: bool,
     escaped: bool,
-    /// How much of `\begin{semanticmodule}` has been read.
+    /// How much of `\begin{semanticmodule}` (or `toolingmodule`) has been read.
     environment: u8,
     /// Inside the body of a `semanticmodule`, before its first atom is known
     /// to be `\semanticdata`.
     body: Body,
 }
 
-/// Where the scan is in a `semanticmodule` body.
+/// Where the scan is in a `semanticmodule` or `toolingmodule` body.
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
 enum Body {
     /// Not in one.
@@ -279,7 +279,9 @@ impl SemanticDataContext {
             if atom.class == AtomClass::Whitespace {
                 return;
             }
-            if atom.class == AtomClass::Control && atom.text == "\\semanticdata" {
+            if atom.class == AtomClass::Control
+                && matches!(atom.text.as_str(), "\\semanticdata" | "\\toolingdata")
+            {
                 self.body = Body::Outside;
                 self.awaiting_open = true;
                 return;
@@ -299,11 +301,11 @@ impl SemanticDataContext {
             if atom.class == AtomClass::Whitespace {
                 return;
             }
-            // `\begin` `{` `semanticmodule` `}`.
+            // `\begin` `{` `semanticmodule` | `toolingmodule` `}`.
             self.environment = match (self.environment, atom.class, atom.text.as_str()) {
                 (0, AtomClass::Control, "\\begin") => 1,
                 (1, _, "{") => 2,
-                (2, AtomClass::Word, "semanticmodule") => 3,
+                (2, AtomClass::Word, "semanticmodule" | "toolingmodule") => 3,
                 (3, _, "}") => {
                     self.body = Body::Start;
                     0

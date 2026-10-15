@@ -411,7 +411,7 @@ pub(crate) fn run(id: &str) {
             let model = repo_model::Model::load(&root.join("model").into_std_path_buf())
                 .expect("the model loads");
             let table = spec_table();
-            assert_eq!(table.len(), 370, "§31 has 370 rows");
+            assert_eq!(table.len(), 375, "§31 has 375 rows");
             assert_eq!(model.ids.id.len(), table.len(), "register row count");
             for ((spec_id, spec_suite, spec_statement), row) in
                 table.iter().zip(model.ids.id.iter())
@@ -558,7 +558,7 @@ pub(crate) fn run(id: &str) {
                 .iter()
                 .map(|(path, bytes)| (path.as_str(), bytes.as_slice()))
                 .collect();
-            let recomputed = lexlean::artifact::content_id::tree_digest(&borrowed);
+            let recomputed = support::identity_tree_digest(&borrowed);
             assert_eq!(
                 recomputed,
                 lexlean::compiler_semantics_id_for(lexlean::LATEST_LANGUAGE_VERSION),
@@ -623,7 +623,7 @@ pub(crate) fn run(id: &str) {
                     .copied()
                     .filter(|(path, _)| !excluded(path, lists))
                     .collect();
-                lexlean::artifact::content_id::tree_digest(&kept)
+                support::identity_tree_digest(&kept)
             };
             let eleven = filtered(&[&only_1_2]);
             let ten = filtered(&[&only_1_2, &only_1_1]);
