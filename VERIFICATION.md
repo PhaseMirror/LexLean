@@ -41,6 +41,47 @@ Outside `vv`:
 
 Each gate below was made to fail by planting a defect, running the gate's command, recording the failure, and removing the defect. The observed lines are verbatim gate output (paths abbreviated to the repository root). `cargo xtask release-check` requires a `### <gate> can fail` record for every gate and audit named in `repo_model::release::GATES`.
 
+### production bundle inventory can fail
+
+Before the correction for #133, `cargo test --offline --locked -p lexlean
+--lib api::production::tests -- --nocapture` ran four tests and all four
+failed. Collection reported both `evidence/attestation.json` and the literal
+filename `evidence\attestation.json` under the slash-separated key; moving the
+canonical file to the literal filename still reported the canonical key. A
+non-UTF-8 filename was accepted with a replacement character, and duplicate
+inventory keys reached the missing-`result.json` check instead of being
+refused as duplicates.
+
+Collection now encodes actual path components without changing their text
+and refuses a component outside UTF-8 with `LLV7102`; replay refuses duplicate
+keys before reading the result. The existing `PX-07` case also copies and
+moves a real attestation to the literal-backslash filename and adds a
+non-UTF-8 filename on a filesystem that accepts it, reusing its existing
+export without another Lean invocation. Valid bundle bytes and identities
+are unchanged.
+
+### production compiler identity can fail
+
+Before the correction for #136, `cargo test --offline --locked -p lexlean
+--lib api::production::tests::attestation_facts -- --nocapture` ran four
+Lean-free tests: the historical producing version passed, and all three
+malformed-version cases failed. Hash-correct attestation bodies were accepted
+with no compiler version, an empty version, or a numeric version, contrary to
+the tests' explicit version requirements.
+
+Replay now reads a non-empty string from the hash-checked attestation's
+`lexlean.version` and requires the result's `compiler.version` to equal it.
+The comparison uses the producing attestation, so it does not restrict replay
+to this running crate's version. `PX-07` changes the result's version and
+recomputes its identity within the existing tamper matrix, reusing the same
+export without another verification run.
+
+After both corrections, all eight Lean-free replay unit cases pass, and
+`cargo test -p repo-conformance --test conformance conformance_px_07 -- --exact --test-threads=1`
+passes in 195.15 seconds, including the untouched bundle and every existing
+tamper. Formatting, workspace/all-target Clippy with warnings denied, and
+the model/spec-link audits pass (380 IDs and 80 registered codes).
+
 ### release inventory can fail
 
 `release-artifacts` derives the tree manifest directly from the captured crate

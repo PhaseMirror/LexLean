@@ -743,6 +743,7 @@ fn parse_preservation(bytes: &[u8]) -> Result<Preservation, String> {
 /// recomputed from its body (§22.9).
 struct AttestationFacts {
     attestation_id: Sha256Digest,
+    compiler_version: String,
     source_id: Sha256Digest,
     semantic_id: Sha256Digest,
     build_id: Sha256Digest,
@@ -765,6 +766,15 @@ fn attestation_facts(bytes: &[u8]) -> Result<AttestationFacts, String> {
         return Err(format!(
             "attestation.json states {stated}, its body hashes to {recomputed}"
         ));
+    }
+    let Some(Json::Obj(compiler)) = body.get("lexlean") else {
+        return Err("attestation.json states no `lexlean` compiler object".to_owned());
+    };
+    let Some(Json::Str(compiler_version)) = compiler.get("version") else {
+        return Err("attestation.json states no string `lexlean.version`".to_owned());
+    };
+    if compiler_version.is_empty() {
+        return Err("attestation.json states an empty `lexlean.version`".to_owned());
     }
     let digest = |name: &str| -> Result<Sha256Digest, String> {
         match body.get(name) {
@@ -790,6 +800,7 @@ fn attestation_facts(bytes: &[u8]) -> Result<AttestationFacts, String> {
     };
     Ok(AttestationFacts {
         attestation_id: stated,
+        compiler_version: compiler_version.clone(),
         source_id: digest("source_id")?,
         semantic_id: digest("semantic_id")?,
         build_id: digest("build_id")?,
@@ -1363,6 +1374,10 @@ fn replay_error(message: impl Into<String>) -> LexLeanError {
 /// `LLS8001` for a symlink or special file in the bundle, `LLV7102` for any
 /// disagreement, and `LLV7010` for an unreadable file.
 pub fn verify_artifact(bundle: &Utf8Path) -> Result<ReplayReport, LexLeanError> {
+    replay_files(&collect_bundle(bundle)?)
+}
+
+fn collect_bundle(bundle: &Utf8Path) -> Result<Vec<(String, Vec<u8>)>, LexLeanError> {
     let security =
         |message: String| LexLeanError::from_diagnostic(Diagnostic::new(code!("LLS8001"), message));
     let metadata = std::fs::symlink_metadata(bundle.as_std_path()).map_err(|io_error| {
@@ -1379,22 +1394,37 @@ pub fn verify_artifact(bundle: &Utf8Path) -> Result<ReplayReport, LexLeanError> 
         let entry = entry.map_err(|error| {
             LexLeanError::from_diagnostic(Diagnostic::new(code!("LLV7010"), error.to_string()))
         })?;
-        let relative = entry
+        let relative_path = entry
             .path()
             .strip_prefix(bundle.as_std_path())
-            .map(|path| path.to_string_lossy().replace('\\', "/"))
-            .unwrap_or_default();
+            .map_err(|error| replay_error(format!("bundle path is outside its root: {error}")))?;
         let kind = entry.file_type();
         if kind.is_symlink() {
-            return Err(security(format!("`{relative}` in the bundle is a symlink")));
+            return Err(security(format!(
+                "`{}` in the bundle is a symlink",
+                relative_path.display()
+            )));
         }
+        if !kind.is_dir() && !kind.is_file() {
+            return Err(security(format!(
+                "`{}` in the bundle is a special file",
+                relative_path.display()
+            )));
+        }
+        // Only actual path separators become `/`: on Unix a backslash
+        // belongs to its filename and must not alias a different file.
+        let relative = relative_path
+            .components()
+            .map(|component| {
+                component
+                    .as_os_str()
+                    .to_str()
+                    .ok_or_else(|| replay_error("a bundle filename is not valid UTF-8"))
+            })
+            .collect::<Result<Vec<_>, _>>()?
+            .join("/");
         if kind.is_dir() {
             continue;
-        }
-        if !kind.is_file() {
-            return Err(security(format!(
-                "`{relative}` in the bundle is a special file"
-            )));
         }
         let bytes = std::fs::read(entry.path()).map_err(|io_error| {
             LexLeanError::from_diagnostic(Diagnostic::new(
@@ -1405,15 +1435,19 @@ pub fn verify_artifact(bundle: &Utf8Path) -> Result<ReplayReport, LexLeanError> 
         files.push((relative, bytes));
     }
     files.sort_by(|left, right| left.0.cmp(&right.0));
-    replay_files(&files)
+    Ok(files)
 }
 
 #[allow(clippy::too_many_lines)]
 fn replay_files(files: &[(String, Vec<u8>)]) -> Result<ReplayReport, LexLeanError> {
-    let by_path: BTreeMap<&str, &[u8]> = files
-        .iter()
-        .map(|(path, bytes)| (path.as_str(), bytes.as_slice()))
-        .collect();
+    let mut by_path: BTreeMap<&str, &[u8]> = BTreeMap::new();
+    for (path, bytes) in files {
+        if by_path.insert(path.as_str(), bytes.as_slice()).is_some() {
+            return Err(replay_error(format!(
+                "the bundle inventory contains duplicate path `{path}`"
+            )));
+        }
+    }
     let result_bytes = by_path
         .get(RESULT_FILE)
         .ok_or_else(|| replay_error("the bundle has no result.json"))?;
@@ -1482,6 +1516,10 @@ fn replay_files(files: &[(String, Vec<u8>)]) -> Result<ReplayReport, LexLeanErro
     bind(
         "the attestation ID",
         attestation.attestation_id == result.verification.attestation_id,
+    )?;
+    bind(
+        "the compiler version",
+        attestation.compiler_version == result.compiler.version,
     )?;
     bind(
         "the source ID",
@@ -1764,5 +1802,171 @@ impl ReplayReport {
     #[must_use]
     pub fn to_json(&self) -> Vec<u8> {
         canonical_bytes(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{attestation_facts, collect_bundle, replay_files};
+    use crate::artifact::canonical_json::Json;
+    use crate::artifact::content_id::{attestation_id, Sha256Digest};
+    use camino::Utf8Path;
+
+    fn attestation_with_compiler(compiler: Option<Json>) -> Vec<u8> {
+        let digest = Sha256Digest::of(b"attestation fixture").to_hex();
+        let row = || {
+            Json::object(vec![
+                ("byte_length", Json::Int(1)),
+                ("sha256", Json::Str(digest.clone())),
+            ])
+        };
+        let mut fields = vec![
+            ("spec", Json::Str("lexlean/attestation/2".to_owned())),
+            ("status", Json::Str("verified".to_owned())),
+            ("source_id", Json::Str(digest.clone())),
+            ("semantic_id", Json::Str(digest.clone())),
+            ("build_id", Json::Str(digest.clone())),
+            ("compiler_input", row()),
+            ("preservation", row()),
+        ];
+        if let Some(compiler) = compiler {
+            fields.push(("lexlean", compiler));
+        }
+        let body = Json::object(fields.clone());
+        let id = attestation_id(&body.to_canonical_string());
+        fields.push(("attestation_id", Json::Str(id.to_hex())));
+        Json::object(fields).to_file_bytes()
+    }
+
+    #[test]
+    fn attestation_facts_refuses_missing_compiler_version() {
+        for compiler in [None, Some(Json::object(Vec::new()))] {
+            assert!(
+                attestation_facts(&attestation_with_compiler(compiler)).is_err(),
+                "a hash-correct attestation must state its producing compiler version"
+            );
+        }
+    }
+
+    #[test]
+    fn attestation_facts_refuses_non_string_compiler_version() {
+        let compiler = Json::object(vec![("version", Json::Int(1))]);
+        assert!(
+            attestation_facts(&attestation_with_compiler(Some(compiler))).is_err(),
+            "a hash-correct attestation's producing compiler version must be a string"
+        );
+    }
+
+    #[test]
+    fn attestation_facts_refuses_empty_compiler_version() {
+        let compiler = Json::object(vec![("version", Json::Str(String::new()))]);
+        assert!(
+            attestation_facts(&attestation_with_compiler(Some(compiler))).is_err(),
+            "a hash-correct attestation's producing compiler version must not be empty"
+        );
+    }
+
+    #[test]
+    fn attestation_facts_accepts_a_producing_compiler_version() {
+        let compiler = Json::object(vec![("version", Json::Str("0.0.1".to_owned()))]);
+        let facts = attestation_facts(&attestation_with_compiler(Some(compiler)))
+            .expect("the producing version may differ from this compiler's version");
+        assert_eq!(facts.compiler_version, "0.0.1");
+    }
+
+    fn literal_backslashes() -> bool {
+        if std::path::Path::new("evidence\\attestation.json")
+            .components()
+            .count()
+            == 1
+        {
+            true
+        } else {
+            eprintln!("bundle inventory: this host treats backslashes as path separators; literal-backslash assertions did not run (§8.3)");
+            false
+        }
+    }
+
+    #[test]
+    fn bundle_collection_preserves_literal_backslash_filenames() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let bundle = Utf8Path::from_path(directory.path()).expect("UTF-8 tempdir");
+        std::fs::create_dir(bundle.join("evidence")).expect("mkdir");
+        std::fs::write(bundle.join("evidence/attestation.json"), b"canonical").expect("write");
+        assert_eq!(
+            collect_bundle(bundle).expect("collect"),
+            [(
+                "evidence/attestation.json".to_owned(),
+                b"canonical".to_vec()
+            )]
+        );
+        if literal_backslashes() {
+            std::fs::write(bundle.join("evidence\\attestation.json"), b"alias").expect("write");
+            assert_eq!(
+                collect_bundle(bundle).expect("collect"),
+                [
+                    (
+                        "evidence/attestation.json".to_owned(),
+                        b"canonical".to_vec()
+                    ),
+                    ("evidence\\attestation.json".to_owned(), b"alias".to_vec()),
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn bundle_collection_does_not_restore_a_moved_canonical_filename() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let bundle = Utf8Path::from_path(directory.path()).expect("UTF-8 tempdir");
+        std::fs::create_dir(bundle.join("evidence")).expect("mkdir");
+        let canonical = bundle.join("evidence/attestation.json");
+        std::fs::write(&canonical, b"canonical").expect("write");
+        assert_eq!(collect_bundle(bundle).expect("collect").len(), 1);
+        if literal_backslashes() {
+            std::fs::rename(&canonical, bundle.join("evidence\\attestation.json")).expect("rename");
+            assert_eq!(
+                collect_bundle(bundle).expect("collect"),
+                [(
+                    "evidence\\attestation.json".to_owned(),
+                    b"canonical".to_vec()
+                )]
+            );
+        }
+    }
+
+    #[test]
+    fn bundle_collection_refuses_non_utf8_filenames() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let bundle = Utf8Path::from_path(directory.path()).expect("UTF-8 tempdir");
+        std::fs::write(bundle.join("canonical.json"), b"canonical").expect("write");
+        assert_eq!(collect_bundle(bundle).expect("collect").len(), 1);
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStrExt;
+
+            let invalid = std::ffi::OsStr::from_bytes(b"invalid\xff.json");
+            if std::fs::write(directory.path().join(invalid), b"invalid").is_ok() {
+                let error = collect_bundle(bundle).expect_err("non-UTF-8 filenames are refused");
+                assert_eq!(error.diagnostics[0].code.as_str(), "LLV7102");
+                assert!(error.diagnostics[0].message.contains("UTF-8"));
+                return;
+            }
+        }
+        eprintln!("bundle inventory: this host's filesystem refuses non-UTF-8 filenames; only the portable assertions ran (§8.3)");
+    }
+
+    #[test]
+    fn replay_inventory_refuses_duplicate_paths_before_reading_the_result() {
+        let files = vec![
+            ("evidence/attestation.json".to_owned(), b"same".to_vec()),
+            ("evidence/attestation.json".to_owned(), b"same".to_vec()),
+        ];
+        let error = replay_files(&files).expect_err("duplicate inventory paths are refused");
+        assert_eq!(error.diagnostics[0].code.as_str(), "LLV7102");
+        assert!(error.diagnostics[0].message.contains("duplicate"));
+        assert!(error.diagnostics[0]
+            .message
+            .contains("evidence/attestation.json"));
     }
 }

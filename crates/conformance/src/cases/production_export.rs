@@ -997,6 +997,10 @@ pub fn run(id: &str) {
                     Box::new(|r| r.compiler.semantics = sha(b"x")),
                 ),
                 (
+                    "compiler version",
+                    Box::new(|r| r.compiler.version.push('x')),
+                ),
+                (
                     "target digest",
                     Box::new(|r| r.roots[0].outputs[0].target.digest = sha(b"x")),
                 ),
@@ -1070,6 +1074,43 @@ pub fn run(id: &str) {
             let (_dir, bundle) = bundle_copy(exported);
             std::fs::remove_file(bundle.join(&output.krate.path).as_std_path()).expect("remove");
             replay_refused(&bundle, "LLV7102", "a removed file");
+            if std::path::Path::new("evidence\\attestation.json")
+                .components()
+                .count()
+                == 1
+            {
+                let (_dir, bundle) = bundle_copy(exported);
+                std::fs::copy(
+                    bundle.join("evidence/attestation.json"),
+                    bundle.join("evidence\\attestation.json"),
+                )
+                .expect("copy alias");
+                replay_refused(&bundle, "LLV7102", "an added literal-backslash alias");
+                let (_dir, bundle) = bundle_copy(exported);
+                std::fs::rename(
+                    bundle.join("evidence/attestation.json"),
+                    bundle.join("evidence\\attestation.json"),
+                )
+                .expect("move to alias");
+                replay_refused(
+                    &bundle,
+                    "LLV7102",
+                    "a file moved to a literal-backslash alias",
+                );
+            } else {
+                support::unix_only("PX-07", "literal-backslash filenames");
+            }
+            if support::non_utf8_names_backed("PX-07") {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::ffi::OsStrExt;
+
+                    let (_dir, bundle) = bundle_copy(exported);
+                    let invalid = std::ffi::OsStr::from_bytes(b"invalid\xff.json");
+                    std::fs::write(bundle.as_std_path().join(invalid), b"invalid").expect("write");
+                    replay_refused(&bundle, "LLV7102", "a non-UTF-8 filename");
+                }
+            }
             // A symlink.
             let (_dir, bundle) = bundle_copy(exported);
             let link = bundle.join("evidence/linked.json");
