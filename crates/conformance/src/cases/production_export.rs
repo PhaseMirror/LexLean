@@ -332,6 +332,29 @@ fn rewrite_attestation(bundle: &Utf8Path, path: &[&str], value: Option<serde_jso
     });
 }
 
+/// Refresh the input's result and attestation bindings after changing one
+/// scalar pin, so its disagreement with the producing toolchain is exposed.
+fn rewrite_compiler_input_identity(bundle: &Utf8Path, field: &str, value: &str) {
+    let result = result_of(bundle);
+    let file = bundle.join(&result.verification.compiler_input.path);
+    let mut input: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(file.as_std_path()).expect("compiler input"))
+            .expect("compiler input JSON");
+    input["lean"][field] = serde_json::json!(value);
+    let bytes = harness::canonical(&input);
+    std::fs::write(file.as_std_path(), &bytes).expect("write compiler input");
+    rewrite_attestation(
+        bundle,
+        &["compiler_input"],
+        Some(serde_json::json!({"byte_length": bytes.len(), "sha256": sha(&bytes).to_hex()})),
+    );
+    rewrite_result(bundle, |result| {
+        result.verification.compiler_input.byte_length =
+            u64::try_from(bytes.len()).expect("length");
+        result.verification.compiler_input.sha256 = sha(&bytes);
+    });
+}
+
 fn replay_refused(bundle: &Utf8Path, code: &str, what: &str) {
     match production::verify_artifact(bundle) {
         Ok(report) => panic!("{what}: the tampered bundle replayed: {report:?}"),
@@ -1165,6 +1188,18 @@ pub fn run(id: &str) {
                 let (_dir, bundle) = bundle_copy(exported);
                 rewrite_attestation(&bundle, path, value);
                 replay_refused(&bundle, "LLV7102", &what);
+            }
+            for (field, value) in [
+                ("version", "4.31.0"),
+                ("githash", "0000000000000000000000000000000000000000"),
+            ] {
+                let (_dir, bundle) = bundle_copy(exported);
+                rewrite_compiler_input_identity(&bundle, field, value);
+                replay_refused(
+                    &bundle,
+                    "LLV7102",
+                    &format!("hash-correct compiler input Lean {field}"),
+                );
             }
             // Historical crate versions remain replayable when the result
             // and its producing attestation state the same version.

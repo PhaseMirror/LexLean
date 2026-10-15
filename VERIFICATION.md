@@ -106,10 +106,44 @@ self-consistent historical compiler-version case. The Lean-backed matrix
 belongs to `just bdd` and uses that existing export, without a second
 verification for these regressions.
 
-After the correction, `cargo test -p lexlean --lib
-api::production::tests` passes all twelve helper and inventory tests in
+The bundled compiler input also states a Lean identity: `lean.version` and
+`lean.githash`, whose file digests replay checked without reading those
+fields. Replay now reads only that header
+through the existing `LeanIdentity` type and compares its two strings with
+the pin after checking the file's result and attestation bindings. Unknown
+top-level payloads are skipped by the JSON reader rather than read as LCNF;
+no extraction or full compiler-input schema validation is performed, and
+`not_rechecked` is unchanged.
+
+Focused cases cover missing, malformed, and foreign identity fields, and
+skipped payloads nested 129, 257, and 2048 levels before or after the identity.
+`PX-07` changes each scalar pin while refreshing the input's file digest,
+the attestation's matching input digest, and both enclosing content
+identities.
+
+The filtered
+`compiler_input_identity_refuses_missing_malformed_or_foreign_facts` run
+then failed in 0.00 seconds on a top-level array containing the pinned
+identity object: derived struct readers also accept sequence forms, although
+the compiler-input identity requires named objects. Compilation took 1 minute
+21 seconds, including Cargo lock contention. The matrix also rejects an array
+in `lean`. Replay now requires an object at both levels through map readers
+that preserve duplicate-field rejection and iterative ignored-payload skips;
+the existing test also covers trailing JSON and duplicate `lean`, `version`,
+and `githash` fields.
+
+After all corrections, `cargo test -p lexlean --lib
+api::production::tests` passes all fourteen helper and inventory tests in
 0.01 seconds. Formatting, workspace/all-target Clippy with warnings denied,
 and the model/spec-link audits pass (380 IDs and 80 registered codes).
+
+The expanded `cargo test -p repo-conformance --all-features --test
+conformance conformance_px_07 -- --exact --test-threads=1 --nocapture`
+passes in 180.42 seconds with `LEXLEAN_VERIFY_WIDTH=1`. It retains every
+previous path, byte, and result-field tamper, adds 24 fully rehashed
+attestation/compiler-input fact tampers, and accepts the untouched bundle
+and the self-consistent historical-version pair. All share the same real
+production export; none of the added tampers invokes another verification.
 
 ### release inventory can fail
 

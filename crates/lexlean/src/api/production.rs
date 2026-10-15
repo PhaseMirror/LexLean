@@ -873,6 +873,55 @@ fn attestation_facts(bytes: &[u8]) -> Result<AttestationFacts, String> {
     })
 }
 
+fn deserialize_object<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    struct ObjectVisitor<T>(std::marker::PhantomData<T>);
+
+    impl<'de, T: Deserialize<'de>> serde::de::Visitor<'de> for ObjectVisitor<T> {
+        type Value = T;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("a JSON object")
+        }
+
+        fn visit_map<A: serde::de::MapAccess<'de>>(self, map: A) -> Result<T, A::Error> {
+            T::deserialize(serde::de::value::MapAccessDeserializer::new(map))
+        }
+    }
+
+    deserializer.deserialize_map(ObjectVisitor(std::marker::PhantomData))
+}
+
+fn require_compiler_input_identity(bytes: &[u8]) -> Result<(), String> {
+    #[derive(Deserialize)]
+    struct Header {
+        #[serde(deserialize_with = "deserialize_object")]
+        lean: crate::production::lcnf::LeanIdentity,
+    }
+    // The LCNF payload can nest beyond the JSON parser's ordinary limit.
+    // Deserialize only the identity: ignored fields are skipped iteratively.
+    // Require objects while preserving the derived readers' duplicate checks.
+    let mut reader = serde_json::Deserializer::from_slice(bytes);
+    let header: Header = deserialize_object(&mut reader)
+        .map_err(|error| format!("compiler-input.json Lean identity: {error}"))?;
+    reader
+        .end()
+        .map_err(|error| format!("compiler-input.json Lean identity: {error}"))?;
+    if header.lean.version != crate::LEAN_VERSION || header.lean.githash != crate::LEAN_GITHASH {
+        return Err(format!(
+            "compiler-input.json reports Lean {} at {}, expected {} at {}",
+            header.lean.version,
+            header.lean.githash,
+            crate::LEAN_VERSION,
+            crate::LEAN_GITHASH
+        ));
+    }
+    Ok(())
+}
+
 /// The verified-directory path of a certificate module.
 fn certificate_path(module: &str) -> String {
     format!("{}.lean", module.replace('.', "/"))
@@ -1609,6 +1658,7 @@ fn replay_files(files: &[(String, Vec<u8>)]) -> Result<ReplayReport, LexLeanErro
                 Sha256Digest::of(compiler_input),
             ),
     )?;
+    require_compiler_input_identity(compiler_input).map_err(replay_error)?;
     bind(
         "the preservation record the attestation binds",
         attestation.preservation
@@ -1877,7 +1927,7 @@ impl ReplayReport {
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::{attestation_facts, collect_bundle, replay_files};
+    use super::{attestation_facts, collect_bundle, replay_files, require_compiler_input_identity};
     use crate::artifact::canonical_json::Json;
     use crate::artifact::content_id::{attestation_id, Sha256Digest};
     use camino::Utf8Path;
@@ -2083,6 +2133,61 @@ mod tests {
                 attestation_facts(&bytes).is_err(),
                 "a hash-correct attestation needs the pinned Lean version: {tool}: {banner:?}"
             );
+        }
+    }
+
+    #[test]
+    fn compiler_input_identity_refuses_missing_malformed_or_foreign_facts() {
+        for value in [
+            serde_json::json!({}),
+            serde_json::json!([{"version": crate::LEAN_VERSION, "githash": crate::LEAN_GITHASH}]),
+            serde_json::json!({"lean": [crate::LEAN_VERSION, crate::LEAN_GITHASH]}),
+            serde_json::json!({"lean": 1}),
+            serde_json::json!({"lean": {"version": crate::LEAN_VERSION}}),
+            serde_json::json!({"lean": {"githash": crate::LEAN_GITHASH}}),
+            serde_json::json!({"lean": {"version": 1, "githash": crate::LEAN_GITHASH}}),
+            serde_json::json!({"lean": {"version": crate::LEAN_VERSION, "githash": 1}}),
+            serde_json::json!({"lean": {"version": "4.32.10", "githash": crate::LEAN_GITHASH}}),
+            serde_json::json!({"lean": {"version": crate::LEAN_VERSION, "githash": "0".repeat(40)}}),
+        ] {
+            let bytes = serde_json::to_vec(&value).expect("JSON");
+            assert!(
+                require_compiler_input_identity(&bytes).is_err(),
+                "a compiler input needs the pinned Lean identity: {value}"
+            );
+        }
+        let version = serde_json::to_string(crate::LEAN_VERSION).expect("JSON string");
+        let githash = serde_json::to_string(crate::LEAN_GITHASH).expect("JSON string");
+        let lean = format!("{{\"version\":{version},\"githash\":{githash}}}");
+        for bytes in [
+            format!("{{\"lean\":{lean}}} null"),
+            format!("{{\"lean\":{lean},\"lean\":{lean}}}"),
+            format!("{{\"lean\":{{\"version\":{version},\"version\":{version},\"githash\":{githash}}}}}"),
+            format!("{{\"lean\":{{\"version\":{version},\"githash\":{githash},\"githash\":{githash}}}}}"),
+        ] {
+            assert!(
+                require_compiler_input_identity(bytes.as_bytes()).is_err(),
+                "a compiler input needs one unambiguous Lean identity: {bytes}"
+            );
+        }
+    }
+
+    #[test]
+    fn compiler_input_identity_skips_deep_payloads_before_and_after_lean() {
+        let lean = serde_json::json!({
+            "version": crate::LEAN_VERSION,
+            "githash": crate::LEAN_GITHASH,
+        })
+        .to_string();
+        for depth in [129, 257, 2048] {
+            let nested = format!("{}0{}", "[".repeat(depth), "]".repeat(depth));
+            for bytes in [
+                format!("{{\"payload\":{nested},\"lean\":{lean}}}"),
+                format!("{{\"lean\":{lean},\"payload\":{nested}}}"),
+            ] {
+                require_compiler_input_identity(bytes.as_bytes())
+                    .expect("reading the identity does not impose a payload nesting limit");
+            }
         }
     }
 

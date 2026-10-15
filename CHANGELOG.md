@@ -305,6 +305,9 @@ versions, and the entries below say what each tag does and does not claim.
 - Production replay also binds the attested compiler-semantics digest to the
   result, requires a verified `lexlean/attestation/2` envelope, and checks the
   complete Lean-version fields in its Lean and Lake records (`PX-07`, #142).
+  The compiler input's own Lean version and commit must match the same pin;
+  reading that identity requires JSON objects and preserves support for
+  deeply nested LCNF payloads.
   Missing or malformed facts and inconsistent compiler identities fail with
   `LLV7102`; self-consistent historical crate versions remain supported.
 - Production bundle replay preserves literal filename characters when it
