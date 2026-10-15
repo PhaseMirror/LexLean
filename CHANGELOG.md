@@ -1206,6 +1206,9 @@ versions, and the entries below say what each tag does and does not claim.
     `true_and`, and `Option.some.injEq`. The eligibility report gains
     per-root `reasoning` rows, and its schema now admits the model and
     reasoning construct keys. The snapshot elaboration gains `theorems`.
+- The host legs of CI may run for 120 minutes, where they were cut off at 60:
+  the Intel macOS leg takes 51 to 61 minutes, and a leg cancelled at its limit
+  is not a result about the code.
 ## 0.3.0
 
 - Support exhaustive Boolean matches and keep imported list construction
