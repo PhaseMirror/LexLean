@@ -315,6 +315,22 @@ versions, and the entries below say what each tag does and does not claim.
   whole. The gate's wall time becomes the longer leg, about 2 h 40 min where the
   last full run took 3 h 16 min (an estimate from that run's timings). Each leg
   uploads its own `acceptance-gate-evidence-<leg>`.
+- Production bundle replay binds the compiler version to the producing
+  attestation and refuses an absent, empty, or non-string version with
+  `LLV7102`, including a result whose identity was recomputed after changing
+  its compiler version (`PX-07`, #136).
+- Production replay also binds the attested compiler-semantics digest to the
+  result, requires a verified `lexlean/attestation/2` envelope, and checks the
+  complete Lean-version fields in its Lean and Lake records (`PX-07`, #142).
+  The compiler input's own Lean version and commit must match the same pin;
+  reading that identity requires JSON objects and preserves support for
+  deeply nested LCNF payloads.
+  Missing or malformed facts and inconsistent compiler identities fail with
+  `LLV7102`; self-consistent historical crate versions remain supported.
+- Production bundle replay preserves literal filename characters when it
+  encodes path components, refuses non-UTF-8 names, and rejects duplicate
+  inventory paths. An extra backslash-named file or a canonical file moved to
+  such a name can no longer hide behind another bundle path (`PX-07`, #133).
 - Production export contract (SPEC.md §24.7, `PX-01`..`PX-12`, `CL-23`,
   `LLC0201`..`LLC0204`, `LLV7101`, `LLV7102`): a stable, versioned façade,
   `lexlean::api::production`, through which a consumer such as PrismPM
