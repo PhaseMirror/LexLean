@@ -1854,3 +1854,8 @@ fn conformance_au_02() {
 fn conformance_au_03() {
     repo_conformance::cases::run("AU-03");
 }
+
+#[test]
+fn conformance_au_04() {
+    repo_conformance::cases::run("AU-04");
+}

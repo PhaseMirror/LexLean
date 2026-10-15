@@ -1079,10 +1079,9 @@ fn canonical_notation(normalized: &str) -> Option<Result<String, Diagnostic>> {
 }
 
 /// A language-1.2 semantic module written as `\semanticdata{…}`, written in
-/// the notation instead; `None` for any other source. This is the one-time
-/// conversion of a module out of the data form, not part of `fmt`.
-#[must_use]
-pub fn data_module_as_notation(normalized: &str) -> Option<Result<String, Diagnostic>> {
+/// the notation instead; `None` for any other source. `fmt` writes a module
+/// this way, so it is also how a module leaves the data form.
+fn data_module_as_notation(normalized: &str) -> Option<Result<String, Diagnostic>> {
     let range = semantic_body(normalized)?;
     let data = normalized[range.0..range.1]
         .trim_start()
@@ -1107,7 +1106,9 @@ pub fn data_module_as_notation(normalized: &str) -> Option<Result<String, Diagno
 pub fn canonical_source(checked: &CheckedModule, closure: &Closure) -> Result<String, Diagnostic> {
     let document: &DocumentModule = &checked.document;
     if document.semantic.is_some() {
-        if let Some(rewritten) = canonical_notation(&checked.normalized) {
+        if let Some(rewritten) = canonical_notation(&checked.normalized)
+            .or_else(|| data_module_as_notation(&checked.normalized))
+        {
             return rewritten;
         }
     }

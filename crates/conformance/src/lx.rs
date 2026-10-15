@@ -309,21 +309,28 @@ pub fn axioms(names: &[&str], mut declaration: Json) -> Json {
 // --- modules ---------------------------------------------------------------
 
 /// A `.lex.tex` module of the `compiler` project: glossary, imports, and the
-/// canonical semantic data. Every `compiler` module carries the same title,
-/// so it is not a parameter.
+/// semantic module in the authoring notation (SPEC.md §17.21), which is the
+/// only form a product source is written in. Every `compiler` module carries
+/// the same title, so it is not a parameter.
 ///
 /// # Panics
 ///
-/// Panics only if `serde_json` cannot serialize a JSON value.
+/// Panics if the declarations are not a module of the closed schema.
 pub fn module_tex(name: &str, imports: &[&str], declarations: Vec<Json>) -> String {
     let mut out = format!("\\begin{{lexlean}}{{{name}}}\n\\useglossary{{lexlean.std.nat@1.2.0}}\n");
     for import in imports {
         out.push_str(&format!("\\importmodule{{{import}}}\n"));
     }
     let data = json!({"spec": "lexlean/semantic-module/2", "declarations": declarations});
+    let module = lexlean::artifact::canonical_json::Json::parse(
+        serde_json::to_string(&data)
+            .expect("module data serializes")
+            .as_bytes(),
+    )
+    .expect("module JSON");
     out.push_str(&format!(
-        "\\title{{Natural number addition}}\n\\begin{{semanticmodule}}\n\\semanticdata{{{}}}\n\\end{{semanticmodule}}\n\\end{{lexlean}}\n",
-        serde_json::to_string(&data).expect("module data serializes")
+        "\\title{{Natural number addition}}\n\\begin{{semanticmodule}}\n{}\\end{{semanticmodule}}\n\\end{{lexlean}}\n",
+        lexlean::surface::semantic::print_module(&module).expect("the module has a notation")
     ));
     out
 }
