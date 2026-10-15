@@ -302,6 +302,11 @@ versions, and the entries below say what each tag does and does not claim.
   attestation and refuses an absent, empty, or non-string version with
   `LLV7102`, including a result whose identity was recomputed after changing
   its compiler version (`PX-07`, #136).
+- Production replay also binds the attested compiler-semantics digest to the
+  result, requires a verified `lexlean/attestation/2` envelope, and checks the
+  complete Lean-version fields in its Lean and Lake records (`PX-07`, #142).
+  Missing or malformed facts and inconsistent compiler identities fail with
+  `LLV7102`; self-consistent historical crate versions remain supported.
 - Production bundle replay preserves literal filename characters when it
   encodes path components, refuses non-UTF-8 names, and rejects duplicate
   inventory paths. An extra backslash-named file or a canonical file moved to

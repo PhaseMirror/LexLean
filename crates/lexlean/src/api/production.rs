@@ -744,11 +744,61 @@ fn parse_preservation(bytes: &[u8]) -> Result<Preservation, String> {
 struct AttestationFacts {
     attestation_id: Sha256Digest,
     compiler_version: String,
+    compiler_semantics: Sha256Digest,
     source_id: Sha256Digest,
     semantic_id: Sha256Digest,
     build_id: Sha256Digest,
     compiler_input: (u64, Sha256Digest),
     preservation: (u64, Sha256Digest),
+}
+
+fn reports_pinned_lean_version(tool: &str, banner: &str) -> bool {
+    if banner.contains(['\n', '\r']) {
+        return false;
+    }
+    // Lake's own version does not identify Lean; only the whole enclosed
+    // Lean version field can establish the pin the result states.
+    let version = match tool {
+        "lean" => banner
+            .strip_prefix("Lean (version ")
+            .and_then(|rest| rest.strip_suffix(')'))
+            .and_then(|rest| rest.split_once(", "))
+            .filter(|(_, details)| !details.is_empty())
+            .map(|(version, _)| version),
+        "lake" => banner
+            .strip_prefix("Lake version ")
+            .and_then(|rest| rest.strip_suffix(')'))
+            .and_then(|rest| rest.split_once(" (Lean version "))
+            .filter(|(lake, _)| !lake.is_empty() && !lake.contains(char::is_whitespace))
+            .map(|(_, version)| version),
+        _ => None,
+    };
+    version == Some(crate::LEAN_VERSION)
+}
+
+fn require_attested_toolchain(body: &BTreeMap<String, Json>) -> Result<(), String> {
+    let Some(Json::Obj(toolchain)) = body.get("toolchain") else {
+        return Err("attestation.json states no `toolchain` object".to_owned());
+    };
+    for tool in ["lean", "lake"] {
+        let Some(Json::Obj(record)) = toolchain.get(tool) else {
+            return Err(format!(
+                "attestation.json states no `toolchain.{tool}` object"
+            ));
+        };
+        let Some(Json::Str(banner)) = record.get("version_output") else {
+            return Err(format!(
+                "attestation.json states no string `toolchain.{tool}.version_output`"
+            ));
+        };
+        if !reports_pinned_lean_version(tool, banner) {
+            return Err(format!(
+                "attestation.json `toolchain.{tool}.version_output` does not report Lean {}",
+                crate::LEAN_VERSION
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn attestation_facts(bytes: &[u8]) -> Result<AttestationFacts, String> {
@@ -767,6 +817,13 @@ fn attestation_facts(bytes: &[u8]) -> Result<AttestationFacts, String> {
             "attestation.json states {stated}, its body hashes to {recomputed}"
         ));
     }
+    for (field, expected) in [("spec", "lexlean/attestation/2"), ("status", "verified")] {
+        if !matches!(body.get(field), Some(Json::Str(value)) if value == expected) {
+            return Err(format!(
+                "attestation.json requires `{field}` = `{expected}`"
+            ));
+        }
+    }
     let Some(Json::Obj(compiler)) = body.get("lexlean") else {
         return Err("attestation.json states no `lexlean` compiler object".to_owned());
     };
@@ -776,6 +833,12 @@ fn attestation_facts(bytes: &[u8]) -> Result<AttestationFacts, String> {
     if compiler_version.is_empty() {
         return Err("attestation.json states an empty `lexlean.version`".to_owned());
     }
+    let Some(Json::Str(compiler_semantics)) = compiler.get("compiler_semantics") else {
+        return Err("attestation.json states no string `lexlean.compiler_semantics`".to_owned());
+    };
+    let compiler_semantics = Sha256Digest::from_hex(compiler_semantics)
+        .map_err(|reason| format!("attestation.json `lexlean.compiler_semantics`: {reason}"))?;
+    require_attested_toolchain(&body)?;
     let digest = |name: &str| -> Result<Sha256Digest, String> {
         match body.get(name) {
             Some(Json::Str(hex)) => Sha256Digest::from_hex(hex),
@@ -801,6 +864,7 @@ fn attestation_facts(bytes: &[u8]) -> Result<AttestationFacts, String> {
     Ok(AttestationFacts {
         attestation_id: stated,
         compiler_version: compiler_version.clone(),
+        compiler_semantics,
         source_id: digest("source_id")?,
         semantic_id: digest("semantic_id")?,
         build_id: digest("build_id")?,
@@ -1522,6 +1586,10 @@ fn replay_files(files: &[(String, Vec<u8>)]) -> Result<ReplayReport, LexLeanErro
         attestation.compiler_version == result.compiler.version,
     )?;
     bind(
+        "the compiler semantics",
+        attestation.compiler_semantics == result.compiler.semantics,
+    )?;
+    bind(
         "the source ID",
         attestation.source_id == result.source.source_id,
     )?;
@@ -1807,10 +1875,29 @@ impl ReplayReport {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::{attestation_facts, collect_bundle, replay_files};
     use crate::artifact::canonical_json::Json;
     use crate::artifact::content_id::{attestation_id, Sha256Digest};
     use camino::Utf8Path;
+
+    fn compiler_with_version(version: Json) -> Json {
+        Json::object(vec![
+            ("version", version),
+            (
+                "compiler_semantics",
+                Json::Str(Sha256Digest::of(b"compiler semantics fixture").to_hex()),
+            ),
+        ])
+    }
+
+    fn hashed_attestation(mut body: BTreeMap<String, Json>) -> Vec<u8> {
+        body.remove("attestation_id");
+        let id = attestation_id(&Json::Obj(body.clone()).to_canonical_string());
+        body.insert("attestation_id".to_owned(), Json::Str(id.to_hex()));
+        Json::Obj(body).to_file_bytes()
+    }
 
     fn attestation_with_compiler(compiler: Option<Json>) -> Vec<u8> {
         let digest = Sha256Digest::of(b"attestation fixture").to_hex();
@@ -1828,14 +1915,57 @@ mod tests {
             ("build_id", Json::Str(digest.clone())),
             ("compiler_input", row()),
             ("preservation", row()),
+            (
+                "toolchain",
+                Json::object(vec![
+                    (
+                        "lean",
+                        Json::object(vec![(
+                            "version_output",
+                            Json::Str("Lean (version 4.32.1, release)".to_owned()),
+                        )]),
+                    ),
+                    (
+                        "lake",
+                        Json::object(vec![(
+                            "version_output",
+                            Json::Str("Lake version 5.0.0 (Lean version 4.32.1)".to_owned()),
+                        )]),
+                    ),
+                ]),
+            ),
         ];
         if let Some(compiler) = compiler {
             fields.push(("lexlean", compiler));
         }
-        let body = Json::object(fields.clone());
-        let id = attestation_id(&body.to_canonical_string());
-        fields.push(("attestation_id", Json::Str(id.to_hex())));
-        Json::object(fields).to_file_bytes()
+        hashed_attestation(
+            fields
+                .into_iter()
+                .map(|(key, value)| (key.to_owned(), value))
+                .collect(),
+        )
+    }
+
+    fn edited_attestation(path: &[&str], value: Option<Json>) -> Vec<u8> {
+        let bytes =
+            attestation_with_compiler(Some(compiler_with_version(Json::Str("0.0.1".to_owned()))));
+        let Json::Obj(mut body) = Json::parse(&bytes).expect("fixture JSON") else {
+            panic!("fixture object");
+        };
+        let (field, parents) = path.split_last().expect("a field path");
+        let mut object = &mut body;
+        for parent in parents {
+            let Some(Json::Obj(child)) = object.get_mut(*parent) else {
+                panic!("fixture object {parent}");
+            };
+            object = child;
+        }
+        if let Some(value) = value {
+            object.insert((*field).to_owned(), value);
+        } else {
+            object.remove(*field);
+        }
+        hashed_attestation(body)
     }
 
     #[test]
@@ -1850,7 +1980,7 @@ mod tests {
 
     #[test]
     fn attestation_facts_refuses_non_string_compiler_version() {
-        let compiler = Json::object(vec![("version", Json::Int(1))]);
+        let compiler = compiler_with_version(Json::Int(1));
         assert!(
             attestation_facts(&attestation_with_compiler(Some(compiler))).is_err(),
             "a hash-correct attestation's producing compiler version must be a string"
@@ -1859,7 +1989,7 @@ mod tests {
 
     #[test]
     fn attestation_facts_refuses_empty_compiler_version() {
-        let compiler = Json::object(vec![("version", Json::Str(String::new()))]);
+        let compiler = compiler_with_version(Json::Str(String::new()));
         assert!(
             attestation_facts(&attestation_with_compiler(Some(compiler))).is_err(),
             "a hash-correct attestation's producing compiler version must not be empty"
@@ -1868,10 +1998,92 @@ mod tests {
 
     #[test]
     fn attestation_facts_accepts_a_producing_compiler_version() {
-        let compiler = Json::object(vec![("version", Json::Str("0.0.1".to_owned()))]);
+        let compiler = compiler_with_version(Json::Str("0.0.1".to_owned()));
         let facts = attestation_facts(&attestation_with_compiler(Some(compiler)))
             .expect("the producing version may differ from this compiler's version");
         assert_eq!(facts.compiler_version, "0.0.1");
+    }
+
+    #[test]
+    fn attestation_facts_refuses_missing_or_malformed_compiler_semantics() {
+        for value in [
+            None,
+            Some(Json::Int(1)),
+            Some(Json::Str(String::new())),
+            Some(Json::Str("not a digest".to_owned())),
+            Some(Json::Str("A".repeat(64))),
+        ] {
+            let bytes = edited_attestation(&["lexlean", "compiler_semantics"], value.clone());
+            assert!(
+                attestation_facts(&bytes).is_err(),
+                "a hash-correct attestation needs a compiler-semantics digest: {value:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn attestation_facts_refuses_missing_or_malformed_verification_envelope() {
+        for (field, wrong) in [("spec", "lexlean/attestation/1"), ("status", "unverified")] {
+            for value in [None, Some(Json::Int(1)), Some(Json::Str(wrong.to_owned()))] {
+                let bytes = edited_attestation(&[field], value.clone());
+                assert!(
+                    attestation_facts(&bytes).is_err(),
+                    "a hash-correct attestation needs its verification envelope: {field} = {value:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn attestation_facts_refuses_missing_or_malformed_toolchain_facts() {
+        let paths: &[&[&str]] = &[
+            &["toolchain"],
+            &["toolchain", "lean"],
+            &["toolchain", "lake"],
+            &["toolchain", "lean", "version_output"],
+            &["toolchain", "lake", "version_output"],
+        ];
+        for path in paths {
+            for value in [None, Some(Json::Int(1)), Some(Json::object(Vec::new()))] {
+                let bytes = edited_attestation(path, value.clone());
+                assert!(
+                    attestation_facts(&bytes).is_err(),
+                    "a hash-correct attestation needs toolchain facts: {path:?} = {value:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn attestation_facts_refuses_foreign_or_colliding_lean_versions() {
+        for (tool, banner) in [
+            ("lean", ""),
+            ("lean", "unrecognized banner 4.32.1"),
+            ("lean", "Lean (version 4.32.10, release)"),
+            ("lean", "Lean (version 4.32.1-rc1, release)"),
+            ("lean", "Lean (version 4.31.0, built with 4.32.1)"),
+            ("lean", "Lean (version 4.32.1, release"),
+            ("lean", "Lean (version 4.32.1, release)\nextra output"),
+            ("lake", ""),
+            ("lake", "unrecognized banner 4.32.1"),
+            ("lake", "Lake version 5.0.0 (Lean version 4.32.10)"),
+            ("lake", "Lake version 5.0.0 (Lean version 4.32.1-rc1)"),
+            ("lake", "Lake version 4.32.1 (Lean version 4.31.0)"),
+            ("lake", "Lake version 5.0.0 (Lean version 4.32.1"),
+            (
+                "lake",
+                "Lake version 5.0.0 (Lean version 4.32.1)\nextra output",
+            ),
+        ] {
+            let bytes = edited_attestation(
+                &["toolchain", tool, "version_output"],
+                Some(Json::Str(banner.to_owned())),
+            );
+            assert!(
+                attestation_facts(&bytes).is_err(),
+                "a hash-correct attestation needs the pinned Lean version: {tool}: {banner:?}"
+            );
+        }
     }
 
     fn literal_backslashes() -> bool {

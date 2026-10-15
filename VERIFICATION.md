@@ -82,6 +82,35 @@ passes in 195.15 seconds, including the untouched bundle and every existing
 tamper. Formatting, workspace/all-target Clippy with warnings denied, and
 the model/spec-link audits pass (380 IDs and 80 registered codes).
 
+Before the correction for #142, `cargo test -p lexlean --lib
+api::production::tests::attestation_facts` ran eight filtered tests in 0.00
+seconds: the four existing tests passed and all four new tests failed. The
+new tests require the producing compiler-semantics digest, a verified
+`lexlean/attestation/2` envelope, and exact pinned Lean-version fields in
+both the Lean and Lake records, including refusals of missing or malformed
+facts, wrong patches, prereleases, and unrelated occurrences of the pin.
+Compilation took 41.22 seconds; these are helper tests without Lean work.
+
+Replay now checks those facts after recomputing the attestation identity
+and binds its compiler semantics to the result. The compiler version stays
+a comparison with the producing attestation, preserving historical versions;
+the existing requirement that replay use the producing semantics and pinned
+Lean toolchain is unchanged.
+
+The expanded `PX-07` matrix changes the attestation's compiler semantics,
+Lean and Lake version facts, schema tag, and verification status. It
+refreshes the attestation identity, its file length and SHA-256, and both
+enclosing result bindings, so the assertions target consistency rather than
+an outdated digest. It shares its existing export and retains a
+self-consistent historical compiler-version case. The Lean-backed matrix
+belongs to `just bdd` and uses that existing export, without a second
+verification for these regressions.
+
+After the correction, `cargo test -p lexlean --lib
+api::production::tests` passes all twelve helper and inventory tests in
+0.01 seconds. Formatting, workspace/all-target Clippy with warnings denied,
+and the model/spec-link audits pass (380 IDs and 80 registered codes).
+
 ### release inventory can fail
 
 `release-artifacts` derives the tree manifest directly from the captured crate
