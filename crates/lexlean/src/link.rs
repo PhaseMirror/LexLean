@@ -816,9 +816,41 @@ fn check_project_inline(
                 )
                 .with_span(span())]));
             }
+            // The notation is read to the canonical JSON the decoder reads
+            // (§17.21), as for a semantic module.
+            let data: std::borrow::Cow<'_, str> = if ast.surface {
+                if project.config.language != crate::LANGUAGE_1_2 {
+                    return Err(err(vec![Diagnostic::new(
+                        code!("LLT4013"),
+                        "phase link: a tooling module requires language 1.2",
+                    )
+                    .with_span(span())]));
+                }
+                match crate::surface::tooling::parse_module(
+                    &ast.data.text,
+                    crate::ir::tooling::TOOLING_SPEC,
+                ) {
+                    Ok(json) => std::borrow::Cow::Owned(json.to_canonical_string()),
+                    Err(error) => {
+                        return Err(err(vec![Diagnostic::new(
+                            code!("LLP2001"),
+                            format!("phase link: tooling notation: {}", error.message),
+                        )
+                        .with_span(notation_span(
+                            &load.path,
+                            &load.atoms,
+                            ast.data.range,
+                            ast.begin,
+                            error.offset,
+                        ))]));
+                    }
+                }
+            } else {
+                std::borrow::Cow::Borrowed(ast.data.text.as_str())
+            };
             Some(
                 ToolingModule::parse(
-                    &ast.data.text,
+                    &data,
                     &project.config.language,
                     AuthorityPin {
                         lean_version: crate::LEAN_VERSION,

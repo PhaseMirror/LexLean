@@ -6753,10 +6753,11 @@ shortened), after which the defect was removed.
 
 ## The authoring notation (Issue #93, stage 3 of #27)
 
-`AU-01`..`AU-04` (SPEC.md §17.21) state that the notation and the canonical
+`AU-01`..`AU-06` (SPEC.md §17.21) state that the notation and the canonical
 JSON of the closed schema are in bijection, that a module in the notation is
-the module its data form is, that malformed notation fails closed, and that
-every language-1.2 source of the repository is written in it. The
+the module its data form is, that malformed notation fails closed, that
+every language-1.2 source of the repository is written in it, that the same
+holds for tooling modules, and that no identity depends on the form. The
 corpus of `AU-01` is every committed semantic module of language 1.2 (290 modules
 with 4,949 declarations at this writing), and its samples are read from the schema, one for each
 alternative of the declaration, term, type, and proof unions with and without
@@ -6891,8 +6892,49 @@ reached. They now reap the children that have exited. The planted removal of
 the registration lock, which the case exists to catch, still fails it in cycle
 0: `a child started concurrently with the call survived it`.
 
+Tooling modules in the notation (`AU-05`) and the identity that does not depend
+on the form (`AU-06`) add three more, each one edit of the compiler:
+
+- **a declaration span one byte late.** The span of each declaration of a
+  tooling module is shifted one byte, so the source map names text that is
+  not the declaration. `-- conformance_au_05`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:793:13:
+  assertion `left == right` failed: …/tests/tooling/traversal/src/Main.lex.tex: a span is not its own declaration
+    left: Obj({"constructors": …, "kind": Str("ype"), "name": Str("Lean.Compiler.LCNF.Purity"), …
+  ```
+
+- **a formatter that leaves a tooling module alone.** `canonical_source` no
+  longer rewrites a tooling module, so one written as `\toolingdata` is
+  canonical. `-- conformance_au_05`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:817:9:
+  assertion `left == right` failed: commands: fmt did not write the data form as the committed notation
+  ```
+
+- **an identity of the bytes of a file.** The compiler-semantics ID hashes the
+  file as it is, so the form the adapter's source is written in is part of
+  what the compiler means. `-- conformance_au_06`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:960:17:
+  assertion `left == right` failed: language/lcnf-1.2/tooling/src/Extract.lex.tex: a notation module contributes its data form
+  ```
+
+The four committed tooling sources are migrated with the same printer `fmt`
+uses, and that is checked by what must not change: `check-calculus` finds the
+994 generated files, among them the adapter's tooling module and the three
+fixtures, equal to their generator, which now writes the notation; the locks
+of every example are current under the unchanged language-1.2 ID, which
+`AU-06` recomputes from the tree with the adapter's source in the notation and
+as data; the regenerated goldens of the three fixtures are source IDs, source
+maps, and coverage records only.
+
 Removed: each edit was restored; `conformance_au_01`, `conformance_au_02`,
-`conformance_au_03`, and `conformance_au_04` pass. The generic notation has its own property test over
+`conformance_au_03`, `conformance_au_04`, `conformance_au_05`, and
+`conformance_au_06` pass. The generic notation has its own property test over
 arbitrary canonical JSON values (`surface::generic`), and every alternative of
 the schema its own sample (`surface::semantic`), as unit tests of the
 `lexlean` crate.

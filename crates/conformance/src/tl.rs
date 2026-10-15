@@ -251,10 +251,20 @@ pub fn module(authority: &str, imports: Vec<String>, declarations: Vec<Json>) ->
     })
 }
 
-/// The canonical LaTeX source of a project's one tooling module.
+/// The canonical LaTeX source of a project's one tooling module, with the
+/// module written in the authoring notation (SPEC.md §17.21), the form a
+/// source of the product is written in.
+///
+/// # Panics
+///
+/// When `data` is not a tooling module.
 pub fn module_tex(module: &str, title: &str, glossary: &str, data: &Json) -> String {
+    let canonical = lexlean::artifact::canonical_json::Json::parse(
+        serde_json::to_string(data).expect("serializes").as_bytes(),
+    )
+    .expect("module JSON");
     format!(
-        "\\begin{{lexlean}}{{{module}}}\n\\useglossary{{{glossary}}}\n\\title{{{title}}}\n\\begin{{toolingmodule}}\n\\toolingdata{{{}}}\n\\end{{toolingmodule}}\n\\end{{lexlean}}\n",
-        serde_json::to_string(data).expect("serializes")
+        "\\begin{{lexlean}}{{{module}}}\n\\useglossary{{{glossary}}}\n\\title{{{title}}}\n\\begin{{toolingmodule}}\n{}\\end{{toolingmodule}}\n\\end{{lexlean}}\n",
+        lexlean::surface::tooling::print_module(&canonical).expect("the module has a notation")
     )
 }

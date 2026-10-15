@@ -1023,28 +1023,83 @@ impl Fmt<'_> {
     }
 }
 
-/// The body of a semantic module in `normalized` and the byte range it
-/// occupies: the text between `\begin{semanticmodule}` and
-/// `\end{semanticmodule}`.
-fn semantic_body(normalized: &str) -> Option<(usize, usize)> {
-    const BEGIN: &str = "\\begin{semanticmodule}";
-    const END: &str = "\\end{semanticmodule}";
-    let start = normalized.find(BEGIN)? + BEGIN.len();
-    let end = normalized.rfind(END)?;
+/// Which kind of module whose body is data or the authoring notation
+/// (SPEC.md §17.21) a source is.
+#[derive(Clone, Copy)]
+enum Surface {
+    Semantic,
+    Tooling,
+}
+
+impl Surface {
+    /// The environment the module is written in.
+    fn environment(self) -> &'static str {
+        match self {
+            Self::Semantic => "semanticmodule",
+            Self::Tooling => "toolingmodule",
+        }
+    }
+
+    /// The control of the data form.
+    fn control(self) -> &'static str {
+        match self {
+            Self::Semantic => "\\semanticdata",
+            Self::Tooling => "\\toolingdata",
+        }
+    }
+
+    /// The schema tag the language implies for a module in the notation.
+    fn spec(self) -> Option<&'static str> {
+        match self {
+            Self::Semantic => crate::ir::semantic::semantic_module_spec(crate::LANGUAGE_1_2),
+            Self::Tooling => Some(crate::ir::tooling::TOOLING_SPEC),
+        }
+    }
+
+    fn print(
+        self,
+        module: &crate::artifact::canonical_json::Json,
+    ) -> Result<String, crate::surface::SurfaceError> {
+        match self {
+            Self::Semantic => crate::surface::semantic::print_module(module),
+            Self::Tooling => crate::surface::tooling::print_module(module),
+        }
+    }
+
+    fn parse(
+        self,
+        body: &str,
+        spec: &str,
+    ) -> Result<crate::artifact::canonical_json::Json, crate::surface::SurfaceError> {
+        match self {
+            Self::Semantic => crate::surface::semantic::parse_module(body, spec),
+            Self::Tooling => crate::surface::tooling::parse_module(body, spec),
+        }
+    }
+}
+
+/// The body of the module of kind `surface` in `normalized` and the byte range
+/// it occupies: the text between `\begin{…}` and `\end{…}` of its environment.
+fn module_body(normalized: &str, surface: Surface) -> Option<(usize, usize)> {
+    let begin = format!("\\begin{{{}}}", surface.environment());
+    let end = format!("\\end{{{}}}", surface.environment());
+    let start = normalized.find(&begin)? + begin.len();
+    let end = normalized.rfind(&end)?;
     (start <= end).then_some((start, end))
 }
 
-/// `normalized` with the body of its semantic module replaced by the
-/// notation of `module`.
+/// `normalized` with the body of its module replaced by the notation of
+/// `module`.
 fn with_notation(
     normalized: &str,
     range: (usize, usize),
+    surface: Surface,
     module: &crate::artifact::canonical_json::Json,
 ) -> Result<String, Diagnostic> {
-    let printed = crate::surface::semantic::print_module(module).map_err(|error| {
+    let printed = surface.print(module).map_err(|error| {
         Diagnostic::new(
             code!("LLP2001"),
-            format!("phase fmt: semantic notation: {}", error.message),
+            format!("phase fmt: module notation: {}", error.message),
         )
     })?;
     Ok(format!(
@@ -1054,44 +1109,48 @@ fn with_notation(
     ))
 }
 
-/// The canonical source of a semantic module written in the authoring
-/// notation (SPEC.md §17.21): the module as it is, with the text between
-/// `\begin{semanticmodule}` and `\end{semanticmodule}` replaced by the
-/// notation of what it says. `None` for a module written as `\semanticdata`,
-/// whose payload is already the canonical JSON linking required.
-fn canonical_notation(normalized: &str) -> Option<Result<String, Diagnostic>> {
-    let range = semantic_body(normalized)?;
+/// The canonical source of a module written in the authoring notation
+/// (SPEC.md §17.21): the module as it is, with the text between its
+/// environment's markers replaced by the notation of what it says. `None` for
+/// a module written as data, whose payload is already the canonical JSON
+/// linking required.
+fn canonical_notation(normalized: &str, surface: Surface) -> Option<Result<String, Diagnostic>> {
+    let range = module_body(normalized, surface)?;
     let body = &normalized[range.0..range.1];
-    if body.trim_start().starts_with("\\semanticdata") {
+    if body.trim_start().starts_with(surface.control()) {
         return None;
     }
-    let spec = crate::ir::semantic::semantic_module_spec(crate::LANGUAGE_1_2)?;
+    let spec = surface.spec()?;
     Some(
-        crate::surface::semantic::parse_module(body, spec)
+        surface
+            .parse(body, spec)
             .map_err(|error| {
                 Diagnostic::new(
                     code!("LLP2001"),
-                    format!("phase fmt: semantic notation: {}", error.message),
+                    format!("phase fmt: module notation: {}", error.message),
                 )
             })
-            .and_then(|module| with_notation(normalized, range, &module)),
+            .and_then(|module| with_notation(normalized, range, surface, &module)),
     )
 }
 
-/// A language-1.2 semantic module written as `\semanticdata{…}`, written in
-/// the notation instead; `None` for any other source. `fmt` writes a module
-/// this way, so it is also how a module leaves the data form.
-fn data_module_as_notation(normalized: &str) -> Option<Result<String, Diagnostic>> {
-    let range = semantic_body(normalized)?;
+/// A language-1.2 module written as `\semanticdata{…}` (`\toolingdata{…}`),
+/// written in the notation instead; `None` for any other source. `fmt` writes
+/// a module this way, so it is also how a module leaves the data form.
+fn data_module_as_notation(
+    normalized: &str,
+    surface: Surface,
+) -> Option<Result<String, Diagnostic>> {
+    let range = module_body(normalized, surface)?;
     let data = normalized[range.0..range.1]
         .trim_start()
-        .strip_prefix("\\semanticdata")?;
+        .strip_prefix(surface.control())?;
     let payload = data
         .trim_start()
         .strip_prefix('{')?
         .trim_end()
         .strip_suffix('}')?;
-    let spec = crate::ir::semantic::semantic_module_spec(crate::LANGUAGE_1_2)?;
+    let spec = surface.spec()?;
     let json = crate::artifact::canonical_json::Json::parse(payload.as_bytes()).ok()?;
     match &json {
         crate::artifact::canonical_json::Json::Obj(object)
@@ -1099,17 +1158,22 @@ fn data_module_as_notation(normalized: &str) -> Option<Result<String, Diagnostic
                 == Some(&crate::artifact::canonical_json::Json::Str(spec.to_owned())) => {}
         _ => return None,
     }
-    Some(with_notation(normalized, range, &json))
+    Some(with_notation(normalized, range, surface, &json))
 }
 
 /// Render the canonical source of one checked module (§23.5).
 pub fn canonical_source(checked: &CheckedModule, closure: &Closure) -> Result<String, Diagnostic> {
     let document: &DocumentModule = &checked.document;
-    if document.semantic.is_some() {
-        if let Some(rewritten) = canonical_notation(&checked.normalized)
-            .or_else(|| data_module_as_notation(&checked.normalized))
-        {
-            return rewritten;
+    for (present, surface) in [
+        (document.semantic.is_some(), Surface::Semantic),
+        (document.tooling.is_some(), Surface::Tooling),
+    ] {
+        if present {
+            if let Some(rewritten) = canonical_notation(&checked.normalized, surface)
+                .or_else(|| data_module_as_notation(&checked.normalized, surface))
+            {
+                return rewritten;
+            }
         }
     }
     if document.core.is_some() || document.semantic.is_some() || document.tooling.is_some() {
