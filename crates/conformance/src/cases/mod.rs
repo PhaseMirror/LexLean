@@ -6,6 +6,7 @@
 
 mod artifacts;
 mod authoring;
+mod authoring_core;
 mod calculus;
 mod certification;
 mod cli_api;

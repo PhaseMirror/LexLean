@@ -2411,9 +2411,13 @@ fn gc_09() {
 const PLANTED_THEOREM: &str = "LexLeanCertification.schema_cheaper";
 
 /// The native source of `stem`.
+/// The source of a native module as its data form: the canonical JSON the
+/// textual edits below are made in, whichever form the committed source is
+/// written in (§17.21.8).
 fn native_source(stem: &str) -> String {
-    std::fs::read_to_string(repo_root().join(library::source_path(stem)).as_std_path())
-        .unwrap_or_else(|error| panic!("{stem}: {error}"))
+    let text = std::fs::read_to_string(repo_root().join(library::source_path(stem)).as_std_path())
+        .unwrap_or_else(|error| panic!("{stem}: {error}"));
+    lexlean::sdk::to_data_form(&text).unwrap_or_else(|error| panic!("{stem}: {error}"))
 }
 
 /// The Lean of a native module whose source is `source`.

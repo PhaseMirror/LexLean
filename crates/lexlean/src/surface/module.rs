@@ -4,7 +4,8 @@
 //! One table serves everything that reads a source's module without linking
 //! it: the formatter, the identity of the embedded tree, and the authoring
 //! API. A module is the body of one environment, either `\semanticdata{…}`
-//! (`\toolingdata{…}`) holding canonical JSON, or the notation of the module.
+//! (`\toolingdata{…}`, `\coredata{…}`) holding canonical JSON, or the
+//! notation of the module.
 
 use crate::artifact::canonical_json::Json;
 
@@ -48,8 +49,36 @@ pub const TOOLING: Kind = Kind {
     print: super::tooling::print_module,
 };
 
+/// Native core modules (§17.10).
+pub const CORE: Kind = Kind {
+    environment: "coremodule",
+    control: "\\coredata",
+    spec: || Some(crate::ir::core::CORE_SPEC_2),
+    parse: core_parse,
+    print: core_print,
+};
+
 /// The kinds, in the order a source is searched for them.
-pub const KINDS: [&Kind; 2] = [&SEMANTIC, &TOOLING];
+pub const KINDS: [&Kind; 3] = [&SEMANTIC, &TOOLING, &CORE];
+
+fn fail(message: impl Into<String>) -> SurfaceError {
+    SurfaceError {
+        offset: 0,
+        message: message.into(),
+    }
+}
+
+/// The notation of a core module as the canonical JSON the other kinds read
+/// to: the whole module as a value, which the larger modules make costly;
+/// [`Kind::data_text`] is the form that avoids it.
+fn core_parse(text: &str, spec: &str) -> Result<Json, SurfaceError> {
+    let data = super::core::data_text(text, spec)?;
+    Json::parse(data.as_bytes()).map_err(fail)
+}
+
+fn core_print(module: &Json) -> Result<String, SurfaceError> {
+    super::core::print_data(&module.to_canonical_string())
+}
 
 /// Where the module of a source is.
 pub struct Located {
@@ -68,6 +97,53 @@ impl Kind {
     #[must_use]
     pub fn is(&self, other: &Kind) -> bool {
         self.environment == other.environment
+    }
+
+    /// The canonical JSON text of the module a notation reads to: what a
+    /// source of this kind written as data holds between the braces of its
+    /// control.
+    ///
+    /// # Errors
+    ///
+    /// Text that is not the notation of a module.
+    pub fn data_text(&self, notation: &str, spec: &str) -> Result<String, SurfaceError> {
+        if self.is(&CORE) {
+            super::core::data_text(notation, spec)
+        } else {
+            (self.parse)(notation, spec).map(|module| module.to_canonical_string())
+        }
+    }
+
+    /// The notation of the module whose canonical JSON text is `data`, when
+    /// it is a module under the schema the notation names: `None` for text
+    /// that is not (a module of another schema has no notation, §17.21.5).
+    #[must_use]
+    pub fn notation_of_data(&self, data: &str) -> Option<Result<String, SurfaceError>> {
+        let spec = (self.spec)()?;
+        if self.is(&CORE) {
+            let module: crate::ir::core::CoreModule = serde_json::from_str(data).ok()?;
+            return (module.spec == spec).then(|| super::core::print_module(&module));
+        }
+        let json = Json::parse(data.as_bytes()).ok()?;
+        match &json {
+            Json::Obj(members) if members.get("spec") == Some(&Json::Str(spec.to_owned())) => {
+                Some((self.print)(&json))
+            }
+            _ => None,
+        }
+    }
+
+    /// The canonical notation of the module a notation reads to.
+    ///
+    /// # Errors
+    ///
+    /// Text that is not the notation of a module.
+    pub fn reprint(&self, notation: &str, spec: &str) -> Result<String, SurfaceError> {
+        if self.is(&CORE) {
+            super::core::print_module(&super::core::parse_module(notation)?)
+        } else {
+            (self.print)(&(self.parse)(notation, spec)?)
+        }
     }
 
     /// The environment's opening marker.
