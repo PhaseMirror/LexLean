@@ -3772,15 +3772,20 @@ that reaches it:
    effects are `allocation` when the closure requires allocation on a target
    that provides it, `overflow` for every construct whose registry row names
    the representation of its result, and `recursion` for every recursive
-   definition.
+   definition and every construct whose registry row implies it.
 
 Two realization obligations follow from these rules and bind every later
 production stage. A `Nat` or `Int` value crossing a root boundary is
 represented in the target width, so a caller cannot supply a value outside it,
 and every value the realization computes outside it is the `overflow`
-failure, never a wrapped or truncated value. Primitive operations are
-realized without recursion; only recursive definitions of the closure carry
-the `recursion` effect.
+failure, never a wrapped or truncated value. A primitive realized by a
+runtime item is a loop and carries no recursion; a primitive realized by a
+library template (§17.14: the map, set, fold, iteration, and graph
+primitives) carries it, because a template calls itself and so the depth of
+its calls is bounded only by its input. The registry states exactly that, and
+`conformance_tc_06` derives it from the realization table rather than
+trusting the row. A root whose closure applies such a primitive admits
+`recursion`, as does a root with a recursive definition.
 
 The analysis is a conservative over-approximation of effects: it may require a
 root to admit an effect its realization never exhibits, and it never admits a
@@ -8936,7 +8941,7 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `TC-03` | `calculus` | The calculus denotation is a kernel-checked LexLean definition that charges every evaluator operation, Lean's kernel reduces every kernel-reducible fixture to its expected outcome with its exact step count, no fixture program is stuck on its stated arguments or on seeded random well-typed arguments at any sampled fuel, and a wrong expected outcome is rejected by Lean. | §17.14 |
 | `TC-04` | `calculus` | Lean's evaluator, running the published calculus sources compiled again by pinned Lean, reproduces every fixture's expected outcome and step count, including fixtures a reflexivity proof cannot decide, and the comparison refuses a fixture stated one step off. | §17.14 |
 | `TC-05` | `calculus` | Every realization library template has a fixture whose outcome the kernel proves equal to the value LexLean's own collection primitive computes, committed instances equal their templates, and a mutated template is rejected by Lean. | §17.12, §17.14 |
-| `TC-06` | `calculus` | Every runtime construct of the production registry has exactly one realization row naming existing calculus elements and requires allocation exactly when its realization does, and the fixtures exercise every calculus type, literal, expression, shape, primitive, and template, and every fixed-width primitive at every width it admits. | §17.13, §17.14 |
+| `TC-06` | `calculus` | Every runtime construct of the production registry has exactly one realization row naming existing calculus elements and requires allocation and implies recursion exactly when its realization does, and the fixtures exercise every calculus type, literal, expression, shape, primitive, and template, and every fixed-width primitive at every width it admits. | §17.13, §17.14 |
 | `TC-07` | `calculus` | Every fixture with an observable outcome renders to a safe Rust library crate in rust-std, and in rust-core exactly when it needs no heap, that the pinned rustc compiles with warnings denied, that prints exactly the denotation's value or overflow, and whose counted work never exceeds the denotation's steps; planted value and work discrepancies are detected. | §17.14 |
 | `RB-01` | `rust-backend` | Every Rust rendering is built as a closed AST each of whose constructs carries the calculus element it realizes, every correspondence row and every AST node is exercised by a run package, and a construct whose row, width, or program does not justify its element is refused. | §17.16 |
 | `RB-02` | `rust-backend` | An exported name that is not a lowercase snake-case identifier, is a Rust keyword, imitates a generated name, or is declared by the runtime, a name exported twice, and an unavailable crate name each fail with LLB6005, and a crate binding one name twice in a function is refused. | §17.16, §26.3 |
