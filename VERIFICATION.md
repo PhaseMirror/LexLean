@@ -3313,6 +3313,39 @@ truncation was restored and the packages regenerated; `conformance_rb_08`
 passes, and `conformance_tc_07` holds every fixture's counted work within
 the denotation's steps with the new runtime.
 
+### certificate budgets cover a large program
+
+Planted: nothing in this repository; the defect was observed on
+`UOR-Foundation/MNIST` at the LexLean of `d284b165`, whose model root
+`Mnist.Model.classify` (the network under its contract, its parameters ten
+`int_tensor` artifacts) renders to a 242,624-byte crate. Command:
+`lexlean verify --all` in that project. Expected before the change: the
+certificate is valid and the pinned Lean accepts it. Observed:
+
+```text
+error[LLV7015]: certificate B: `LexLeanPreserve.Cfee62143c6d631437aa7081b9c317efa.R0.RustStd` was rejected in `krate` of root `Mnist.Model.classify`: error: (deterministic) timeout at `«LCNF compiler»`, maximum number of heartbeats (200000) has been reached
+```
+
+With `program` and `krate` declared `noncomputable` (nothing compiles the
+data of the statement) the same project failed one function later:
+
+```text
+error[LLV7015]: certificate B: `LexLeanPreserve.Cfee62143c6d631437aa7081b9c317efa.R0.RustStd` was rejected in `fun37` of root `Mnist.Model.classify`: error: (deterministic) timeout at `isDefEq`, maximum number of heartbeats (200000) has been reached
+```
+
+With both budgets lifted for every certificate, as they were for a match of
+more than 100 arms, the project verifies (attestation `10a88470…`, the
+certificates A, B and E of the root replayed and audited). `conformance_sp_02`
+now asserts that the certificates of a 2-arm, a 100-arm and a 101-arm program
+all lift both budgets and that certificate B's two terms are `noncomputable`;
+reverting either half of the change fails it:
+
+```text
+thread 'conformance_sp_02' panicked at crates/conformance/src/cases/preservation.rs:
+2 arms: `LexLeanPreserve.C….R0` lacks `set_option maxHeartbeats 0
+`
+```
+
 ### rust runtime library boundary can fail
 
 Planted: the audit read its own table instead of the runtime text (`let
@@ -3336,6 +3369,7 @@ the runtime keeps to its library table: "the runtime uses the method `saturating
 Removed: the scan and the row were restored; `conformance_rb_09` passes.
 `RB-09` also plants a path, a macro, and a type outside the table, a removed
 row, an unused row, a row citing a non-primitive, and an uncited primitive.
+
 
 ### GNAF kernel oracle can fail
 
@@ -6893,9 +6927,74 @@ shortened), after which the defect was removed.
   an added file, and a removed file are each `LLV7102`, and a symlink is
   `LLS8001`.
 
+## Template recursion (Issue #105)
+
+SPEC.md §17.13, §17.14; `TC-06`, `PD-05`. The collection, fold, iteration, and
+graph primitives are realized by library templates that call themselves, so the
+Rust a root renders recurses on the stack once per element, and a root that
+scanned an 80,000-byte name aborted on an 8 MiB stack while its registry rows
+said `recursion = false` and its declaration admitted no `recursion`. The rows
+are corrected, `conformance_tc_06` derives each runtime row's `recursion` from
+its realization instead of trusting the row (the structural `recursion`
+reference, or a library template whose instance reaches itself through calls
+and closures), and `PD-05` refuses a root that iterates and does not admit the
+effect. Each record below is a defect planted in a clean tree, the command run,
+and the failure observed (paths shortened), after which the defect was removed.
+
+- **a template-realized row that says `recursion = false`.** The registry row of
+  `primitive.list_fold` set back to `false`.
+  `cargo test -p repo-conformance --test conformance -- conformance_tc_06`:
+
+  ```text
+  panicked at crates/conformance/src/cases/calculus.rs:1224:13:
+  recursion disagreements: [
+      "primitive.list_fold: registry false, realization true",
+  ```
+
+- **a runtime-item row that says `recursion = true`.** The row of
+  `primitive.map_size` (realized by the `length` item, a loop) set to `true`,
+  so the claim cannot only be raised. `conformance_tc_06`:
+
+  ```text
+  panicked at crates/conformance/src/cases/calculus.rs:1224:13:
+  recursion disagreements: [
+      "primitive.map_size: registry true, realization false",
+  ```
+
+- **a derivation that finds no recursion.** `calls_itself` made to return
+  `false` before it reads a function, so the check agrees with whatever the
+  registry says about a template. `conformance_tc_06`:
+
+  ```text
+  panicked at crates/conformance/src/cases/calculus.rs:1224:13:
+      "primitive.map_insert: registry true, realization false",
+      "primitive.map_remove: registry true, realization false",
+      "primitive.map_lookup: registry true, realization false",
+  ```
+
+- **an eligibility analysis that ignores the recursion a primitive row implies.**
+  The check in `eligibility.rs` that turns a registry row into the realized
+  effect `recursion` skips every `primitive.*` key, so a root that iterates and
+  does not admit the effect is eligible. `conformance_pd_05` (the committed
+  `iterations` root of `examples/production-coverage` with `recursion` removed
+  from its declaration must be `LLT4005`):
+
+  ```text
+  panicked at crates/conformance/src/support.rs:595:14:
+  check fails
+  ```
+
+Removed: each edit was restored; `conformance_tc_06` and `conformance_pd_05`
+pass. The registry is part of the language-1.2 compiler-semantics ID, so the
+record of this change is the regeneration it forces: locks, goldens, fixtures,
+the calculus's packages, the production export, and the verification records of
+the examples (`cargo xtask check-golden`, `check-fixtures`, `check-calculus`,
+`check-production-export`, `verify-examples --write`); only the language-1.2
+projects change, and `examples/uor-atlas` (language 1.0) is untouched.
+
 ## The authoring notation (Issue #93, stage 3 of #27)
 
-`AU-01`..`AU-08` (SPEC.md §17.21, §24.8) state that the notation and the canonical
+`AU-01`..`AU-12` (SPEC.md §17.21, §24.8) state that the notation and the canonical
 JSON of the closed schema are in bijection, that a module in the notation is
 the module its data form is, that malformed notation fails closed, that
 every language-1.2 source of the repository is written in it, that the same
@@ -7115,7 +7214,174 @@ equates the registry with a fresh derivation). The writers' own files
 calculus, the machine, and the two models were removed) are compared by
 `cargo xtask check-calculus` as before.
 
-Removed: each edit was restored; `conformance_au_01`..`conformance_au_08` pass. The generic notation has its own property test over
+Core modules in the notation (`AU-09`, `AU-10`, `AU-11`; SPEC.md §17.21.8) add
+nine plants, each one edit of the compiler, started from the passing cases:
+
+- **a rule for what is written inside its user that is not the specified
+  one.** The printer writes a node inside its user only when the nodes under it
+  are fewer than two deep, not 48. `-- conformance_au_09`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring_core.rs:322:5:
+  assertion `left == right` failed: the module that carries every kind: the statements are not the nodes the rule gives one
+    left: {0, 1, 2, …, 10, 12, 13, …, 31, 33, 34, 35}
+   right: {0, 1, 2, …, 10, 13, 14, …, 31, 33, 34, 35}
+  ```
+
+- **a canonical writer that is not the canonical JSON.** The data form of an
+  application writes its keys as `k`, `f`, `x`. `-- conformance_au_09`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring_core.rs:420:46:
+  compiler/proofs/src/Check.lex.tex: the compiler refuses it: core-module JSON is not in canonical byte form: object key `f` is not strictly ordered
+  ```
+
+- **a level written as another.** A universe parameter is written `u`
+  whatever its name. `-- conformance_au_09`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring_core.rs:313:5:
+  the module that carries every kind: the notation reads to another module
+  ```
+
+- **a source map that names the data.** The core backend's coverage names
+  `lexlean.core::coredata` for a module written in the notation.
+  `-- conformance_au_10`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring_core.rs:650:5:
+  the small module: the coverage of the notation does not name the notation
+  ```
+
+- **a formatter that leaves a core module alone.** `canonical_source` no longer
+  rewrites a core module, so one written as `\coredata` is canonical.
+  `-- conformance_au_10`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring_core.rs:575:14:
+  a module written as data is not canonical
+  ```
+
+- **a statement that need not be its node.** The reader no longer checks that
+  a label is the number of the node its statement defines, so a module whose
+  labels are wrong links. `-- conformance_au_11`:
+
+  ```text
+  panicked at crates/conformance/src/support.rs:595:14:
+  check fails
+  ```
+
+- **a nesting without a bound.** The reader's bound on nesting is raised past
+  what the case writes, so 300 parentheses read. `-- conformance_au_11`: the
+  same `check fails` from `support.rs:595:14`.
+
+- **an identity that does not read a core module's meaning.** The data form of
+  the embedded tree leaves a core module as its bytes. `-- conformance_au_06`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:934:17:
+  assertion `left == right` failed: language/preservation-1.2/library/src/Compose.lex.tex: a notation module contributes its data form
+  ```
+
+- **a library written as data again.** One module of the preservation library
+  is restored to its `\coredata` form. `-- conformance_au_04`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:661:5:
+  1 source(s) are not written in the authoring notation:
+  language/preservation-1.2/library/src/Values.lex.tex: written as data, which the notation can say
+  ```
+
+- **an API that takes a core module for another kind.** `sdk::module_kind`
+  names a core module a tooling module. `-- conformance_au_08`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:1242:71:
+  …/compiler/proofs/src/Frontier.lex.tex: the module is not a `lexlean/tooling-module/1` module, the schema its notation names
+  ```
+
+Names and statement names (`AU-12`; stage 3d of #93) add four more:
+
+- **a variable named when a nearer binder has the name.** The printer writes a
+  variable by its binder's name whether or not a nearer binder has it, so the
+  text reads to another variable. `-- conformance_au_09`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring_core.rs:340:5:
+  the module that carries every kind: the notation reads to another module
+  ```
+
+- **a constant that a binder shadows.** The printer writes a constant bare
+  even when a binder in scope is named like it, so the text reads to the
+  variable. The same failure from `conformance_au_09`.
+
+- **an arrow whose body is not under a binder.** The reader does not put the
+  anonymous binder of `A -> B` in scope, so every name in the body is one index
+  off. `-- conformance_au_12`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring_core.rs:963:9:
+  assertion `left == right` failed: compiler/proofs/src/Soundness.lex.tex: fmt does not write the numbers
+  ```
+
+- **a repeated statement name.** The reader takes the later of two statements
+  of one name. `-- conformance_au_12`:
+
+  ```text
+  panicked at crates/conformance/src/support.rs:595:14:
+  check fails
+  ```
+
+The first theorem written that way is in the certification library:
+`LexLeanCertification.authored_eq_symm` (symmetry of `Eq` by `Eq.rec`, with every
+argument and level explicit), a declaration and two statements appended to
+`Soundness`. `AU-12` writes it from its authored text on the library without
+it and finds the committed module and the committed bytes; the family `GC`
+compiles the library with the pinned Lean (the kernel checks the theorem with
+the rest), replays it with `leanchecker`, and audits its axioms (it pins none,
+and Lean prints none). The committed libraries are otherwise unchanged by names:
+a shared body is a node of its own, so a variable in it is free in its
+statement and stays `#i` (twenty-five of the twenty-six modules are the same
+bytes; one differs by two).
+
+A first plant found a defect in the rule and not in the code: the printer and
+the case both excluded the nodes a declaration states from being written
+inside their user, which counting a declaration's use of its roots already
+does, so that condition could not be exercised and was removed from both.
+
+The 26 committed language-1.2 core modules are migrated with the same printer
+`fmt` uses, after the reading of each was checked against the data it came from:
+the canonical JSON of the notation of every one of them is the committed JSON
+byte for byte, the compiler's own decoder (`CoreModule::parse`, with its check
+of the canonical byte form and its validation) accepts it, and the 66 Atlas
+modules (language 1.0, written as data) are written back byte for byte by the
+same canonical writer and read back equal as modules of the schema the notation
+names. What must not change did not: the compiler-semantics ID of language 1.2
+is still `464235ad…`, the locks of every example are current, `check-golden`
+finds every published artifact equal to its oracle, and `check-production-export`
+finds every exported package equal to its committed package (16 minutes). The
+migrated sources are 0.61 to 0.85 of the size of the data they were (24.4 MB
+against 28.8 MB for the largest module), and reading the identity of language 1.2
+takes 0.8 s on four cores in a release build.
+
+A second defect was found by CI and not by any case: `library_identity` (the
+`library.registry_sha256` of every `preservation.json`) hashed the embedded
+native library as text, so writing the 26 modules in the notation changed the
+record of `examples/models` (`verify-examples`, R10) although no module's
+meaning changed, which is what `AU-06` says cannot happen. The identity is now
+over each source's data form, `AU-06` states it and compares it with the
+committed record, and the record of `models` verified again is byte for byte the
+committed one.
+
+- **a library identity over the text of a source.** `library_identity_of` hashes
+  `source.as_bytes()` and not its `identity_bytes`. `-- conformance_au_06`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:1018:5:
+  assertion `left == right` failed: the library identity of a record depends on the form its sources are written in
+  ```
+
+Removed: each edit was restored; `conformance_au_01`..`conformance_au_12` pass. The generic notation has its own property test over
 arbitrary canonical JSON values (`surface::generic`), and every alternative of
 the schema its own sample (`surface::semantic`), as unit tests of the
 `lexlean` crate.

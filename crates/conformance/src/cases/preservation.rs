@@ -1243,24 +1243,36 @@ pub fn run(id: &str) {
             .expect("the fixture runs");
             assert_eq!(observed.codes, ["LLS8002"]);
             // The pinned Lean's heartbeat budgets are lifted by the
-            // certificates A and B of a program whose widest match has more
-            // than 100 arms, and by no other: the budgets of a wrong
-            // certificate of a small program stay what they are, and a wrong
-            // certificate of a wide match ends at the wall clock.
-            for (arms, lifted) in [(100, false), (101, true)] {
+            // certificates A, B and E of every program, narrow or wide: a
+            // budget exhausted in the middle of a proof blames a valid
+            // certificate, and the bound that remains is the wall clock.
+            // Certificate B's program and crate terms are data the proofs
+            // unfold and nothing runs, so they are not compiled either.
+            for arms in [2, 100, 101] {
                 for entry in preservation::certificates(&crate::stress::wide_match_default(arms)) {
                     let texts = std::iter::once(&entry.certificate)
-                        .chain(entry.renderings.iter().map(|(_, b)| b));
+                        .chain(entry.renderings.iter().map(|(_, b)| b))
+                        .chain(entry.composed.iter().map(|(_, e)| e));
                     for certificate in texts {
                         for option in [
                             "set_option maxHeartbeats 0\n",
                             "set_option synthInstance.maxHeartbeats 0\n",
                         ] {
-                            assert_eq!(
+                            assert!(
                                 certificate.text.contains(option),
-                                lifted,
-                                "{arms} arms: `{}` and `{option}`",
+                                "{arms} arms: `{}` lacks `{option}`",
                                 certificate.module
+                            );
+                        }
+                    }
+                    for (_, rendering) in &entry.renderings {
+                        for term in ["program", "krate"] {
+                            assert!(
+                                rendering
+                                    .text
+                                    .contains(&format!("noncomputable def {term} :")),
+                                "{arms} arms: `{}` compiles its {term} term",
+                                rendering.module
                             );
                         }
                     }
@@ -1447,8 +1459,13 @@ pub fn run(id: &str) {
             // name, and a planted weakening of an exact policy are refused.
             let first_module = library.modules[0].clone();
             let first_path = preserve::native_source_path(&first_module).expect("a path");
-            let original = std::fs::read_to_string(repo_root().join(&first_path).as_std_path())
-                .expect("a native source");
+            // The source as its data form, the canonical JSON the plants below
+            // quote, whichever form the committed source is written in.
+            let original = lexlean::sdk::to_data_form(
+                &std::fs::read_to_string(repo_root().join(&first_path).as_std_path())
+                    .expect("a native source"),
+            )
+            .expect("the data form of a native source");
             let planted = |edit: &dyn Fn(&str) -> String| {
                 preserve::check_native_sources(&|path| {
                     if path == first_path {
@@ -1675,8 +1692,13 @@ pub fn run(id: &str) {
             // inexact policy is refused.
             let first_module = library.modules[0].clone();
             let first_path = preserve::native_source_path(&first_module).expect("a path");
-            let original = std::fs::read_to_string(repo_root().join(&first_path).as_std_path())
-                .expect("a native source");
+            // The source as its data form, the canonical JSON the plants below
+            // quote, whichever form the committed source is written in.
+            let original = lexlean::sdk::to_data_form(
+                &std::fs::read_to_string(repo_root().join(&first_path).as_std_path())
+                    .expect("a native source"),
+            )
+            .expect("the data form of a native source");
             let planted = |edit: &dyn Fn(&str) -> Option<String>| {
                 preserve::check_native_sources(&|path| {
                     if path == first_path {

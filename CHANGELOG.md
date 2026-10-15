@@ -15,6 +15,38 @@ versions, and the entries below say what each tag does and does not claim.
 
 ## Unreleased
 
+- Core modules in the authoring notation (SPEC.md §17.21.8, `AU-09`..`AU-12`;
+  stages 3c and 3d of #93). A native `coremodule` of schema `lexlean/core-module/2`
+  can be written as text instead of one `\coredata{…}` argument of canonical
+  JSON: an `imports` line, the declarations (`theorem Name.{u} : @41 := @77 {…}`,
+  the other members in the generic notation), and the table of shared
+  expressions, one statement per node that is not written inside the node that
+  uses it (`@14 := fun (n : @12) => Nat.succ n`), in a Lean-like syntax of
+  explicit arguments, universe levels, and binders. The numbering of the nodes
+  is the order of the text, so the notation reads back to the module, and the
+  canonical JSON it reads to is byte for byte the data the module had: the
+  committed libraries (`compiler/proofs`, 13 modules, and
+  `language/preservation-1.2/library`, 13 modules, 48 MB of data) are written in
+  the notation at about three quarters of the size, and the compiler-semantics
+  ID of language 1.2 (`464235ad…`) is unchanged, because a source of the
+  embedded tree written in the notation contributes its data form (§21.2). The
+  Atlas (language 1.0, schema 1) stays as `\coredata`: languages 1.0 and 1.1
+  accept the data form only, and the notation under either is `LLP2003`. `fmt`
+  writes the notation, `lexlean::sdk` reads, writes, and assembles it
+  (`ModuleKind::Core`), and the core backend's coverage names
+  `lexlean.core::coresource`. No diagnostic code is new. A bound variable is
+  written by the name of its binder when no nearer binder has the name, a
+  constant a binder in scope is named like is written `const "…"`, and a
+  statement may be written `@name := …` and named `@name`, which `fmt` numbers
+  (`AU-12`; stage 3d of #93): a person adds a theorem to a library by writing
+  its declaration and the statements of its type and value, with every
+  argument and level explicit, as a kernel term has them, and counting nothing.
+  The certification library gains the first one written that way,
+  `LexLeanCertification.authored_eq_symm` (symmetry of `Eq` by `Eq.rec`), which
+  the pinned Lean's kernel checks with the rest of the library. Reading the identity of
+  language 1.2 now reads the embedded libraries from the notation, on as many
+  threads as there are cores: 0.8 s on four cores in a release build, and
+  nothing for language 1.0 and 1.1.
 - The authoring API (`lexlean::sdk`, SPEC.md §24.8, `AU-08`; stage 3e of #93):
   `read_module`, `write_module`, `to_data_form`, `to_notation`,
   `declaration_spans`, and `assemble` read, rewrite, convert, and assemble the
@@ -41,6 +73,29 @@ versions, and the entries below say what each tag does and does not claim.
   from the production example. No file of the repository changes by this: it
   is a change of who owns them.
 - The language-1.2 authoring notation (SPEC.md §17.21, `AU-01`..`AU-08`; stage 3
+- Certificate budgets (SPEC.md §22.6, `SP-02`, no new diagnostic code).
+  Every certificate now lifts both of the pinned Lean's heartbeat budgets, as
+  only the certificates of a program with a match of more than 100 arms did,
+  and certificate B declares its `program` and `krate` terms `noncomputable`.
+  A root whose program carries its parameters as data (`UOR-Foundation/MNIST`
+  at its model root: 243 KB of crate, int_tensor artifacts decoded into
+  literals) was refused twice by a valid certificate: the code generator
+  exhausted its 200 000 heartbeats compiling the crate term, which nothing
+  runs, and then `isDefEq` exhausted the same budget on the function holding
+  the literal. The bound that remains is the wall clock, `child_timeout_ms`,
+  as the specification already said. Every certificate text changes by its
+  header, so the committed certificate records of the examples and the
+  fixture expectations that quote certificate sizes are regenerated. The
+  fixtures `certificate-heartbeat-rejected` and
+  `certificate-resource-exhausted` model an exhausted Lean by a substituted
+  `lake` that set a budget of one heartbeat after `autoImplicit`; it now
+  overrides the lifted budget instead. With the budget lifted, their
+  100-parameter project reaches certificate B for the first time, which
+  refuses it for a reason of its own (#97): Lean elaborates a list literal
+  of more than 32 elements under `let` binders, and a certificate witness
+  with postponed holes in such a list does not unify.
+
+- The language-1.2 authoring notation (SPEC.md §17.21, `AU-01`..`AU-03`; stage 3
   of #27, #93). A `semanticmodule` can be written as readable text instead of
   `\semanticdata{…}` JSON: declarations in a fixed grammar, read from the
   schema, with readable forms for types (`(List Nat)`, `(A * B)`), terms
@@ -1201,6 +1256,22 @@ versions, and the entries below say what each tag does and does not claim.
     `true_and`, and `Option.some.injEq`. The eligibility report gains
     per-root `reasoning` rows, and its schema now admits the model and
     reasoning construct keys. The snapshot elaboration gains `theorems`.
+- A production root that applies a collection, fold, iteration, or graph
+  primitive now admits `recursion` (SPEC.md §17.13, `TC-06`; #105). Those
+  primitives are realized by library templates that call themselves, so the
+  stack depth of the rendered Rust is bounded only by the input (a scan of an
+  80,000-byte name aborted on an 8 MiB stack), yet their registry rows said
+  `recursion = false` and no root declared the effect. The rows are corrected,
+  and `conformance_tc_06` derives each runtime row's `recursion` from its
+  realization (the call graph of a template's instance, or the structural
+  `recursion` reference) instead of trusting the row. The language-1.2
+  compiler-semantics ID changes with the registry; `examples/reasoning` and
+  `examples/production-coverage` declare the effect on the roots that use these
+  primitives.
+- The host legs of CI may run for 120 minutes, where they were cut off at 60:
+  the Intel macOS leg takes 51 to 61 minutes, and a leg cancelled at its limit
+  is not a result about the code.
+
 ## 0.3.0
 
 - Support exhaustive Boolean matches and keep imported list construction

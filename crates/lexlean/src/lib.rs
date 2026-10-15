@@ -206,10 +206,37 @@ pub fn identity_bytes<'a>(path: &str, bytes: &'a [u8]) -> std::borrow::Cow<'a, [
 
 /// The §11.5 tree digest of the files of the embedded tree selected by `keep`.
 fn embedded_digest(keep: impl Fn(&str) -> bool) -> Sha256Digest {
-    let rows: Vec<(&str, std::borrow::Cow<'static, [u8]>)> = embedded::FILES
+    let selected: Vec<(&'static str, &'static [u8])> = embedded::FILES
         .iter()
         .filter(|(path, _)| keep(path))
-        .map(|(path, bytes)| (*path, identity_bytes(path, bytes)))
+        .map(|(path, bytes)| (*path, *bytes))
+        .collect();
+    // A library of kernel terms written in the notation is read to its data
+    // form here, which takes longer than hashing it, so the files are read on
+    // as many threads as there are cores; the rows keep the files' order.
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let slots: Vec<std::sync::OnceLock<std::borrow::Cow<'static, [u8]>>> = selected
+        .iter()
+        .map(|_| std::sync::OnceLock::new())
+        .collect();
+    let workers = std::thread::available_parallelism()
+        .map_or(1, usize::from)
+        .min(8);
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            scope.spawn(|| loop {
+                let at = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let Some((path, bytes)) = selected.get(at) else {
+                    break;
+                };
+                let _ = slots[at].set(identity_bytes(path, bytes));
+            });
+        }
+    });
+    let rows: Vec<(&str, std::borrow::Cow<'static, [u8]>)> = selected
+        .iter()
+        .zip(slots)
+        .map(|((path, _), slot)| (*path, slot.into_inner().expect("every file is read")))
         .collect();
     let files: Vec<(&str, &[u8])> = rows
         .iter()

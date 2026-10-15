@@ -253,8 +253,12 @@ pub struct ModuleAst {
 /// The structurally parsed `coremodule` environment.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CoreModuleAst {
-    /// The canonical JSON payload.
+    /// The canonical JSON payload, or, when `surface` is set, the verbatim
+    /// text of the environment: the module in the authoring notation
+    /// (SPEC.md §17.21.8).
     pub data: BraceArg,
+    /// Whether `data` is the notation rather than JSON.
+    pub surface: bool,
     /// The `\begin{coremodule}` atom.
     pub begin: usize,
 }
@@ -1147,12 +1151,30 @@ pub fn parse_module(
     let (blocks, core, semantic, tooling) = if parser.at_begin_of("coremodule") {
         let (begin, name) = parser.begin_env()?;
         debug_assert_eq!(name, "coremodule");
-        parser.expect_control("\\coredata")?;
-        let data = parser.brace_arg_verbatim()?;
-        parser.cover_payload(data.range, "coredata");
+        // The data form is `\coredata{…}`; anything else is the notation,
+        // which runs verbatim to the closing `\end{coremodule}`.
+        let (data, surface) = if parser.at_control("\\coredata") {
+            parser.expect_control("\\coredata")?;
+            let data = parser.brace_arg_verbatim()?;
+            parser.cover_payload(data.range, "coredata");
+            (data, false)
+        } else {
+            let data = parser.verbatim_body()?;
+            parser.cover_payload(data.range, "coresource");
+            (data, true)
+        };
         parser.expect_end("coremodule")?;
         parser.expect_end("lexlean")?;
-        (Vec::new(), Some(CoreModuleAst { data, begin }), None, None)
+        (
+            Vec::new(),
+            Some(CoreModuleAst {
+                data,
+                surface,
+                begin,
+            }),
+            None,
+            None,
+        )
     } else if parser.at_begin_of("semanticmodule") {
         let (begin, name) = parser.begin_env()?;
         debug_assert_eq!(name, "semanticmodule");

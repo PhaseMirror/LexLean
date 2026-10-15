@@ -1626,7 +1626,7 @@ statement = "Every realization library template has a fixture whose outcome the 
 id = "TC-06"
 level = "build"
 suite = "calculus"
-statement = "Every runtime construct of the production registry has exactly one realization row naming existing calculus elements and requires allocation exactly when its realization does, and the fixtures exercise every calculus type, literal, expression, shape, primitive, and template, and every fixed-width primitive at every width it admits."
+statement = "Every runtime construct of the production registry has exactly one realization row naming existing calculus elements and requires allocation and implies recursion exactly when its realization does, and the fixtures exercise every calculus type, literal, expression, shape, primitive, and template, and every fixed-width primitive at every width it admits."
 
 [[id]]
 id = "TC-07"
@@ -2238,7 +2238,7 @@ statement = "Malformed notation fails closed and never panics: an unclosed delim
 id = "AU-04"
 level = "build"
 suite = "authoring"
-statement = "No language-1.2 source of the product is written as data: every committed language-1.2 source with a semantic or tooling module, in the compiler, the language libraries, the examples, and the positive fixtures, is written in the authoring notation and is canonical, the data form remains only under language 1.0 and 1.1 and in refused fixtures whose payload the notation cannot spell, and a refused fixture whose payload the notation can spell is a defect."
+statement = "No language-1.2 source of the product is written as data: every committed language-1.2 source with a semantic, tooling, or core module, in the compiler, the language libraries, the examples, and the positive fixtures, is written in the authoring notation and is canonical, the data form remains only under language 1.0 and 1.1 and in refused fixtures whose payload the notation cannot spell, and a refused fixture whose payload the notation can spell is a defect."
 
 [[id]]
 id = "AU-05"
@@ -2251,7 +2251,7 @@ statement = "A language-1.2 tooling module written in the authoring notation lin
 id = "AU-06"
 level = "build"
 suite = "authoring"
-statement = "The compiler-semantics ID does not depend on the form a module of the embedded tree is written in: a semantic or tooling module in the authoring notation contributes its data form, so the committed tree and the same tree with every such module written as data have one ID, a change to a module's meaning changes the ID in either form, and the embedded tree holds at least one module written in the notation."
+statement = "The compiler-semantics ID does not depend on the form a module of the embedded tree is written in: a semantic, tooling, or core module in the authoring notation contributes its data form, so the committed tree and the same tree with every such module written as data have one ID, a change to a module's meaning changes the ID in either form, the identity a preservation record states for the native library is over the same data forms, so it is the committed one, and the embedded tree holds at least one module written in the notation."
 
 [[id]]
 id = "AU-07"
@@ -2264,4 +2264,28 @@ statement = "No product source is the output of a generator: every `.lex.tex` so
 id = "AU-08"
 level = "build"
 suite = "authoring"
-statement = "The authoring API reads, writes, converts, and assembles the source of a module without a project: for every committed semantic and tooling source it reads the module it links to, writes it back in the form it has and in the other form, assembles the source from its header and data to the canonical notation, and is idempotent in each; and a source that is not a module, or whose notation is malformed, is an error with a position in the source and never a panic."
+statement = "The authoring API reads, writes, converts, and assembles the source of a module without a project: for every committed semantic and tooling source and every core source of at most twelve megabytes it reads the module it links to, writes it back in the form it has and in the other form, assembles the source from its header and data to the canonical notation, and is idempotent in each; and a source that is not a module, or whose notation is malformed, is an error with a position in the source and never a panic."
+
+[[id]]
+id = "AU-09"
+level = "build"
+suite = "authoring"
+statement = "Every core module of the closed schema has one notation and the notation reads back to the module and to its data form: every committed core module reads back equal from its notation, its canonical JSON is the canonical JSON the compiler accepts and is, for a module written as data, byte for byte the data it was read from, the notation is its own canonical form, a node is written inside the node that uses it exactly when it is used once by the node after it and every other node is a statement, and a module that carries every kind of node, level, annotation, and declaration member is written and read back equal."
+
+[[id]]
+id = "AU-10"
+level = "build"
+suite = "authoring"
+statement = "A language-1.2 core module written in the authoring notation links to exactly the module its data form links to, with the same semantic ID and the same generated Lean and LaTeX byte for byte and source maps that name the notation; fmt writes a core module written as data as the notation and leaves the notation unchanged; and the notation under language 1.0 and 1.1 is refused with LLP2003."
+
+[[id]]
+id = "AU-11"
+level = "build"
+suite = "authoring"
+statement = "Malformed core notation fails closed and never panics: an unclosed delimiter, a keyword used as a name, a label that is not the number of its node, a reference to a node not yet written, a numeral with a redundant leading zero, a statement that defines no node, a nesting beyond the bound, and every single-token deletion and duplication of a committed module fail with a registered code at a position in the notation or link to a module that decodes."
+
+[[id]]
+id = "AU-12"
+level = "build"
+suite = "authoring"
+statement = "A core module written with names for its statements and its variables reads to exactly the module its canonical notation reads to, and the canonical notation keeps the names of the binders and writes the numbers of the statements: a variable is written by the name of its binder exactly when no nearer binder has the name, a constant a binder in scope is named like is written as a string, a theorem added to the certification library by name reads to the committed module and is written as the committed bytes, and an unknown or repeated statement name and a variable given universe levels are refused with a position."
