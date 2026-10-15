@@ -1160,10 +1160,14 @@ Removed: the plant was reverted and `conformance_sp_13` passes. A list of at
 most 32 elements is written byte for byte as before, so only certificates that
 hold a longer list changed. That is 13 certificates of `examples/models` and
 `examples/reasoning`, whose records `cargo xtask verify-examples --write`
-regenerated and a second, checking run confirmed. The other is the certificate
-A of `tests/negative/certificate-resource-exhausted`, whose diagnostic quotes
-its size (63 484 bytes before, 65 932 after, still at least a quarter of
-`max_file_bytes`).
+regenerated and a second, checking run confirmed. The others are two
+fixtures whose diagnostics quote a size the writers produce: the certificate
+A of `tests/negative/certificate-resource-exhausted` (63 552 bytes before, 66 000
+after, still at least a quarter of `max_file_bytes`; main's figure already
+carries the header of the lifted budgets), and the derivation bound of
+`tests/negative/certificate-generation-limit` (5 285 358 bytes before, 4 259 854
+after: the chain is shorter than the literal Lean splits under binders, and the
+root still exceeds `max_file_bytes` in phase certificates, `LLS8002`).
 
 ### certificate generation is bounded
 
