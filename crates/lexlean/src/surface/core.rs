@@ -406,45 +406,66 @@ fn plan(module: &CoreModule) -> Plan {
 
 struct Printer<'a> {
     module: &'a CoreModule,
-    plan: Plan,
+    inlined: Vec<bool>,
     proof: Vec<bool>,
-    pending: Vec<Option<Term>>,
+}
+
+/// How a bound variable is written: by the name of its binder when the binder
+/// is one the notation can name and no nearer binder has the name (which the
+/// reader would take the name for), else by its index. `scope` holds the names
+/// of the binders the term is written under, outermost first.
+fn variable(scope: &[String], index: usize) -> String {
+    if let Some(at) = scope.len().checked_sub(index + 1) {
+        let name = &scope[at];
+        if bare(name) && !scope[at + 1..].iter().any(|nearer| nearer == name) {
+            return name.clone();
+        }
+    }
+    format!("#{index}")
 }
 
 impl Printer<'_> {
-    fn child(&mut self, index: usize) -> Term {
-        if self.plan.inlined[index] {
-            self.pending[index]
-                .take()
-                .expect("an inlined node is built before its user")
+    /// A child of a node: written inside it, or named by its label.
+    fn child(&self, index: usize, scope: &mut Vec<String>) -> Result<Term, SurfaceError> {
+        if self.inlined[index] {
+            self.term(index, scope)
         } else {
-            Term::Atom(Doc::text(format!("@{index}")))
+            Ok(Term::Atom(Doc::text(format!("@{index}"))))
         }
     }
 
-    fn build(&mut self, index: usize) -> Result<Term, SurfaceError> {
+    /// The term of a node, with the nodes written inside it. The recursion is
+    /// as deep as the nodes written inside one another, which the printer
+    /// bounds (`INLINE_HEIGHT`).
+    fn term(&self, index: usize, scope: &mut Vec<String>) -> Result<Term, SurfaceError> {
         let node = &self.module.nodes[index];
         let term = match node {
-            CoreNode::BVar { i } => Term::Atom(Doc::text(format!("#{i}"))),
+            CoreNode::BVar { i } => Term::Atom(Doc::text(variable(scope, *i))),
             CoreNode::Sort { l } => Term::Prefix(Doc::text(format!("Sort {}", level_text(l)))),
             CoreNode::Const { n, u } => {
                 let levels = levels_text(u);
-                Term::Atom(Doc::text(if bare(n) {
-                    format!("{n}{levels}")
-                } else {
-                    format!("const {}{levels}", quote(n))
-                }))
+                // A name a binder in scope has is the variable's: the constant
+                // of that name is written as a string.
+                Term::Atom(Doc::text(
+                    if bare(n) && !scope.iter().any(|binder| binder == n) {
+                        format!("{n}{levels}")
+                    } else {
+                        format!("const {}{levels}", quote(n))
+                    },
+                ))
             }
             CoreNode::App { f, x } => {
-                let function = self.child(*f);
-                let argument = self.child(*x);
+                let function = self.child(*f, scope)?;
+                let argument = self.child(*x, scope)?;
                 let (head, mut args) = function.head();
                 args.push(argument.argument());
                 Term::App(head, args)
             }
             CoreNode::Lambda { n, b, t, v } => {
-                let domain = self.child(*t);
-                let body = self.child(*v);
+                let domain = self.child(*t, scope)?;
+                scope.push(n.clone());
+                let body = self.child(*v, scope)?;
+                scope.pop();
                 Term::Low(
                     Doc::concat(vec![
                         Doc::text("fun "),
@@ -457,8 +478,10 @@ impl Printer<'_> {
                 )
             }
             CoreNode::Forall { n, b, t, v } => {
-                let domain = self.child(*t);
-                let body = self.child(*v);
+                let domain = self.child(*t, scope)?;
+                scope.push(n.clone());
+                let body = self.child(*v, scope)?;
+                scope.pop();
                 let head = if n.is_empty() && matches!(b, CoreBinderInfo::Explicit) {
                     domain.domain()
                 } else {
@@ -469,9 +492,11 @@ impl Printer<'_> {
                 )
             }
             CoreNode::Let { n, t, v, body, d } => {
-                let ty = self.child(*t);
-                let value = self.child(*v);
-                let rest = self.child(*body);
+                let ty = self.child(*t, scope)?;
+                let value = self.child(*v, scope)?;
+                scope.push(n.clone());
+                let rest = self.child(*body, scope)?;
+                scope.pop();
                 Term::Low(
                     Doc::concat(vec![
                         Doc::text(format!(
@@ -511,7 +536,7 @@ impl Printer<'_> {
                     .iter()
                     .map(meta_entry_text)
                     .collect::<Result<Vec<_>, _>>()?;
-                let inner = self.child(*x);
+                let inner = self.child(*x, scope)?;
                 Term::Prefix(
                     Doc::concat(vec![
                         Doc::text(format!("annot [{}]", entries.join(", "))),
@@ -522,7 +547,7 @@ impl Printer<'_> {
                 )
             }
             CoreNode::Projection { n, s, i, x } => {
-                let inner = self.child(*x);
+                let inner = self.child(*x, scope)?;
                 Term::Prefix(
                     Doc::concat(vec![
                         Doc::text(format!("proj {} {} {i}", spell(s), spell(n))),
@@ -604,11 +629,10 @@ pub fn print_module(module: &CoreModule) -> Result<String, SurfaceError> {
     for node in &module.proof_nodes {
         proof[*node] = true;
     }
-    let mut printer = Printer {
+    let printer = Printer {
         module,
-        plan: plan(module),
+        inlined: plan(module).inlined,
         proof,
-        pending: (0..module.nodes.len()).map(|_| None).collect(),
     };
     let imports: Vec<Doc> = module
         .imports
@@ -628,18 +652,16 @@ pub fn print_module(module: &CoreModule) -> Result<String, SurfaceError> {
         out.push('\n');
     }
     out.push('\n');
-    for index in 0..module.nodes.len() {
-        let term = printer.build(index)?;
-        if printer.plan.inlined[index] {
-            printer.pending[index] = Some(term);
-        } else {
-            let statement = Doc::concat(vec![
-                Doc::text(format!("@{index} := ")),
-                term.whole().nest(2),
-            ]);
-            out.push_str(&render(&statement, WIDTH));
-            out.push('\n');
-        }
+    for index in (0..module.nodes.len()).filter(|index| !printer.inlined[*index]) {
+        // A statement is written under no binder: a variable free in it is
+        // written by its index.
+        let term = printer.term(index, &mut Vec::new())?;
+        let statement = Doc::concat(vec![
+            Doc::text(format!("@{index} := ")),
+            term.whole().nest(2),
+        ]);
+        out.push_str(&render(&statement, WIDTH));
+        out.push('\n');
     }
     Ok(out)
 }
@@ -874,6 +896,8 @@ enum Kind {
     LevelOpen,
     /// `@N`.
     Ref,
+    /// `@name`: a statement a person names, which `fmt` numbers.
+    Label,
     /// `#N`.
     BVar,
     /// A numeral.
@@ -903,6 +927,11 @@ struct Parser<'a> {
     last_end: usize,
     nodes: Vec<CoreNode>,
     proof: Vec<usize>,
+    /// The names of the binders the term being read is under, outermost
+    /// first; the empty name is a binder that has none.
+    scope: Vec<String>,
+    /// The statements a person named, by the node each defines.
+    labels: std::collections::HashMap<String, usize>,
 }
 
 type PResult<T> = Result<T, SurfaceError>;
@@ -917,6 +946,8 @@ impl<'a> Parser<'a> {
             last_end: 0,
             nodes: Vec::new(),
             proof: Vec::new(),
+            scope: Vec::new(),
+            labels: std::collections::HashMap::new(),
         }
     }
 
@@ -974,13 +1005,26 @@ impl<'a> Parser<'a> {
                 let (_, length) = super::lex::string(rest, at)?;
                 make(Kind::Str, at + length)
             }
+            b'@' if self.text[at + 1..].chars().next().is_some_and(name_start) => {
+                let mut end = at + 1;
+                for scalar in self.text[at + 1..].chars() {
+                    if !name_char(scalar) {
+                        break;
+                    }
+                    end += scalar.len_utf8();
+                }
+                make(Kind::Label, end)
+            }
             b'@' | b'#' => {
                 let mut end = at + 1;
                 while end < bytes.len() && bytes[end].is_ascii_digit() {
                     end += 1;
                 }
                 if end == at + 1 {
-                    return self.fail(at, "`@` and `#` are followed by a number");
+                    return self.fail(
+                        at,
+                        "`@` and `#` are followed by a number or, after `@`, a name",
+                    );
                 }
                 if self.text[end..].chars().next().is_some_and(name_char) {
                     return self.fail(end, "a number ends where its text does");
@@ -1247,6 +1291,22 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Read what `read` reads with a binder called `name` in scope.
+    fn under<T>(&mut self, name: &str, read: impl FnOnce(&mut Self) -> PResult<T>) -> PResult<T> {
+        self.scope.push(name.to_owned());
+        let read = read(self);
+        self.scope.pop();
+        read
+    }
+
+    /// The index of the nearest binder called `word`, if one is in scope.
+    fn resolve(&self, word: &str) -> Option<usize> {
+        self.scope
+            .iter()
+            .rev()
+            .position(|name| !name.is_empty() && name == word)
+    }
+
     fn term(&mut self, depth: usize) -> PResult<usize> {
         let token = self.peek()?;
         self.enter(depth, token.start)?;
@@ -1256,7 +1316,7 @@ impl<'a> Parser<'a> {
                     self.bump()?;
                     let (b, n, t) = self.binder(depth)?;
                     self.expect(Kind::FatArrow, "`=>` after the binder")?;
-                    let v = self.term(depth + 1)?;
+                    let v = self.under(&n, |parser| parser.term(depth + 1))?;
                     return Ok(self.push(CoreNode::Lambda { n, b, t, v }));
                 }
                 word @ ("let" | "have") => {
@@ -1268,7 +1328,7 @@ impl<'a> Parser<'a> {
                     self.expect(Kind::ColonEq, "`:=`")?;
                     let v = self.term(depth + 1)?;
                     self.expect(Kind::Semi, "`;` after the value")?;
-                    let body = self.term(depth + 1)?;
+                    let body = self.under(&n, |parser| parser.term(depth + 1))?;
                     return Ok(self.push(CoreNode::Let { n, t, v, body, d }));
                 }
                 _ => {}
@@ -1277,12 +1337,13 @@ impl<'a> Parser<'a> {
         if self.at_binder()? {
             let (b, n, t) = self.binder(depth)?;
             self.expect(Kind::Arrow, "`->` after the binder")?;
-            let v = self.term(depth + 1)?;
+            let v = self.under(&n, |parser| parser.term(depth + 1))?;
             return Ok(self.push(CoreNode::Forall { n, b, t, v }));
         }
         let head = self.prefix_or_application(depth)?;
         if self.eat(Kind::Arrow)? {
-            let v = self.term(depth + 1)?;
+            // The arrow's binder has no name, and the body is under it.
+            let v = self.under("", |parser| parser.term(depth + 1))?;
             return Ok(self.push(CoreNode::Forall {
                 n: String::new(),
                 b: CoreBinderInfo::Explicit,
@@ -1415,7 +1476,7 @@ impl<'a> Parser<'a> {
             return Ok(false);
         }
         Ok(match token.kind {
-            Kind::Ref | Kind::BVar | Kind::Num | Kind::Str | Kind::LParen => true,
+            Kind::Ref | Kind::Label | Kind::BVar | Kind::Num | Kind::Str | Kind::LParen => true,
             Kind::Name => !matches!(
                 self.slice(token),
                 "fun" | "let" | "have" | "Sort" | "proj" | "annot"
@@ -1440,6 +1501,16 @@ impl<'a> Parser<'a> {
                     );
                 }
                 Ok(target)
+            }
+            Kind::Label => {
+                let name = &self.slice(token)[1..];
+                match self.labels.get(name) {
+                    Some(target) => Ok(*target),
+                    None => self.fail(
+                        token.start,
+                        format!("no statement written before this is named `@{name}`"),
+                    ),
+                }
             }
             Kind::BVar => {
                 let i: usize = self.slice(token)[1..]
@@ -1499,6 +1570,16 @@ impl<'a> Parser<'a> {
                 ),
                 "_" => self.fail(token.start, "`_` is the name of a binder, not a constant"),
                 word => {
+                    // A name a binder in scope has is that binder's variable.
+                    if let Some(i) = self.resolve(word) {
+                        if self.peek()?.kind == Kind::LevelOpen {
+                            return self.fail(
+                                token.end,
+                                format!("`{word}` is a bound variable and has no universe levels"),
+                            );
+                        }
+                        return Ok(self.push(CoreNode::BVar { i }));
+                    }
                     let n = word.to_owned();
                     let u = self.levels(depth)?;
                     Ok(self.push(CoreNode::Const { n, u }))
@@ -1560,7 +1641,7 @@ impl<'a> Parser<'a> {
         self.fail(token.start, "the braces of the declaration are not closed")
     }
 
-    fn declaration(&mut self) -> PResult<CoreDeclaration> {
+    fn declaration(&mut self) -> PResult<Pending> {
         let kind = self.bump()?;
         let kind_word = self.slice(kind);
         if !matches!(
@@ -1604,27 +1685,63 @@ impl<'a> Parser<'a> {
             "levels".to_owned(),
             Json::Arr(levels.into_iter().map(Json::Str).collect()),
         );
-        object.insert("type".to_owned(), Json::from_usize(r#type));
-        if let Some(value) = value {
-            object.insert("value".to_owned(), Json::from_usize(value));
-        }
-        serde_json::from_str(&Json::Obj(object).to_canonical_string())
-            .map_err(|failure| error(kind.start, format!("not a declaration: {failure}")))
+        Ok(Pending {
+            object,
+            r#type,
+            value,
+            start: kind.start,
+        })
     }
 
-    /// A node a declaration states: `@N`.
-    fn root(&mut self, what: &str) -> PResult<usize> {
-        let token = self.expect(Kind::Ref, &format!("`@N`, {what}"))?;
-        self.slice(token)[1..]
-            .parse()
-            .or_else(|_| self.fail(token.start, "the number is too large"))
+    /// A declaration whose roots are known: the statements that carry a
+    /// person's names have all been read.
+    fn finish(&self, pending: Pending) -> PResult<CoreDeclaration> {
+        let mut object = pending.object;
+        let resolve = |root: Root| -> PResult<usize> {
+            match root {
+                Root::Id(id) => Ok(id),
+                Root::Label(name, at) => self
+                    .labels
+                    .get(&name)
+                    .copied()
+                    .ok_or_else(|| error(at, format!("no statement is named `@{name}`"))),
+            }
+        };
+        object.insert(
+            "type".to_owned(),
+            Json::from_usize(resolve(pending.r#type)?),
+        );
+        if let Some(value) = pending.value {
+            object.insert("value".to_owned(), Json::from_usize(resolve(value)?));
+        }
+        serde_json::from_str(&Json::Obj(object).to_canonical_string())
+            .map_err(|failure| error(pending.start, format!("not a declaration: {failure}")))
+    }
+
+    /// A node a declaration states: `@N`, or the name of a statement.
+    fn root(&mut self, what: &str) -> PResult<Root> {
+        let token = self.bump()?;
+        match token.kind {
+            Kind::Ref => self.slice(token)[1..]
+                .parse()
+                .map(Root::Id)
+                .or_else(|_| self.fail(token.start, "the number is too large")),
+            Kind::Label => Ok(Root::Label(self.slice(token)[1..].to_owned(), token.start)),
+            _ => self.fail(token.start, format!("expected `@N`, {what}")),
+        }
     }
 
     fn statement(&mut self) -> PResult<()> {
         let label = self.bump()?;
-        let target: usize = self.slice(label)[1..]
-            .parse()
-            .or_else(|_| self.fail(label.start, "the number is too large"))?;
+        // `@N` states the number of the node; `@name` names it, and `fmt`
+        // writes the number.
+        let target: Result<usize, String> = if label.kind == Kind::Ref {
+            Ok(self.slice(label)[1..]
+                .parse()
+                .or_else(|_| self.fail(label.start, "the number is too large"))?)
+        } else {
+            Err(self.slice(label)[1..].to_owned())
+        };
         self.expect(Kind::ColonEq, "`:=` after the label")?;
         let before = self.nodes.len();
         let defined = self.term(0)?;
@@ -1634,14 +1751,27 @@ impl<'a> Parser<'a> {
                 "a statement defines a node, not another name for one",
             );
         }
-        if defined + 1 != self.nodes.len() || defined != target {
+        if defined + 1 != self.nodes.len() {
             return self.fail(
                 label.start,
-                format!(
-                    "this statement defines node {}, not node {target}: the label is the number of the node",
-                    self.nodes.len() - 1
-                ),
+                "a statement defines the node its term ends with",
             );
+        }
+        match target {
+            Ok(target) if target != defined => {
+                return self.fail(
+                    label.start,
+                    format!(
+                        "this statement defines node {defined}, not node {target}: the label is the number of the node"
+                    ),
+                );
+            }
+            Ok(_) => {}
+            Err(name) => {
+                if self.labels.insert(name.clone(), defined).is_some() {
+                    return self.fail(label.start, format!("`@{name}` names two statements"));
+                }
+            }
         }
         let after = self.peek()?;
         if after.kind != Kind::End && !after.col0 {
@@ -1649,6 +1779,21 @@ impl<'a> Parser<'a> {
         }
         Ok(())
     }
+}
+
+/// A node a declaration states, before the statements that name a node have
+/// been read.
+enum Root {
+    Id(usize),
+    Label(String, usize),
+}
+
+/// A declaration read up to its roots.
+struct Pending {
+    object: std::collections::BTreeMap<String, Json>,
+    r#type: Root,
+    value: Option<Root>,
+    start: usize,
 }
 
 /// Read the notation of a core module, and the byte range of each of its
@@ -1663,7 +1808,7 @@ pub fn parse_module_with_spans(
 ) -> Result<(CoreModule, Vec<(usize, usize)>), SurfaceError> {
     let mut parser = Parser::new(text);
     let imports = parser.imports()?;
-    let mut declarations = Vec::new();
+    let mut pending = Vec::new();
     let mut spans = Vec::new();
     let mut statements = false;
     loop {
@@ -1674,15 +1819,19 @@ pub fn parse_module_with_spans(
         if !token.col0 {
             return parser.fail(token.start, "a declaration or a node begins its line");
         }
-        if token.kind == Kind::Ref {
+        if matches!(token.kind, Kind::Ref | Kind::Label) {
             statements = true;
             parser.statement()?;
         } else if statements {
             return parser.fail(token.start, "the declarations come before the nodes");
         } else {
-            declarations.push(parser.declaration()?);
+            pending.push(parser.declaration()?);
             spans.push((token.start, parser.last_end));
         }
+    }
+    let mut declarations = Vec::with_capacity(pending.len());
+    for declaration in pending {
+        declarations.push(parser.finish(declaration)?);
     }
     Ok((
         CoreModule {
@@ -1735,7 +1884,7 @@ pub fn data_text(text: &str, spec: &str) -> Result<String, SurfaceError> {
 #[cfg(test)]
 mod tests {
     use super::{canonical_json, parse_module, print_module};
-    use crate::ir::core::{CoreModule, CORE_SPEC_2};
+    use crate::ir::core::{CoreModule, CoreNode, CORE_SPEC_2};
 
     /// A module of six nodes: a sort, a constant, an application used twice,
     /// a variable, a lambda over them, and an arrow whose two sides are the
@@ -1773,8 +1922,8 @@ mod tests {
             "the shared application is a statement: {text}"
         );
         assert!(
-            text.contains("@4 := fun (n : @1) => proof(#0)\n"),
-            "the variable is written inside the lambda: {text}"
+            text.contains("@4 := fun (n : @1) => proof(n)\n"),
+            "the variable is written inside the lambda, by its binder's name: {text}"
         );
         let json = canonical_json(&module).expect("writes");
         assert_eq!(
@@ -1804,6 +1953,105 @@ mod tests {
             "imports [Init]\n\n@0 := let\n",
         ] {
             assert!(parse_module(text).is_err(), "{text:?}");
+        }
+    }
+
+    /// What a person writes (names for binders and for statements) reads to
+    /// the module its canonical notation reads to, which keeps the names of the
+    /// binders and writes the numbers of the statements.
+    fn authored(text: &str, canonical: &str) -> CoreModule {
+        let module = parse_module(text).unwrap_or_else(|error| panic!("{text}: {error}"));
+        assert_eq!(print_module(&module).expect("prints"), canonical);
+        assert_eq!(
+            parse_module(canonical).expect("reads"),
+            module,
+            "{canonical}"
+        );
+        module
+    }
+
+    /// A variable is written by the name of its binder, read back to the index
+    /// of the nearest binder of that name.
+    #[test]
+    fn a_variable_is_written_by_its_binders_name() {
+        let module = authored(
+            "imports [Init]\n\n@nat := Nat\n@k := fun (x : @nat) => fun (y : @nat) => x\n",
+            "imports [Init]\n\n\n@0 := Nat\n@3 := fun (x : @0) => fun (y : @0) => x\n",
+        );
+        assert_eq!(module.nodes[1], CoreNode::BVar { i: 1 });
+        // The body of an arrow is under a binder that has no name.
+        let module = authored(
+            "imports [Init]\n\n@nat := Nat\n@k := fun (x : @nat) => @nat -> x\n",
+            "imports [Init]\n\n\n@0 := Nat\n@3 := fun (x : @0) => @0 -> x\n",
+        );
+        assert_eq!(module.nodes[1], CoreNode::BVar { i: 1 });
+        authored(
+            "imports [Init]\n\n@nat := Nat\n@k := fun (x : @nat) => let z : @nat := x; z\n",
+            "imports [Init]\n\n\n@0 := Nat\n@4 := fun (x : @0) => let z : @0 := x; z\n",
+        );
+    }
+
+    /// A variable is written by its index when no name can say which binder it
+    /// is: the nearer binder has the name, the binder's name is not a word, or
+    /// no binder in the statement is the one.
+    #[test]
+    fn a_variable_no_name_can_say_is_written_by_its_index() {
+        authored(
+            "imports [Init]\n\n@nat := Nat\n@k := fun (x : @nat) => fun (x : @nat) => #1\n",
+            "imports [Init]\n\n\n@0 := Nat\n@3 := fun (x : @0) => fun (x : @0) => #1\n",
+        );
+        authored(
+            "imports [Init]\n\n@nat := Nat\n@k := fun (x : @nat) => fun (x : @nat) => x\n",
+            "imports [Init]\n\n\n@0 := Nat\n@3 := fun (x : @0) => fun (x : @0) => x\n",
+        );
+        authored(
+            "imports [Init]\n\n@nat := Nat\n@k := fun (\"fun\" : @nat) => #0\n",
+            "imports [Init]\n\n\n@2 := fun (\"fun\" : Nat) => #0\n",
+        );
+        authored(
+            "imports [Init]\n\n@nat := Nat\n@k := fun (_ : @nat) => #0\n",
+            "imports [Init]\n\n\n@2 := fun (_ : Nat) => #0\n",
+        );
+        authored(
+            "imports [Init]\n\n@v := #3\n",
+            "imports [Init]\n\n\n@0 := #3\n",
+        );
+    }
+
+    /// A constant that a binder in scope has the name of is written as a
+    /// string, and a name no binder has is a constant.
+    #[test]
+    fn a_constant_a_binder_shadows_is_written_as_a_string() {
+        let module = authored(
+            "imports [Init]\n\n@k := fun (Nat : Sort 1) => const \"Nat\" Nat\n",
+            "imports [Init]\n\n\n@4 := fun (Nat : Sort 1) => const \"Nat\" Nat\n",
+        );
+        assert_eq!(
+            module.nodes[1],
+            CoreNode::Const {
+                n: "Nat".to_owned(),
+                u: Vec::new()
+            }
+        );
+        assert_eq!(module.nodes[2], CoreNode::BVar { i: 0 });
+        authored(
+            "imports [Init]\n\n@k := fun (x : Sort 1) => Nat x\n",
+            "imports [Init]\n\n\n@4 := fun (x : Sort 1) => Nat x\n",
+        );
+    }
+
+    /// A name that is not defined is an error at its position.
+    #[test]
+    fn a_name_that_is_not_defined_is_an_error() {
+        for text in [
+            "imports [Init]\n\n@a := @b\n",
+            "imports [Init]\n\n@a := Nat\n@a := Nat\n",
+            "imports [Init]\n\ntheorem T : @missing\n",
+            "imports [Init]\n\n@a := fun (x : Sort 1) => x.{0}\n",
+            "imports [Init]\n\n@a := @a\n",
+        ] {
+            let failure = parse_module(text).expect_err(text);
+            assert!(failure.offset <= text.len(), "{text}: {failure}");
         }
     }
 }

@@ -6238,13 +6238,16 @@ survive `fmt`.
   ID, Lean, and LaTeX of its data form with a source map that names the
   notation, `fmt` writing the data form as the committed notation, and every
   single-token deletion and duplication refused with a position or decoded.
-- **Core modules (`AU-09`, `AU-10`, `AU-11`).** §17.21.8: the notation of a
+- **Core modules (`AU-09`..`AU-12`).** §17.21.8: the notation of a
   core module reads back to the module for every committed one and for a module
   that carries every kind of node, level, annotation, and declaration member;
   it links to the semantic ID, Lean, and LaTeX of its data form, with a source
   map that names the notation, and `fmt` writes the data form as the committed
   notation; and malformed text, with every single-token deletion and
-  duplication of a committed module, is refused with a position or decoded.
+  duplication of a committed module, is refused with a position or decoded;
+  and a module written with names for its variables and its statements reads to
+  the module its canonical notation is, down to a theorem added to the
+  certification library by name.
 - **One identity (`AU-06`).** The compiler-semantics ID is the same for the
   embedded tree whether its modules are written in the notation or as data
   (§21.2), and changes with a module's meaning in either form.
@@ -6312,7 +6315,7 @@ declaration = kind name [ ".{" name { "," name } "}" ] ":" ref [ ":=" ref ] [ me
 kind        = "abbrev" | "definition" | "theorem" | "inductive" | "constructor" | "recursor" ;
 members     = object of the generic notation (§17.21.3) ;
 statement   = ref ":=" term ;
-ref         = "@" numeral ;
+ref         = "@" ( numeral | name ) ;
 
 term     = "fun" binder "=>" term
          | ( "let" | "have" ) binder-name ":" term ":=" term ";" term
@@ -6364,6 +6367,25 @@ level `n`. A natural-number literal that is not the canonical spelling of its
 number, which the schema allows, is written `nat "…"`, and so is the value of
 an annotation entry (`int "…"` for an integer); a string literal that holds a
 value that is not a Unicode scalar has no notation.
+
+*Names.* A name in a term that is the name of a binder the term is under is
+the variable of the nearest such binder (the body of an arrow is under a
+binder that has no name, and `_` is no name), and any other name is a
+constant. The printer writes a variable by the name of its binder exactly when
+that is a bare word and no nearer binder of the statement has it, and
+otherwise by its index `#i`; a constant a binder in scope is named like is
+written `const "…"`; a variable free in a statement, or one whose binder is in
+another statement because the body is a shared node, is written by its index.
+A statement may be written `@name := term` and named `@name` where its node is
+used, and a declaration may name a statement that follows it; a name names one
+statement, an unknown name, a repeated name, and a variable given universe
+levels are errors, and `fmt` writes the numbers. A module written with names
+and one written with numbers read to one module, and the canonical notation
+keeps the names of the binders and writes the numbers of the statements, so
+that a person adds a theorem to a library by writing a declaration and the
+statements of its type and value, naming what they mean and counting nothing
+(`AU-12`). The notation does not infer: every argument and every universe level
+of a constant is written, as a kernel term has them (§17.10).
 
 *The declarations.* The other members of a declaration (its transparency,
 policy, reducibility, class and generated flags, the members of version 2, and
@@ -9149,8 +9171,9 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `AU-09` | `authoring` | Every core module of the closed schema has one notation and the notation reads back to the module and to its data form: every committed core module reads back equal from its notation, its canonical JSON is the canonical JSON the compiler accepts and is, for a module written as data, byte for byte the data it was read from, the notation is its own canonical form, a node is written inside the node that uses it exactly when it is used once by the node after it and every other node is a statement, and a module that carries every kind of node, level, annotation, and declaration member is written and read back equal. | §17.21.8 |
 | `AU-10` | `authoring` | A language-1.2 core module written in the authoring notation links to exactly the module its data form links to, with the same semantic ID and the same generated Lean and LaTeX byte for byte and source maps that name the notation; fmt writes a core module written as data as the notation and leaves the notation unchanged; and the notation under language 1.0 and 1.1 is refused with LLP2003. | §17.21.8 |
 | `AU-11` | `authoring` | Malformed core notation fails closed and never panics: an unclosed delimiter, a keyword used as a name, a label that is not the number of its node, a reference to a node not yet written, a numeral with a redundant leading zero, a statement that defines no node, a nesting beyond the bound, and every single-token deletion and duplication of a committed module fail with a registered code at a position in the notation or link to a module that decodes. | §17.21.8 |
+| `AU-12` | `authoring` | A core module written with names for its statements and its variables reads to exactly the module its canonical notation reads to, and the canonical notation keeps the names of the binders and writes the numbers of the statements: a variable is written by the name of its binder exactly when no nearer binder has the name, a constant a binder in scope is named like is written as a string, a theorem added to the certification library by name reads to the committed module and is written as the committed bytes, and an unknown or repeated statement name and a variable given universe levels are refused with a position. | §17.21.8 |
 
-**Total required capability IDs:** 378.
+**Total required capability IDs:** 379.
 
 No row may be downgraded to `some-true` or `open`. Upstream Lean facts are ledger/authority rows, not substitutions for these build behaviors.
 

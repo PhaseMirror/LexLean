@@ -1894,3 +1894,8 @@ fn conformance_au_10() {
 fn conformance_au_11() {
     repo_conformance::cases::run("AU-11");
 }
+
+#[test]
+fn conformance_au_12() {
+    repo_conformance::cases::run("AU-12");
+}

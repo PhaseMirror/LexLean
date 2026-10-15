@@ -1,4 +1,4 @@
-//! The `authoring` suite: AU-01..AU-11, the language-1.2 authoring notation
+//! The `authoring` suite: AU-01..AU-12, the language-1.2 authoring notation
 //! (SPEC.md §17.21).
 //!
 //! The notation is in bijection with the canonical JSON of the closed schema,
@@ -38,7 +38,7 @@ pub fn run(id: &str) {
         "AU-06" => identity_is_form_independent(),
         "AU-07" => no_other_authoring_path(),
         "AU-08" => authoring_api(),
-        "AU-09" | "AU-10" | "AU-11" => super::authoring_core::run(id),
+        "AU-09" | "AU-10" | "AU-11" | "AU-12" => super::authoring_core::run(id),
         other => panic!("no authoring case is wired for {other}"),
     }
 }

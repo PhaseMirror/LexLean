@@ -41,6 +41,13 @@ theorem LexLeanCertification.normality_never_certifies : @2013 := @5532 {
   policy: exact{axioms: [Classical.choice, Quot.sound, propext]},
   transparency: semireducible
 }
+theorem LexLeanCertification.authored_eq_symm.{u} : @5553 := @5600 {
+  all: [LexLeanCertification.authored_eq_symm],
+  class: false,
+  generated: false,
+  policy: exact{axioms: []},
+  transparency: semireducible
+}
 
 @0 := LexLeanTarget.Gnaf.Request
 @1 := LexLeanTarget.Certification.Certificate
@@ -3108,5 +3115,17 @@ theorem LexLeanCertification.normality_never_certifies : @2013 := @5532 {
                                                                         @5492)))
                                                               @5388))
                                                         @152))))))))))))))))))))
+@5553 := (α : Sort u) -> (a : α) -> (b : α) -> Eq.{u} α a b -> Eq.{u} α b a
+@5600 := fun (α : Sort u) =>
+  fun (a : α) =>
+  fun (b : α) =>
+  fun (h : Eq.{u} α a b) =>
+  Eq.rec.{0, u}
+    α
+    a
+    (fun (b' : α) => fun (h' : Eq.{u} α a b') => Eq.{u} α b' a)
+    (Eq.refl.{u} α a)
+    b
+    h
 \end{coremodule}
 \end{lexlean}

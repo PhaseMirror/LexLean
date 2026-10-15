@@ -1,5 +1,4 @@
-//! The `authoring` suite, core modules: AU-09, AU-10, AU-11 (SPEC.md
-//! §17.21.8).
+//! The `authoring` suite, core modules: AU-09..AU-12 (SPEC.md §17.21.8).
 //!
 //! A core module is a library of kernel terms, and the notation writes it as a
 //! program over them. The cases state what that costs nothing of: every
@@ -31,6 +30,7 @@ pub fn run(id: &str) {
         "AU-09" => round_trip(),
         "AU-10" => equivalence(),
         "AU-11" => fails_closed(),
+        "AU-12" => authored(),
         other => panic!("no core authoring case is wired for {other}"),
     }
 }
@@ -214,7 +214,7 @@ fn level_kinds(module: &CoreModule) -> BTreeSet<&'static str> {
 /// member of a declaration.
 fn every_kind() -> CoreModule {
     let levels = json!({"a": [{"a": "u", "k": "p"}, {"a": {"a": {"k": "z"}, "k": "s"}, "k": "s"}], "k": "i"});
-    let nodes = json!([
+    let first = json!([
         {"k": "s", "l": {"k": "z"}},
         {"k": "s", "l": {"a": {"a": "u", "k": "p"}, "k": "s"}},
         {"k": "s", "l": {"a": [{"k": "z"}, {"a": "v", "k": "p"}], "k": "m"}},
@@ -239,7 +239,9 @@ fn every_kind() -> CoreModule {
         {"body": 9, "d": true, "k": "e", "n": "", "t": 5, "v": 5},
         {"k": "n", "v": "42"},
         {"k": "n", "v": "007"},
-        {"k": "t", "v": [104, 105, 92, 34, 10, 955, 9, 1]},
+        {"k": "t", "v": [104, 105, 92, 34, 10, 955, 9, 1]}
+    ]);
+    let more = json!([
         {"k": "d", "m": [
             {"n": "k1", "v": {"t": "b", "v": true}},
             {"n": "k2", "v": {"t": "n", "v": "5"}},
@@ -259,8 +261,23 @@ fn every_kind() -> CoreModule {
         {"f": 29, "k": "a", "x": 30},
         {"f": 32, "k": "a", "x": 31},
         {"k": "c", "n": "α₁", "u": []},
-        {"f": 33, "k": "a", "x": 22}
+        {"f": 33, "k": "a", "x": 22},
+        {"i": 0, "k": "b"},
+        {"b": "e", "k": "l", "n": "x", "t": 5, "v": 36},
+        {"i": 1, "k": "b"},
+        {"b": "e", "k": "l", "n": "x", "t": 5, "v": 38},
+        {"b": "e", "k": "l", "n": "x", "t": 5, "v": 39},
+        {"k": "c", "n": "y", "u": []},
+        {"b": "e", "k": "l", "n": "y", "t": 5, "v": 41}
     ]);
+    // `json!` expands its input by recursion, so the table is written in two.
+    let nodes: Vec<Value> = first
+        .as_array()
+        .into_iter()
+        .chain(more.as_array())
+        .flatten()
+        .cloned()
+        .collect();
     let definition = json!({
         "all": ["Lib.f"], "class": false, "compiled": true, "generated": false, "inline": "always_inline",
         "kind": "definition", "levels": ["u", "v"], "name": "Lib.f",
@@ -291,8 +308,18 @@ fn every_kind() -> CoreModule {
         "name": "Lib.t", "policy": {"axioms": ["Classical.choice", "propext"], "kind": "allow"},
         "transparency": "irreducible", "type": 35, "value": 33
     });
+    let named = json!({
+        "class": false, "generated": false, "kind": "theorem", "levels": [],
+        "name": "Lib.named", "policy": {"kind": "none"}, "transparency": "semireducible",
+        "type": 37, "value": 40
+    });
+    let clash = json!({
+        "class": false, "generated": false, "kind": "theorem", "levels": [],
+        "name": "Lib.clash", "policy": {"kind": "none"}, "transparency": "semireducible",
+        "type": 42, "value": 37
+    });
     let module = json!({
-        "declarations": [definition, inductive, theorem],
+        "declarations": [definition, inductive, theorem, named, clash],
         "imports": ["Init", "Lib.Base"],
         "nodes": nodes,
         "proof_nodes": [12, 22, 25],
@@ -379,6 +406,18 @@ fn round_trip() {
         ("a level raised", "+1"),
         ("imax", "imax("),
         ("max", "max("),
+        (
+            "a variable written by its binder's name",
+            "fun (x : @5) => x",
+        ),
+        (
+            "a variable a nearer binder shadows",
+            "fun (x : @5) => fun (x : @5) => #1",
+        ),
+        (
+            "a constant a binder is named like",
+            "fun (y : @5) => const \"y\"",
+        ),
     ] {
         assert!(
             text.contains(written),
@@ -854,4 +893,208 @@ fn fails_closed() {
     project.check_fails_with("LLL1003");
     put(&format!("{original}@11 := \"007\"\n"));
     project.check_ok();
+}
+
+// ---------------------------------------------------------------------------
+// AU-12.
+// ---------------------------------------------------------------------------
+
+/// A module's notation with every number a statement is labelled by and every
+/// reference to one replaced by a name, as a person who does not count nodes
+/// writes it: the same module in text `fmt` does not write.
+fn named_labels(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = String::with_capacity(text.len() + text.len() / 16);
+    let mut copied = 0;
+    for (at, byte) in bytes.iter().enumerate() {
+        let after_margin_or_space = at == 0 || matches!(bytes[at - 1], b' ' | b'\n' | b'(' | b':');
+        if *byte == b'@'
+            && after_margin_or_space
+            && bytes.get(at + 1).is_some_and(u8::is_ascii_digit)
+        {
+            out.push_str(&text[copied..=at]);
+            out.push('n');
+            copied = at + 1;
+        }
+    }
+    out.push_str(&text[copied..]);
+    out
+}
+
+/// The theorem the certification library gains, written as a person writes
+/// it: no node counted, the variables named. `Eq.symm`, with every argument
+/// and level explicit, which is all a kernel term has.
+const AUTHORED_NAME: &str = "LexLeanCertification.authored_eq_symm";
+
+const AUTHORED_DECLARATION: &str =
+    "theorem LexLeanCertification.authored_eq_symm.{u} : @eq_symm_statement := @eq_symm_proof {
+  all: [LexLeanCertification.authored_eq_symm],
+  class: false,
+  generated: false,
+  policy: exact{axioms: []},
+  transparency: semireducible
+}
+";
+
+const AUTHORED_STATEMENTS: &str = "@eq_symm_statement := (α : Sort u) -> (a : α) -> (b : α) -> Eq.{u} α a b -> Eq.{u} α b a
+@eq_symm_proof := fun (α : Sort u) => fun (a : α) => fun (b : α) => fun (h : Eq.{u} α a b) => Eq.rec.{0, u} α a (fun (b' : α) => fun (h' : Eq.{u} α a b') => Eq.{u} α b' a) (Eq.refl.{u} α a) b h
+";
+
+fn authored() {
+    // A person who names the statements writes a module `fmt` writes with the
+    // numbers: every committed module, with every label a name, reads to the
+    // module it was and is written, by `fmt`, as the committed bytes.
+    let mut relabelled = 0usize;
+    for (shown, source) in committed() {
+        let located = locate(&source).expect("a module");
+        if located.data.is_some() {
+            continue;
+        }
+        let body = &source[located.body.0..located.body.1];
+        let module = notation::parse_module(body).expect("reads");
+        let named = named_labels(body);
+        assert_ne!(named, body, "{shown}: no label was replaced");
+        let again = notation::parse_module(&named)
+            .unwrap_or_else(|error| panic!("{shown}: the named labels do not read: {error}"));
+        assert!(
+            again == module,
+            "{shown}: named labels read to another module"
+        );
+        assert_eq!(
+            notation::print_module(&again).expect("prints"),
+            body.strip_prefix('\n')
+                .expect("a body begins with a line feed"),
+            "{shown}: fmt does not write the numbers"
+        );
+        relabelled += 1;
+    }
+    assert!(
+        relabelled >= 26,
+        "{relabelled} modules: the walk did not read the product"
+    );
+
+    // A theorem a person adds to a library of kernel terms: the library
+    // before it, the declaration and two statements written by name, and the
+    // module the committed source is.
+    let (shown, source) = committed()
+        .into_iter()
+        .find(|(shown, _)| shown == "compiler/proofs/src/Soundness.lex.tex")
+        .expect("the last module of the certification library");
+    let located = locate(&source).expect("a module");
+    let body = &source[located.body.0..located.body.1];
+    let committed_module = notation::parse_module(body).expect("reads");
+    let theorem = committed_module
+        .declarations
+        .iter()
+        .find(|row| row.name == AUTHORED_NAME)
+        .unwrap_or_else(|| panic!("{shown}: the authored theorem is not declared"));
+    let statement_at = body
+        .find(&format!("\n@{} := ", theorem.r#type))
+        .expect("the statement of the theorem")
+        + 1;
+    assert_eq!(
+        body[statement_at..]
+            .lines()
+            .filter(|line| line.starts_with('@'))
+            .count(),
+        2,
+        "the theorem is the last two statements of its module"
+    );
+    let from = body
+        .find("theorem LexLeanCertification.authored_eq_symm")
+        .expect("declared");
+    let to = from + body[from..].find("\n}\n").expect("closed") + 3;
+    let before = format!("{}{}", &body[..from], &body[to..statement_at]);
+    let first_statement = before.find("\n\n@0 := ").expect("the nodes") + 1;
+    let written = format!(
+        "{}{AUTHORED_DECLARATION}{}{AUTHORED_STATEMENTS}",
+        &before[..first_statement],
+        &before[first_statement..]
+    );
+    let by_name = notation::parse_module(&written)
+        .unwrap_or_else(|error| panic!("the authored theorem does not read: {error}"));
+    assert!(
+        by_name == committed_module,
+        "the theorem written by name is not the committed module"
+    );
+    assert_eq!(
+        notation::print_module(&by_name).expect("prints"),
+        body.strip_prefix('\n')
+            .expect("a body begins with a line feed"),
+        "fmt does not write the committed source"
+    );
+    // The committed source keeps the names a person wrote.
+    assert!(
+        body.contains(" := fun (α : Sort u) =>"),
+        "the committed theorem keeps the names of its binders"
+    );
+
+    // In a project: the authored text is not canonical, `fmt` writes the
+    // numbers, and the module is the one the canonical notation is.
+    let data = small();
+    let canonical = project(&data, true);
+    let text = canonical.read_raw(MAIN);
+    let located = locate(&text).expect("a module");
+    let body = text[located.body.0..located.body.1].to_owned();
+    let authored_project = project(&data, true);
+    authored_project.write(
+        MAIN,
+        &format!(
+            "{}{}{}",
+            &text[..located.body.0],
+            named_labels(&body),
+            &text[located.body.1..]
+        ),
+    );
+    support::expect_code(
+        &format_all(&authored_project, true)
+            .err()
+            .expect("a module with named statements is not canonical"),
+        "LLL1003",
+    );
+    format_all(&authored_project, false).expect("fmt writes the numbers");
+    assert_eq!(
+        authored_project.read_raw(MAIN),
+        text,
+        "fmt did not write the canonical notation"
+    );
+    assert_eq!(
+        authored_project.check_ok().semantic_id,
+        canonical.check_ok().semantic_id
+    );
+
+    // A name that no statement has, a name two statements have, and a bound
+    // variable given universe levels are refused with a position.
+    for (what, mutant) in [
+        (
+            "an unknown label",
+            body.replacen("@1 := Nat", "@1 := @nowhere", 1),
+        ),
+        (
+            "a repeated label",
+            format!("{body}@again := Nat\n@again := Nat\n"),
+        ),
+        (
+            "a variable with levels",
+            body.replacen("=> f\n", "=> f.{0}\n", 1),
+        ),
+    ] {
+        assert_ne!(mutant, body, "{what}: the plant changed nothing");
+        authored_project.write(
+            MAIN,
+            &format!(
+                "{}{mutant}{}",
+                &text[..located.body.0],
+                &text[located.body.1..]
+            ),
+        );
+        let error = authored_project.check_err();
+        assert!(
+            error
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.primary.is_some()),
+            "{what}: refused without a position"
+        );
+    }
 }

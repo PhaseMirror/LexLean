@@ -6783,7 +6783,7 @@ shortened), after which the defect was removed.
 
 ## The authoring notation (Issue #93, stage 3 of #27)
 
-`AU-01`..`AU-11` (SPEC.md §17.21, §24.8) state that the notation and the canonical
+`AU-01`..`AU-12` (SPEC.md §17.21, §24.8) state that the notation and the canonical
 JSON of the closed schema are in bijection, that a module in the notation is
 the module its data form is, that malformed notation fails closed, that
 every language-1.2 source of the repository is written in it, that the same
@@ -7089,6 +7089,50 @@ nine plants, each one edit of the compiler, started from the passing cases:
   …/compiler/proofs/src/Frontier.lex.tex: the module is not a `lexlean/tooling-module/1` module, the schema its notation names
   ```
 
+Names and statement names (`AU-12`; stage 3d of #93) add four more:
+
+- **a variable named when a nearer binder has the name.** The printer writes a
+  variable by its binder's name whether or not a nearer binder has it, so the
+  text reads to another variable. `-- conformance_au_09`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring_core.rs:340:5:
+  the module that carries every kind: the notation reads to another module
+  ```
+
+- **a constant that a binder shadows.** The printer writes a constant bare
+  even when a binder in scope is named like it, so the text reads to the
+  variable. The same failure from `conformance_au_09`.
+
+- **an arrow whose body is not under a binder.** The reader does not put the
+  anonymous binder of `A -> B` in scope, so every name in the body is one index
+  off. `-- conformance_au_12`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring_core.rs:963:9:
+  assertion `left == right` failed: compiler/proofs/src/Soundness.lex.tex: fmt does not write the numbers
+  ```
+
+- **a repeated statement name.** The reader takes the later of two statements
+  of one name. `-- conformance_au_12`:
+
+  ```text
+  panicked at crates/conformance/src/support.rs:595:14:
+  check fails
+  ```
+
+The first theorem written that way is in the certification library:
+`LexLeanCertification.authored_eq_symm` (symmetry of `Eq` by `Eq.rec`, with every
+argument and level explicit), a declaration and two statements appended to
+`Soundness`. `AU-12` writes it from its authored text on the library without
+it and finds the committed module and the committed bytes; the family `GC`
+compiles the library with the pinned Lean (the kernel checks the theorem with
+the rest), replays it with `leanchecker`, and audits its axioms (it pins none,
+and Lean prints none). The committed libraries are otherwise unchanged by names:
+a shared body is a node of its own, so a variable in it is free in its
+statement and stays `#i` (twenty-five of the twenty-six modules are the same
+bytes; one differs by two).
+
 A first plant found a defect in the rule and not in the code: the printer and
 the case both excluded the nodes a declaration states from being written
 inside their user, which counting a declaration's use of its roots already
@@ -7109,7 +7153,7 @@ migrated sources are 0.61 to 0.85 of the size of the data they were (24.4 MB
 against 28.8 MB for the largest module), and reading the identity of language 1.2
 takes 0.8 s on four cores in a release build.
 
-Removed: each edit was restored; `conformance_au_01`..`conformance_au_11` pass. The generic notation has its own property test over
+Removed: each edit was restored; `conformance_au_01`..`conformance_au_12` pass. The generic notation has its own property test over
 arbitrary canonical JSON values (`surface::generic`), and every alternative of
 the schema its own sample (`surface::semantic`), as unit tests of the
 `lexlean` crate.

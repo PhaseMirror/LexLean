@@ -65,3 +65,9 @@ Feature: authoring
     Given a committed core module in the notation
     When it is malformed in each way named, and each of its tokens is deleted and duplicated in turn
     Then each is refused with a registered code at a position or links to a module that decodes, and nothing panics
+
+  @AU-12 @build
+  Scenario: A core module written with names for its statements and its variables reads to exactly the module its canonical notation reads to, and the canonical notation keeps the names of the binders and writes the numbers of the statements: a variable is written by the name of its binder exactly when no nearer binder has the name, a constant a binder in scope is named like is written as a string, a theorem added to the certification library by name reads to the committed module and is written as the committed bytes, and an unknown or repeated statement name and a variable given universe levels are refused with a position.
+    Given every committed core module in the notation, the last module of the certification library without the theorem it ends with, and a project whose module is written with named statements
+    When every number of a statement is replaced by a name and the text is read and written, the theorem is written by name and appended, the project is format-checked and formatted, and an unknown name, a repeated name, and a variable with levels are put in
+    Then each reads to the committed module and is written as the committed bytes, fmt writes the numbers, and each defect is refused with a position
