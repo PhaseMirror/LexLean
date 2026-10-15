@@ -16,7 +16,7 @@ use crate::lexicon::entry::{Associativity, Category, Channel, Entry, Frame};
 use crate::lexicon::lse::QualifiedId;
 use crate::lexicon::resolve::Closure;
 use crate::link::CheckedModule;
-use crate::surface::module::{locate, Kind, SEMANTIC, TOOLING};
+use crate::surface::module::{locate, Kind, CORE, SEMANTIC, TOOLING};
 
 struct Fmt<'a> {
     closure: &'a Closure,
@@ -1024,25 +1024,21 @@ impl Fmt<'_> {
     }
 }
 
-/// `normalized` with the body of its module replaced by the notation of
-/// `module`.
-fn with_notation(
-    normalized: &str,
-    range: (usize, usize),
-    kind: &Kind,
-    module: &crate::artifact::canonical_json::Json,
-) -> Result<String, Diagnostic> {
-    let printed = (kind.print)(module).map_err(|error| {
-        Diagnostic::new(
-            code!("LLP2001"),
-            format!("phase fmt: module notation: {}", error.message),
-        )
-    })?;
-    Ok(format!(
+/// `normalized` with the body of its module replaced by `printed`, the
+/// notation of what it says.
+fn with_notation(normalized: &str, range: (usize, usize), printed: &str) -> String {
+    format!(
         "{}\n{printed}{}",
         &normalized[..range.0],
         &normalized[range.1..]
-    ))
+    )
+}
+
+fn notation_error(error: &crate::surface::SurfaceError) -> Diagnostic {
+    Diagnostic::new(
+        code!("LLP2001"),
+        format!("phase fmt: module notation: {}", error.message),
+    )
 }
 
 /// The canonical source of a module written in the authoring notation
@@ -1061,33 +1057,24 @@ fn canonical_notation(normalized: &str, kind: &Kind) -> Option<Result<String, Di
     }
     let spec = (kind.spec)()?;
     Some(
-        (kind.parse)(&normalized[found.body.0..found.body.1], spec)
-            .map_err(|error| {
-                Diagnostic::new(
-                    code!("LLP2001"),
-                    format!("phase fmt: module notation: {}", error.message),
-                )
-            })
-            .and_then(|module| with_notation(normalized, found.body, kind, &module)),
+        kind.reprint(&normalized[found.body.0..found.body.1], spec)
+            .map_err(|error| notation_error(&error))
+            .map(|printed| with_notation(normalized, found.body, &printed)),
     )
 }
 
-/// A language-1.2 module written as `\semanticdata{…}` (`\toolingdata{…}`),
-/// written in the notation instead; `None` for any other source. `fmt` writes
-/// a module this way, so it is also how a module leaves the data form.
+/// A language-1.2 module written as `\semanticdata{…}` (`\toolingdata{…}`,
+/// `\coredata{…}`), written in the notation instead; `None` for any other
+/// source. `fmt` writes a module this way, so it is also how a module leaves
+/// the data form.
 fn data_module_as_notation(normalized: &str, kind: &Kind) -> Option<Result<String, Diagnostic>> {
     let found = locate(normalized).filter(|found| found.kind.is(kind))?;
     let (from, to) = found.data?;
-    let spec = (kind.spec)()?;
-    let json =
-        crate::artifact::canonical_json::Json::parse(&normalized.as_bytes()[from..to]).ok()?;
-    match &json {
-        crate::artifact::canonical_json::Json::Obj(object)
-            if object.get("spec")
-                == Some(&crate::artifact::canonical_json::Json::Str(spec.to_owned())) => {}
-        _ => return None,
-    }
-    Some(with_notation(normalized, found.body, kind, &json))
+    Some(
+        kind.notation_of_data(&normalized[from..to])?
+            .map_err(|error| notation_error(&error))
+            .map(|printed| with_notation(normalized, found.body, &printed)),
+    )
 }
 
 /// Render the canonical source of one checked module (§23.5).
@@ -1096,6 +1083,7 @@ pub fn canonical_source(checked: &CheckedModule, closure: &Closure) -> Result<St
     for (present, kind) in [
         (document.semantic.is_some(), &SEMANTIC),
         (document.tooling.is_some(), &TOOLING),
+        (document.core.is_some(), &CORE),
     ] {
         if present {
             if let Some(rewritten) = canonical_notation(&checked.normalized, kind)
@@ -1106,9 +1094,10 @@ pub fn canonical_source(checked: &CheckedModule, closure: &Closure) -> Result<St
         }
     }
     if document.core.is_some() || document.semantic.is_some() || document.tooling.is_some() {
-        // Core-module payloads are produced in canonical JSON form and fully
-        // validated while linking.  Re-serializing their millions of shared
-        // edges through the prose formatter would erase that DAG spelling.
+        // A core module in the data form stays as it is when it has no
+        // notation (language 1.0 and 1.1, or schema 1): its payload is
+        // produced in canonical JSON form and fully validated while linking,
+        // and the prose formatter would erase the spelling of its DAG.
         return Ok(checked.normalized.clone());
     }
     let mut spellings = BTreeMap::new();

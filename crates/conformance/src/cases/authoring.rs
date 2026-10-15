@@ -1,4 +1,4 @@
-//! The `authoring` suite: AU-01..AU-08, the language-1.2 authoring notation
+//! The `authoring` suite: AU-01..AU-11, the language-1.2 authoring notation
 //! (SPEC.md §17.21).
 //!
 //! The notation is in bijection with the canonical JSON of the closed schema,
@@ -38,6 +38,7 @@ pub fn run(id: &str) {
         "AU-06" => identity_is_form_independent(),
         "AU-07" => no_other_authoring_path(),
         "AU-08" => authoring_api(),
+        "AU-09" | "AU-10" | "AU-11" => super::authoring_core::run(id),
         other => panic!("no authoring case is wired for {other}"),
     }
 }
@@ -46,6 +47,9 @@ const SPEC: &str = "lexlean/semantic-module/2";
 
 /// The schema tag of a tooling module.
 const TOOLING_SPEC: &str = "lexlean/tooling-module/1";
+
+/// The schema tag the notation of a core module names (§17.21.8).
+const CORE_SPEC: &str = "lexlean/core-module/2";
 
 // ---------------------------------------------------------------------------
 // The committed corpus.
@@ -583,17 +587,16 @@ fn form(text: &str) -> Option<(&'static Kind, Form<'_>)> {
 /// Whether a payload written as data can be written in the notation: it is a
 /// module of the schema the notation names, and reads back equal.
 fn spellable(kind: &Kind, payload: &str) -> bool {
-    let (Ok(json), Some(spec)) = (Json::parse(payload.as_bytes()), (kind.spec)()) else {
+    let (Some(Ok(text)), Some(spec)) = (kind.notation_of_data(payload), (kind.spec)()) else {
         return false;
     };
-    let Json::Obj(members) = &json else {
-        return false;
-    };
-    members.get("spec") == Some(&Json::Str(spec.to_owned()))
-        && (kind.print)(&json)
-            .ok()
-            .and_then(|text| (kind.parse)(&text, spec).ok())
-            .is_some_and(|back| back == json)
+    kind.data_text(&text, spec).is_ok_and(|back| {
+        let (back, payload) = (
+            Json::parse(back.as_bytes()),
+            Json::parse(payload.as_bytes()),
+        );
+        back.is_ok() && back == payload
+    })
 }
 
 fn one_surface() {
@@ -643,9 +646,7 @@ fn one_surface() {
                 notation += 1;
                 // A refused fixture may be refused for its text; a source of
                 // the product is its own canonical source.
-                let printed = (kind.spec)()
-                    .and_then(|spec| (kind.parse)(body, spec).ok())
-                    .and_then(|module| (kind.print)(&module).ok());
+                let printed = (kind.spec)().and_then(|spec| kind.reprint(body, spec).ok());
                 if body
                     .strip_prefix('\n')
                     .is_some_and(|rest| printed.as_deref() == Some(rest))
@@ -1096,6 +1097,9 @@ fn no_other_authoring_path() {
 // AU-08.
 // ---------------------------------------------------------------------------
 
+/// The size of a source above which AU-08 does not read the module as a value.
+const LARGEST_READ_AS_VALUE: usize = 12 * 1024 * 1024;
+
 fn authoring_api() {
     use lexlean::sdk::{
         assemble, declaration_spans, is_notation, module_kind, read_module, to_data_form,
@@ -1103,7 +1107,7 @@ fn authoring_api() {
     };
 
     let root = repo_root();
-    let (mut semantic, mut tooling) = (0usize, 0usize);
+    let (mut semantic, mut tooling, mut core) = (0usize, 0usize, 0usize);
     for entry in walkdir::WalkDir::new(root.as_std_path())
         .into_iter()
         .filter_entry(|entry| {
@@ -1119,6 +1123,12 @@ fn authoring_api() {
         let Ok(text) = std::fs::read_to_string(path) else {
             continue;
         };
+        // Reading a module of tens of megabytes as a value takes minutes in a
+        // debug build. The functions are the same code that runs on every
+        // other module, and AU-09 reads these through the typed notation.
+        if text.len() > LARGEST_READ_AS_VALUE {
+            continue;
+        }
         let Some(kind) = module_kind(&text) else {
             // Not a module of these kinds: the API says so, and reads nothing.
             assert!(read_module(&text).is_err(), "{}", path.display());
@@ -1138,7 +1148,7 @@ fn authoring_api() {
         let shown = path.display();
         // A module under a tag the notation does not name (language 1.1) has
         // no notation: the API refuses to write one, and reads it as data.
-        if data["spec"] != SPEC && data["spec"] != TOOLING_SPEC {
+        if data["spec"] != SPEC && data["spec"] != TOOLING_SPEC && data["spec"] != CORE_SPEC {
             assert!(
                 to_notation(&text).is_err(),
                 "{shown}: a notation was written"
@@ -1201,6 +1211,7 @@ fn authoring_api() {
         match kind {
             ModuleKind::Semantic => semantic += 1,
             ModuleKind::Tooling => tooling += 1,
+            ModuleKind::Core => core += 1,
         }
         // Assembled from its header and data, a source of the standard shape is
         // the canonical source: the header is what the source already says.
@@ -1236,6 +1247,7 @@ fn authoring_api() {
                     match kind {
                         ModuleKind::Semantic => "semanticmodule",
                         ModuleKind::Tooling => "toolingmodule",
+                        ModuleKind::Core => "coremodule",
                     }
                 ))
                 .expect("the environment");
@@ -1254,8 +1266,8 @@ fn authoring_api() {
         }
     }
     assert!(
-        semantic >= 250 && tooling >= 4,
-        "{semantic} semantic and {tooling} tooling sources: the API was not exercised on the product"
+        semantic >= 250 && tooling >= 4 && core >= 20,
+        "{semantic} semantic, {tooling} tooling and {core} core sources: the API was not exercised on the product"
     );
 
     // What is not a module, and what is malformed, is an error with a

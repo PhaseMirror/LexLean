@@ -702,18 +702,46 @@ fn check_project_inline(
         scopes.pop_frame();
 
         let core = if let Some(ast) = &load.ast.core {
-            let core =
-                CoreModule::parse(&ast.data.text, &project.config.language).map_err(|reason| {
-                    err(vec![Diagnostic::new(
-                        code!("LLI9001"),
-                        format!("phase link: {reason}"),
+            // The notation is read to the module the decoder checks, so that
+            // what a module means is decided in one place (§17.21.8).
+            let parsed = if ast.surface {
+                if project.config.language != crate::LANGUAGE_1_2 {
+                    return Err(err(vec![Diagnostic::new(
+                        code!("LLP2003"),
+                        "phase link: the authoring notation of a coremodule is language 1.2; write `\\coredata` under language 1.0 and 1.1",
                     )
-                    .with_span(span_of_range(
-                        &load.path,
-                        &load.atoms,
-                        ast.data.range,
-                    ))])
-                })?;
+                    .with_span(span_of_range(&load.path, &load.atoms, ast.data.range))]));
+                }
+                match crate::surface::core::parse_module(&ast.data.text) {
+                    Ok(module) => module.validate(&project.config.language).map(|()| module),
+                    Err(error) => {
+                        return Err(err(vec![Diagnostic::new(
+                            code!("LLP2001"),
+                            format!("phase link: core notation: {}", error.message),
+                        )
+                        .with_span(notation_span(
+                            &load.path,
+                            &load.atoms,
+                            ast.data.range,
+                            ast.begin,
+                            error.offset,
+                        ))]));
+                    }
+                }
+            } else {
+                CoreModule::parse(&ast.data.text, &project.config.language)
+            };
+            let core = parsed.map_err(|reason| {
+                err(vec![Diagnostic::new(
+                    code!("LLI9001"),
+                    format!("phase link: {reason}"),
+                )
+                .with_span(span_of_range(
+                    &load.path,
+                    &load.atoms,
+                    ast.data.range,
+                ))])
+            })?;
             // Rendering walks an expression by recursion, so the depth of a
             // native module is bounded like any other nesting (§25.5).
             crate::grammar::chart::depth_check(

@@ -6783,7 +6783,7 @@ shortened), after which the defect was removed.
 
 ## The authoring notation (Issue #93, stage 3 of #27)
 
-`AU-01`..`AU-08` (SPEC.md §17.21, §24.8) state that the notation and the canonical
+`AU-01`..`AU-11` (SPEC.md §17.21, §24.8) state that the notation and the canonical
 JSON of the closed schema are in bijection, that a module in the notation is
 the module its data form is, that malformed notation fails closed, that
 every language-1.2 source of the repository is written in it, that the same
@@ -7003,7 +7003,113 @@ equates the registry with a fresh derivation). The writers' own files
 calculus, the machine, and the two models were removed) are compared by
 `cargo xtask check-calculus` as before.
 
-Removed: each edit was restored; `conformance_au_01`..`conformance_au_08` pass. The generic notation has its own property test over
+Core modules in the notation (`AU-09`, `AU-10`, `AU-11`; SPEC.md §17.21.8) add
+nine plants, each one edit of the compiler, started from the passing cases:
+
+- **a rule for what is written inside its user that is not the specified
+  one.** The printer writes a node inside its user only when the nodes under it
+  are fewer than two deep, not 48. `-- conformance_au_09`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring_core.rs:322:5:
+  assertion `left == right` failed: the module that carries every kind: the statements are not the nodes the rule gives one
+    left: {0, 1, 2, …, 10, 12, 13, …, 31, 33, 34, 35}
+   right: {0, 1, 2, …, 10, 13, 14, …, 31, 33, 34, 35}
+  ```
+
+- **a canonical writer that is not the canonical JSON.** The data form of an
+  application writes its keys as `k`, `f`, `x`. `-- conformance_au_09`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring_core.rs:420:46:
+  compiler/proofs/src/Check.lex.tex: the compiler refuses it: core-module JSON is not in canonical byte form: object key `f` is not strictly ordered
+  ```
+
+- **a level written as another.** A universe parameter is written `u`
+  whatever its name. `-- conformance_au_09`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring_core.rs:313:5:
+  the module that carries every kind: the notation reads to another module
+  ```
+
+- **a source map that names the data.** The core backend's coverage names
+  `lexlean.core::coredata` for a module written in the notation.
+  `-- conformance_au_10`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring_core.rs:650:5:
+  the small module: the coverage of the notation does not name the notation
+  ```
+
+- **a formatter that leaves a core module alone.** `canonical_source` no longer
+  rewrites a core module, so one written as `\coredata` is canonical.
+  `-- conformance_au_10`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring_core.rs:575:14:
+  a module written as data is not canonical
+  ```
+
+- **a statement that need not be its node.** The reader no longer checks that
+  a label is the number of the node its statement defines, so a module whose
+  labels are wrong links. `-- conformance_au_11`:
+
+  ```text
+  panicked at crates/conformance/src/support.rs:595:14:
+  check fails
+  ```
+
+- **a nesting without a bound.** The reader's bound on nesting is raised past
+  what the case writes, so 300 parentheses read. `-- conformance_au_11`: the
+  same `check fails` from `support.rs:595:14`.
+
+- **an identity that does not read a core module's meaning.** The data form of
+  the embedded tree leaves a core module as its bytes. `-- conformance_au_06`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:934:17:
+  assertion `left == right` failed: language/preservation-1.2/library/src/Compose.lex.tex: a notation module contributes its data form
+  ```
+
+- **a library written as data again.** One module of the preservation library
+  is restored to its `\coredata` form. `-- conformance_au_04`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:661:5:
+  1 source(s) are not written in the authoring notation:
+  language/preservation-1.2/library/src/Values.lex.tex: written as data, which the notation can say
+  ```
+
+- **an API that takes a core module for another kind.** `sdk::module_kind`
+  names a core module a tooling module. `-- conformance_au_08`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:1242:71:
+  …/compiler/proofs/src/Frontier.lex.tex: the module is not a `lexlean/tooling-module/1` module, the schema its notation names
+  ```
+
+A first plant found a defect in the rule and not in the code: the printer and
+the case both excluded the nodes a declaration states from being written
+inside their user, which counting a declaration's use of its roots already
+does, so that condition could not be exercised and was removed from both.
+
+The 26 committed language-1.2 core modules are migrated with the same printer
+`fmt` uses, after the reading of each was checked against the data it came from:
+the canonical JSON of the notation of every one of them is the committed JSON
+byte for byte, the compiler's own decoder (`CoreModule::parse`, with its check
+of the canonical byte form and its validation) accepts it, and the 66 Atlas
+modules (language 1.0, written as data) are written back byte for byte by the
+same canonical writer and read back equal as modules of the schema the notation
+names. What must not change did not: the compiler-semantics ID of language 1.2
+is still `464235ad…`, the locks of every example are current, `check-golden`
+finds every published artifact equal to its oracle, and `check-production-export`
+finds every exported package equal to its committed package (16 minutes). The
+migrated sources are 0.61 to 0.85 of the size of the data they were (24.4 MB
+against 28.8 MB for the largest module), and reading the identity of language 1.2
+takes 0.8 s on four cores in a release build.
+
+Removed: each edit was restored; `conformance_au_01`..`conformance_au_11` pass. The generic notation has its own property test over
 arbitrary canonical JSON values (`surface::generic`), and every alternative of
 the schema its own sample (`surface::semantic`), as unit tests of the
 `lexlean` crate.

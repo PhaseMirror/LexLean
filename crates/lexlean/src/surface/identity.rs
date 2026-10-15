@@ -37,13 +37,15 @@ pub fn data_form(path: &str, bytes: &[u8]) -> Option<Vec<u8>> {
         return None;
     }
     let spec = (found.kind.spec)()?;
-    let module = (found.kind.parse)(&text[found.body.0..found.body.1], spec).ok()?;
+    let module = found
+        .kind
+        .data_text(&text[found.body.0..found.body.1], spec)
+        .ok()?;
     Some(
         format!(
-            "{}\n{}{{{}}}\n{}",
+            "{}\n{}{{{module}}}\n{}",
             &text[..found.body.0],
             found.kind.control,
-            module.to_canonical_string(),
             &text[found.body.1..]
         )
         .into_bytes(),

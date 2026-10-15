@@ -15,6 +15,29 @@ versions, and the entries below say what each tag does and does not claim.
 
 ## Unreleased
 
+- Core modules in the authoring notation (SPEC.md §17.21.8, `AU-09`..`AU-11`;
+  stage 3c of #93). A native `coremodule` of schema `lexlean/core-module/2`
+  can be written as text instead of one `\coredata{…}` argument of canonical
+  JSON: an `imports` line, the declarations (`theorem Name.{u} : @41 := @77 {…}`,
+  the other members in the generic notation), and the table of shared
+  expressions, one statement per node that is not written inside the node that
+  uses it (`@14 := fun (n : @12) => Nat.succ n`), in a Lean-like syntax of
+  explicit arguments, universe levels, and binders. The numbering of the nodes
+  is the order of the text, so the notation reads back to the module, and the
+  canonical JSON it reads to is byte for byte the data the module had: the
+  committed libraries (`compiler/proofs`, 13 modules, and
+  `language/preservation-1.2/library`, 13 modules, 48 MB of data) are written in
+  the notation at about three quarters of the size, and the compiler-semantics
+  ID of language 1.2 (`464235ad…`) is unchanged, because a source of the
+  embedded tree written in the notation contributes its data form (§21.2). The
+  Atlas (language 1.0, schema 1) stays as `\coredata`: languages 1.0 and 1.1
+  accept the data form only, and the notation under either is `LLP2003`. `fmt`
+  writes the notation, `lexlean::sdk` reads, writes, and assembles it
+  (`ModuleKind::Core`), and the core backend's coverage names
+  `lexlean.core::coresource`. No diagnostic code is new. Reading the identity of
+  language 1.2 now reads the embedded libraries from the notation, on as many
+  threads as there are cores: 0.8 s on four cores in a release build, and
+  nothing for language 1.0 and 1.1.
 - The authoring API (`lexlean::sdk`, SPEC.md §24.8, `AU-08`; stage 3e of #93):
   `read_module`, `write_module`, `to_data_form`, `to_notation`,
   `declaration_spans`, and `assemble` read, rewrite, convert, and assemble the

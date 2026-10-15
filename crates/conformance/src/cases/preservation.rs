@@ -1447,8 +1447,13 @@ pub fn run(id: &str) {
             // name, and a planted weakening of an exact policy are refused.
             let first_module = library.modules[0].clone();
             let first_path = preserve::native_source_path(&first_module).expect("a path");
-            let original = std::fs::read_to_string(repo_root().join(&first_path).as_std_path())
-                .expect("a native source");
+            // The source as its data form, the canonical JSON the plants below
+            // quote, whichever form the committed source is written in.
+            let original = lexlean::sdk::to_data_form(
+                &std::fs::read_to_string(repo_root().join(&first_path).as_std_path())
+                    .expect("a native source"),
+            )
+            .expect("the data form of a native source");
             let planted = |edit: &dyn Fn(&str) -> String| {
                 preserve::check_native_sources(&|path| {
                     if path == first_path {
@@ -1675,8 +1680,13 @@ pub fn run(id: &str) {
             // inexact policy is refused.
             let first_module = library.modules[0].clone();
             let first_path = preserve::native_source_path(&first_module).expect("a path");
-            let original = std::fs::read_to_string(repo_root().join(&first_path).as_std_path())
-                .expect("a native source");
+            // The source as its data form, the canonical JSON the plants below
+            // quote, whichever form the committed source is written in.
+            let original = lexlean::sdk::to_data_form(
+                &std::fs::read_to_string(repo_root().join(&first_path).as_std_path())
+                    .expect("a native source"),
+            )
+            .expect("the data form of a native source");
             let planted = |edit: &dyn Fn(&str) -> Option<String>| {
                 preserve::check_native_sources(&|path| {
                     if path == first_path {
