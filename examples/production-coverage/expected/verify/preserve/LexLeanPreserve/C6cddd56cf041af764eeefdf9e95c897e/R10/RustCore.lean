@@ -1,15 +1,17 @@
 import LexLeanPreservation.RustSound
 set_option autoImplicit false
 set_option maxRecDepth 100000
+set_option maxHeartbeats 0
+set_option synthInstance.maxHeartbeats 0
 namespace LexLeanPreserve.C6cddd56cf041af764eeefdf9e95c897e.R10.RustCore
 open LexLeanTarget LexLeanPreservation.Rust
 
-def program : TargetSyntax.Program :=
+noncomputable def program : TargetSyntax.Program :=
   { adts := [], functions := [
     { parameters := [0, 1], types := [.nat, .nat], result := .nat,
       body := (.«let» 2 .nat (.prim .natQuot [(.var 0), (.var 1), (.value .nat (.nat 7))]) (.«let» 3 .nat (.prim .natRem [(.var 0), (.var 1), (.value .nat (.nat 0))]) (.cond (.cond (.prim .natEq [(.var 2), (.value .nat (.nat 0))]) (.cond (.prim .natLe [(.var 3), (.value .nat (.nat 3))]) (.build .true .bool []) (.prim .boolNot [(.prim .natLt [(.var 0), (.var 1)])])) (.build .false .bool [])) (.prim .natAdd [(.prim .natSub [(.var 0), (.var 1)]), (.var 3)]) (.prim .natMul [(.var 2), (.var 3)])))) }] }
 
-def krate : RustSyntax.Crate :=
+noncomputable def krate : RustSyntax.Crate :=
   ({ profile := .core, items := [
     (.function (.generated .function 0) [{ pattern := (.bind (.generated .binding 0)), type := .nat }, { pattern := (.bind (.generated .binding 1)), type := .nat }] (.fallible .nat) (.mk [(.mk (.bind (.generated .binding 2)) (some .nat) (.block (.mk [(.mk (.bind (.generated .operand 1)) none (.copy (.generated .binding 0))), (.mk (.bind (.generated .operand 2)) none (.copy (.generated .binding 1))), (.mk (.bind (.generated .operand 3)) none (.lit (.nat 7)))] (.call (.runtime .natQuot) [(.move (.generated .operand 1)), (.move (.generated .operand 2)), (.move (.generated .operand 3))] false)))), (.mk (.bind (.generated .binding 3)) (some .nat) (.block (.mk [(.mk (.bind (.generated .operand 4)) none (.copy (.generated .binding 0))), (.mk (.bind (.generated .operand 5)) none (.copy (.generated .binding 1))), (.mk (.bind (.generated .operand 6)) none (.lit (.nat 0)))] (.call (.runtime .natRem) [(.move (.generated .operand 4)), (.move (.generated .operand 5)), (.move (.generated .operand 6))] false)))), (.mk (.bind (.generated .operand 7)) none (.copy (.generated .binding 2))), (.mk (.bind (.generated .operand 8)) none (.lit (.nat 0)))] (.cond (.cond (.call (.runtime .natEq) [(.move (.generated .operand 7)), (.move (.generated .operand 8))] false) (.mk [(.mk (.bind (.generated .operand 9)) none (.copy (.generated .binding 3))), (.mk (.bind (.generated .operand 10)) none (.lit (.nat 3)))] (.cond (.call (.runtime .natLe) [(.move (.generated .operand 9)), (.move (.generated .operand 10))] false) (.mk [] (.lit (.bool true))) (.mk [(.mk (.bind (.generated .operand 13)) none (.block (.mk [(.mk (.bind (.generated .operand 11)) none (.copy (.generated .binding 0))), (.mk (.bind (.generated .operand 12)) none (.copy (.generated .binding 1)))] (.call (.runtime .natLt) [(.move (.generated .operand 11)), (.move (.generated .operand 12))] false))))] (.call (.runtime .boolNot) [(.move (.generated .operand 13))] false)))) (.mk [] (.lit (.bool false)))) (.mk [(.mk (.bind (.generated .operand 16)) none (.block (.mk [(.mk (.bind (.generated .operand 14)) none (.copy (.generated .binding 0))), (.mk (.bind (.generated .operand 15)) none (.copy (.generated .binding 1)))] (.call (.runtime .natSub) [(.move (.generated .operand 14)), (.move (.generated .operand 15))] false)))), (.mk (.bind (.generated .operand 17)) none (.copy (.generated .binding 3)))] (.call (.runtime .natAdd) [(.move (.generated .operand 16)), (.move (.generated .operand 17))] false)) (.mk [(.mk (.bind (.generated .operand 18)) none (.copy (.generated .binding 2))), (.mk (.bind (.generated .operand 19)) none (.copy (.generated .binding 3)))] (.call (.runtime .natMul) [(.move (.generated .operand 18)), (.move (.generated .operand 19))] false)))))] } : LexLeanTarget.RustSyntax.Crate)
 

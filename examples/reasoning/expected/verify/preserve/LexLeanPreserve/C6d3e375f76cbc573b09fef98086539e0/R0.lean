@@ -12,6 +12,8 @@ import Reasoning.Planner
 import Reasoning.Screening
 set_option autoImplicit false
 set_option maxRecDepth 100000
+set_option maxHeartbeats 0
+set_option synthInstance.maxHeartbeats 0
 set_option linter.unusedVariables false
 namespace LexLeanPreserve.C6d3e375f76cbc573b09fef98086539e0.R0
 

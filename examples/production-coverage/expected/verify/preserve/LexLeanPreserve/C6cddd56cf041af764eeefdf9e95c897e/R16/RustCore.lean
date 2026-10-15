@@ -1,15 +1,17 @@
 import LexLeanPreservation.RustSound
 set_option autoImplicit false
 set_option maxRecDepth 100000
+set_option maxHeartbeats 0
+set_option synthInstance.maxHeartbeats 0
 namespace LexLeanPreserve.C6cddd56cf041af764eeefdf9e95c897e.R16.RustCore
 open LexLeanTarget LexLeanPreservation.Rust
 
-def program : TargetSyntax.Program :=
+noncomputable def program : TargetSyntax.Program :=
   { adts := [], functions := [
     { parameters := [0], types := [.nat], result := (.pair (.option .nat) (.result .nat .unit)),
       body := (.build .pair (.pair (.option .nat) (.result .nat .unit)) [(.build .some (.option .nat) [(.build .succ .nat [(.var 0)])]), (.cond (.prim .natLt [(.var 0), (.value .nat (.nat 3))]) (.build .ok (.result .nat .unit) [(.build .zero .nat [])]) (.build .error (.result .nat .unit) [(.build .unit .unit [])]))]) }] }
 
-def krate : RustSyntax.Crate :=
+noncomputable def krate : RustSyntax.Crate :=
   ({ profile := .core, items := [
     (.function (.generated .function 0) [{ pattern := (.bind (.generated .binding 0)), type := .nat }] (.fallible (.pair (.option .nat) (.result .nat .unit))) (.mk [] (.succeed (.pair (.construct .some [(.call (.runtime .natSucc) [(.copy (.generated .binding 0))] true)]) (.block (.mk [(.mk (.bind (.generated .operand 1)) none (.copy (.generated .binding 0))), (.mk (.bind (.generated .operand 2)) none (.lit (.nat 3)))] (.cond (.call (.runtime .natLt) [(.move (.generated .operand 1)), (.move (.generated .operand 2))] false) (.mk [] (.construct (.ok .nat .unit) [(.lit (.nat 0))])) (.mk [] (.construct (.err .nat .unit) [(.lit .unit)])))))))))] } : LexLeanTarget.RustSyntax.Crate)
 

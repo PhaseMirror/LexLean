@@ -3313,6 +3313,39 @@ truncation was restored and the packages regenerated; `conformance_rb_08`
 passes, and `conformance_tc_07` holds every fixture's counted work within
 the denotation's steps with the new runtime.
 
+### certificate budgets cover a large program
+
+Planted: nothing in this repository; the defect was observed on
+`UOR-Foundation/MNIST` at the LexLean of `d284b165`, whose model root
+`Mnist.Model.classify` (the network under its contract, its parameters ten
+`int_tensor` artifacts) renders to a 242,624-byte crate. Command:
+`lexlean verify --all` in that project. Expected before the change: the
+certificate is valid and the pinned Lean accepts it. Observed:
+
+```text
+error[LLV7015]: certificate B: `LexLeanPreserve.Cfee62143c6d631437aa7081b9c317efa.R0.RustStd` was rejected in `krate` of root `Mnist.Model.classify`: error: (deterministic) timeout at `«LCNF compiler»`, maximum number of heartbeats (200000) has been reached
+```
+
+With `program` and `krate` declared `noncomputable` (nothing compiles the
+data of the statement) the same project failed one function later:
+
+```text
+error[LLV7015]: certificate B: `LexLeanPreserve.Cfee62143c6d631437aa7081b9c317efa.R0.RustStd` was rejected in `fun37` of root `Mnist.Model.classify`: error: (deterministic) timeout at `isDefEq`, maximum number of heartbeats (200000) has been reached
+```
+
+With both budgets lifted for every certificate, as they were for a match of
+more than 100 arms, the project verifies (attestation `10a88470…`, the
+certificates A, B and E of the root replayed and audited). `conformance_sp_02`
+now asserts that the certificates of a 2-arm, a 100-arm and a 101-arm program
+all lift both budgets and that certificate B's two terms are `noncomputable`;
+reverting either half of the change fails it:
+
+```text
+thread 'conformance_sp_02' panicked at crates/conformance/src/cases/preservation.rs:
+2 arms: `LexLeanPreserve.C….R0` lacks `set_option maxHeartbeats 0
+`
+```
+
 ### GNAF kernel oracle can fail
 
 Planted: the host's `lexlean::gnaf::expand` dispatched only from a plan to

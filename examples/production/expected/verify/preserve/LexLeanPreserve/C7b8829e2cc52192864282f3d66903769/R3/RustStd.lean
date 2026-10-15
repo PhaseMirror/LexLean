@@ -1,17 +1,19 @@
 import LexLeanPreservation.RustSound
 set_option autoImplicit false
 set_option maxRecDepth 100000
+set_option maxHeartbeats 0
+set_option synthInstance.maxHeartbeats 0
 namespace LexLeanPreserve.C7b8829e2cc52192864282f3d66903769.R3.RustStd
 open LexLeanTarget LexLeanPreservation.Rust
 
-def program : TargetSyntax.Program :=
+noncomputable def program : TargetSyntax.Program :=
   { adts := [], functions := [
     { parameters := [0], types := [.nat], result := .nat,
       body := (.call 1 [(.var 0), (.value .nat (.nat 0))]) },
     { parameters := [0, 1], types := [.nat, .nat], result := .nat,
       body := (.cond (.prim .natLt [(.var 0), (.value .nat (.nat 2))]) (.var 1) (.call 1 [(.prim .natSub [(.var 0), (.value .nat (.nat 2))]), (.prim .natAdd [(.var 1), (.value .nat (.nat 1))])])) }] }
 
-def krate : RustSyntax.Crate :=
+noncomputable def krate : RustSyntax.Crate :=
   ({ profile := .std, items := [
     (.function (.generated .function 0) [{ pattern := (.bind (.generated .binding 0)), type := .nat }] (.fallible .nat) (.mk [] (.call (.function 1) [(.copy (.generated .binding 0)), (.lit (.nat 0))] false))),
     (.function (.generated .function 1) [{ pattern := (.bind (.generated .binding 0)), type := .nat }, { pattern := (.bind (.generated .binding 1)), type := .nat }] (.fallible .nat) (.mk [(.mk (.bind (.generated .operand 1)) none (.copy (.generated .binding 0))), (.mk (.bind (.generated .operand 2)) none (.lit (.nat 2)))] (.cond (.call (.runtime .natLt) [(.move (.generated .operand 1)), (.move (.generated .operand 2))] false) (.mk [] (.succeed (.copy (.generated .binding 1)))) (.mk [] (.call (.function 1) [(.block (.mk [(.mk (.bind (.generated .operand 3)) none (.copy (.generated .binding 0))), (.mk (.bind (.generated .operand 4)) none (.lit (.nat 2)))] (.call (.runtime .natSub) [(.move (.generated .operand 3)), (.move (.generated .operand 4))] false))), (.block (.mk [(.mk (.bind (.generated .operand 5)) none (.copy (.generated .binding 1))), (.mk (.bind (.generated .operand 6)) none (.lit (.nat 1)))] (.call (.runtime .natAdd) [(.move (.generated .operand 5)), (.move (.generated .operand 6))] true)))] false)))))] } : LexLeanTarget.RustSyntax.Crate)

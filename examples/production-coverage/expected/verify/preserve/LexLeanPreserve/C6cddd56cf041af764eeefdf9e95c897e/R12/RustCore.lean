@@ -1,17 +1,19 @@
 import LexLeanPreservation.RustSound
 set_option autoImplicit false
 set_option maxRecDepth 100000
+set_option maxHeartbeats 0
+set_option synthInstance.maxHeartbeats 0
 namespace LexLeanPreserve.C6cddd56cf041af764eeefdf9e95c897e.R12.RustCore
 open LexLeanTarget LexLeanPreservation.Rust
 
-def program : TargetSyntax.Program :=
+noncomputable def program : TargetSyntax.Program :=
   { adts := [{ constructors := [[.nat], [.nat, .nat], []] }], functions := [
     { parameters := [0, 1], types := [.nat, .nat], result := .nat,
       body := (.prim .natAdd [(.call 1 [(.build (.adt 1) (.adt 0) [(.var 0), (.var 1)])]), (.prim .natAdd [(.call 1 [(.build (.adt 0) (.adt 0) [(.var 0)])]), (.call 1 [(.build (.adt 2) (.adt 0) [])])])]) },
     { parameters := [0], types := [(.adt 0)], result := .nat,
       body := (.«match» .nat (.var 0) [(.arm (.adt 0) [1] (.prim .natMul [(.prim .natMul [(.var 1), (.var 1)]), (.value .nat (.nat 3))])), (.arm (.adt 1) [2, 3] (.prim .natMul [(.var 2), (.var 3)])), (.arm (.adt 2) [] (.value .nat (.nat 0)))]) }] }
 
-def krate : RustSyntax.Crate :=
+noncomputable def krate : RustSyntax.Crate :=
   ({ profile := .core, items := [
     (.enum (.adt 0) [{ number := 0, fields := [.nat] }, { number := 1, fields := [.nat, .nat] }, { number := 2, fields := [] }]),
     (.function (.generated .function 0) [{ pattern := (.bind (.generated .binding 0)), type := .nat }, { pattern := (.bind (.generated .binding 1)), type := .nat }] (.fallible .nat) (.mk [(.mk (.bind (.generated .operand 3)) none (.call (.function 1) [(.construct (.adt 0 1) [(.copy (.generated .binding 0)), (.copy (.generated .binding 1))])] true)), (.mk (.bind (.generated .operand 4)) none (.block (.mk [(.mk (.bind (.generated .operand 1)) none (.call (.function 1) [(.construct (.adt 0 0) [(.copy (.generated .binding 0))])] true)), (.mk (.bind (.generated .operand 2)) none (.call (.function 1) [(.construct (.adt 0 2) [])] true))] (.call (.runtime .natAdd) [(.move (.generated .operand 1)), (.move (.generated .operand 2))] true))))] (.call (.runtime .natAdd) [(.move (.generated .operand 3)), (.move (.generated .operand 4))] false))),

@@ -1,10 +1,12 @@
 import LexLeanPreservation.RustSound
 set_option autoImplicit false
 set_option maxRecDepth 100000
+set_option maxHeartbeats 0
+set_option synthInstance.maxHeartbeats 0
 namespace LexLeanPreserve.C6cddd56cf041af764eeefdf9e95c897e.R20.RustStd
 open LexLeanTarget LexLeanPreservation.Rust
 
-def program : TargetSyntax.Program :=
+noncomputable def program : TargetSyntax.Program :=
   { adts := [], functions := [
     { parameters := [0], types := [.nat], result := .bool,
       body := (.call 1 [(.var 0)]) },
@@ -13,7 +15,7 @@ def program : TargetSyntax.Program :=
     { parameters := [0], types := [.nat], result := .bool,
       body := (.«match» .bool (.var 0) [(.arm .zero [] (.build .true .bool [])), (.arm .succ [1] (.call 1 [(.var 1)]))]) }] }
 
-def krate : RustSyntax.Crate :=
+noncomputable def krate : RustSyntax.Crate :=
   ({ profile := .std, items := [
     (.function (.generated .function 0) [{ pattern := (.bind (.generated .binding 0)), type := .nat }] .bool (.mk [] (.call (.function 1) [(.copy (.generated .binding 0))] false))),
     (.function (.generated .function 1) [{ pattern := (.bind (.generated .binding 0)), type := .nat }] .bool (.mk [(.mk (.bind (.generated .holder 1)) none (.copy (.generated .binding 0)))] (.cond (.isZero (.generated .holder 1)) (.mk [] (.lit (.bool false))) (.mk [(.mk (.bind (.generated .binding 1)) none (.predecessor (.generated .holder 1)))] (.call (.function 2) [(.copy (.generated .binding 1))] false))))),

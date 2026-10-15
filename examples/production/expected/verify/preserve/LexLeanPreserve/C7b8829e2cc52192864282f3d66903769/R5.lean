@@ -9,6 +9,8 @@ import Production.Kernel
 import Production.Main
 set_option autoImplicit false
 set_option maxRecDepth 100000
+set_option maxHeartbeats 0
+set_option synthInstance.maxHeartbeats 0
 set_option linter.unusedVariables false
 namespace LexLeanPreserve.C7b8829e2cc52192864282f3d66903769.R5
 

@@ -1,10 +1,12 @@
 import LexLeanPreservation.RustSound
 set_option autoImplicit false
 set_option maxRecDepth 100000
+set_option maxHeartbeats 0
+set_option synthInstance.maxHeartbeats 0
 namespace LexLeanPreserve.Ccca462bfe8cabc3365338af96b591362.R0.RustStd
 open LexLeanTarget LexLeanPreservation.Rust
 
-def program : TargetSyntax.Program :=
+noncomputable def program : TargetSyntax.Program :=
   { adts := [{ constructors := [[], [], [], [], [], [], [], [], [], []] }], functions := [
     { parameters := [0], types := [(.adt 0)], result := .nat,
       body := (.call 1 [(.var 0)]) },
@@ -57,7 +59,7 @@ def program : TargetSyntax.Program :=
     { parameters := [0, 1], types := [(.pair .int (.list .int)), .int], result := (.pair .int (.list .int)),
       body := (.«match» (.pair .int (.list .int)) (.second (.var 0)) [(.arm .nil [] (.var 0)), (.arm .cons [2, 3] (.build .pair (.pair .int (.list .int)) [(.prim .intSub [(.first (.var 0)), (.prim .intNeg [(.prim .intMul [(.var 1), (.var 2)])])]), (.var 3)]))]) }] }
 
-def krate : RustSyntax.Crate :=
+noncomputable def krate : RustSyntax.Crate :=
   ({ profile := .std, items := [
     (.enum (.adt 0) [{ number := 0, fields := [] }, { number := 1, fields := [] }, { number := 2, fields := [] }, { number := 3, fields := [] }, { number := 4, fields := [] }, { number := 5, fields := [] }, { number := 6, fields := [] }, { number := 7, fields := [] }, { number := 8, fields := [] }, { number := 9, fields := [] }]),
     (.enum (.fn 0) [{ number := 4, fields := [] }]),

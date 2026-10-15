@@ -1,10 +1,12 @@
 import LexLeanPreservation.RustSound
 set_option autoImplicit false
 set_option maxRecDepth 100000
+set_option maxHeartbeats 0
+set_option synthInstance.maxHeartbeats 0
 namespace LexLeanPreserve.C6cddd56cf041af764eeefdf9e95c897e.R7.RustStd
 open LexLeanTarget LexLeanPreservation.Rust
 
-def program : TargetSyntax.Program :=
+noncomputable def program : TargetSyntax.Program :=
   { adts := [], functions := [
     { parameters := [0], types := [(.list (.pair .string (.list .string)))], result := (.option (.list .string)),
       body := (.call 1 [(.var 0)]) },
@@ -39,7 +41,7 @@ def program : TargetSyntax.Program :=
     { parameters := [0], types := [(.list (.pair .string (.list .string)))], result := (.option (.option (.list .string))),
       body := (.cond (.call 13 [(.var 0)]) (.build .some (.option (.option (.list .string))) [(.call 0 [(.var 0)])]) (.build .none (.option (.option (.list .string))) [])) }] }
 
-def krate : RustSyntax.Crate :=
+noncomputable def krate : RustSyntax.Crate :=
   ({ profile := .std, items := [
     (.function (.generated .function 0) [{ pattern := (.bind (.generated .binding 0)), type := (.list (.pair .str (.list .str))) }] (.fallible (.option (.list .str))) (.mk [] (.call (.function 1) [(.move (.generated .binding 0))] false))),
     (.function (.generated .function 1) [{ pattern := (.bind (.generated .binding 0)), type := (.list (.pair .str (.list .str))) }] (.fallible (.option (.list .str))) (.mk [(.mk (.bind (.generated .binding 1)) (some (.list .str)) (.call (.function 6) [(.clone (.generated .binding 0)), (.construct (.nil .str) [])] false))] (.succeed (.call (.function 2) [(.move (.generated .binding 0)), (.block (.mk [(.mk (.bind (.generated .operand 2)) none (.block (.mk [(.mk (.bind (.generated .operand 1)) none (.clone (.generated .binding 1)))] (.call (.runtime .lengthList) [(.move (.generated .operand 1))] false)))), (.mk (.bind (.generated .operand 3)) none (.lit (.nat 1)))] (.call (.runtime .natAdd) [(.move (.generated .operand 2)), (.move (.generated .operand 3))] true))), (.move (.generated .binding 1)), (.construct (.nil .str) [])] false)))),

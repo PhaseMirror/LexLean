@@ -1,10 +1,12 @@
 import LexLeanPreservation.RustSound
 set_option autoImplicit false
 set_option maxRecDepth 100000
+set_option maxHeartbeats 0
+set_option synthInstance.maxHeartbeats 0
 namespace LexLeanPreserve.C6cddd56cf041af764eeefdf9e95c897e.R0.RustStd
 open LexLeanTarget LexLeanPreservation.Rust
 
-def program : TargetSyntax.Program :=
+noncomputable def program : TargetSyntax.Program :=
   { adts := [{ constructors := [[(.list .nat), (.list (.adt 0)), (.list (.pair .string .int)), (.option (.adt 0)), (.list (.pair .nat (.adt 0)))], [(.list (.pair .nat .int))], [(.result (.adt 0) .nat)]] },
     { constructors := [[(.list (.pair .string .int)), .string]] }], functions := [
     { parameters := [0, 1, 2, 3], types := [(.adt 0), (.adt 1), (.option (.list .nat)), (.list (.list (.pair .nat .bool)))], result := (.pair .nat (.pair (.adt 1) (.pair (.option (.list .nat)) (.list (.list (.pair .nat .bool)))))),
@@ -46,7 +48,7 @@ def program : TargetSyntax.Program :=
     { parameters := [0, 1, 2, 3], types := [(.adt 0), (.adt 1), (.option (.list .nat)), (.list (.list (.pair .nat .bool)))], result := (.option (.pair .nat (.pair (.adt 1) (.pair (.option (.list .nat)) (.list (.list (.pair .nat .bool))))))),
       body := (.cond (.call 2 [(.var 0)]) (.cond (.call 13 [(.var 1)]) (.cond (.call 14 [(.var 2)]) (.cond (.call 15 [(.var 3)]) (.build .some (.option (.pair .nat (.pair (.adt 1) (.pair (.option (.list .nat)) (.list (.list (.pair .nat .bool))))))) [(.call 0 [(.var 0), (.var 1), (.var 2), (.var 3)])]) (.build .none (.option (.pair .nat (.pair (.adt 1) (.pair (.option (.list .nat)) (.list (.list (.pair .nat .bool))))))) [])) (.build .none (.option (.pair .nat (.pair (.adt 1) (.pair (.option (.list .nat)) (.list (.list (.pair .nat .bool))))))) [])) (.build .none (.option (.pair .nat (.pair (.adt 1) (.pair (.option (.list .nat)) (.list (.list (.pair .nat .bool))))))) [])) (.build .none (.option (.pair .nat (.pair (.adt 1) (.pair (.option (.list .nat)) (.list (.list (.pair .nat .bool))))))) [])) }] }
 
-def krate : RustSyntax.Crate :=
+noncomputable def krate : RustSyntax.Crate :=
   ({ profile := .std, items := [
     (.enum (.adt 0) [{ number := 0, fields := [(.list .nat), (.list (.adt 0)), (.list (.pair .str .int)), (.rc (.option (.adt 0))), (.list (.pair .nat (.adt 0)))] }, { number := 1, fields := [(.list (.pair .nat .int))] }, { number := 2, fields := [(.rc (.result (.adt 0) .nat))] }]),
     (.enum (.adt 1) [{ number := 0, fields := [(.list (.pair .str .int)), .str] }]),
