@@ -1204,6 +1204,27 @@ pub fn run(id: &str) {
                 disagreements.is_empty(),
                 "allocation disagreements: {disagreements:#?}"
             );
+            // A construct implies recursion exactly when its realization
+            // does: a library template calls itself, so a primitive it
+            // realizes carries the effect, while a runtime item is a loop
+            // (§17.13, §17.14).
+            let disagreements: Vec<String> = registry["construct"]
+                .as_array()
+                .expect("constructs")
+                .iter()
+                .filter(|row| row["disposition"].as_str() == Some("runtime"))
+                .filter_map(|row| {
+                    let key = row["key"].as_str().expect("key");
+                    let registered = row["recursion"].as_bool().expect("recursion");
+                    let realized = realization::construct_recurses(key).expect("realization");
+                    (registered != realized)
+                        .then(|| format!("{key}: registry {registered}, realization {realized}"))
+                })
+                .collect();
+            assert!(
+                disagreements.is_empty(),
+                "recursion disagreements: {disagreements:#?}"
+            );
             // A dropped row and an unknown reference are both caught.
             let mut short = runtime.clone();
             short.insert("term.invented".to_owned());

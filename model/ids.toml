@@ -1626,7 +1626,7 @@ statement = "Every realization library template has a fixture whose outcome the 
 id = "TC-06"
 level = "build"
 suite = "calculus"
-statement = "Every runtime construct of the production registry has exactly one realization row naming existing calculus elements and requires allocation exactly when its realization does, and the fixtures exercise every calculus type, literal, expression, shape, primitive, and template, and every fixed-width primitive at every width it admits."
+statement = "Every runtime construct of the production registry has exactly one realization row naming existing calculus elements and requires allocation and implies recursion exactly when its realization does, and the fixtures exercise every calculus type, literal, expression, shape, primitive, and template, and every fixed-width primitive at every width it admits."
 
 [[id]]
 id = "TC-07"

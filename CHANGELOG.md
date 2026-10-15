@@ -1221,9 +1221,22 @@ versions, and the entries below say what each tag does and does not claim.
     `true_and`, and `Option.some.injEq`. The eligibility report gains
     per-root `reasoning` rows, and its schema now admits the model and
     reasoning construct keys. The snapshot elaboration gains `theorems`.
+- A production root that applies a collection, fold, iteration, or graph
+  primitive now admits `recursion` (SPEC.md §17.13, `TC-06`; #105). Those
+  primitives are realized by library templates that call themselves, so the
+  stack depth of the rendered Rust is bounded only by the input (a scan of an
+  80,000-byte name aborted on an 8 MiB stack), yet their registry rows said
+  `recursion = false` and no root declared the effect. The rows are corrected,
+  and `conformance_tc_06` derives each runtime row's `recursion` from its
+  realization (the call graph of a template's instance, or the structural
+  `recursion` reference) instead of trusting the row. The language-1.2
+  compiler-semantics ID changes with the registry; `examples/reasoning` and
+  `examples/production-coverage` declare the effect on the roots that use these
+  primitives.
 - The host legs of CI may run for 120 minutes, where they were cut off at 60:
   the Intel macOS leg takes 51 to 61 minutes, and a leg cancelled at its limit
   is not a result about the code.
+
 ## 0.3.0
 
 - Support exhaustive Boolean matches and keep imported list construction
