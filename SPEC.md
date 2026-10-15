@@ -2410,6 +2410,8 @@ after the ordinary module header and title, is exclusive with prose blocks
 and `coremodule`, and contains exactly one `\semanticdata{...}` canonical JSON
 value with schema `lexlean/semantic-module/1`. It is semantic declaration
 data, never Lean or LaTeX source. Language 1.0 rejects the environment.
+Language 1.2 also admits the authoring notation of §17.21 as the body of the
+environment, which is read to the same data.
 
 Accepted semantic identifiers retain their exact names in generated Lean.
 Each segment matching the pinned toolchain's reserved-token table is quoted
@@ -6051,6 +6053,166 @@ not a file of the compiler-semantics ID (§7, §21.2): the tooling language is
 internal to the compiler, so adding it changes no existing identity, and the
 tooling source the compiler embeds is language data, hashed into that ID.
 
+### 17.21 The authoring notation
+
+A language-1.2 module is written, read, and formatted by a person in a text,
+not in the canonical JSON of §17.11 and §17.12, and the two are the same
+module. This section fixes the text. It is the authoring surface of a
+`semanticmodule` (§17.11): everything the compiler, the libraries and the
+models of this repository are made of is a `.lex.tex` source in it, and no
+other tool's output is a source (§17.21.6).
+
+#### 17.21.1 Where it is written
+
+Under language 1.2, the body of `\begin{semanticmodule}` … `\end{semanticmodule}`
+is either one `\semanticdata{…}` argument (the data form of §17.11, canonical
+as it is) or the notation: the
+verbatim text of its declarations, one after the other, to the closing
+`\end{semanticmodule}`. Language 1.1 has the data form only; the notation
+under language 1.1 is refused with `LLP2003`. The text is the module's source
+bytes between the two markers: it is not scanned for prose, glossary entries,
+or comments, every atom of it is covered as metadata owned by
+`lexlean.core::semanticsource` (§20), and it writes a backslash only inside a
+string, where it is the escape `\\` (so the first `\end` control atom is the
+environment's end). A numeral with a redundant leading zero outside a string
+is `LLL1003` (§12.4); inside a string it is string data.
+
+The notation is read to the canonical JSON of the module, with the schema
+tag the language names (`lexlean/semantic-module/2`), and that JSON is decoded
+and linked exactly as a module written as data. What a module means is decided
+there and nowhere else: a module in the notation and its data form have the
+same semantic ID, the same generated Lean and LaTeX byte for byte, and
+differ only in their source ID and in the source maps, which relate each
+declaration to its own text in the notation.
+
+#### 17.21.2 Lexical structure
+
+The text is UTF-8 over the characters space and line feed (§12.1). A token is:
+
+```ebnf
+delimiter = "{" | "}" | "[" | "]" | "(" | ")" | "," | ":" | ";" | ":=" | "::" ;
+string    = '"' { scalar | escape } '"' ;           (* escapes of §21.7 JSON *)
+word      = ( scalar not white space, a delimiter, or '"' ) { the same } ;
+```
+
+White space separates tokens and is otherwise not significant. Everything the
+notation spells, other than a string, is a word; what a word means is decided
+by the position that reads it. A word is a *name* when it is a letter or `_`
+followed by letters, digits, `_`, `.`, `'`, `/`, and `-`, and is not `true` or
+`false`; a string is written without quotes only when it is a name.
+
+#### 17.21.3 The generic notation
+
+Every canonical JSON value (§21.7) has one spelling that does not depend on
+the schema, and reads back to the value:
+
+```ebnf
+value  = integer | "true" | "false" | string | name
+       | "[" [ value { "," value } [ "," ] ] "]"
+       | [ name ] "{" [ field { "," field } [ "," ] ] "}" ;
+field  = ( name | string ) ":" value ;
+```
+
+An object that has the member `"kind": K`, with `K` a name, is written `K{…}`
+with that member left out. Members are written in the order `name`,
+`type_parameters`, `parameters`, `type`, `result`, `statement`, `fields`,
+`constructors`, `arguments`, `body`, `proof`, `axioms`, then the others in
+key order, and are read in any order; a member written twice, an integer
+beyond 64 bits, a value nested deeper than 256 levels, and a word that is not
+a name where a string is expected are errors. Because the generic notation
+covers every value, no value of any schema is unspellable, and a variant added
+to a schema has a notation the day it is added.
+
+#### 17.21.4 Positions and readable forms
+
+The schema `schemas/semantic-module-v2.schema.json` decides what is read at a
+position: a declaration of the module, a term, a type, a member, a parameter,
+a proof, or a member of an object, found by walking the schema. A term, a type,
+a member, and a parameter have readable forms (below). Every other value, and
+every value of those positions that no readable form carries *exactly*, is
+written generically, with its members read at the positions the schema gives
+them. A readable form carries a value exactly only when the value has exactly
+the members the form spells and a name or literal the form can write: a node
+with an additional member, a variable named like a keyword, a literal that is
+not canonical, or a default written out is written generically.
+
+*Members and parameters.* A member is `name` or `Module::name`; a parameter is
+`name : type`.
+
+*Types.*
+
+| Type | Written |
+| --- | --- |
+| `bool`, `bytes`, `int`, `int8`, `int16`, `int32`, `int64`, `nat`, `ordering`, `prop`, `string`, `type`, `uint8`, `uint16`, `uint32`, `uint64`, `unit`, `contract_violation`, `reasoning_failure` | `Bool`, `Bytes`, `Int`, `Int8`, `Int16`, `Int32`, `Int64`, `Nat`, `Ordering`, `Prop`, `String`, `Type`, `UInt8`, `UInt16`, `UInt32`, `UInt64`, `Unit`, `ContractViolation`, `ReasoningFailure` |
+| `parameter` | `'T` |
+| `list`, `set`, `option`, `result`, `map` | `(List T)`, `(Set T)`, `(Option T)`, `(Result ok error)`, `(Map K V)` |
+| `product`, `function` | `(A * B)`, `(Fn (A B) R)` |
+| `named` | `Name`, `Module::Name`, or `(Name A B)` with arguments |
+
+A document-named type that is spelled like a type of the table is written
+generically.
+
+*Terms.* The head words `let if match fun forall nil cons first second not
+apply ctor record project prim ref checked`, the words `then else with`, and
+`true`, `false` are keywords; a variable or function named like one is written
+generically.
+
+| Term | Written |
+| --- | --- |
+| `var`, `nat`, `bool`, `string`, `bytes`, `unit` | `x`, `3`, `true`, `"text"`, `0x4a4b`, `()` |
+| `integer` | `(-3 : Int8)` |
+| `add`, `eq`, `le`, `lt`, `beq`, `ble`, `blt`, `and`, `or`, `prop_and`, `iff`, `implies` | `(a + b)`, `(a = b)`, `(a <= b)`, `(a < b)`, `(a =? b)`, `(a <=? b)`, `(a <? b)`, `(a && b)`, `(a \|\| b)`, `(a /\ b)`, `(a <-> b)`, `(premise -> conclusion)` |
+| `pair`, `first`, `second`, `not` | `(a, b)`, `(first p)`, `(second p)`, `(not a)` |
+| `nil`, `cons` | `(nil T)`, `(cons h t)` |
+| `if`, `let`, `forall` | `(if c then a else b)`, `(let x : T := v; body)`, `(forall (x : T), body)` |
+| `lambda`, `apply` | `(fun [c, …] (x : T) … => body)` (the captures omitted when there are none), `(apply f a b)` |
+| `call`, `constructor`, `function_ref` | `(f [T, …] a b)`, `(ctor C [T, …] a b)`, `(ref f [T, …])` (the type arguments omitted when there are none) |
+| `record`, `project` | `(record S [T, …] {f := v, …})`, `(project v f)` |
+| `primitive` | `(prim operation a b : R)` |
+| `checked_apply` | `(checked M [T, …] a b with [check, …])` |
+| `match` | `(match s \| C x y => body \| D => body)`, one branch to a line |
+
+Instance values, map, set, and graph literals, proofs, and declarations are
+written generically, with their members read at their positions: the notation
+of a declaration is `K{name: …, …}`.
+
+#### 17.21.5 The module and its canonical form
+
+The notation of a module is its declarations in order, separated by an empty
+line, each ended by a line feed. A declaration is laid out at 100 columns: a
+group that fits is on one line, and one that does not has each member on its
+own line, indented two further spaces. The canonical source of a module is the
+module with its body replaced by that text, and `fmt` writes it (§23.5); it is
+a function of the module alone, so no layout of the source survives it and
+`fmt` is idempotent. A module written as `\semanticdata{…}` is canonical as it
+is, and so is a module of language 1.1: `fmt` leaves them unchanged. The
+conversion of a language-1.2 module out of the data form is the formatter's
+`data_module_as_notation`, which writes the same module as the notation.
+
+The notation has no comment form: the canonical document (§19) is where a
+module explains itself, and a comment would have to be data of the module to
+survive `fmt`.
+
+#### 17.21.6 What is checked
+
+- A malformed text is `LLP2001` at the position of the offending token, a
+  notation under language 1.1 is `LLP2003`, and nothing in it panics: the
+  notation is read with an explicit nesting bound and without recursion over
+  its length.
+- **Round trip (`AU-01`).** For every value of the schema, and in particular for
+  every alternative of the declaration, term, type, and proof unions read from
+  the schema, with and without its optional members, and for every committed
+  semantic module, `read(write(v)) = v` and `write(read(write(v))) = write(v)`.
+  The samples are read from the schema, so a variant added to it is checked
+  the day it is added.
+- **Equivalence (`AU-02`).** A module in the notation links to the module its data
+  form links to, with the same semantic ID, generated Lean and LaTeX; source maps
+  relate each declaration to its text in the notation; `fmt` is the identity on
+  the notation and on the data form.
+- **Failing closed (`AU-03`).** Every single-token deletion, duplication, and
+  replacement of a committed module either fails with a registered code or links
+  to a module that decodes.
+
 ## 18. Lean backend
 
 ### 18.1 Output contract
@@ -8738,8 +8900,11 @@ Every row below is normative, has honesty level `build`, and MUST be copied byte
 | `TL-09` | `tooling` | A command declares its syntax kind, a grammar of a leading token, identifiers, and signature types, and an elaborator with no parameters whose type is the abbreviation `Lean.Elab.Command.CommandElab`, an invocation supplies one identifier or signature tree per non-token atom, and an evaluation runs a function of the module on typed arguments, all as semantic data; an elaborator with a parameter or another type, a grammar without a leading token, an invocation of an unregistered command or with a wrong argument count or kind, and an evaluation of an unregistered function or with ill-typed arguments fail with LLT4015, and the pinned Lean runs the committed elaborator, which accepts a constant that exists and refuses one that does not. | §17.20 |
 | `TL-10` | `tooling` | Both backends traverse the one linked module: the Lean text begins with the fixed header, holds one rendering per function, command, invocation, and evaluation, and contains no comment, every declaration with output has one source-mapped piece, coverage is complete, the LaTeX document has one entry per declaration, and the pinned Lean elaborates every committed fixture without a message while refusing a registry that misstates an arity or a constructor list that the tool is consistent with. | §17.20, §18, §19.6, §20.5 |
 | `TL-11` | `tooling` | Tooling modules are deterministic and content-addressed: each committed fixture's published build tree equals its golden byte for byte and across two clean builds in different directories, changing any declaration, registry row, source pin, or term changes the semantic ID, and the schema lies outside `schemas/` and so outside the compiler-semantics ID, which the committed locks of the three languages still record. | §17.20, §21.2, §28.3, §28.4 |
+| `AU-01` | `authoring` | Every value of the closed semantic-module schema has one notation and the notation reads back to the value: every alternative of the declaration, term, type, and proof unions, with and without its optional members, is written and read back equal, a node that no readable form carries exactly is written generically, the notation is its own canonical form, and every committed semantic module is written and read back equal to its data. | §17.21 |
+| `AU-02` | `authoring` | A language-1.2 semantic module written in the authoring notation links to exactly the module its data form links to, with the same semantic ID and the same generated Lean and LaTeX byte for byte and source maps that relate each declaration to its text in the notation; the conversion of a module written as data yields the notation, fmt leaves the notation unchanged, and the notation under language 1.1 is refused with LLP2003. | §17.21 |
+| `AU-03` | `authoring` | Malformed notation fails closed and never panics: an unclosed delimiter, a keyword used as a name, a literal that is not canonical, an unknown kind, and every single-token deletion, duplication, and replacement of a committed module fail with a registered code at a position in the notation or link to a module that decodes, and a numeral with a redundant leading zero is LLL1003 outside a string and is not one inside it. | §17.21 |
 
-**Total required capability IDs:** 367.
+**Total required capability IDs:** 370.
 
 No row may be downgraded to `some-true` or `open`. Upstream Lean facts are ledger/authority rows, not substitutions for these build behaviors.
 

@@ -6783,3 +6783,75 @@ shortened), after which the defect was removed.
   order, the axioms, an optimality claimed without evidence, the GNAF verdict),
   an added file, and a removed file are each `LLV7102`, and a symlink is
   `LLS8001`.
+
+## The authoring notation (Issue #93, stage 3 of #27)
+
+`AU-01`..`AU-03` (SPEC.md §17.21) state that the notation and the canonical
+JSON of the closed schema are in bijection, that a module in the notation is
+the module its data form is, and that malformed notation fails closed. The
+corpus of `AU-01` is every committed semantic module of language 1.2 (290 modules
+with 4,949 declarations at this writing), and its samples are read from the schema, one for each
+alternative of the declaration, term, type, and proof unions with and without
+its optional members. Each plant below is one edit of the compiler, started from
+the passing cases, and must turn the named case red for the reason it names.
+
+- **a readable form that is not what the parser reads.** The printer of a
+  `match` writes its branch marker without the space (`|C`), which the parser
+  reads as a word. `-- conformance_au_01`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:115:65:
+  term match: a match has at least one `| …` branch (at byte 9)
+  (match 0 |x => 0)
+  ```
+
+- **a readable form that drops what it does not spell.** The guard that a
+  binary form has exactly its two members is removed, so a node with an extra
+  member is written as `(1 + 2)`. `-- conformance_au_01`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:116:5:
+  assertion `left == right` failed: add{left: nat{value: "1"}, right: nat{value: "2"}, extra: true}: read back differently
+  (1 + 2)
+  ```
+
+- **numerals in a string read as numerals.** The scanner no longer tracks the
+  strings of a notation body, so `"007"` is a numeral with a redundant leading
+  zero. `-- conformance_au_03`:
+
+  ```text
+  panicked at crates/conformance/src/support.rs:569:14:
+  check succeeds: LexLeanError { class: Language, diagnostics: [Diagnostic { code: DiagnosticCode("LLL1003"), message: "numeral `007` has a redundant leading zero; the canonical decimal is `7`", …
+  ```
+
+- **a source map off by one.** The spans of the declarations of a notation
+  module are shifted one byte. `-- conformance_au_02`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:421:17:
+  language-1.2: `efinition{
+    name: doubledSuccessor, …` is not a declaration of the notation
+  ```
+
+- **the notation under language 1.1.** The language check of the link stage is
+  disabled, so the notation is accepted where only the data form exists.
+  `-- conformance_au_02`:
+
+  ```text
+  panicked at crates/conformance/src/support.rs:687:5:
+  expected LLP2003, found ["LLT4001"] (LLT4001: phase link: theorem `t` statement has type Bool, expected Prop)
+  ```
+
+- **a formatter that does not format.** `fmt` returns the notation as it is, so
+  a module in another layout is canonical. `-- conformance_au_02`:
+
+  ```text
+  panicked at crates/conformance/src/cases/authoring.rs:355:18:
+  another layout is not canonical
+  ```
+
+Removed: each edit was restored; `conformance_au_01`, `conformance_au_02`, and
+`conformance_au_03` pass. The generic notation has its own property test over
+arbitrary canonical JSON values (`surface::generic`), and every alternative of
+the schema its own sample (`surface::semantic`), as unit tests of the
+`lexlean` crate.

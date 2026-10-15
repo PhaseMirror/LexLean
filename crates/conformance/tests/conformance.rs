@@ -1839,3 +1839,18 @@ fn conformance_tl_10() {
 fn conformance_tl_11() {
     repo_conformance::cases::run("TL-11");
 }
+
+#[test]
+fn conformance_au_01() {
+    repo_conformance::cases::run("AU-01");
+}
+
+#[test]
+fn conformance_au_02() {
+    repo_conformance::cases::run("AU-02");
+}
+
+#[test]
+fn conformance_au_03() {
+    repo_conformance::cases::run("AU-03");
+}
