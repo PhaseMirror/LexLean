@@ -9,6 +9,7 @@
 //! top of it and falls back to it, so no value is ever unspellable and no
 //! variant added to a schema can lack a surface.
 
+pub mod core;
 pub mod doc;
 pub mod generic;
 pub mod identity;
