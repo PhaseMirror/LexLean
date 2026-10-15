@@ -689,6 +689,22 @@ pub fn run(id: &str) {
                 "{error}"
             );
             assert!(error.to_string().contains("primitive.multiply"), "{error}");
+            // A primitive realized by a library template carries `recursion`
+            // (§17.13): a root that iterates and does not admit it is refused,
+            // the stack depth of the template's calls being its input's.
+            let iterating = P::copy_example("production-coverage");
+            iterating.edit(
+                "src/Colls.lex.tex",
+                r#""name":"iterations","parameters":[{"name":"n","type":{"kind":"nat"}},{"name":"start","type":{"kind":"nat"}}],"production":{"effects":["allocation","overflow","recursion"]"#,
+                r#""name":"iterations","parameters":[{"name":"n","type":{"kind":"nat"}},{"name":"start","type":{"kind":"nat"}}],"production":{"effects":["allocation","overflow"]"#,
+            );
+            let error = iterating.check_fails_with("LLT4005");
+            let text = error.to_string();
+            assert!(
+                text.contains("`Coverage.Colls.iterations`")
+                    && text.contains("realizes effect `recursion`, which the root does not admit"),
+                "{text}"
+            );
         }
         "PD-06" => {
             let first = P::copy_example("production");

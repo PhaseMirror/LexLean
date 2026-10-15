@@ -6781,6 +6781,71 @@ shortened), after which the defect was removed.
   an added file, and a removed file are each `LLV7102`, and a symlink is
   `LLS8001`.
 
+## Template recursion (Issue #105)
+
+SPEC.md §17.13, §17.14; `TC-06`, `PD-05`. The collection, fold, iteration, and
+graph primitives are realized by library templates that call themselves, so the
+Rust a root renders recurses on the stack once per element, and a root that
+scanned an 80,000-byte name aborted on an 8 MiB stack while its registry rows
+said `recursion = false` and its declaration admitted no `recursion`. The rows
+are corrected, `conformance_tc_06` derives each runtime row's `recursion` from
+its realization instead of trusting the row (the structural `recursion`
+reference, or a library template whose instance reaches itself through calls
+and closures), and `PD-05` refuses a root that iterates and does not admit the
+effect. Each record below is a defect planted in a clean tree, the command run,
+and the failure observed (paths shortened), after which the defect was removed.
+
+- **a template-realized row that says `recursion = false`.** The registry row of
+  `primitive.list_fold` set back to `false`.
+  `cargo test -p repo-conformance --test conformance -- conformance_tc_06`:
+
+  ```text
+  panicked at crates/conformance/src/cases/calculus.rs:1224:13:
+  recursion disagreements: [
+      "primitive.list_fold: registry false, realization true",
+  ```
+
+- **a runtime-item row that says `recursion = true`.** The row of
+  `primitive.map_size` (realized by the `length` item, a loop) set to `true`,
+  so the claim cannot only be raised. `conformance_tc_06`:
+
+  ```text
+  panicked at crates/conformance/src/cases/calculus.rs:1224:13:
+  recursion disagreements: [
+      "primitive.map_size: registry true, realization false",
+  ```
+
+- **a derivation that finds no recursion.** `calls_itself` made to return
+  `false` before it reads a function, so the check agrees with whatever the
+  registry says about a template. `conformance_tc_06`:
+
+  ```text
+  panicked at crates/conformance/src/cases/calculus.rs:1224:13:
+      "primitive.map_insert: registry true, realization false",
+      "primitive.map_remove: registry true, realization false",
+      "primitive.map_lookup: registry true, realization false",
+  ```
+
+- **an eligibility analysis that ignores the recursion a primitive row implies.**
+  The check in `eligibility.rs` that turns a registry row into the realized
+  effect `recursion` skips every `primitive.*` key, so a root that iterates and
+  does not admit the effect is eligible. `conformance_pd_05` (the committed
+  `iterations` root of `examples/production-coverage` with `recursion` removed
+  from its declaration must be `LLT4005`):
+
+  ```text
+  panicked at crates/conformance/src/support.rs:595:14:
+  check fails
+  ```
+
+Removed: each edit was restored; `conformance_tc_06` and `conformance_pd_05`
+pass. The registry is part of the language-1.2 compiler-semantics ID, so the
+record of this change is the regeneration it forces: locks, goldens, fixtures,
+the calculus's packages, the production export, and the verification records of
+the examples (`cargo xtask check-golden`, `check-fixtures`, `check-calculus`,
+`check-production-export`, `verify-examples --write`); only the language-1.2
+projects change, and `examples/uor-atlas` (language 1.0) is untouched.
+
 ## The authoring notation (Issue #93, stage 3 of #27)
 
 `AU-01`..`AU-08` (SPEC.md §17.21, §24.8) state that the notation and the canonical
