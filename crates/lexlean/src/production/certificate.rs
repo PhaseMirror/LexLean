@@ -7723,7 +7723,8 @@ impl Gen<'_> {
         };
         let sem = format!("{module_b}.program {module_b}.krate {module_b}.flags");
         let mut out = format!(
-            "import {module_a}\nimport {module_b}\nimport LexLeanPreservation.Compose\nset_option autoImplicit false\nset_option maxRecDepth 100000\nset_option linter.unusedVariables false\nnamespace {name}\n\n"
+            "import {module_a}\nimport {module_b}\nimport LexLeanPreservation.Compose\nset_option autoImplicit false\nset_option maxRecDepth 100000\n{}set_option linter.unusedVariables false\nnamespace {name}\n\n",
+            super::lower::budget_options(self.program)
         );
         out.push_str(&self.wt_theorems(module_a, &sem)?);
         let (parameters, _) = self.source.signature(root_module, root_name, &[])?;

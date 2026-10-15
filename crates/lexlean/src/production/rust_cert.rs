@@ -2256,11 +2256,15 @@ pub fn certificate_b(
     out.push_str(&super::lower::budget_options(program));
     out.push_str(&format!("namespace {module}\n"));
     out.push_str("open LexLeanTarget LexLeanPreservation.Rust\n\n");
+    // The program and the crate are the statement's data, never run: left computable, Lean's
+    // code generator compiles both, and on a large crate (a program carrying its parameters as
+    // literals) that compilation alone exhausts the compiler's heartbeat budget, so a certificate
+    // that the kernel would accept is refused for the size of a term nothing executes.
     out.push_str(&format!(
-        "def program : TargetSyntax.Program :=\n  {program_term}\n\n"
+        "noncomputable def program : TargetSyntax.Program :=\n  {program_term}\n\n"
     ));
     out.push_str(&format!(
-        "def krate : RustSyntax.Crate :=\n  {crate_term}\n\n"
+        "noncomputable def krate : RustSyntax.Crate :=\n  {crate_term}\n\n"
     ));
     out.push_str(&format!("def flags : Flags := {}\n\n", aligner.flags()?));
     for (index, proof) in proofs.iter().enumerate() {

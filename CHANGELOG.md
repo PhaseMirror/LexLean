@@ -89,6 +89,29 @@ versions, and the entries below say what each tag does and does not claim.
   from the production example. No file of the repository changes by this: it
   is a change of who owns them.
 - The language-1.2 authoring notation (SPEC.md §17.21, `AU-01`..`AU-08`; stage 3
+- Certificate budgets (SPEC.md §22.6, `SP-02`, no new diagnostic code).
+  Every certificate now lifts both of the pinned Lean's heartbeat budgets, as
+  only the certificates of a program with a match of more than 100 arms did,
+  and certificate B declares its `program` and `krate` terms `noncomputable`.
+  A root whose program carries its parameters as data (`UOR-Foundation/MNIST`
+  at its model root: 243 KB of crate, int_tensor artifacts decoded into
+  literals) was refused twice by a valid certificate: the code generator
+  exhausted its 200 000 heartbeats compiling the crate term, which nothing
+  runs, and then `isDefEq` exhausted the same budget on the function holding
+  the literal. The bound that remains is the wall clock, `child_timeout_ms`,
+  as the specification already said. Every certificate text changes by its
+  header, so the committed certificate records of the examples and the
+  fixture expectations that quote certificate sizes are regenerated. The
+  fixtures `certificate-heartbeat-rejected` and
+  `certificate-resource-exhausted` model an exhausted Lean by a substituted
+  `lake` that set a budget of one heartbeat after `autoImplicit`; it now
+  overrides the lifted budget instead. With the budget lifted, their
+  100-parameter project reaches certificate B for the first time, which
+  refuses it for a reason of its own (#97): Lean elaborates a list literal
+  of more than 32 elements under `let` binders, and a certificate witness
+  with postponed holes in such a list does not unify.
+
+- The language-1.2 authoring notation (SPEC.md §17.21, `AU-01`..`AU-03`; stage 3
   of #27, #93). A `semanticmodule` can be written as readable text instead of
   `\semanticdata{…}` JSON: declarations in a fixed grammar, read from the
   schema, with readable forms for types (`(List Nat)`, `(A * B)`), terms
@@ -1237,9 +1260,22 @@ versions, and the entries below say what each tag does and does not claim.
     `true_and`, and `Option.some.injEq`. The eligibility report gains
     per-root `reasoning` rows, and its schema now admits the model and
     reasoning construct keys. The snapshot elaboration gains `theorems`.
+- A production root that applies a collection, fold, iteration, or graph
+  primitive now admits `recursion` (SPEC.md §17.13, `TC-06`; #105). Those
+  primitives are realized by library templates that call themselves, so the
+  stack depth of the rendered Rust is bounded only by the input (a scan of an
+  80,000-byte name aborted on an 8 MiB stack), yet their registry rows said
+  `recursion = false` and no root declared the effect. The rows are corrected,
+  and `conformance_tc_06` derives each runtime row's `recursion` from its
+  realization (the call graph of a template's instance, or the structural
+  `recursion` reference) instead of trusting the row. The language-1.2
+  compiler-semantics ID changes with the registry; `examples/reasoning` and
+  `examples/production-coverage` declare the effect on the roots that use these
+  primitives.
 - The host legs of CI may run for 120 minutes, where they were cut off at 60:
   the Intel macOS leg takes 51 to 61 minutes, and a leg cancelled at its limit
   is not a result about the code.
+
 ## 0.3.0
 
 - Support exhaustive Boolean matches and keep imported list construction
