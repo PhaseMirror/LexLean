@@ -423,7 +423,7 @@ the error registry does not sanction (R5, `ERRORS.md`).
 | `RP-11` | `build` | Every public README capability claim is tied to a registered model ID and honesty level. |
 | `RP-12` | `build` | A release is refused unless the complete release criterion and all required artifacts are satisfied. |
 | `RP-13` | `build` | The ordinary workspace test phase excludes repo-conformance, the bdd phase alone runs its complete suite, and a test inventory proves that the two phases together equal the whole workspace test set with no test lost and none run twice. |
-| `RP-14` | `build` | The normative CI job runs every recipe of just vv exactly once, in two parallel legs that each start from a clean checkout on the standard ubuntu-24.04 runner at the default verifier width 1, with no cache, path filter, or skipped recipe, and each leg uploads its CI evidence. |
+| `RP-14` | `build` | The normative CI job runs every recipe of just vv exactly once, in two parallel legs that each start from a clean checkout on the standard ubuntu-24.04 runner, the examples leg at the verification resource profile its matrix row names and the other at the default, with no cache, path filter, or skipped recipe, and each leg uploads its CI evidence. |
 
 ## rust-backend
 
