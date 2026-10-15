@@ -717,7 +717,9 @@ fn equivalence() {
             if !path.to_string_lossy().ends_with(".lex.tex") {
                 continue;
             }
-            if path.to_string_lossy().ends_with("/Core.lex.tex") {
+            // By file name, not by a suffix with a separator: a path on
+            // Windows is written with backslashes.
+            if path.file_name().is_some_and(|name| name == "Core.lex.tex") {
                 let text = std::fs::read_to_string(path).expect("read");
                 std::fs::write(path, rewrite(&text)).expect("writes");
             } else {
