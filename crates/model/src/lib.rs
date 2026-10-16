@@ -11,6 +11,7 @@
 
 #![deny(missing_docs)]
 
+pub mod authority;
 pub mod codegen;
 pub mod correspondence;
 pub mod exhaustive;
@@ -91,54 +92,12 @@ impl Model {
         Ok(())
     }
 
-    /// §27.5: every registered ID is well formed and, per §27.3, at level
-    /// `build`; the ID shape is `<two upper-case letters>-<two digits>`
-    /// (§27.8 derives the test name from it).
+    /// §27.5: the register rules live on [`Ids::check`], shared with the
+    /// `Registry.lex.tex` projection gate; this method adds the sibling
+    /// schema tags the loaded model must carry.
     fn check_ids(&self) -> Result<(), ModelError> {
         let bad = |m: String| ModelError::Inconsistent(m);
-        let mut seen: Vec<&str> = Vec::new();
-        for row in &self.ids.id {
-            if seen.contains(&row.id.as_str()) {
-                return Err(bad(format!("{}: registered twice", row.id)));
-            }
-            seen.push(&row.id);
-
-            if row.statement.trim().is_empty() {
-                return Err(bad(format!(
-                    "{}: an untagged claim does not ship (R2)",
-                    row.id
-                )));
-            }
-            if row.suite.trim().is_empty() {
-                return Err(bad(format!(
-                    "{}: every ID names the Gherkin suite its scenario lives in (R3)",
-                    row.id
-                )));
-            }
-            if row.level != Level::Build {
-                return Err(bad(format!(
-                    "{}: every LexLean capability ID is level `build` (§27.3), found `{}`",
-                    row.id,
-                    row.level.as_str()
-                )));
-            }
-            let bytes = row.id.as_bytes();
-            let shaped = bytes.len() == 5
-                && bytes[0].is_ascii_uppercase()
-                && bytes[1].is_ascii_uppercase()
-                && bytes[2] == b'-'
-                && bytes[3].is_ascii_digit()
-                && bytes[4].is_ascii_digit();
-            if !shaped {
-                return Err(bad(format!(
-                    "{}: a conformance ID is two upper-case letters, a hyphen, and two digits (§27.8)",
-                    row.id
-                )));
-            }
-        }
-        if self.ids.spec != "lexlean/ids/1" {
-            return Err(bad(format!("ids.toml has spec `{}`", self.ids.spec)));
-        }
+        self.ids.check()?;
         if self.ledger.spec != "lexlean/ledger/1" {
             return Err(bad(format!("ledger.toml has spec `{}`", self.ledger.spec)));
         }
@@ -274,6 +233,27 @@ mod tests {
         assert!(
             model.ids.id.iter().all(|row| row.level == Level::Build),
             "every LexLean ID is `build` (§27.3)"
+        );
+    }
+
+    /// #111 slice 1: `model/src/Registry.lex.tex` projects the committed
+    /// `model/ids.toml` byte for byte (additive; no edit-ban yet).
+    #[test]
+    fn the_registry_module_projects_ids_toml_byte_for_byte() {
+        let root = repo_root();
+        let projected = authority::registry_ids(&root).expect("registry projects");
+        let committed = Model::load_from_repo_root().expect("model loads").ids;
+        assert_eq!(
+            projected.id.len(),
+            committed.id.len(),
+            "the projection and the committed register agree in length"
+        );
+        let rendered = codegen::render_ids(&projected);
+        let on_disk =
+            std::fs::read_to_string(root.join("model/ids.toml")).expect("model/ids.toml reads");
+        assert_eq!(
+            rendered, on_disk,
+            "the Registry.lex.tex projection of model/ids.toml is byte-identical"
         );
     }
 

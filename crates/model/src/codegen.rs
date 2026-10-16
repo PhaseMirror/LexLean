@@ -7,10 +7,59 @@
 
 use core::fmt::Write as _;
 
-use crate::Model;
+use crate::{Ids, Model};
 
 /// Where the generated conformance table is committed.
 pub const CONFORMANCE_PATH: &str = "CONFORMANCE.md";
+
+/// Render `model/ids.toml` from the ID register.
+///
+/// In the first #111 slice this reproduces the committed bytes exactly,
+/// header included, so the projection is additive: `cargo xtask
+/// validate-registry` projects `model/src/Registry.lex.tex` and fails if the
+/// committed `model/ids.toml` differs, while the existing hand-edit gates
+/// stay in force until every open register branch has rebased.
+pub fn render_ids(ids: &Ids) -> String {
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "# model/ids.toml --- the LexLean conformance ID register (R1)."
+    );
+    let _ = writeln!(out, "#");
+    let _ = writeln!(
+        out,
+        "# Every row is copied byte-for-byte from the SPEC.md §31 table; `cargo xtask"
+    );
+    let _ = writeln!(
+        out,
+        "# validate-spec-links` fails if the two ever disagree (RP-07). CONFORMANCE.md"
+    );
+    let _ = writeln!(
+        out,
+        "# is generated from this file by `just model-write` and compared by the model"
+    );
+    let _ = writeln!(
+        out,
+        "# gate. Every ID is honesty level `build` (§27.3): constructed here and"
+    );
+    let _ = writeln!(out, "# validated against its oracle.");
+    let _ = writeln!(out);
+    let _ = writeln!(out, "spec = {}", quoted(&ids.spec));
+    for row in &ids.id {
+        let _ = writeln!(out);
+        let _ = writeln!(out, "[[id]]");
+        let _ = writeln!(out, "id = {}", quoted(&row.id));
+        let _ = writeln!(out, "level = {}", quoted(row.level.as_str()));
+        let _ = writeln!(out, "suite = {}", quoted(&row.suite));
+        let _ = writeln!(out, "statement = {}", quoted(&row.statement));
+    }
+    out
+}
+
+/// Quote a string as a TOML (and JSON) basic string.
+fn quoted(value: &str) -> String {
+    serde_json::to_string(value).expect("serializing a Rust string cannot fail")
+}
 
 /// Render `CONFORMANCE.md` from the ID register.
 ///

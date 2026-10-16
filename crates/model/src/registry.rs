@@ -153,6 +153,58 @@ impl Ids {
     pub fn get(&self, id: &str) -> Option<&IdRow> {
         self.id.iter().find(|r| r.id == id)
     }
+
+    /// §27.5: every registered ID is well formed and, per §27.3, at level
+    /// `build`; the ID shape is `<two upper-case letters>-<two digits>`
+    /// (§27.8 derives the test name from it). Shared by the committed
+    /// `model/ids.toml` gate and the `Registry.lex.tex` projection gate.
+    pub fn check(&self) -> Result<(), ModelError> {
+        let bad = |m: String| ModelError::Inconsistent(m);
+        let mut seen: Vec<&str> = Vec::new();
+        for row in &self.id {
+            if seen.contains(&row.id.as_str()) {
+                return Err(bad(format!("{}: registered twice", row.id)));
+            }
+            seen.push(&row.id);
+
+            if row.statement.trim().is_empty() {
+                return Err(bad(format!(
+                    "{}: an untagged claim does not ship (R2)",
+                    row.id
+                )));
+            }
+            if row.suite.trim().is_empty() {
+                return Err(bad(format!(
+                    "{}: every ID names the Gherkin suite its scenario lives in (R3)",
+                    row.id
+                )));
+            }
+            if row.level != Level::Build {
+                return Err(bad(format!(
+                    "{}: every LexLean capability ID is level `build` (§27.3), found `{}`",
+                    row.id,
+                    row.level.as_str()
+                )));
+            }
+            let bytes = row.id.as_bytes();
+            let shaped = bytes.len() == 5
+                && bytes[0].is_ascii_uppercase()
+                && bytes[1].is_ascii_uppercase()
+                && bytes[2] == b'-'
+                && bytes[3].is_ascii_digit()
+                && bytes[4].is_ascii_digit();
+            if !shaped {
+                return Err(bad(format!(
+                    "{}: a conformance ID is two upper-case letters, a hyphen, and two digits (§27.8)",
+                    row.id
+                )));
+            }
+        }
+        if self.spec != "lexlean/ids/1" {
+            return Err(bad(format!("ids.toml has spec `{}`", self.spec)));
+        }
+        Ok(())
+    }
 }
 
 /// `model/authorities.toml` --- what this repository cites (§27.4).

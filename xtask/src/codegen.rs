@@ -5,9 +5,51 @@
 
 use std::path::{Path, PathBuf};
 
-use repo_model::{codegen, Model};
+use repo_model::{authority, codegen, Model};
 
 use crate::Fail;
+
+/// #111 slice 1: project `model/src/Registry.lex.tex` and require the
+/// committed `model/ids.toml` to be its byte-identical projection.
+///
+/// Additive and opt-in: this task is not part of `validate` or CI, so the
+/// open register branches that still hand-edit `model/ids.toml` keep their
+/// current gates. `--write` re-projects the register into `model/ids.toml`.
+pub fn validate_registry(root: &Path, write: bool) -> Result<(), Fail> {
+    let ids = authority::registry_ids(root)?;
+    let projected = codegen::render_ids(&ids);
+    let path: PathBuf = root.join("model/ids.toml");
+
+    if write {
+        std::fs::write(&path, &projected)?;
+        println!(
+            "wrote {} from {} ({} ids)",
+            path.display(),
+            authority::REGISTRY_PATH,
+            ids.id.len()
+        );
+        return Ok(());
+    }
+    let committed =
+        std::fs::read_to_string(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+    if committed != projected {
+        return Err(format!(
+            "{} is not the projection of {} (issue #111): project the register \
+             with `cargo xtask validate-registry --write`, or rebase the register \
+             edit onto the authority module.",
+            path.display(),
+            authority::REGISTRY_PATH
+        )
+        .into());
+    }
+    println!(
+        "validate-registry: {} projects {} byte-identically, {} ids (issue #111)",
+        authority::REGISTRY_PATH,
+        path.display(),
+        ids.id.len()
+    );
+    Ok(())
+}
 
 /// R1, §27.5: the generated documents equal the model, byte for byte.
 pub fn check_model(root: &Path, write: bool) -> Result<(), Fail> {

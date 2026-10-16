@@ -18,6 +18,16 @@ fmt-check:
 model:
     cargo xtask validate-model
 
+# Issue #111 slice 1: model/src/Registry.lex.tex projects model/ids.toml
+# byte-identically. Additive and opt-in: not part of `vv`, `model`, or CI
+# until every open register branch has rebased onto the projection.
+registry:
+    cargo xtask validate-registry
+
+# The only path that reprojects the register into model/ids.toml (issue #111).
+registry-write:
+    cargo xtask validate-registry --write
+
 # RP-07: the SPEC.md §31 table and model/ids.toml are bijective and
 # text-consistent (§27.6).
 spec-links:
